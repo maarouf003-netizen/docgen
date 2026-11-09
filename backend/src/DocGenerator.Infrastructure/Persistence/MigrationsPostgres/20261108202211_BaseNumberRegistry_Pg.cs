@@ -174,7 +174,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                        regexp_replace(translate(btrim(d."FileNumber"),
                            '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
                            '01234567890123456789'), '\s', '', 'g'),
-                       'registration', d."CreatedById", now(), now(), NULL, NULL, NULL
+                       'registration', d."CreatedById", d."CreatedAt", now(), NULL, NULL, NULL
                 FROM "Documents" d
                 WHERE d."IsDeleted" = false
                   AND d."ExecutionCircuitId" IS NOT NULL
@@ -200,7 +200,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                        regexp_replace(translate(btrim(d."FileNumber"),
                            '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
                            '01234567890123456789'), '\s', '', 'g'),
-                       'registration', d."CreatedById", now(), now(),
+                       'registration', d."CreatedById", d."CreatedAt", now(),
                        COALESCE(d."DeletedAt", now()), 'document-deleted', d."CreatedById"
                 FROM "Documents" d
                 WHERE d."IsDeleted" = true

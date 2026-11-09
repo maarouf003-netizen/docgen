@@ -19,7 +19,7 @@ public static class DocumentSearchTextBuilder
         // (سنة ثم CreatedAt تنازليًا) لتنجو من قَصّ حد الـ 1000 — محددات تطابق حاسمة بالرقم القابل للعرض.
         var baseNumberParts = doc.BaseNumbers
             .Where(b => b.VoidedAt is null
-                && (doc.ExecutionCircuitId is null || b.ExecutionCircuitId == doc.ExecutionCircuitId)
+                && b.ExecutionCircuitId == doc.ExecutionCircuitId
                 && !string.IsNullOrWhiteSpace(b.BaseNumber))
             .OrderByDescending(b => b.Year)
             .ThenByDescending(b => b.CreatedAt)

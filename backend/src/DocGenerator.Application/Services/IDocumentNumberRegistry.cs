@@ -28,6 +28,12 @@ public sealed record NumberConflict(
 /// </summary>
 public interface IDocumentNumberRegistry
 {
+    /// <summary>
+    /// هل يسمح بسلوك «بلا دائرة» الانتقالي؟ false في الإنتاج؛ true في بناءات الاختبار
+    /// القائمة فقط. كل المسارات الإنتاجية ترفض رقمًا بلا دائرة (V-18).
+    /// </summary>
+    bool AllowsCircuitlessLegacy { get; }
+
     /// <summary>مزامنة صف القيد مع حقول المستند (إنشاء/تعديل/إعادة قيد/تسجيل إنابة).</summary>
     Task SyncRegistrationAsync(
         Document doc, int? actorUserId, string? actorName, string? warningToken, CancellationToken ct,

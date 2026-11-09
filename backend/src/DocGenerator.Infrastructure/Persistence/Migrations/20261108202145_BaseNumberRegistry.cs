@@ -202,7 +202,7 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                            '۰','0'),'۱','1'),'۲','2'),'۳','3'),'۴','4'),
                            '۵','5'),'۶','6'),'۷','7'),'۸','8'),'۹','9'),
                            ' ', ''), char(9), ''),
-                       'registration', d."CreatedById", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                       'registration', d."CreatedById", d."CreatedAt", CURRENT_TIMESTAMP,
                        NULL, NULL, NULL
                 FROM "Documents" d
                 WHERE d."IsDeleted" = 0
@@ -236,7 +236,7 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                            '۰','0'),'۱','1'),'۲','2'),'۳','3'),'۴','4'),
                            '۵','5'),'۶','6'),'۷','7'),'۸','8'),'۹','9'),
                            ' ', ''), char(9), ''),
-                       'registration', d."CreatedById", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                       'registration', d."CreatedById", d."CreatedAt", CURRENT_TIMESTAMP,
                        COALESCE(d."DeletedAt", CURRENT_TIMESTAMP), 'document-deleted', d."CreatedById"
                 FROM "Documents" d
                 WHERE d."IsDeleted" = 1

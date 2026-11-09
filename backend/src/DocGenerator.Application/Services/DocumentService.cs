@@ -370,6 +370,7 @@ public sealed class DocumentService : IDocumentService
             doc.IsDeleted = true;
             doc.DeletedAt = DateTime.UtcNow;
             doc.UpdatedAt = DateTime.UtcNow;
+            doc.Version++;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "delete", documentId, doc.DocumentType,
@@ -410,6 +411,7 @@ public sealed class DocumentService : IDocumentService
             doc.SearchText = DocumentSearchTextBuilder.Build(doc);
             doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
             doc.UpdatedAt = DateTime.UtcNow;
+            doc.Version++;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "restore", documentId, doc.DocumentType,
@@ -1012,7 +1014,8 @@ public sealed class DocumentService : IDocumentService
         perPage = Math.Clamp(perPage, 1, 100);
 
         var currentYear = CurrentYear();
-        var (total, docs) = await _documents.GetRotationCandidatesAsync(userId, currentYear, page, perPage, ct);
+        var (total, docs) = await _documents.GetRotationCandidatesAsync(
+            userId, currentYear, page, perPage, _numberRegistry.AllowsCircuitlessLegacy, ct);
         var items = docs
             .Select(d => new RotationDocumentDto(
                 d.Id,

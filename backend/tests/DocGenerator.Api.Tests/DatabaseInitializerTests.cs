@@ -131,6 +131,120 @@ public class DatabaseInitializerTests
     }
 
     [Fact]
+    public async Task InitializeAsync_Production_RejectsNumberedDocumentWithoutCircuit_R9()
+    {
+        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        try
+        {
+            await db.Database.MigrateAsync();
+            var branch = new Branch { Name = "دمشق", Code = "DAM" };
+            db.Branches.Add(branch);
+            await db.SaveChangesAsync();
+            var user = new User
+            {
+                Username = "lawyer_r9",
+                FullName = "محامي",
+                Role = UserRole.Lawyer,
+                BranchId = branch.Id,
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            db.Documents.Add(new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+                FileNumber = "1",
+                FileYear = "2026",
+                FileType = "صلح",
+                IsDraft = false,
+                NeedsRegistration = false,
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123"));
+            Assert.Contains("بلا دائرة", ex.Message);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_NormalizesRegistryKeys_R9()
+    {
+        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        try
+        {
+            await db.Database.MigrateAsync();
+            var branch = new Branch { Name = "دمشق", Code = "DAM" };
+            db.Branches.Add(branch);
+            await db.SaveChangesAsync();
+            var user = new User
+            {
+                Username = "lawyer_keys",
+                FullName = "محامي",
+                Role = UserRole.Lawyer,
+                BranchId = branch.Id,
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            var circuit = new ExecutionCircuit
+            {
+                Name = "دائرة", NameNorm = "دائره", BranchId = branch.Id,
+                IsActive = true, CreatedById = user.Id,
+            };
+            db.ExecutionCircuits.Add(circuit);
+            await db.SaveChangesAsync();
+            var doc = new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+                ExecutionCircuitId = circuit.Id,
+                Court = circuit.Name,
+                CourtNorm = circuit.NameNorm,
+                FileNumber = "12 3",
+                FileYear = "2026",
+                FileType = "صَلح",
+                IsDraft = false,
+                NeedsRegistration = false,
+            };
+            db.Documents.Add(doc);
+            await db.SaveChangesAsync();
+            db.BaseNumbers.Add(new DocumentBaseNumber
+            {
+                DocumentId = doc.Id,
+                ExecutionCircuitId = circuit.Id,
+                CircuitName = circuit.Name,
+                Year = 2026,
+                FileType = "صَلح",
+                TypeKey = "صَلح",
+                BaseNumber = "12 3",
+                NumberKey = "12 3",
+                Source = NumberSources.Registration,
+                CreatedById = user.Id,
+            });
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            await initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123");
+
+            var row = await db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
+            Assert.Equal("صلح", row.TypeKey);
+            Assert.Equal("123", row.NumberKey);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
     public async Task InitializeAsync_Production_WhenUsersExist_SkipsSeeding()
     {
         var (path, db, initializer) = CreateInitializer();

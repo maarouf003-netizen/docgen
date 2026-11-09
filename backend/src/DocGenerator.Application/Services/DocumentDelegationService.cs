@@ -1019,6 +1019,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 target.FileYear = fileYear;
                 target.IsDraft = false;
                 target.UpdatedAt = DateTime.UtcNow;
+                target.Version++;
                 await ApplyRegistrationDateAsync(target, registrationDate.Value, token);
                 _documents.Update(target);
                 if (_numberRegistry is not null)

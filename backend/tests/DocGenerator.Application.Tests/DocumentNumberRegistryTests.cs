@@ -17,6 +17,7 @@ public class DocumentNumberRegistryTests : IDisposable
     private readonly FakeAuditLogger _audit = new();
     private readonly DocumentNumberRegistry _registry;
     private readonly DocumentRepository _documents;
+    private readonly Repository<ExecutionCircuit> _circuitsRepo;
     private readonly int _userId;
     private readonly int _branchId;
     private readonly int _circuitA;
@@ -41,6 +42,7 @@ public class DocumentNumberRegistryTests : IDisposable
         _userId = user.Id;
 
         var circuits = new Repository<ExecutionCircuit>(_db);
+        _circuitsRepo = circuits;
         var circuitA = new ExecutionCircuit
         {
             Name = "دائرة أ", NameNorm = "دائره ا", BranchId = _branchId,
@@ -67,6 +69,7 @@ public class DocumentNumberRegistryTests : IDisposable
             tx,
             _audit,
             new NumberWarningTokenService(),
+            new NumberRegistryOptions { AllowCircuitlessLegacy = true },
             TimeProvider.System,
             TestClock.TimeZone);
         _currentYear = ServerClock.CurrentYear(TimeProvider.System, TestClock.TimeZone);
@@ -273,5 +276,53 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal(1, history.Count(h => h.IsVoided));
         Assert.Equal(1, history.Count(h => h.IsEffective));
         Assert.Contains(history, h => h.VoidReason == NumberVoidReasons.RegistrationSuperseded);
+    }
+
+    private DocumentNumberRegistry CreateRegistry(bool allowCircuitlessLegacy)
+    {
+        var tx = new TransactionRunner(_db);
+        return new DocumentNumberRegistry(
+            _documents,
+            new DocumentBaseNumberRepository(_db),
+            _circuitsRepo,
+            new UnitOfWork(_db),
+            tx,
+            tx,
+            new FakeAuditLogger(),
+            new NumberWarningTokenService(),
+            new NumberRegistryOptions { AllowCircuitlessLegacy = allowCircuitlessLegacy },
+            TimeProvider.System,
+            TestClock.TimeZone);
+    }
+
+    [Fact]
+    public async Task StrictMode_RejectsRegistrationWithoutCircuit_AndCreatesNoRow()
+    {
+        var doc = AddDocument(_circuitA, "940", _currentYear.ToString());
+        doc.ExecutionCircuitId = null;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        doc = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+
+        var strict = CreateRegistry(allowCircuitlessLegacy: false);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            strict.SyncRegistrationAsync(doc, _userId, "lawyer", null, default));
+        Assert.False(await _db.BaseNumbers.AnyAsync(b => b.DocumentId == doc.Id));
+    }
+
+    [Fact]
+    public async Task StrictMode_RejectsRotationWithoutCircuit()
+    {
+        var doc = AddDocument(_circuitA, "941", (_currentYear - 1).ToString());
+        await Sync(doc);
+        doc.ExecutionCircuitId = null;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        doc = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+
+        var strict = CreateRegistry(allowCircuitlessLegacy: false);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            strict.SaveRotationsAsync(
+                _userId, "lawyer", new List<BaseNumberEntry> { new(doc.Id, "1500") }, null, default));
     }
 }

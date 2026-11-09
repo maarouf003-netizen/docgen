@@ -92,6 +92,7 @@ public static class DocumentServiceFactory
             txContext,
             audit,
             new DocGenerator.Infrastructure.Security.NumberWarningTokenService(),
+            new NumberRegistryOptions { AllowCircuitlessLegacy = true },
             clockValue,
             timeZoneValue);
         var writeGuard = new DocumentWriteGuard(
