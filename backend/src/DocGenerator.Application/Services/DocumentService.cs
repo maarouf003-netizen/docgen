@@ -408,6 +408,12 @@ public sealed class DocumentService : IDocumentService
             doc.NeedsRegistration = true;
             doc.FileNumber = null;
             doc.FileYear = null;
+            // لا تُعاد حقول التجديد الجارية مع ملف مستعاد بلا رقم: التاريخ محفوظ في الوقوعات.
+            doc.RenewalFileNumber = null;
+            doc.RenewalFileType = null;
+            doc.RenewalFileReceiptNumber = null;
+            doc.RenewalFileReceiptDate = null;
+            doc.RenewalDate = null;
             doc.SearchText = DocumentSearchTextBuilder.Build(doc);
             doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
             doc.UpdatedAt = DateTime.UtcNow;

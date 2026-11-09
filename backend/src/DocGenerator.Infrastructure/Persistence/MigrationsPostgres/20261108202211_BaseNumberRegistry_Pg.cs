@@ -254,6 +254,15 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                 unique: true,
                 filter: "\"VoidedAt\" IS NULL");
 
+            // V-18 على مستوى قاعدة PostgreSQL: لا ملف مرقّم بلا دائرة (المسودة/بلا رقم مسموحة).
+            migrationBuilder.Sql("""
+                ALTER TABLE "Documents"
+                ADD CONSTRAINT "CK_Documents_FileNumberRequiresCircuit"
+                CHECK ("ExecutionCircuitId" IS NOT NULL
+                    OR "FileNumber" IS NULL
+                    OR btrim("FileNumber") = '');
+                """);
+
             migrationBuilder.AddForeignKey(
                 name: "FK_DocumentBaseNumbers_Documents_DocumentId",
                 table: "DocumentBaseNumbers",
@@ -290,6 +299,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("ALTER TABLE \"Documents\" DROP CONSTRAINT IF EXISTS \"CK_Documents_FileNumberRequiresCircuit\";");
+
             // إزالة صفوف القيد التي أنشأتها التعبئة (الصفوف القديمة وُسمت rotation).
             migrationBuilder.Sql("DELETE FROM \"DocumentBaseNumbers\" WHERE \"Source\" = 'registration';");
 

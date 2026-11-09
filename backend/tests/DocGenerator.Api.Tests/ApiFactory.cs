@@ -59,9 +59,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // `false` عمدًا للإنتاج. بدون هذا السطر تفشل كل اختبارات القاعدة في CI فقط
         // (المضيف يرفض الإقلاع: مخطط غير مطابق + هجرات معلّقة).
         builder.UseSetting("Database:AutoMigrate", "true");
-        // اختبارات البناء القديم تنشئ ملفات بلا دائرة (سجل الدوائر غير مهيأ)؛
-        // مفتاح صريح للاختبار فقط. الإنتاج يبقى false (V-18).
-        builder.UseSetting("NumberRegistry:AllowCircuitlessLegacy", "true");
         // مشغّل صندوق الصادر معطَّل في اختبارات التكامل: يعمل على القاعدة نفسها
         // فيتنافس مع معاملات الاختبار على قفل SQLite (تشويش/تذبذب)، ومشغّله
         // مغطّى باختبارات وحدة مستقلة.
@@ -92,6 +89,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             if (descriptor is not null)
                 services.Remove(descriptor);
             services.AddScoped<IPasswordHasher, FastTestPasswordHasher>();
+
+            // اختبارات البناء القديم تنشئ ملفات بلا دائرة؛ المفتاح للاختبار فقط،
+            // ولا يوجد أي مسار إعداد في الإنتاج يفعّله.
+            var registryOptions = services.SingleOrDefault(d => d.ServiceType == typeof(NumberRegistryOptions));
+            if (registryOptions is not null)
+                services.Remove(registryOptions);
+            services.AddSingleton(new NumberRegistryOptions { AllowCircuitlessLegacy = true });
         });
     }
 

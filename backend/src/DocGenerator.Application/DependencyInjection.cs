@@ -21,11 +21,8 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IDocumentService, DocumentService>();
-        var allowCircuitlessLegacy = configuration?["NumberRegistry:AllowCircuitlessLegacy"];
-        services.AddSingleton(new NumberRegistryOptions
-        {
-            AllowCircuitlessLegacy = bool.TryParse(allowCircuitlessLegacy, out var allow) && allow,
-        });
+        // لا مفتاح إعداد للإنتاج: السلوك الانتقالي للاختبارات يُحقن مباشرة في مصنع الاختبار.
+        services.AddSingleton(new NumberRegistryOptions());
         services.AddScoped<IDocumentNumberRegistry, DocumentNumberRegistry>();
         services.AddScoped<IExecutionActionService, ExecutionActionService>();
         services.AddScoped<IDocumentSearchService, DocumentSearchService>();
