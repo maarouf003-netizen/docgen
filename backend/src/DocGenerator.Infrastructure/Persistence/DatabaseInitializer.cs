@@ -54,7 +54,6 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
         else
             await EnsureSchemaIsCurrentAsync(ct);
 
-        await NormalizeNumberRegistryKeysAsync(ct);
         await EnsureNumberRegistryConsistencyAsync(ct);
 
         if (development)
@@ -151,57 +150,6 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
     }
 
     /// <summary>
-    /// يطبّع مفاتيح الصفوف القائمة عبر سياسة C# نفسها (لا SQL تقريبي)، ويرفض أي
-    /// تكرار بعد التطبيع. يعالج فرق تطبيع التشكيل/المسافات بين الهجرة والكاتب.
-    /// </summary>
-    private async Task NormalizeNumberRegistryKeysAsync(CancellationToken ct)
-    {
-        var rows = await _db.BaseNumbers.IgnoreQueryFilters().ToListAsync(ct);
-        if (rows.Count == 0)
-            return;
-
-        var targets = new List<(DocGenerator.Domain.Entities.DocumentBaseNumber Row, string TypeKey, string NumberKey)>();
-        foreach (var row in rows)
-        {
-            var typeKey = DocumentBaseNumberPolicy.NormalizeType(row.FileType);
-            var numberKey = DocumentBaseNumberPolicy.NormalizeNumberOrNull(row.BaseNumber) ?? string.Empty;
-            targets.Add((row, typeKey, numberKey));
-        }
-
-        var duplicate = targets
-            .Where(t => t.Row.VoidedAt is null && t.Row.ExecutionCircuitId is not null)
-            .GroupBy(t => new
-            {
-                t.Row.ExecutionCircuitId,
-                t.TypeKey,
-                t.Row.Year,
-                t.NumberKey,
-            })
-            .FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null)
-        {
-            var message = "تعذر تطبيع مفاتيح أرقام الأساس: تكرار بعد التطبيع في "
-                + $"دائرة {duplicate.Key.ExecutionCircuitId?.ToString() ?? "∅"} / سنة {duplicate.Key.Year} "
-                + $"/ نوع «{duplicate.Key.TypeKey}» / رقم «{duplicate.Key.NumberKey}» — عالجه يدويًا قبل التشغيل.";
-            if (_strictSchemaChecks)
-                throw new InvalidOperationException(message);
-            Console.Error.WriteLine("[schema-check] WARNING: " + message);
-            return;
-        }
-
-        var changed = false;
-        foreach (var (row, typeKey, numberKey) in targets)
-        {
-            if (row.TypeKey == typeKey && row.NumberKey == numberKey)
-                continue;
-            row.TypeKey = typeKey;
-            row.NumberKey = numberKey;
-            changed = true;
-        }
-        if (changed)
-            await _db.SaveChangesAsync(ct);
-    }
-
     /// <summary>
     /// R9: مراجعة اتساق سجل أرقام الأساس عند الإقلاع — كل ملف مرقّم (غير محذوف)
     /// له دائرة وسنة صالحة وصف قيد غير ملغى في دائرته/سنته، ولا صفوف بلا دائرة.
@@ -210,41 +158,31 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
     private async Task EnsureNumberRegistryConsistencyAsync(CancellationToken ct)
     {
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        var numbered = await _db.Documents
+        var numbered = _db.Documents
             .AsNoTracking()
             .Where(d => !d.IsDeleted
-                && d.FileNumber != null && d.FileNumber.Trim() != "")
-            .Select(d => new { d.Id, d.ExecutionCircuitId, d.FileYear })
-            .ToListAsync(ct);
-        var registrations = await _db.BaseNumbers
-            .AsNoTracking()
-            .Where(b => b.VoidedAt == null && b.Source == NumberSources.Registration)
-            .Select(b => new { b.DocumentId, b.ExecutionCircuitId, b.Year })
-            .ToListAsync(ct);
-        var registrationSet = registrations
-            .Select(r => (r.DocumentId, CircuitId: r.ExecutionCircuitId ?? -1, r.Year))
-            .ToHashSet();
+                && d.FileNumber != null && d.FileNumber.Trim() != "");
 
-        var missingCircuit = numbered
-            .Where(d => d.ExecutionCircuitId is null)
+        var missingCircuit = await numbered
+            .Where(d => d.ExecutionCircuitId == null)
             .Select(d => d.Id)
             .Take(11)
-            .ToList();
-        var invalidYear = new List<int>();
-        var missingRow = new List<int>();
-        foreach (var doc in numbered)
-        {
-            var parsedYear = ParseRegistryYear(doc.FileYear, currentYear);
-            if (parsedYear is null)
-            {
-                invalidYear.Add(doc.Id);
-                continue;
-            }
-            if (doc.ExecutionCircuitId is null)
-                continue;
-            if (!registrationSet.Contains((doc.Id, doc.ExecutionCircuitId.Value, parsedYear.Value)))
-                missingRow.Add(doc.Id);
-        }
+            .ToListAsync(ct);
+
+        var missingRow = await numbered
+            .Where(d => d.ExecutionCircuitId != null
+                && d.FileYear != null && d.FileYear.Trim() != "")
+            .Where(d => !_db.BaseNumbers.Any(b =>
+                b.DocumentId == d.Id
+                && b.VoidedAt == null
+                && b.Source == NumberSources.Registration
+                && b.ExecutionCircuitId == d.ExecutionCircuitId
+                && b.Year.ToString() == d.FileYear!.Trim()))
+            .Select(d => d.Id)
+            .Take(11)
+            .ToListAsync(ct);
+
+        var invalidYear = await GetInvalidRegistryYearIdsAsync(currentYear, ct);
 
         var orphans = await _db.BaseNumbers
             .IgnoreQueryFilters()
@@ -274,6 +212,55 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
         if (_strictSchemaChecks)
             throw new InvalidOperationException(message);
         Console.Error.WriteLine("[schema-check] WARNING: " + message);
+    }
+
+    /// <summary>
+    /// سنوات غير صالحة على PostgreSQL باستعلام تجميعي واحد (لا تحميل 500k صف).
+    /// على SQLite (اختبارات فقط) تُقرأ الأعمدة الصغيرة وتُفحص في C#.
+    /// </summary>
+    private async Task<List<int>> GetInvalidRegistryYearIdsAsync(int currentYear, CancellationToken ct)
+    {
+        if (_db.Database.IsNpgsql())
+        {
+            const string sql = """
+                SELECT "Id" AS "Value"
+                FROM "Documents"
+                WHERE "IsDeleted" = false
+                  AND "FileNumber" IS NOT NULL
+                  AND btrim("FileNumber") <> ''
+                  AND (
+                    "FileYear" IS NULL
+                    OR btrim("FileYear") = ''
+                    OR CASE
+                         WHEN regexp_replace(
+                                translate(btrim("FileYear"),
+                                  '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
+                                  '01234567890123456789'),
+                                '\s', '', 'g') ~ '^[0-9]+$'
+                         THEN regexp_replace(
+                                translate(btrim("FileYear"),
+                                  '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
+                                  '01234567890123456789'),
+                                '\s', '', 'g')::int NOT BETWEEN 1900 AND {0}
+                         ELSE true
+                       END)
+                ORDER BY "Id"
+                LIMIT 11
+                """;
+            return await _db.Database.SqlQueryRaw<int>(sql, currentYear).ToListAsync(ct);
+        }
+
+        var rows = await _db.Documents
+            .AsNoTracking()
+            .Where(d => !d.IsDeleted
+                && d.FileNumber != null && d.FileNumber.Trim() != "")
+            .Select(d => new { d.Id, d.FileYear })
+            .ToListAsync(ct);
+        return rows
+            .Where(d => ParseRegistryYear(d.FileYear, currentYear) is null)
+            .Select(d => d.Id)
+            .Take(11)
+            .ToList();
     }
 
     private static int? ParseRegistryYear(string? rawYear, int currentYear)
