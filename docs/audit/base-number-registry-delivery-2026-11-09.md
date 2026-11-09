@@ -120,3 +120,17 @@ dotnet ef database update --context DocGeneratorPostgresDbContext
 
 **النتيجة النهائية للبوابات بعد التصلّب:** (٢٣١٦ Application، ٩٠١ API، ٥ Sequential، ١٧٧٤ Vitest،
 بناء/فحص/CSP/حراسMigration — كلها خضراء).
+
+
+### 5.1) إغلاق مخاطر ما بعد التصلّب (2026-11-09 — الجولة الثانية)
+
+- **أُزيل مفتاح `NumberRegistry:AllowCircuitlessLegacy` من إعدادات الإنتاج نهائيًا**؛
+  `AddApplication` يسجّل `NumberRegistryOptions` بالقيمة `false`، ومصنع اختبار API هو الوحيد
+  الذي يستبدله بـ`true`. لا يوجد مسار تكوين إنتاجي يفعّل السلوك الانتقالي.
+- **قيد V‑18 على مستوى PostgreSQL:** أُضيف إلى هجرة `BaseNumberRegistry_Pg`:
+  `CK_Documents_FileNumberRequiresCircuit` (لا ملف مرقّم بلا دائرة؛ المسودة/بلا رقم مسموحة).
+- **سكربت تدقيق مسبق:** `scripts/base-number-registry-preflight.sql` (قراءة فقط) يفحص
+  V‑18، سنوات `FileYear`، التكرارات، المحذوفة، تبديل الدائرة من التعديل، وتدوير السنة الحالية.
+- **الاستعادة:** تُفرَّغ حقول التجديد الجارية (`RenewalFileNumber/Type/Receipt/Date`) مع
+  `NeedsRegistration`؛ التاريخ يبقى في الوقوعات.
+- **التحقق:** SQLite يبقى لقاعدة الاختبار فقط؛ الإنتاج على PostgreSQL مع القيد أعلاه.
