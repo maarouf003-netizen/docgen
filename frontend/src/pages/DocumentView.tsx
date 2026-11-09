@@ -12,7 +12,11 @@ import {
   EXEC_STATUS_DELEGATION_EXECUTED,
 } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
-import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
+import {
+  DELEGATION_STATUS_ASSIGNED,
+  DELEGATION_STATUS_REGISTERED,
+  withCourtPrefix,
+} from '../utils/delegationStatus';
 import { availableDelegationAssets } from '../utils/delegationAssets';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -179,6 +183,14 @@ export default function DocumentView() {
   };
   const debtorFullName = fullName(debtor);
   const statusBadge = getDocumentBadge(doc);
+  // سطر الهوية المضغوط: رقم/سنة + نوع + دائرة ببادئة واحدة، بلا تسميات منفصلة.
+  const identityLine = [
+    identityFileNumber(doc).replace(/\s*\/\s*/g, '/'),
+    (doc.fileType ?? '').trim(),
+    withCourtPrefix(doc.court),
+  ]
+    .filter(Boolean)
+    .join(' ');
   // الإنابة: يعرض الملف المناب بطاقة «معلومات الملف المنيب» (إنابته الخاصة)، والملف المنيب
   // بطاقة «تشعبات الملف» (إناباته الصادرة) — وكلتاهما من نقطة الإنابات نفسها.
   const delegationOfThisFile = delegations.find((d) => d.targetDocumentId === doc.id);
@@ -261,7 +273,11 @@ export default function DocumentView() {
     <>
       <ExecutoryDocumentCard doc={doc} isMirror={doc.sourceDelegationId != null} />
       {delegationOfThisFile && (
-        <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
+        <DelegationStatusCard
+          doc={doc}
+          delegationId={delegationOfThisFile.id}
+          delegation={delegationOfThisFile}
+        />
       )}
       {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} delegations={delegations} />}
       {id !== undefined && (
@@ -458,9 +474,10 @@ export default function DocumentView() {
                 نقل الملف
               </button>
             )}
-            {/* قائمة «المزيد» للجوال: تجمع إجراءات الترويسة (الإجراءات والملاحظات وعودة يبقيان خارجها). */}
+            {/* قائمة «المزيد» للجوال: تجمع إجراءات الترويسة، و«عودة» أيقونة بجانبها
+                في مجموعة واحدة كي لا تنفصل إلى سطر جديد. */}
             {isMobile && (
-              <>
+              <div className="flex items-center gap-2">
                 <button
                   ref={moreMenu.refs.setReference}
                   type="button"
@@ -481,6 +498,25 @@ export default function DocumentView() {
                     />
                   </svg>
                 </button>
+                <Link
+                  to="/documents"
+                  aria-label="عودة"
+                  title="عودة"
+                  className="border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 inline-flex items-center justify-center min-h-11 min-w-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </Link>
                 {moreMenu.open &&
                   createPortal(
                     // عقد `menu` متسق: الخطاف يحقن `aria-haspopup/controls/labelledby`
@@ -624,29 +660,23 @@ export default function DocumentView() {
                     </FloatingFocusManager>,
                     document.body,
                   )}
-              </>
+              </div>
             )}
-            <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
-              عودة
-            </Link>
+            {!isMobile && (
+              <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
+                عودة
+              </Link>
+            )}
           </div>
         </div>
 
         {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة مدمجان + نوع + دائرة/فرع) لقراءة فورية أثناء التمرير. */}
         <dl className="mt-3 flex flex-wrap gap-2 text-sm">
-          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-            <dt className="text-xs text-emerald-800 font-medium">رقم الملف والسنة</dt>
-            <dd dir="ltr" className="text-gray-800 font-semibold tabular-nums isolate">
-              {identityFileNumber(doc)}
+          <div className="inline-flex min-w-0 items-baseline rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+            <dt className="sr-only">هوية الملف</dt>
+            <dd dir="auto" className="text-gray-800 font-semibold break-words">
+              {identityLine || '—'}
             </dd>
-          </div>
-          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-            <dt className="text-xs text-gray-500 font-medium">نوع الملف</dt>
-            <dd className="text-gray-800 font-semibold">{(doc.fileType ?? '').trim()}</dd>
-          </div>
-          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-            <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>
-            <dd className="text-gray-800 font-semibold">{doc.court || '—'}</dd>
           </div>
           {showBranch && (
             <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">

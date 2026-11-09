@@ -53,6 +53,12 @@ describe('Login', () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
+  it('يعرض ثلاث نجوم حمراء داخل الشريط الأبيض في شريط العلم الرفيع', () => {
+    render(<Login />);
+
+    expect(screen.getAllByTestId('flag-star')).toHaveLength(3);
+  });
+
   it('يعرض التسلسل الرسمي: الجمهورية ثم الوزارة ثم الإدارة في لوحة الهوية', () => {
     render(<Login />);
 

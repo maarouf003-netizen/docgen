@@ -161,7 +161,12 @@ public record DelegationDto(
     /// (`DocumentDelegation.LocalAddition*`)، فلا تمحوه أرشفة التنبيهات، ويُعرض في بطاقة
     /// «تشعبات الملف» لكل من يفتح الملف. `null` إن لم تُسجَّل إضافة بعد.
     /// </summary>
-    DelegationLocalAdditionDto? LocalAddition = null);
+    DelegationLocalAdditionDto? LocalAddition = null,
+    /// <summary>
+    /// تاريخ قرار الإحالة القطعية كما أُدخل في نافذة «إتمام الإنابة» (يُحفظ على الملف
+    /// المنيب) — يُعرض مع حقول الإتمام في بطاقتي المناب والمنيب.
+    /// </summary>
+    string? ForcedExecutionDate = null);
 
 /// <summary>
 /// ملخص الإضافات المحلية التراكمي على الملف المناب.

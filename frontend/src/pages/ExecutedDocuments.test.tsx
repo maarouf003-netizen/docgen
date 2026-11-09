@@ -118,6 +118,26 @@ describe('ExecutedDocuments', () => {
     expect(cells[0].textContent).toBe('10/5/2026');
   });
 
+  it('يعرض تاريخ إعادة الملف للدائرة المنيبة لملف منفذ إنابة', async () => {
+    mockPage([
+      makeExecutedDocument({
+        generalEntitySide: 'applicant',
+        execStatus: 'منفذ إنابة',
+        executedStatus: '',
+        sourceDelegationId: 5,
+        delegationReturnDate: '2026-09-01',
+        forcedExecutionDate: '10/5/2026',
+        executedExecutionDate: undefined,
+      }),
+    ]);
+
+    render(<ExecutedDocuments />);
+
+    const table = await screen.findByRole('table');
+    const cells = within(table).getAllByRole('cell');
+    expect(cells[0].textContent).toBe(formatDate('2026-09-01'));
+  });
+
   it('يعرض «—» في تاريخ التنفيذ عند غياب القيمة', async () => {
     mockPage([makeExecutedDocument({ executedExecutionDate: undefined })]);
 

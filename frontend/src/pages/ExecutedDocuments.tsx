@@ -1,11 +1,21 @@
 import ArchivedDocumentsList, { type ArchivedDocumentsListConfig } from '../components/ArchivedDocumentsList';
-import { EXEC_STATUS_FORCIBLY, EXEC_STATUS_SETTLED, getDocumentBadge } from '../utils/documentStatus';
+import {
+  EXEC_STATUS_DELEGATION_EXECUTED,
+  EXEC_STATUS_FORCIBLY,
+  EXEC_STATUS_SETTLED,
+  getDocumentBadge,
+} from '../utils/documentStatus';
 import { fullName } from '../utils/documentDisplay';
 import { formatDate } from '../utils/dates';
 import type { DocumentResponse } from '../types';
 
 /** تاريخ تنفيذ الملف بحسب شقيته: حقلا حالة «منفذ عليها»/«عرض وايداع» (تاريخا التنفيذ/الإيداع)، وحقل حالة «طالبة تنفيذ» (براءة الذمة أو الإحالة القطعية). */
 function executedDateOf(d: DocumentResponse): string {
+  // الملف المناب المنفذ: تاريخ التنفيذ المعروض هو تاريخ إعادته للدائرة المنيبة
+  // (المدخل في نافذة «إتمام الإنابة»)، لا تاريخ قرار الإحالة القطعية.
+  if (d.sourceDelegationId != null && d.execStatus === EXEC_STATUS_DELEGATION_EXECUTED) {
+    return formatDate(d.delegationReturnDate ?? undefined, '—');
+  }
   if (d.generalEntitySide === 'executed') return formatDate(d.executedExecutionDate, '—');
   if (d.generalEntitySide === 'deposit') return formatDate(d.executedDepositDate, '—');
   if (d.execStatus === EXEC_STATUS_SETTLED) return d.baraetDate || '—';

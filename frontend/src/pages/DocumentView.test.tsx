@@ -541,10 +541,9 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('بيانات الملف')).toBeInTheDocument();
     expect(screen.getByText('1500 سند مصارف لعام 2025')).toBeInTheDocument();
-    // شريط الهوية المدمج: الرقم الفعّال والسنة الفعّالة في عقدة واحدة + بطاقة النوع.
-    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
-    expect(within(facts).getByText('1500 / 2025')).toBeInTheDocument();
-    expect(within(facts).getByText('سند مصارف')).toBeInTheDocument();
+    // شريط الهوية المدمج: رقم/سنة + نوع + دائرة في عقدة واحدة بلا تسميات منفصلة.
+    const facts = screen.getByText('1500/2025 سند مصارف محكمة دمشق').closest('dl') as HTMLElement;
+    expect(facts).toBeInTheDocument();
   });
 
   it('يعرض شريط خطأ محصورًا عند فشل جلب الإنابات مع إعادة محاولة ناجحة', async () => {
@@ -2265,15 +2264,15 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض شريط هوية لاصقًا أعلى الصفحة ببطاقة «رقم الملف والسنة» المدمجة ونوع الملف والدائرة', async () => {
+  it('يعرض شريط هوية لاصقًا أعلى الصفحة بسطر مدمج «رقم/سنة نوع دائرة» بلا تسميات', async () => {
     renderView();
 
     await screen.findByText('بيانات الملف');
-    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
-    expect(within(facts).getByText('99 / 2026')).toBeInTheDocument();
-    expect(within(facts).getByText('محكمة دمشق')).toBeInTheDocument();
-    // نوع الملف غائب في mockDoc → فراغ (لا «—»).
-    expect(within(facts).getByText('نوع الملف').closest('div')?.textContent).toBe('نوع الملف');
+    const facts = screen.getByText('99/2026 محكمة دمشق').closest('dl') as HTMLElement;
+    expect(facts).toBeInTheDocument();
+    expect(within(facts).queryByText('رقم الملف والسنة')).not.toBeInTheDocument();
+    expect(within(facts).queryByText('نوع الملف')).not.toBeInTheDocument();
+    expect(within(facts).queryByText('الدائرة')).not.toBeInTheDocument();
   });
 
   it('يجمع إجراءات الترويسة في «المزيد» على الجوال دون تكرار خارجها', async () => {

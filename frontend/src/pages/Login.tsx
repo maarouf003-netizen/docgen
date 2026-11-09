@@ -5,7 +5,9 @@ import { useAuth } from '../auth/useAuth';
 import { getHomeForRole } from '../auth/roleHome';
 import type { LoginBranchSelectionResponse, LoginResponse } from '../types';
 import nationalEmblem from '../assets/national.png';
+import programLogo from '../assets/program-logo.png';
 import syrianFlag from '../assets/flag.jpg';
+import { FlagStripe } from '../components/FlagStripe';
 
 const isBranchSelection = (
   result: LoginResponse | LoginBranchSelectionResponse,
@@ -131,11 +133,7 @@ export default function Login() {
           </div>
 
           <form onSubmit={submit} className="overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div aria-hidden="true" className="flex h-1.5">
-              <span className="flex-1 bg-[#007A3D]" />
-              <span className="flex-1 bg-white" />
-              <span className="flex-1 bg-neutral-900" />
-            </div>
+            <FlagStripe />
             <div className="p-6 sm:p-8">
               <div className="mb-4 flex items-center justify-between">
                 <img
@@ -146,11 +144,11 @@ export default function Login() {
                   className="w-16 rounded-md shadow-md aspect-[2/1] object-cover"
                 />
                 <img
-                  src={nationalEmblem}
+                  src={programLogo}
                   alt="شعار إدارة قضايا الدولة — الجمهورية العربية السورية"
                   width={64}
                   height={64}
-                  className="w-16 h-16 rounded-full bg-white object-cover ring-1 ring-gray-200 drop-shadow-sm"
+                  className="w-16 h-16 object-contain drop-shadow-sm"
                 />
               </div>
               <h1 className="text-2xl font-bold text-emerald-900 text-center mb-1 text-balance">

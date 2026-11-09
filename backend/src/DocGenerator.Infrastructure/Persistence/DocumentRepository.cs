@@ -470,7 +470,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Include(d => d.Occurrences)
             .ThenInclude(o => o.CreatedBy)
             .Include(d => d.ApplicantPublicEntities)
-            .Include(d => d.Assignments);
+            .Include(d => d.Assignments)
+            // صف الإنابة المصدر: تاريخ إعادة الملف للدائرة المنيبة في «تاريخ التنفيذ»
+            // لصفحة الملفات المنفذة (المناب).
+            .Include(d => d.SourceDelegation);
 
     public async Task<DocumentFilterOptions> GetFilterOptionsAsync(
         string? status,

@@ -1,7 +1,8 @@
-import type { DocumentResponse } from '../../types';
+import type { DelegationDto, DocumentResponse } from '../../types';
 import { getDocumentBadge } from '../../utils/documentStatus';
 import { SectionCard } from '../view/SectionCard';
 import { DelegationActivityStrip } from './DelegationActivityStrip';
+import { DelegationCompletionSummary } from './DelegationCompletionSummary';
 
 /**
  * بطاقة «حالة الإنابة» (L2/و3): تُعرض للملف المناب فقط (حين تكون له إنابة واردة) تحت
@@ -11,9 +12,12 @@ import { DelegationActivityStrip } from './DelegationActivityStrip';
 export function DelegationStatusCard({
   doc,
   delegationId,
+  delegation,
 }: {
   doc: DocumentResponse;
   delegationId: number;
+  /** صف الإنابة الواردة — لعرض حقول الإتمام بعد «منفذ إنابة». */
+  delegation?: DelegationDto;
 }) {
   const badge = getDocumentBadge(doc);
   return (
@@ -30,6 +34,11 @@ export function DelegationStatusCard({
           داخل الشريط يمنع بقاء البيانات، وهذا يمنع **إطار الرسم** الذي يسبق التأثير
           (React يرسم قبل تشغيل `useEffect`). */}
       <DelegationActivityStrip key={delegationId} delegationId={delegationId} />
+      {delegation && (
+        <div className="mt-3">
+          <DelegationCompletionSummary delegation={delegation} />
+        </div>
+      )}
     </SectionCard>
   );
 }

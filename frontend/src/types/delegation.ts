@@ -33,6 +33,8 @@ export interface DelegationDto {
   assignedLawyerName?: string | null;
   /** تاريخ إعادة الملف إلى الدائرة المنيبة عند إتمام الإنابة (yyyy-MM-dd). */
   returnDate?: string;
+  /** تاريخ قرار الإحالة القطعية المدخل في نافذة إتمام الإنابة (نص حر). */
+  forcedExecutionDate?: string | null;
   /** إحدى حالات DelegationStatusCatalog: بانتظار رئيس القسم/محالة/مسجلة أصولًا/منفذ إنابة. */
   status: string;
   createdAt: string;

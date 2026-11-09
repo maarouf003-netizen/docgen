@@ -215,6 +215,11 @@ public class DocumentResponse : IDocumentSheetFields
     /// تُقفَل حقول المزامنة أماميًا وخلفيًا، وتُحفظ الإضافات المحلية (وريث/ممثل) مع تنبيه للمنيب.
     /// </summary>
     public int? SourceDelegationId { get; set; }
+    /// <summary>
+    /// تاريخ إعادة الملف إلى الدائرة المنيبة من صف الإنابة المصدر (yyyy-MM-dd) —
+    /// يُعرض في «تاريخ التنفيذ» للملفات المنفذة إنابةً، وفارغ لغير المناب.
+    /// </summary>
+    public string? DelegationReturnDate { get; set; }
     public List<GuarantorDto> Guarantors { get; set; } = new();
     public List<AssetDto> Assets { get; set; } = new();
     /// <summary>ورثة المقترض المتوفى (إن وُجدوا).</summary>
@@ -388,6 +393,7 @@ public class DocumentResponse : IDocumentSheetFields
         CreatedByName = d.CreatedBy?.FullName,
         DeletedAt = d.DeletedAt,
         SourceDelegationId = d.SourceDelegationId,
+        DelegationReturnDate = FreeDateParser.ToResponse(d.SourceDelegation?.ReturnDate),
         NeedsRotation = NeedsRotationOf(d, currentYear),
         Guarantors = d.Guarantors
             .OrderBy(g => g.GuarantorNumber)
