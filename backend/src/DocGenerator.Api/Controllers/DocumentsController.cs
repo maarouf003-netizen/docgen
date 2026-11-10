@@ -2,12 +2,14 @@ using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Options;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Api.Controllers;
 
@@ -31,6 +33,7 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
+    private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
     private readonly IAuditLogService _auditLogs;
@@ -44,6 +47,7 @@ public class DocumentsController : ControllerBase
         IDocumentSearchService search,
         IDocumentStatusService status,
         IWordDocumentGenerator generator,
+        IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
         IDocumentAppealService appeals,
         IAuditLogService auditLogs,
@@ -56,6 +60,7 @@ public class DocumentsController : ControllerBase
         _search = search;
         _status = status;
         _generator = generator;
+        _generationOptions = generationOptions;
         _excel = excel;
         _appeals = appeals;
         _auditLogs = auditLogs;
@@ -567,6 +572,11 @@ public class DocumentsController : ControllerBase
         [FromQuery] int heirId = 0,
         CancellationToken ct = default)
     {
+        // مفتاح تعطيل مؤقت: يمنع توليد Word في كل البيئات حتى تفعيله صراحةً بعد
+        // توحيد النماذج المولدة. يُرجع 503 ورسالة مفهومة تعرضها الواجهة.
+        if (!_generationOptions.Value.Enabled)
+            return StatusCode(503, new { message = _generationOptions.Value.DisabledMessage });
+
         if (string.IsNullOrWhiteSpace(template))
             return BadRequest(new { message = "يرجى تحديد نوع المستند المطلوب توليده" });
 

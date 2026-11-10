@@ -6,6 +6,10 @@ import type { AssetDto, DocumentResponse, HeirDto } from '../../types';
 import { Toast } from '../Toast';
 import { EstateSelection } from './EstateSelection';
 import { fullName } from './viewFormat';
+import {
+  DOCUMENT_GENERATION_DISABLED_MESSAGE,
+  DOCUMENT_GENERATION_ENABLED,
+} from '../../utils/documentGeneration';
 
 type BasicDoc = { code: string; label: string };
 
@@ -23,6 +27,19 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
   const [noticeProgress, setNoticeProgress] = useState('');
   const [downloadError, setDownloadError] = useState('');
   const [downloadSuccess, setDownloadSuccess] = useState('');
+
+  // تعطيل مؤقت حتى توحيد النماذج: لا تُعرض أي أزرار توليد ولا تُستدعى الـAPI.
+  if (!DOCUMENT_GENERATION_ENABLED) {
+    return (
+      <div
+        role="status"
+        className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900"
+      >
+        <p className="font-bold">توليد المستندات معطّل</p>
+        <p className="mt-1 text-sm leading-relaxed">{DOCUMENT_GENERATION_DISABLED_MESSAGE}</p>
+      </div>
+    );
+  }
 
   const isOrdinary = doc.contractTypeSelector === 'عادي';
   const debtor = {
