@@ -577,7 +577,7 @@ render(<DocumentForm />);
   });
 
 
-  it('يعرض حقول المورث عند «أصالة وإضافة» ويمنع الممثل مع التركة', async () => {
+  it('يعرض حقول المورث ويتيح الممثل الشرعي في وضع منفذ عليها', async () => {
     const user = userEvent.setup();
     await selectExecutedSide(user);
 
@@ -588,10 +588,11 @@ render(<DocumentForm />);
     const representation = within(applicantCard).getAllByRole('combobox')[1];
     await user.selectOptions(representation, 'أصالة وإضافة');
     expect(within(applicantCard).getByText('اسم المورث المتوفى')).toBeInTheDocument();
-    expect(within(applicantCard).queryByRole('button', { name: '＋ إضافة ممثل شرعي' })).not.toBeInTheDocument();
-    expect(within(applicantCard).getByText('لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.')).toBeInTheDocument();
+    // الممثل هنا لطالب التنفيذ الحي، فيجتمع مع ورثة المورث بلا تعارض.
+    expect(within(applicantCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' })).toBeInTheDocument();
+    expect(within(applicantCard).queryByText('لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.')).not.toBeInTheDocument();
+    expect(within(applicantCard).queryByText(/تعارض: الممثل الشرعي/)).not.toBeInTheDocument();
 
-    await user.selectOptions(representation, 'أصالة');
     await user.click(within(applicantCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
     expect(within(applicantCard).getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
     expect(within(applicantCard).getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();
@@ -599,7 +600,7 @@ render(<DocumentForm />);
   });
 
 
-  it('يخفي زر ممثل المنفذ عليه فور إضافة صف وريث ويُبقي زر ممثل الوريث', async () => {
+  it('يُبقي زر ممثل المنفذ عليه مع صف وريث ويُظهر زر ممثل الوريث', async () => {
     const user = userEvent.setup();
     await renderExecutedEdit({
       generalEntitySide: 'executed',
@@ -621,12 +622,11 @@ render(<DocumentForm />);
     });
 
     const personCard = screen.getByText('شخص طبيعي 1').closest('.rounded-xl') as HTMLElement;
-    // زر ممثل الطرف غير معروض أصلًا عند «إضافة لتركة» (التركة/الورثة تمنعه).
-    expect(within(personCard).queryByRole('button', { name: '＋ إضافة ممثل شرعي' })).not.toBeInTheDocument();
+    // الممثل هنا للشخص الحي (الوريث)، فيبقى زر ممثل الطرف ظاهرًا مع الورثة.
+    expect(within(personCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' })).toBeInTheDocument();
 
     await user.click(within(personCard).getByRole('button', { name: '＋ إضافة وريث' }));
 
-    // زر ممثل الوريث يبقى، لكن بنص يوضّح أنه للوريث لا للمتوفى.
     expect(
       within(personCard).getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' }),
     ).toBeInTheDocument();
@@ -660,6 +660,63 @@ render(<DocumentForm />);
     expect(persons[0].representativeCapacity).toBe('ولي');
     expect(persons[0].representativeAddressType).toBe('عنوان');
     expect(persons[0].representativeAddress).toBe('حلب');
+  });
+
+
+  it('يسمح بإضافة وريث وممثل شرعي لطالب التنفيذ أثناء إنشاء الملف', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.type(screen.getByLabelText('رقم الملف'), '77');
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    await user.type(within(applicantCard).getAllByRole('textbox')[0], 'علي');
+    await user.selectOptions(within(applicantCard).getAllByRole('combobox')[1], 'إضافة لتركة');
+
+    await user.click(within(applicantCard).getByRole('button', { name: '＋ إضافة وريث' }));
+    await user.type(within(applicantCard).getByLabelText('الاسم'), 'علي الوريث');
+
+    await user.click(within(applicantCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    await user.type(within(applicantCard).getByLabelText('اسم الممثل الشرعي'), 'الممثل');
+    await user.selectOptions(within(applicantCard).getByLabelText('صفة الممثل الشرعي'), 'ولي');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const applicants = payload.executionApplicants as Record<string, unknown>[];
+    expect(applicants[0].name).toBe('علي');
+    expect(applicants[0].representativeName).toBe('الممثل');
+    expect((applicants[0].heirs as Record<string, unknown>[])[0].heirName).toBe('علي الوريث');
+  });
+
+
+  it('يسمح بإضافة وريث وممثل شرعي للمنفذ عليه أثناء إنشاء الملف', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.type(screen.getByLabelText('رقم الملف'), '78');
+    await user.click(screen.getByRole('button', { name: '＋ إضافة شخص طبيعي' }));
+
+    const personCard = screen.getByText('شخص طبيعي 1').closest('.rounded-xl') as HTMLElement;
+    await user.type(personCard.querySelector('input') as HTMLInputElement, 'سامر');
+    await user.selectOptions(within(personCard).getAllByRole('combobox')[1], 'إضافة لتركة');
+
+    await user.click(within(personCard).getByRole('button', { name: '＋ إضافة وريث' }));
+    await user.type(within(personCard).getByLabelText('الاسم'), 'وريث');
+
+    await user.click(within(personCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    await user.type(within(personCard).getByLabelText('اسم الممثل الشرعي'), 'ولي');
+    await user.selectOptions(within(personCard).getByLabelText('صفة الممثل الشرعي'), 'ولي');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const persons = payload.executedNaturalPersons as Record<string, unknown>[];
+    expect(persons[0].name).toBe('سامر');
+    expect(persons[0].representativeName).toBe('ولي');
+    expect((persons[0].heirs as Record<string, unknown>[])[0].heirName).toBe('وريث');
   });
 
 

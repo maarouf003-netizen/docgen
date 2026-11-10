@@ -189,6 +189,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("CaseNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<int>("DocumentId")
                         .HasColumnType("integer");
 
@@ -237,6 +241,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime?>("RegistrationDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RightType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<DateTime?>("SeizureDate")
                         .HasColumnType("timestamp with time zone");

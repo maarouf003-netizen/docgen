@@ -415,6 +415,21 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateSource_LegacyNullRightType_MatchesDefault_Succeeds()
+    {
+        // بيانات قديمة بلا نوع حق: الطلب الجديد يُطبِّعها إلى «حق رقبة»، فيجب ألا يرفضها
+        // حارس المرآة كأنها تغيير غير مشروع.
+        var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        Assert.Null((await _db.Assets.AsNoTracking().SingleAsync(a => a.Id == seizedId)).RightType);
+
+        var request = await SourceEditRequestAsync(source.Id);
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "77");
+        Assert.Equal(RightTypeCatalog.BareOwnership, stored.RightType);
+    }
+
+    [Fact]
     public async Task UpdateSource_ClearsSeizureDateOnFreeAsset_Succeeds()
     {
         var (source, _, freeId) = await CreateSourceWithDelegatedAndFreeAssetsAsync();

@@ -867,6 +867,9 @@ describe('DocumentView', () => {
     expect(within(card).getAllByText('أحمد محمد خالد').length).toBeGreaterThan(0);
   });
 
+  // ميزة التوليد معطلة مؤقتًا لحين توحيد النماذج المولدة؛ تُعاد هذه الاختبارات عند تفعيلها.
+  const generationEnabled: boolean = false;
+  if (generationEnabled) {
   function findBasicRow(label: string) {
     return screen.getByText(label).closest('div') as HTMLElement;
   }
@@ -1496,6 +1499,23 @@ describe('DocumentView', () => {
       expect.objectContaining({ params: expect.objectContaining({ template: '005', heirId: 10 }) }));
 
     vi.unstubAllGlobals();
+  });
+  }
+
+  it('يعطل توليد المستندات ويعرض رسالة التعطيل', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.click(await screen.findByRole('button', { name: 'توليد مستندات' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'توليد المستندات التنفيذية' });
+    expect(
+      within(dialog).getByText('الميزة معطلة حاليًا لحين توحيد النماذج المولدة'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('المستندات الأساسية')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: 'توليد إخطار تنفيذي' }),
+    ).not.toBeInTheDocument();
   });
 
   it('يعرض بيانات وضع «منفذ عليه» بالتسميات الجديدة والمبالغ ورقم وتاريخ ورود الإخطار والورثة الثلاثي', async () => {

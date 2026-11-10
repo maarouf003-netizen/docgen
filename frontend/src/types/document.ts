@@ -59,8 +59,12 @@ export interface AssetDto {
   // العقار
   property?: string;
   propertyNumber?: string;
+  /** رقم المحضر (العقار فقط) — نص حر يحفظ صيغًا مثل «123/2026». */
+  caseNumber?: string;
   propertyDistrict?: string;
   landRegistry?: string;
+  /** نوع الحق (العقار/المركبة): «حق رقبة» أو «حق انتفاع». */
+  rightType?: string;
   // المركبة
   vehicleType?: string;
   vehicleClass?: string;

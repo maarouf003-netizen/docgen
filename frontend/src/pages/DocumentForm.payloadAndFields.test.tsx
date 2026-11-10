@@ -136,6 +136,28 @@ render(<DocumentForm />);
     expect(select).toHaveValue(String(currentYear));
   });
 
+  it('تلميح «رقم الملف» يظهر في الإنشاء/طالبة التنفيذ ويُغلق بالزر', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    const trigger = screen.getByRole('button', { name: 'معلومات عن رقم الملف' });
+    expect(screen.queryByText(/يمكن إضافة رقم الملف ونوعه/)).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    expect(screen.getByText(/يمكن إضافة رقم الملف ونوعه/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إغلاق' }));
+    expect(screen.queryByText(/يمكن إضافة رقم الملف ونوعه/)).not.toBeInTheDocument();
+  });
+
+  it('تلميح «رقم الملف» لا يظهر في وضع «منفذ عليها»', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByLabelText('الجهة العامة منفذ عليها'));
+    expect(screen.queryByRole('button', { name: 'معلومات عن رقم الملف' })).not.toBeInTheDocument();
+  });
+
   it('يرفض الحفظ بسنة مستقبلية مخزنة (تعديل ملف قديم) ولا يرسل', async () => {
     const user = userEvent.setup();
     const futureYear = String(new Date().getFullYear() + 1);
@@ -272,11 +294,11 @@ render(<DocumentForm />);
     const nameInput = firstCard.querySelector('input') as HTMLInputElement;
     await user.type(nameInput, 'سمير');
     expect(screen.getByText('— سمير')).toBeInTheDocument();
-    const headers = screen.getAllByRole('button', { expanded: true });
-    await user.click(headers[0]);
+    const header = within(firstCard).getByRole('button', { expanded: true });
+    await user.click(header);
     expect(firstCard.querySelector('input')).not.toBeInTheDocument();
-    const collapsed = screen.getAllByRole('button', { expanded: false });
-    await user.click(collapsed[0]);
+    const collapsedHeader = within(firstCard).getByRole('button', { expanded: false });
+    await user.click(collapsedHeader);
     expect(firstCard.querySelector('input') as HTMLInputElement).toHaveValue('سمير');
   });
 
@@ -288,21 +310,6 @@ render(<DocumentForm />);
 
     await renderEdit();
     expect(screen.queryByRole('button', { name: /إعادة تعيين/ })).not.toBeInTheDocument();
-  });
-
-
-  it('يرسل الإجراءات المطلوب إضافتها كإجراء بتاريخ اليوم في initialActions عند الحفظ', async () => {
-    const user = userEvent.setup();
-    render(<DocumentForm />);
-
-    await user.type(screen.getByLabelText('الإجراءات المطلوب إضافتها إلى الإخطار التنفيذي'), 'تم إشعار المنفذ عليه');
-    await user.click(screen.getByRole('button', { name: /حفظ/ }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.initialActions).toEqual([
-      { type: 'action', text: 'تم إشعار المنفذ عليه', actionDate: new Date().toISOString().slice(0, 10) },
-    ]);
   });
 
 
@@ -407,7 +414,7 @@ render(<DocumentForm />);
   });
 
 
-  it('لا يرسل initialActions عندما يكون الحقلان فارغين', async () => {
+  it('لا يرسل initialActions عندما تكون الملاحظات فارغة', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);
 
@@ -444,21 +451,6 @@ render(<DocumentForm />);
   });
 
 
-  it('يرسل initialActions في PUT عند تعديل ملف مع إضافة إجراءات', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.type(screen.getByLabelText('الإجراءات المطلوب إضافتها إلى الإخطار التنفيذي'), 'متابعة مع المحكمة');
-    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
-
-    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
-    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.initialActions).toEqual([
-      { type: 'action', text: 'متابعة مع المحكمة', actionDate: new Date().toISOString().slice(0, 10) },
-    ]);
-  });
-
-
   it('يرسل عدّاد الإصدار المقروء في PUT عند التعديل (RF-010)', async () => {
     const user = userEvent.setup();
     await renderEdit({ ...mockDoc, version: 7 });
@@ -486,6 +478,33 @@ render(<DocumentForm />);
 
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.initialActions).toBeUndefined();
+  });
+
+
+  it('لا يعرض حقل الإجراءات الفورية في الإنشاء ولا في التعديل', async () => {
+    const { unmount } = render(<DocumentForm />);
+    expect(
+      screen.queryByLabelText('الإجراءات المطلوب إضافتها إلى الإخطار التنفيذي'),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    await renderEdit();
+    expect(
+      screen.queryByLabelText('الإجراءات المطلوب إضافتها إلى الإخطار التنفيذي'),
+    ).not.toBeInTheDocument();
+  });
+
+
+  it('يحافظ على الإجراءات المحفوظة عند تعديل الملف دون إعادة زرعها', async () => {
+    const user = userEvent.setup();
+    await renderEdit({ ...mockDoc, immediateActions: 'إجراء محفوظ سابقًا' });
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.immediateActions).toBe('إجراء محفوظ سابقًا');
     expect(payload.initialActions).toBeUndefined();
   });
 

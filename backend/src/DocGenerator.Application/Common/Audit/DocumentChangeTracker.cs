@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Common.Audit;
 
@@ -312,7 +313,7 @@ public static class DocumentChangeTracker
                     h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
                     h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)),
             ["__Col_Assets"] = d => Signature(d.Assets,
-                a => Join(a.AssetKind,
+                a => Join(a.AssetKind, a.CaseNumber, RightTypeCatalog.Normalize(a.AssetKind, a.RightType),
                     FirstNonEmpty(a.Property, a.PlateNumber, a.RegisterNumber, a.LicenseNumber, a.ShopDescription))),
             ["__Col_ExecutionApplicants"] = d => Signature(d.ExecutionApplicants,
                 e => Join(e.Name, e.Father, e.Family)),

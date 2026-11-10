@@ -22,8 +22,13 @@ public class Asset
     // ── حقول العقار ──
     public string? Property { get; set; }
     public string? PropertyNumber { get; set; }
+    /// <summary>رقم المحضر (العقار فقط) — نص حر يحفظ صيغ مثل «123/2026».</summary>
+    public string? CaseNumber { get; set; }
     public string? PropertyDistrict { get; set; }
     public string? LandRegistry { get; set; }
+
+    /// <summary>نوع الحق (العقار/المركبة): «حق رقبة» أو «حق انتفاع» — يُطبَّع في الخدمة.</summary>
+    public string? RightType { get; set; }
 
     // ── حقول المركبة ──
     public string? VehicleType { get; set; }

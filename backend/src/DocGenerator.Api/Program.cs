@@ -174,6 +174,7 @@ builder.Services
     .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
     .Configure<LoggingOptions>(builder.Configuration.GetSection("Logging:File"))
+    .Configure<DocumentGenerationOptions>(builder.Configuration.GetSection(DocumentGenerationOptions.SectionName))
     .Configure<WordTemplatesOptions>(o =>
     {
         o.Path = wordTemplates.Path;

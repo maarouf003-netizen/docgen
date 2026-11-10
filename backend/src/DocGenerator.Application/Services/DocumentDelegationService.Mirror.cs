@@ -545,10 +545,16 @@ public sealed partial class DocumentDelegationService
             return false;
         if (!SameOwners(a.Owners, b.Owners))
             return false;
+        // نوع الحق: الفارغ القديم يُطابَق بالافتراضي المُطبَّع («حق رقبة») كي لا تُرفض
+        // تعديلات الملفات المنابة القديمة بعد إدخال الحقل الجديد.
+        var aRightType = RightTypeCatalog.Normalize(a.AssetKind, a.RightType);
+        var bRightType = RightTypeCatalog.Normalize(b.AssetKind, b.RightType);
         return string.Equals(DocumentText.Trimmed(a.Property), DocumentText.Trimmed(b.Property), StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.PropertyNumber), DocumentText.Trimmed(b.PropertyNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.CaseNumber), DocumentText.Trimmed(b.CaseNumber), StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.PropertyDistrict), DocumentText.Trimmed(b.PropertyDistrict), StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.LandRegistry), DocumentText.Trimmed(b.LandRegistry), StringComparison.Ordinal)
+            && string.Equals(aRightType, bRightType, StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.VehicleType), DocumentText.Trimmed(b.VehicleType), StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.VehicleClass), DocumentText.Trimmed(b.VehicleClass), StringComparison.Ordinal)
             && string.Equals(DocumentText.Trimmed(a.PlateNumber), DocumentText.Trimmed(b.PlateNumber), StringComparison.Ordinal)

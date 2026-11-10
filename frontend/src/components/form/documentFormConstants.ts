@@ -102,6 +102,19 @@ export const ASSET_KINDS = {
 /** الأنواع الحاملة لمقدار الحصة (تمام/حصة سهمية). */
 export const SHAREABLE_ASSET_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle, ASSET_KINDS.shop]);
 
+/** الأنواع الحاملة لنوع الحق: العقار والمركبة فقط (قرار المالك). */
+export const ASSET_RIGHT_TYPE_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle]);
+
+/** خيارات نوع الحق — مطابقة لـ `RightTypeCatalog` في الخلفية. */
+export const RIGHT_TYPE_OPTIONS = ['حق رقبة', 'حق انتفاع'] as const;
+
+/** نوع الحق الافتراضي للأصول المدعومة. */
+export const DEFAULT_RIGHT_TYPE = 'حق رقبة';
+
+export function supportsRightType(kind: string | undefined): boolean {
+  return Boolean(kind && ASSET_RIGHT_TYPE_KINDS.has(kind));
+}
+
 /** قيمة «تمام» الخاصة بنوع الأصل. */
 export function fullShareLabel(kind: string | undefined): string {
   if (kind === ASSET_KINDS.vehicle) return 'تمام المركبة';
@@ -160,6 +173,7 @@ export function isAuctionableKind(kind: string | undefined): boolean {
 export function emptyAsset(kind: string): AssetDto {
   const base: AssetDto = { assetKind: kind, owners: [] };
   if (SHAREABLE_ASSET_KINDS.has(kind)) base.shareType = fullShareLabel(kind);
+  if (ASSET_RIGHT_TYPE_KINDS.has(kind)) base.rightType = DEFAULT_RIGHT_TYPE;
   return base;
 }
 export const REPRESENTATION_TYPES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
@@ -237,16 +251,15 @@ export function hasHeirName(h: { name?: string; father?: string; family?: string
 }
 
 /**
- * رسالة تعارض «الممثل الشرعي + الورثة» في الواجهة — تطابق حارس الخلفية
- * (`DocumentValidator.ValidateRepresentativeHeirExclusivity`) بلا استثناءات.
+ * رسالة تعارض «الممثل الشرعي + الورثة» في الواجهة لطرفي «طالبة تنفيذ»
+ * (المقترض/الكفيل). أطراف «منفذ عليها/عرض وايداع» مستثناة: الممثل للحي لا للمتوفى.
+ * الحارس الخلفي (`DocumentValidator.ValidateRepresentativeHeirExclusivity`) يطبّق التفصيل نفسه.
  */
 export function representativeHeirConflictMessage(input: {
   borrowerNature?: string;
   borrowerHasHeirs: boolean;
   borrowerHasRep: boolean;
   guarantors: GuarantorDto[];
-  executionApplicants: ExecutionApplicantDto[];
-  executedNaturalPersons: ExecutedNaturalPersonDto[];
 }): string | null {
   if ((input.borrowerNature ?? 'natural') !== 'legal' && input.borrowerHasHeirs && input.borrowerHasRep)
     return 'لا يجتمع الممثل الشرعي مع الورثة — المقترض: احذف الممثل الشرعي أو الورثة أولًا';
@@ -258,21 +271,8 @@ export function representativeHeirConflictMessage(input: {
       return `لا يجتمع الممثل الشرعي مع الورثة — الكفيل ${g.guarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا`;
   }
 
-  for (const a of input.executionApplicants) {
-    if ((a.nature ?? 'natural') === 'legal') continue;
-    const hasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
-    const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
-    if ((hasEstate || hasHeirs) && hasStoredRepresentative(a))
-      return `لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ ${(a.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
-  }
-
-  for (const p of input.executedNaturalPersons) {
-    const hasHeirs = (p.heirs ?? []).some((h) => (h.heirName ?? '').trim());
-    const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
-    if ((hasEstate || hasHeirs) && hasStoredRepresentative(p))
-      return `لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه ${(p.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
-  }
-
+  // أطراف «منفذ عليها/عرض وايداع» خارج هذا الفحص: الممثل الشرعي هناك للحي لا للمتوفى،
+  // فيجتمع مع ورثة المورث (الحارس الخلفي يطبّق القاعدة نفسها).
   return null;
 }
 

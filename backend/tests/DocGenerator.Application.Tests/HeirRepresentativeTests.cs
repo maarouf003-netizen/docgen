@@ -139,11 +139,14 @@ public class HeirRepresentativeTests
         Assert.Contains("الكفيل 2", ex.Message);
     }
 
-    [Fact]
-    public void ValidateExclusivity_RejectsExecutionApplicantEstateWithRepresentative()
+    [Theory]
+    [InlineData("executed")]
+    [InlineData("deposit")]
+    public void ValidateExclusivity_AllowsExecutionApplicantEstateWithRepresentative_OnExecutedSide(string side)
     {
         var request = new DocumentUpsertRequest
         {
+            GeneralEntitySide = side,
             ExecutionApplicants = new List<ExecutionApplicantDto>
             {
                 new(
@@ -164,16 +167,18 @@ public class HeirRepresentativeTests
             },
         };
 
-        var ex = Assert.Throws<ArgumentException>(() =>
-            DocumentValidator.ValidateRepresentativeHeirExclusivity(request));
-        Assert.Contains("طالب التنفيذ طالب", ex.Message);
+        // طالب التنفيذ هنا وريث حي، وممثله الشرعي له لا للمورث؛ فيجتمع مع ورثة المورث.
+        DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
     }
 
-    [Fact]
-    public void ValidateExclusivity_RejectsExecutedNaturalPersonHeirsWithRepresentative()
+    [Theory]
+    [InlineData("executed")]
+    [InlineData("deposit")]
+    public void ValidateExclusivity_AllowsExecutedNaturalPersonHeirsWithRepresentative_OnExecutedSide(string side)
     {
         var request = new DocumentUpsertRequest
         {
+            GeneralEntitySide = side,
             ExecutedNaturalPersons = new List<ExecutedNaturalPersonDto>
             {
                 new(
@@ -200,9 +205,8 @@ public class HeirRepresentativeTests
             },
         };
 
-        var ex = Assert.Throws<ArgumentException>(() =>
-            DocumentValidator.ValidateRepresentativeHeirExclusivity(request));
-        Assert.Contains("المنفذ عليه منفذ", ex.Message);
+        // المنفذ عليه الطبيعي هنا حي/وريث حي، وممثله الشرعي له لا للمورث.
+        DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
     }
 
     [Fact]

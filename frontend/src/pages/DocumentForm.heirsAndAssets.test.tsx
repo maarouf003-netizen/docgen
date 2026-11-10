@@ -306,6 +306,79 @@ render(<DocumentForm />);
   }, 12000);
 
 
+  it('يرتب حقول العقار والمركبة بالترتيب المعتمد وينهيها بتاريخ الحجز', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: /🏡 إضافة عقار/ }));
+    const estateCard = screen.getByText('عقار 1').closest('.rounded-xl') as HTMLElement;
+    const estateControls = Array.from(estateCard.querySelectorAll('input, select'))
+      .slice(0, 7)
+      .map((el) => el.getAttribute('aria-label'));
+    expect(estateControls).toEqual([
+      'رقم العقار',
+      'رقم المحضر',
+      'المنطقة العقارية',
+      'المصالح العقارية',
+      'نوع الحق',
+      'مقدار الحصة',
+      'تاريخ القاء الحجز',
+    ]);
+
+    await user.click(screen.getByRole('button', { name: /🚗 إضافة مركبة/ }));
+    const vehicleCard = screen.getByText('مركبة 2').closest('.rounded-xl') as HTMLElement;
+    const vehicleControls = Array.from(vehicleCard.querySelectorAll('input, select'))
+      .slice(0, 7)
+      .map((el) => el.getAttribute('aria-label'));
+    expect(vehicleControls).toEqual([
+      'النوع',
+      'الفئة',
+      'رقم اللوحة',
+      'محافظة المركبة',
+      'نوع الحق',
+      'مقدار الحصة',
+      'تاريخ القاء الحجز',
+    ]);
+  });
+
+
+  it('يرسل رقم المحضر ونوع الحق للعقار والمركبة مع الافتراضي «حق رقبة»', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'أحمد');
+
+    await user.click(screen.getByRole('button', { name: /🏡 إضافة عقار/ }));
+    const estateCard = screen.getByText('عقار 1').closest('.rounded-xl') as HTMLElement;
+    const estateRightType = within(estateCard).getByLabelText('نوع الحق') as HTMLSelectElement;
+    expect(estateRightType).toHaveValue('حق رقبة');
+    await user.selectOptions(estateRightType, 'حق انتفاع');
+    await user.type(within(estateCard).getByLabelText('رقم العقار'), '12');
+    await user.type(within(estateCard).getByLabelText('رقم المحضر'), '45/2026');
+
+    await user.click(screen.getByRole('button', { name: /🚗 إضافة مركبة/ }));
+    const vehicleCard = screen.getByText('مركبة 2').closest('.rounded-xl') as HTMLElement;
+    expect(within(vehicleCard).getByLabelText('نوع الحق')).toHaveValue('حق رقبة');
+    await user.type(within(vehicleCard).getByLabelText('رقم اللوحة'), '12345');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const assets = payload.assets as {
+      assetKind?: string;
+      caseNumber?: string;
+      rightType?: string;
+    }[];
+    const estate = assets.find((a) => a.assetKind === 'عقار');
+    const vehicle = assets.find((a) => a.assetKind === 'مركبة');
+    expect(estate?.caseNumber).toBe('45/2026');
+    expect(estate?.rightType).toBe('حق انتفاع');
+    expect(vehicle?.rightType).toBe('حق رقبة');
+    expect(vehicle?.caseNumber).toBeUndefined();
+  });
+
+
   it('يصحّح حصة العقار إلى «حصة سهمية» عند التحميل لعقار بملاك متعددين', async () => {
     const docWithInvalidShare: DocumentResponse = {
       ...mockDoc,

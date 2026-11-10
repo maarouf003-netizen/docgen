@@ -85,8 +85,6 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: true,
       borrowerHasRep: true,
       guarantors: [],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toContain('المقترض');
   });
 
@@ -95,19 +93,7 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: false,
       borrowerHasRep: false,
       guarantors: [{ guarantorNumber: 2, representativeName: 'ممثل', heirs: [{ name: 'وريث' }] }],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toContain('الكفيل 2');
-  });
-
-  it('يكشف تعارض ممثل طالب التنفيذ مع التمثيل بالتركة', () => {
-    expect(representativeHeirConflictMessage({
-      borrowerHasHeirs: false,
-      borrowerHasRep: false,
-      guarantors: [],
-      executionApplicants: [{ name: 'طالب', representationType: 'إضافة لتركة', representativeName: 'ممثل' }],
-      executedNaturalPersons: [],
-    })).toContain('طالب التنفيذ طالب');
   });
 
   it('يسمح بممثل بلا ورثة', () => {
@@ -115,8 +101,6 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: false,
       borrowerHasRep: true,
       guarantors: [],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toBeNull();
   });
 });

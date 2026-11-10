@@ -1,14 +1,16 @@
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import AutoResizeTextarea from '../AutoResizeTextarea';
 import MultiAmountEditor from '../MultiAmountEditor';
 import type { AssetDto, DocumentUpsertRequest, GuarantorDto, HeirDto, PartyNature } from '../../types';
 import {
   ASSET_KINDS,
   ADDRESS_TYPE_OPTIONS,
+  DEFAULT_RIGHT_TYPE,
   MAX_ANNEXES,
   MAX_ASSETS_PER_KIND,
   MAX_GUARANTORS,
   PARTY_NATURE_OPTIONS,
+  RIGHT_TYPE_OPTIONS,
   addressLabelOf,
   bankingAmountKeys,
   bankingCurrencyKeys,
@@ -20,12 +22,95 @@ import {
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
   shareTypesFor,
+  supportsRightType,
 } from './documentFormConstants';
 import { HeirsEditor } from './HeirsEditors';
 import { RepresentativeEditor } from './RepresentativeEditor';
 import { FormSectionTitle } from './FormSectionTitle';
 import { makeFieldHelpers, type FormSet } from './formFields';
 import { assetKindLabel } from '../../utils/assetDisplay';
+
+const ASSET_CONTROL_CLS =
+  'w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
+const ASSET_FIELD_CLS = 'min-w-[150px] flex-1';
+
+/** حقل أصل داخل شبكة مرنة تملأ الصف بلا فراغات (عقار/مركبة). */
+function AssetField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className={ASSET_FIELD_CLS}>
+      <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/** حقول نهاية بطاقة العقار/المركبة: نوع الحق ثم الحصة ثم تاريخ الحجز (آخرًا دائمًا). */
+function AssetRightShareSeizureFields({
+  index,
+  kind,
+  asset,
+  shareable,
+  onSet,
+  seizureLocked,
+}: {
+  index: number;
+  kind: string;
+  asset: AssetDto;
+  shareable: boolean;
+  onSet: (key: keyof AssetDto, value: string) => void;
+  seizureLocked: boolean;
+}) {
+  return (
+    <>
+      <AssetField label="نوع الحق">
+        <select
+          aria-label="نوع الحق"
+          name="assetRightType"
+          value={asset.rightType ?? DEFAULT_RIGHT_TYPE}
+          onChange={(ev) => onSet('rightType', ev.target.value)}
+          className={ASSET_CONTROL_CLS}
+        >
+          {RIGHT_TYPE_OPTIONS.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </AssetField>
+      {shareable && (
+        <AssetField label="مقدار الحصة">
+          <select
+            aria-label="مقدار الحصة"
+            name="assetShareType"
+            value={asset.shareType ?? shareTypesFor(kind)[0]}
+            onChange={(ev) => onSet('shareType', ev.target.value)}
+            className={ASSET_CONTROL_CLS}
+          >
+            {shareTypesFor(kind).map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </select>
+        </AssetField>
+      )}
+      <AssetField label="تاريخ القاء الحجز">
+        <input
+          id={`asset-seizure-${index}`}
+          aria-label="تاريخ القاء الحجز"
+          name="assetSeizureDate"
+          autoComplete="off"
+          value={asset.seizureDate ?? ''}
+          onChange={(ev) => onSet('seizureDate', ev.target.value)}
+          type="text"
+          placeholder="مثال: 1/8/2026"
+          className={ASSET_CONTROL_CLS}
+        />
+        {seizureLocked && (
+          <p className="text-xs text-amber-700 mt-1" role="note">
+            عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
+          </p>
+        )}
+      </AssetField>
+    </>
+  );
+}
 
 /** مطابقة مفاتيح محرر الممثل العام (بلا بادئة) إلى مفاتيح الممثل الشرعي للمقترض (ببادئة borrower). */
 const BORROWER_REP_KEYS: Record<string, keyof DocumentUpsertRequest> = {
@@ -634,33 +719,62 @@ export function ApplicantSideSections({
             </div>
 
             {kind === ASSET_KINDS.realEstate && (
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="flex flex-wrap gap-3">
                 {([
                   ['propertyNumber', 'رقم العقار'],
+                  ['caseNumber', 'رقم المحضر'],
                   ['propertyDistrict', 'المنطقة العقارية'],
                   ['landRegistry', 'المصالح العقارية'],
                 ] as const).map(([k, label]) => (
-                  <div key={k}>
-                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                    <input value={a[k] ?? ''} onChange={(ev) => onEstateSet(i, k, ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
+                  <AssetField key={k} label={label}>
+                    <input
+                      aria-label={label}
+                      name={`asset-${k}`}
+                      autoComplete="off"
+                      value={a[k] ?? ''}
+                      onChange={(ev) => onEstateSet(i, k, ev.target.value)}
+                      className={ASSET_CONTROL_CLS}
+                    />
+                  </AssetField>
                 ))}
+                <AssetRightShareSeizureFields
+                  index={i}
+                  kind={kind}
+                  asset={a}
+                  shareable={shareable}
+                  onSet={(key, value) => onEstateSet(i, key, value)}
+                  seizureLocked={a.id != null && (seizureLockedIds?.has(a.id) ?? false)}
+                />
               </div>
             )}
 
             {kind === ASSET_KINDS.vehicle && (
-              <div className="grid md:grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-3">
                 {([
                   ['vehicleType', 'النوع'],
                   ['vehicleClass', 'الفئة'],
                   ['plateNumber', 'رقم اللوحة'],
                   ['vehicleGovernorate', 'محافظة المركبة'],
                 ] as const).map(([k, label]) => (
-                  <div key={k}>
-                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                    <input value={a[k] ?? ''} onChange={(ev) => onEstateSet(i, k, ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
+                  <AssetField key={k} label={label}>
+                    <input
+                      aria-label={label}
+                      name={`asset-${k}`}
+                      autoComplete="off"
+                      value={a[k] ?? ''}
+                      onChange={(ev) => onEstateSet(i, k, ev.target.value)}
+                      className={ASSET_CONTROL_CLS}
+                    />
+                  </AssetField>
                 ))}
+                <AssetRightShareSeizureFields
+                  index={i}
+                  kind={kind}
+                  asset={a}
+                  shareable={shareable}
+                  onSet={(key, value) => onEstateSet(i, key, value)}
+                  seizureLocked={a.id != null && (seizureLockedIds?.has(a.id) ?? false)}
+                />
               </div>
             )}
 
@@ -745,25 +859,27 @@ export function ApplicantSideSections({
               </div>
             )}
 
-            {/* تاريخ القاء الحجز: حقل موحّد لكل أنواع الأموال (منقولة وغير منقولة) — نص حر بقاعدة التواريخ */}
-            <div className="mt-3 max-w-xs">
-              <label htmlFor={`asset-seizure-${i}`} className="block text-xs font-bold text-gray-600 mb-1">تاريخ القاء الحجز</label>
-              <input
-                id={`asset-seizure-${i}`}
-                value={a.seizureDate ?? ''}
-                onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
-                type="text"
-                placeholder="مثال: 1/8/2026"
-                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              {a.id != null && (seizureLockedIds?.has(a.id) ?? false) && (
-                <p className="text-xs text-amber-700 mt-1" role="note">
-                  عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
-                </p>
-              )}
-            </div>
+            {/* تاريخ القاء الحجز: الأنواع التي لا تحمل شبكة حق/حصة (متجر/كفالة/غير مسجل) — نص حر بقاعدة التواريخ */}
+            {!supportsRightType(kind) && (
+              <div className="mt-3 max-w-xs">
+                <label htmlFor={`asset-seizure-${i}`} className="block text-xs font-bold text-gray-600 mb-1">تاريخ القاء الحجز</label>
+                <input
+                  id={`asset-seizure-${i}`}
+                  value={a.seizureDate ?? ''}
+                  onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
+                  type="text"
+                  placeholder="مثال: 1/8/2026"
+                  className={ASSET_CONTROL_CLS}
+                />
+                {a.id != null && (seizureLockedIds?.has(a.id) ?? false) && (
+                  <p className="text-xs text-amber-700 mt-1" role="note">
+                    عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
+                  </p>
+                )}
+              </div>
+            )}
 
-            {shareable && (
+            {shareable && !supportsRightType(kind) && (
               <div className="mt-3 max-w-xs">
                 <label className="block text-xs font-bold text-gray-600 mb-1">مقدار الحصة</label>
                 <select
