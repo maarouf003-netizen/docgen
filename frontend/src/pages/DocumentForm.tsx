@@ -847,20 +847,12 @@ export default function DocumentForm() {
 
     setBusy(true);
     try {
-      const initialActions = [
-        ...((form.immediateActions ?? '').trim()
-          ? [
-              {
-                type: 'action' as const,
-                text: (form.immediateActions ?? '').trim(),
-                actionDate: new Date().toISOString().slice(0, 10),
-              },
-            ]
-          : []),
-        ...(!isEdit && (form.notes ?? '').trim()
-          ? [{ type: 'note' as const, text: (form.notes ?? '').trim() }]
-          : []),
-      ];
+      // «الإجراءات التي تمت بنتيجة التنفيذ الفوري» أُزيلت من النموذج مؤقتًا (ستُنقل إلى
+      // مسار التوليد لاحقًا)، فلا تُزرع كإجراء عند الحفظ. الملاحظات تُزرع عند الإنشاء فقط
+      // (لا في التعديل) فلا تتكرر في «الإجراءات والملاحظات» عند كل حفظ.
+      const initialActions = !isEdit && (form.notes ?? '').trim()
+        ? [{ type: 'note' as const, text: (form.notes ?? '').trim() }]
+        : [];
       // قرار التصفير يتبع المخزَّن فعليًا فقط: صف وريث فارغ الاسم الثلاثي
       // يُتجاهل في الحفظ (هنا وفي NormalizeHeirs خلفيًا) فلا يُصفَّر له العنوان.
       const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
@@ -1375,19 +1367,9 @@ export default function DocumentForm() {
           />
         )}
 
-        {!isExecuted && !isMirror && (
-          <>
-            <FormSectionTitle title="الإجراءات التي تمت بنتيجة التنفيذ الفوري" />
-            <textarea
-              value={form.immediateActions ?? ''}
-              onChange={(e) => set('immediateActions', e.target.value)}
-              rows={3}
-              aria-label="الإجراءات المطلوب إضافتها إلى الإخطار التنفيذي"
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              placeholder="اكتب ما تم من اجراءات لإضافتها الى الإخطار التنفيذي..."
-            />
-          </>
-        )}
+        {/* حقل «الإجراءات التي تمت بنتيجة التنفيذ الفوري» أُزيل من النموذج مؤقتًا؛
+            ستُعاد إضافته في مسار توليد المستندات لاحقًا. تبقى قيمته محفوظة في الحالة
+            وتُرسل كما هي عند التعديل، فلا تُفقد بيانات الملفات القائمة. */}
 
         {!isEdit && (
           <>
