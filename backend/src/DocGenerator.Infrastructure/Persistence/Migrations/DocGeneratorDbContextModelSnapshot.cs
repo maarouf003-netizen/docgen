@@ -174,6 +174,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CaseNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("DocumentId")
                         .HasColumnType("INTEGER");
 
@@ -222,6 +226,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RegistrationDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("RightType")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("SeizureDate")
                         .HasColumnType("TEXT");

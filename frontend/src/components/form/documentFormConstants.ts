@@ -102,6 +102,19 @@ export const ASSET_KINDS = {
 /** الأنواع الحاملة لمقدار الحصة (تمام/حصة سهمية). */
 export const SHAREABLE_ASSET_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle, ASSET_KINDS.shop]);
 
+/** الأنواع الحاملة لنوع الحق: العقار والمركبة فقط (قرار المالك). */
+export const ASSET_RIGHT_TYPE_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle]);
+
+/** خيارات نوع الحق — مطابقة لـ `RightTypeCatalog` في الخلفية. */
+export const RIGHT_TYPE_OPTIONS = ['حق رقبة', 'حق انتفاع'] as const;
+
+/** نوع الحق الافتراضي للأصول المدعومة. */
+export const DEFAULT_RIGHT_TYPE = 'حق رقبة';
+
+export function supportsRightType(kind: string | undefined): boolean {
+  return Boolean(kind && ASSET_RIGHT_TYPE_KINDS.has(kind));
+}
+
 /** قيمة «تمام» الخاصة بنوع الأصل. */
 export function fullShareLabel(kind: string | undefined): string {
   if (kind === ASSET_KINDS.vehicle) return 'تمام المركبة';
@@ -160,6 +173,7 @@ export function isAuctionableKind(kind: string | undefined): boolean {
 export function emptyAsset(kind: string): AssetDto {
   const base: AssetDto = { assetKind: kind, owners: [] };
   if (SHAREABLE_ASSET_KINDS.has(kind)) base.shareType = fullShareLabel(kind);
+  if (ASSET_RIGHT_TYPE_KINDS.has(kind)) base.rightType = DEFAULT_RIGHT_TYPE;
   return base;
 }
 export const REPRESENTATION_TYPES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
@@ -247,6 +261,8 @@ export function representativeHeirConflictMessage(input: {
   guarantors: GuarantorDto[];
   executionApplicants: ExecutionApplicantDto[];
   executedNaturalPersons: ExecutedNaturalPersonDto[];
+  /** صفة الملف: في «منفذ عليها/عرض وايداع» ممثل الطرف للحي لا للمتوفى، فلا تعارض مع الورثة. */
+  generalEntitySide?: string;
 }): string | null {
   if ((input.borrowerNature ?? 'natural') !== 'legal' && input.borrowerHasHeirs && input.borrowerHasRep)
     return 'لا يجتمع الممثل الشرعي مع الورثة — المقترض: احذف الممثل الشرعي أو الورثة أولًا';
@@ -257,6 +273,11 @@ export function representativeHeirConflictMessage(input: {
     if (hasHeirs && hasStoredRepresentative(g))
       return `لا يجتمع الممثل الشرعي مع الورثة — الكفيل ${g.guarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا`;
   }
+
+  // في وضعي «منفذ عليها/عرض وايداع»: طالب التنفيذ والمنفذ عليه الطبيعي حيّان،
+  // والممثل الشرعي لهما لا للمورث المتوفى، فيجتمع مع ورثة المورث بلا تعارض.
+  const executedLike = input.generalEntitySide === 'executed' || input.generalEntitySide === 'deposit';
+  if (executedLike) return null;
 
   for (const a of input.executionApplicants) {
     if ((a.nature ?? 'natural') === 'legal') continue;

@@ -35,6 +35,7 @@ import {
   toUpsert,
 } from '../components/form/documentFormConstants';
 import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
+import { FieldInfoHint } from '../components/form/FieldInfoHint';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
 import FloatingFormAlert from '../components/FloatingFormAlert';
@@ -66,6 +67,10 @@ import type {
   EntityNature,
   PublicEntityEntryDto,
 } from '../types';
+
+/** رسالة تلميح «رقم الملف»: الملف بلا رقم/سنة يبقى «تحت رفع» في وضع طالبة التنفيذ. */
+const FILE_NUMBER_HINT =
+  'يمكن إضافة رقم الملف ونوعه لاحقًا؛ سيُدخَل الملف كـ«تحت رفع» لحين تعديله وإدخال الرقم والنوع.';
 
 export default function DocumentForm() {
   const { id } = useParams();
@@ -835,6 +840,7 @@ export default function DocumentForm() {
       guarantors,
       executionApplicants,
       executedNaturalPersons,
+      generalEntitySide: form.generalEntitySide,
     });
     if (repConflict) {
       setError(repConflict);
@@ -937,7 +943,7 @@ export default function DocumentForm() {
         assets: isExecutedSubmit ? [] : assets
           .filter((a) => {
             const kind = a.assetKind;
-            if (kind === ASSET_KINDS.realEstate) return a.propertyNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
+            if (kind === ASSET_KINDS.realEstate) return a.propertyNumber?.trim() || a.caseNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
             if (kind === ASSET_KINDS.vehicle) return a.plateNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
             if (kind === ASSET_KINDS.shop) return a.registerNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
             if (kind === ASSET_KINDS.salaryGuarantee) return (a.owners ?? []).some((o) => (o ?? '').trim());
@@ -1163,7 +1169,31 @@ export default function DocumentForm() {
               </div>
             </div>
           </div>
-          {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
+          <div>
+            <label htmlFor="fileNumber" className="block text-xs font-bold text-gray-600 mb-1">
+              رقم الملف
+            </label>
+            <div className="relative">
+              <input
+                id="fileNumber"
+                name="fileNumber"
+                autoComplete="off"
+                value={form.fileNumber ?? ''}
+                onChange={(e) => set('fileNumber', e.target.value)}
+                placeholder="رقم الملف…"
+                className={`w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                  !isEdit && !isExecuted ? 'pe-14' : ''
+                }`}
+              />
+              {!isEdit && !isExecuted && (
+                <FieldInfoHint
+                  id="fileNumber"
+                  label="معلومات عن رقم الملف"
+                  message={FILE_NUMBER_HINT}
+                />
+              )}
+            </div>
+          </div>
           {selectField('سنة الملف', 'fileYear', ['', ...fileYearsUpto(currentYear)], form.fileYear ?? '', (v) => set('fileYear', v))}
           {field('نوع الملف', 'fileType', 'نوع الملف...')}
           {isExecuted ? (
@@ -1272,7 +1302,6 @@ export default function DocumentForm() {
             side={executedSide}
             form={form}
             set={set}
-            isEdit={isEdit}
             isMirror={isMirror}
             partyRepLocked={partyRepLocked}
             showRequiredAmount={showRequiredAmount}

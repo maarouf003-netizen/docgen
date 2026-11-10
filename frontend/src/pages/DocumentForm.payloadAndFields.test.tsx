@@ -136,6 +136,28 @@ render(<DocumentForm />);
     expect(select).toHaveValue(String(currentYear));
   });
 
+  it('تلميح «رقم الملف» يظهر في الإنشاء/طالبة التنفيذ ويُغلق بالزر', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    const trigger = screen.getByRole('button', { name: 'معلومات عن رقم الملف' });
+    expect(screen.queryByText(/يمكن إضافة رقم الملف ونوعه/)).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    expect(screen.getByText(/يمكن إضافة رقم الملف ونوعه/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إغلاق' }));
+    expect(screen.queryByText(/يمكن إضافة رقم الملف ونوعه/)).not.toBeInTheDocument();
+  });
+
+  it('تلميح «رقم الملف» لا يظهر في وضع «منفذ عليها»', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByLabelText('الجهة العامة منفذ عليها'));
+    expect(screen.queryByRole('button', { name: 'معلومات عن رقم الملف' })).not.toBeInTheDocument();
+  });
+
   it('يرفض الحفظ بسنة مستقبلية مخزنة (تعديل ملف قديم) ولا يرسل', async () => {
     const user = userEvent.setup();
     const futureYear = String(new Date().getFullYear() + 1);
@@ -272,11 +294,11 @@ render(<DocumentForm />);
     const nameInput = firstCard.querySelector('input') as HTMLInputElement;
     await user.type(nameInput, 'سمير');
     expect(screen.getByText('— سمير')).toBeInTheDocument();
-    const headers = screen.getAllByRole('button', { expanded: true });
-    await user.click(headers[0]);
+    const header = within(firstCard).getByRole('button', { expanded: true });
+    await user.click(header);
     expect(firstCard.querySelector('input')).not.toBeInTheDocument();
-    const collapsed = screen.getAllByRole('button', { expanded: false });
-    await user.click(collapsed[0]);
+    const collapsedHeader = within(firstCard).getByRole('button', { expanded: false });
+    await user.click(collapsedHeader);
     expect(firstCard.querySelector('input') as HTMLInputElement).toHaveValue('سمير');
   });
 

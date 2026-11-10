@@ -84,7 +84,11 @@ public record AssetDto(
     // الملاحظات
     string? Notes,
     /// <summary>تاريخ القاء الحجز على الأصل (نص حر يُفسَّر زمنيًا ويُستبدل في قوالب الوورد).</summary>
-    string? SeizureDate);
+    string? SeizureDate,
+    /// <summary>رقم المحضر (العقار فقط) — نص حر يحفظ صيغ مثل «123/2026».</summary>
+    string? CaseNumber = null,
+    /// <summary>نوع الحق (العقار/المركبة): «حق رقبة» أو «حق انتفاع» — يُطبَّع في الخدمة.</summary>
+    string? RightType = null);
 
 public record ExecutionActionDto(
     int Id,

@@ -18,8 +18,11 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         // العقار
         builder.Property(a => a.Property).HasMaxLength(200);
         builder.Property(a => a.PropertyNumber).HasMaxLength(100);
+        builder.Property(a => a.CaseNumber).HasMaxLength(100);
         builder.Property(a => a.PropertyDistrict).HasMaxLength(200);
         builder.Property(a => a.LandRegistry).HasMaxLength(200);
+        // حق الأصل (العقار/المركبة)
+        builder.Property(a => a.RightType).HasMaxLength(30);
         // المركبة
         builder.Property(a => a.VehicleType).HasMaxLength(200);
         builder.Property(a => a.VehicleClass).HasMaxLength(200);

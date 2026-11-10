@@ -51,6 +51,27 @@ describe('AssetsSection', () => {
     expect(screen.getByText('لم يتم القاء الحجز')).toBeInTheDocument();
   });
 
+  it('يعرض رقم المحضر ونوع الحق للعقار والمركبة', () => {
+    render(
+      <AssetsSection
+        doc={doc([
+          asset(5, { propertyNumber: '77', caseNumber: '45/2026', rightType: 'حق انتفاع' }),
+          asset(6, {
+            assetKind: 'مركبة',
+            plateNumber: '123',
+            rightType: 'حق رقبة',
+          }),
+        ])}
+      />,
+    );
+
+    expect(screen.getByText('رقم المحضر')).toBeInTheDocument();
+    expect(screen.getByText('45/2026')).toBeInTheDocument();
+    expect(screen.getAllByText('نوع الحق')).toHaveLength(2);
+    expect(screen.getByText('حق انتفاع')).toBeInTheDocument();
+    expect(screen.getByText('حق رقبة')).toBeInTheDocument();
+  });
+
   it('شارة «مناب» زرقاء للمال المحجوب بإنابة سارية فقط', () => {
     render(
       <AssetsSection

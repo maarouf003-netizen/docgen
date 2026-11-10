@@ -103,35 +103,41 @@ public static class DocumentValidator
                 $"لا يجتمع الممثل الشرعي مع الورثة — الكفيل {g.GuarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا");
         }
 
-        foreach (var a in request.ExecutionApplicants)
+        // في وضعي «منفذ عليها/عرض وايداع» يكون طالب التنفيذ والمنفذ عليه الطبيعي حيّين،
+        // والممثل الشرعي لهما (لا للمورث المتوفى)، فيجتمع مع ورثة المورث بلا تعارض.
+        // القاعدة تبقى في «طالبة تنفيذ» للمقترض/الكفيل حيث الممثل الشرعي للمتوفى.
+        if (!GeneralEntitySideCatalog.IsExecutedLike(request.GeneralEntitySide))
         {
-            var name = (a.Name ?? string.Empty).Trim();
-            var nature = DocumentText.NormalizePartyNature(a.Nature);
-            if (name.Length == 0
-                || PartyNatureCatalog.IsLegal(nature)
-                || DocumentText.IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily))
-                continue;
+            foreach (var a in request.ExecutionApplicants)
+            {
+                var name = (a.Name ?? string.Empty).Trim();
+                var nature = DocumentText.NormalizePartyNature(a.Nature);
+                if (name.Length == 0
+                    || PartyNatureCatalog.IsLegal(nature)
+                    || DocumentText.IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily))
+                    continue;
 
-            // «إضافة لتركة» تعني متوفى حتى لو لم تُدخَل ورثته بعد؛ فلا يجتمع معها ممثل.
-            var representationType = (a.RepresentationType ?? string.Empty).Trim();
-            var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
-            if (hasEstate || DocumentText.NormalizeExecutedHeirs(a.Heirs).Count > 0)
-                throw new ArgumentException(
-                    $"لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ {name}: احذف الممثل الشرعي أو الورثة أولًا");
-        }
+                // «إضافة لتركة» تعني متوفى حتى لو لم تُدخَل ورثته بعد؛ فلا يجتمع معها ممثل.
+                var representationType = (a.RepresentationType ?? string.Empty).Trim();
+                var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
+                if (hasEstate || DocumentText.NormalizeExecutedHeirs(a.Heirs).Count > 0)
+                    throw new ArgumentException(
+                        $"لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ {name}: احذف الممثل الشرعي أو الورثة أولًا");
+            }
 
-        foreach (var p in request.ExecutedNaturalPersons)
-        {
-            var name = (p.Name ?? string.Empty).Trim();
-            if (name.Length == 0
-                || DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily))
-                continue;
+            foreach (var p in request.ExecutedNaturalPersons)
+            {
+                var name = (p.Name ?? string.Empty).Trim();
+                if (name.Length == 0
+                    || DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily))
+                    continue;
 
-            var representationType = (p.RepresentationType ?? string.Empty).Trim();
-            var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
-            if (hasEstate || DocumentText.NormalizeExecutedHeirs(p.Heirs).Count > 0)
-                throw new ArgumentException(
-                    $"لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه {name}: احذف الممثل الشرعي أو الورثة أولًا");
+                var representationType = (p.RepresentationType ?? string.Empty).Trim();
+                var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
+                if (hasEstate || DocumentText.NormalizeExecutedHeirs(p.Heirs).Count > 0)
+                    throw new ArgumentException(
+                        $"لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه {name}: احذف الممثل الشرعي أو الورثة أولًا");
+            }
         }
     }
 

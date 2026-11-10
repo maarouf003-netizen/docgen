@@ -415,7 +415,9 @@ public class DocumentResponse : IDocumentSheetFields
                 a.PublicEntity,
                 a.LicenseNumber, a.LicenseDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.LicenseIssuer,
                 a.Notes,
-                a.SeizureDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))
+                a.SeizureDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                a.CaseNumber,
+                a.RightType))
             .ToList(),
         BorrowerHeirs = ToHeirDtos(d.Heirs, null),
         ExecutionActions = d.ExecutionActions

@@ -1538,6 +1538,131 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task Create_AssetCaseNumberAndRightType_RoundTrips()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var number = $"77{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            borrowerName = "أحمد",
+            borrowerFather = "خالد",
+            borrowerFamily = "الخطيب",
+            fileNumber = number,
+            fileYear = "2024",
+            fileRegistrationDate = "1/1/2024",
+            court = "دمشق",
+            applicant = "المدعي",
+            assets = new object[]
+            {
+                new
+                {
+                    assetKind = "عقار",
+                    propertyNumber = "12",
+                    propertyDistrict = "المزة",
+                    landRegistry = "الصالحية",
+                    shareType = "تمام العقار",
+                    owners = new[] { "المدعى عليه" },
+                    seizureDate = "1/8/2026",
+                    caseNumber = "45/2026",
+                    rightType = "حق انتفاع",
+                },
+                new
+                {
+                    assetKind = "مركبة",
+                    vehicleType = "سيارة",
+                    vehicleClass = "خاصة",
+                    plateNumber = "12345",
+                    vehicleGovernorate = "دمشق",
+                    shareType = "تمام المركبة",
+                    owners = new[] { "المدعى عليه" },
+                    seizureDate = "1/8/2026",
+                    rightType = "حق رقبة",
+                },
+            },
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var assets = body!.RootElement.GetProperty("assets");
+
+        var estate = assets[0];
+        Assert.Equal("45/2026", estate.GetProperty("caseNumber").GetString());
+        Assert.Equal("حق انتفاع", estate.GetProperty("rightType").GetString());
+
+        var vehicle = assets[1];
+        Assert.Equal("حق رقبة", vehicle.GetProperty("rightType").GetString());
+        Assert.Equal(JsonValueKind.Null, vehicle.GetProperty("caseNumber").ValueKind);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_AllowsRepresentativeWithEstateAndHeirs()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var number = $"76{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "executed",
+            documentType = "الجهة العامة منفذ عليها",
+            fileNumber = number,
+            fileYear = "2024",
+            contractTypeSelector = "عادي",
+            court = "دمشق",
+            applicant = "المدعي",
+            executionApplicants = new[]
+            {
+                new
+                {
+                    name = "علي",
+                    father = "محمد",
+                    family = "معروف",
+                    representationType = "أصالة وإضافة",
+                    deceasedName = "محمد",
+                    deceasedFather = "نديم",
+                    deceasedFamily = "معروف",
+                    representativeName = "الممثل",
+                    representativeCapacity = "ولي",
+                    heirs = new[]
+                    {
+                        new { heirName = "علي", heirFather = "محمد", heirFamily = "معروف" },
+                    },
+                },
+            },
+            executedNaturalPersons = new[]
+            {
+                new
+                {
+                    name = "سامر",
+                    father = "حسن",
+                    family = "علي",
+                    addressType = "عنوان",
+                    representationType = "إضافة لتركة",
+                    deceasedName = "المورث",
+                    deceasedFather = "أب المورث",
+                    deceasedFamily = "نسبة المورث",
+                    representativeName = "ولي",
+                    representativeCapacity = "ولي",
+                    heirs = new[]
+                    {
+                        new { heirName = "وريث", heirFather = "أب", heirFamily = "عائلة" },
+                    },
+                },
+            },
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var root = body!.RootElement;
+
+        var applicant = root.GetProperty("executionApplicants")[0];
+        Assert.Equal("الممثل", applicant.GetProperty("representativeName").GetString());
+        Assert.Equal("علي", applicant.GetProperty("heirs")[0].GetProperty("heirName").GetString());
+
+        var person = root.GetProperty("executedNaturalPersons")[0];
+        Assert.Equal("ولي", person.GetProperty("representativeName").GetString());
+        Assert.Equal("وريث", person.GetProperty("heirs")[0].GetProperty("heirName").GetString());
+    }
+
+    [Fact]
     public async Task SetStatus_AsHeadOrManager_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

@@ -1023,6 +1023,74 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_PersistsEstateCaseNumberAndRightType()
+    {
+        var req = Sample();
+        req.Assets[0] = req.Assets[0] with
+        {
+            CaseNumber = "45/2026",
+            RightType = RightTypeCatalog.Usufruct,
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var reloaded = await _service.GetAsync(doc.Id);
+
+        var estate = Assert.Single(reloaded!.Assets);
+        Assert.Equal("45/2026", estate.CaseNumber);
+        Assert.Equal("حق انتفاع", estate.RightType);
+    }
+
+    [Fact]
+    public async Task Create_DefaultsEstateAndVehicleRightTypeToBareOwnership()
+    {
+        var estateReq = Sample();
+        estateReq.Assets[0] = estateReq.Assets[0] with { RightType = null };
+        var estateDoc = await _service.CreateAsync(estateReq, 1, "lawyer1", 1);
+        var estate = Assert.Single((await _service.GetAsync(estateDoc.Id))!.Assets);
+        Assert.Equal("حق رقبة", estate.RightType);
+
+        var vehicleReq = Sample();
+        vehicleReq.Assets = new()
+        {
+            new AssetDto(null, AssetKindCatalog.Vehicle, new List<string> { "المدعى عليه" }, "تمام المركبة",
+                null, null, null, null,
+                "سيارة", "خاصة", "12345", "دمشق",
+                null, null, null, null, null,
+                null,
+                null, null, null,
+                null, null),
+        };
+        var vehicleDoc = await _service.CreateAsync(vehicleReq, 1, "lawyer1", 1);
+        var vehicle = Assert.Single((await _service.GetAsync(vehicleDoc.Id))!.Assets);
+        Assert.Equal("حق رقبة", vehicle.RightType);
+        Assert.Null(vehicle.CaseNumber);
+    }
+
+    [Fact]
+    public async Task Create_DropsUnsupportedAssetCaseNumberAndRightType()
+    {
+        var req = Sample();
+        req.Assets = new()
+        {
+            new AssetDto(null, AssetKindCatalog.Shop, new List<string> { "المدعى عليه" }, "تمام المتجر",
+                null, null, null, null,
+                null, null, null, null,
+                "888", null, "دمشق", "متجر", "المزة",
+                null,
+                null, null, null,
+                null, null,
+                CaseNumber: "45/2026",
+                RightType: RightTypeCatalog.Usufruct),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var shop = Assert.Single((await _service.GetAsync(doc.Id))!.Assets);
+
+        Assert.Null(shop.CaseNumber);
+        Assert.Null(shop.RightType);
+    }
+
+    [Fact]
     public async Task Create_PersistsVehicleFields()
     {
         var req = Sample();
