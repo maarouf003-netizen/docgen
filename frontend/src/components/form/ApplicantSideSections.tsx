@@ -44,6 +44,74 @@ function AssetField({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+/** حقول نهاية بطاقة العقار/المركبة: نوع الحق ثم الحصة ثم تاريخ الحجز (آخرًا دائمًا). */
+function AssetRightShareSeizureFields({
+  index,
+  kind,
+  asset,
+  shareable,
+  onSet,
+  seizureLocked,
+}: {
+  index: number;
+  kind: string;
+  asset: AssetDto;
+  shareable: boolean;
+  onSet: (key: keyof AssetDto, value: string) => void;
+  seizureLocked: boolean;
+}) {
+  return (
+    <>
+      <AssetField label="نوع الحق">
+        <select
+          aria-label="نوع الحق"
+          name="assetRightType"
+          value={asset.rightType ?? DEFAULT_RIGHT_TYPE}
+          onChange={(ev) => onSet('rightType', ev.target.value)}
+          className={ASSET_CONTROL_CLS}
+        >
+          {RIGHT_TYPE_OPTIONS.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </AssetField>
+      {shareable && (
+        <AssetField label="مقدار الحصة">
+          <select
+            aria-label="مقدار الحصة"
+            name="assetShareType"
+            value={asset.shareType ?? shareTypesFor(kind)[0]}
+            onChange={(ev) => onSet('shareType', ev.target.value)}
+            className={ASSET_CONTROL_CLS}
+          >
+            {shareTypesFor(kind).map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </select>
+        </AssetField>
+      )}
+      <AssetField label="تاريخ القاء الحجز">
+        <input
+          id={`asset-seizure-${index}`}
+          aria-label="تاريخ القاء الحجز"
+          name="assetSeizureDate"
+          autoComplete="off"
+          value={asset.seizureDate ?? ''}
+          onChange={(ev) => onSet('seizureDate', ev.target.value)}
+          type="text"
+          placeholder="مثال: 1/8/2026"
+          className={ASSET_CONTROL_CLS}
+        />
+        {seizureLocked && (
+          <p className="text-xs text-amber-700 mt-1" role="note">
+            عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
+          </p>
+        )}
+      </AssetField>
+    </>
+  );
+}
+
 /** مطابقة مفاتيح محرر الممثل العام (بلا بادئة) إلى مفاتيح الممثل الشرعي للمقترض (ببادئة borrower). */
 const BORROWER_REP_KEYS: Record<string, keyof DocumentUpsertRequest> = {
   representativeName: 'borrowerRepresentativeName',
@@ -669,52 +737,14 @@ export function ApplicantSideSections({
                     />
                   </AssetField>
                 ))}
-                <AssetField label="نوع الحق">
-                  <select
-                    aria-label="نوع الحق"
-                    name="assetRightType"
-                    value={a.rightType ?? DEFAULT_RIGHT_TYPE}
-                    onChange={(ev) => onEstateSet(i, 'rightType', ev.target.value)}
-                    className={ASSET_CONTROL_CLS}
-                  >
-                    {RIGHT_TYPE_OPTIONS.map((o) => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                  </select>
-                </AssetField>
-                {shareable && (
-                  <AssetField label="مقدار الحصة">
-                    <select
-                      aria-label="مقدار الحصة"
-                      name="assetShareType"
-                      value={a.shareType ?? shareTypesFor(kind)[0]}
-                      onChange={(ev) => onEstateSet(i, 'shareType', ev.target.value)}
-                      className={ASSET_CONTROL_CLS}
-                    >
-                      {shareTypesFor(kind).map((o) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                  </AssetField>
-                )}
-                <AssetField label="تاريخ القاء الحجز">
-                  <input
-                    id={`asset-seizure-${i}`}
-                    aria-label="تاريخ القاء الحجز"
-                    name="assetSeizureDate"
-                    autoComplete="off"
-                    value={a.seizureDate ?? ''}
-                    onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
-                    type="text"
-                    placeholder="مثال: 1/8/2026"
-                    className={ASSET_CONTROL_CLS}
-                  />
-                  {a.id != null && (seizureLockedIds?.has(a.id) ?? false) && (
-                    <p className="text-xs text-amber-700 mt-1" role="note">
-                      عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
-                    </p>
-                  )}
-                </AssetField>
+                <AssetRightShareSeizureFields
+                  index={i}
+                  kind={kind}
+                  asset={a}
+                  shareable={shareable}
+                  onSet={(key, value) => onEstateSet(i, key, value)}
+                  seizureLocked={a.id != null && (seizureLockedIds?.has(a.id) ?? false)}
+                />
               </div>
             )}
 
@@ -737,52 +767,14 @@ export function ApplicantSideSections({
                     />
                   </AssetField>
                 ))}
-                <AssetField label="نوع الحق">
-                  <select
-                    aria-label="نوع الحق"
-                    name="assetRightType"
-                    value={a.rightType ?? DEFAULT_RIGHT_TYPE}
-                    onChange={(ev) => onEstateSet(i, 'rightType', ev.target.value)}
-                    className={ASSET_CONTROL_CLS}
-                  >
-                    {RIGHT_TYPE_OPTIONS.map((o) => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                  </select>
-                </AssetField>
-                {shareable && (
-                  <AssetField label="مقدار الحصة">
-                    <select
-                      aria-label="مقدار الحصة"
-                      name="assetShareType"
-                      value={a.shareType ?? shareTypesFor(kind)[0]}
-                      onChange={(ev) => onEstateSet(i, 'shareType', ev.target.value)}
-                      className={ASSET_CONTROL_CLS}
-                    >
-                      {shareTypesFor(kind).map((o) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                  </AssetField>
-                )}
-                <AssetField label="تاريخ القاء الحجز">
-                  <input
-                    id={`asset-seizure-${i}`}
-                    aria-label="تاريخ القاء الحجز"
-                    name="assetSeizureDate"
-                    autoComplete="off"
-                    value={a.seizureDate ?? ''}
-                    onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
-                    type="text"
-                    placeholder="مثال: 1/8/2026"
-                    className={ASSET_CONTROL_CLS}
-                  />
-                  {a.id != null && (seizureLockedIds?.has(a.id) ?? false) && (
-                    <p className="text-xs text-amber-700 mt-1" role="note">
-                      عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
-                    </p>
-                  )}
-                </AssetField>
+                <AssetRightShareSeizureFields
+                  index={i}
+                  kind={kind}
+                  asset={a}
+                  shareable={shareable}
+                  onSet={(key, value) => onEstateSet(i, key, value)}
+                  seizureLocked={a.id != null && (seizureLockedIds?.has(a.id) ?? false)}
+                />
               </div>
             )}
 

@@ -33,10 +33,8 @@ function HeirsHarness({
 
 function ExecutedHeirsHarness({
   initial,
-  allowAdd = true,
 }: {
   initial: ExecutedHeirDto[];
-  allowAdd?: boolean;
 }) {
   const [heirs, setHeirs] = useState(initial);
   return (
@@ -48,7 +46,6 @@ function ExecutedHeirsHarness({
       }
       onAdd={() => setHeirs((hs) => [...hs, emptyExecutedHeir()])}
       onRemove={(i) => setHeirs((hs) => hs.filter((_, idx) => idx !== i))}
-      allowAdd={allowAdd}
     />
   );
 }

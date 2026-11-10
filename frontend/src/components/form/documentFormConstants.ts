@@ -251,18 +251,15 @@ export function hasHeirName(h: { name?: string; father?: string; family?: string
 }
 
 /**
- * رسالة تعارض «الممثل الشرعي + الورثة» في الواجهة — تطابق حارس الخلفية
- * (`DocumentValidator.ValidateRepresentativeHeirExclusivity`) بلا استثناءات.
+ * رسالة تعارض «الممثل الشرعي + الورثة» في الواجهة لطرفي «طالبة تنفيذ»
+ * (المقترض/الكفيل). أطراف «منفذ عليها/عرض وايداع» مستثناة: الممثل للحي لا للمتوفى.
+ * الحارس الخلفي (`DocumentValidator.ValidateRepresentativeHeirExclusivity`) يطبّق التفصيل نفسه.
  */
 export function representativeHeirConflictMessage(input: {
   borrowerNature?: string;
   borrowerHasHeirs: boolean;
   borrowerHasRep: boolean;
   guarantors: GuarantorDto[];
-  executionApplicants: ExecutionApplicantDto[];
-  executedNaturalPersons: ExecutedNaturalPersonDto[];
-  /** صفة الملف: في «منفذ عليها/عرض وايداع» ممثل الطرف للحي لا للمتوفى، فلا تعارض مع الورثة. */
-  generalEntitySide?: string;
 }): string | null {
   if ((input.borrowerNature ?? 'natural') !== 'legal' && input.borrowerHasHeirs && input.borrowerHasRep)
     return 'لا يجتمع الممثل الشرعي مع الورثة — المقترض: احذف الممثل الشرعي أو الورثة أولًا';
@@ -274,26 +271,8 @@ export function representativeHeirConflictMessage(input: {
       return `لا يجتمع الممثل الشرعي مع الورثة — الكفيل ${g.guarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا`;
   }
 
-  // في وضعي «منفذ عليها/عرض وايداع»: طالب التنفيذ والمنفذ عليه الطبيعي حيّان،
-  // والممثل الشرعي لهما لا للمورث المتوفى، فيجتمع مع ورثة المورث بلا تعارض.
-  const executedLike = input.generalEntitySide === 'executed' || input.generalEntitySide === 'deposit';
-  if (executedLike) return null;
-
-  for (const a of input.executionApplicants) {
-    if ((a.nature ?? 'natural') === 'legal') continue;
-    const hasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
-    const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
-    if ((hasEstate || hasHeirs) && hasStoredRepresentative(a))
-      return `لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ ${(a.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
-  }
-
-  for (const p of input.executedNaturalPersons) {
-    const hasHeirs = (p.heirs ?? []).some((h) => (h.heirName ?? '').trim());
-    const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
-    if ((hasEstate || hasHeirs) && hasStoredRepresentative(p))
-      return `لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه ${(p.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
-  }
-
+  // أطراف «منفذ عليها/عرض وايداع» خارج هذا الفحص: الممثل الشرعي هناك للحي لا للمتوفى،
+  // فيجتمع مع ورثة المورث (الحارس الخلفي يطبّق القاعدة نفسها).
   return null;
 }
 

@@ -856,7 +856,9 @@ public sealed class DocumentService : IDocumentService
                 ApplicantAddress = isLegal ? (a.Address ?? string.Empty).Trim() : null,
                 Father = isLegal ? null : (a.Father ?? string.Empty).Trim(),
                 Family = isLegal ? null : (a.Family ?? string.Empty).Trim(),
-                LegalRepresentative = isLegal ? null : (a.LegalRepresentative ?? string.Empty).Trim(),
+                // الممثل الشرعي المهيكل هو المصدر حين يوجد؛ لا يُبقى «الوكيل القانوني» النصي معه
+                // (الواجهة تصفّره، والخلفية تصفّره دفاعًا حتى لا يتكرر الممثل في النصوص).
+                LegalRepresentative = isLegal || hasRep ? null : (a.LegalRepresentative ?? string.Empty).Trim(),
                 RepresentationType = representationType,
                 DeceasedName = hasEstate ? (a.DeceasedName ?? string.Empty).Trim() : null,
                 DeceasedFather = hasEstate ? (a.DeceasedFather ?? string.Empty).Trim() : null,

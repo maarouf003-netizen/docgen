@@ -85,8 +85,6 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: true,
       borrowerHasRep: true,
       guarantors: [],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toContain('المقترض');
   });
 
@@ -95,47 +93,7 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: false,
       borrowerHasRep: false,
       guarantors: [{ guarantorNumber: 2, representativeName: 'ممثل', heirs: [{ name: 'وريث' }] }],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toContain('الكفيل 2');
-  });
-
-  it('يكشف تعارض ممثل طالب التنفيذ مع التمثيل بالتركة خارج وضع منفذ عليها', () => {
-    expect(representativeHeirConflictMessage({
-      borrowerHasHeirs: false,
-      borrowerHasRep: false,
-      guarantors: [],
-      executionApplicants: [{ name: 'طالب', representationType: 'إضافة لتركة', representativeName: 'ممثل' }],
-      executedNaturalPersons: [],
-      generalEntitySide: 'applicant',
-    })).toContain('طالب التنفيذ طالب');
-  });
-
-  it('يسمح بممثل طالب التنفيذ مع التمثيل بالتركة في وضع منفذ عليها', () => {
-    expect(representativeHeirConflictMessage({
-      borrowerHasHeirs: false,
-      borrowerHasRep: false,
-      guarantors: [],
-      executionApplicants: [{ name: 'طالب', representationType: 'إضافة لتركة', representativeName: 'ممثل' }],
-      executedNaturalPersons: [],
-      generalEntitySide: 'executed',
-    })).toBeNull();
-  });
-
-  it('يسمح بممثل المنفذ عليه مع ورثته في وضع منفذ عليها', () => {
-    expect(representativeHeirConflictMessage({
-      borrowerHasHeirs: false,
-      borrowerHasRep: false,
-      guarantors: [],
-      executionApplicants: [],
-      executedNaturalPersons: [{
-        name: 'منفذ',
-        representationType: 'أصالة وإضافة',
-        representativeName: 'ممثل',
-        heirs: [{ heirName: 'وريث' }],
-      }],
-      generalEntitySide: 'deposit',
-    })).toBeNull();
   });
 
   it('يسمح بممثل بلا ورثة', () => {
@@ -143,8 +101,6 @@ describe('documentFormConstants · حمولة الوريث والممثل', () =
       borrowerHasHeirs: false,
       borrowerHasRep: true,
       guarantors: [],
-      executionApplicants: [],
-      executedNaturalPersons: [],
     })).toBeNull();
   });
 });

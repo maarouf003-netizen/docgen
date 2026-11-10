@@ -40,7 +40,7 @@ export function FieldInfoHint({
 
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);
-    closeRef.current?.focus();
+    panelRef.current?.focus();
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
@@ -53,6 +53,15 @@ export function FieldInfoHint({
     triggerRef.current?.focus();
   };
 
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open, isMobile]);
+
   return (
     <>
       <button
@@ -60,7 +69,7 @@ export function FieldInfoHint({
         type="button"
         aria-label={label}
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((value) => !value)}
         className="absolute inset-y-0 end-1 z-10 my-auto flex h-11 w-11 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
       >
@@ -72,7 +81,8 @@ export function FieldInfoHint({
           ref={panelRef}
           id={panelId}
           role="note"
-          className="absolute end-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
+          tabIndex={-1}
+          className="absolute end-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg focus:outline-none"
         >
           <div className="flex items-start justify-between gap-2">
             <p className="min-w-0 flex-1">{message}</p>
@@ -101,6 +111,8 @@ export function FieldInfoHint({
             role="dialog"
             aria-modal="true"
             aria-label={label}
+            aria-describedby={`${panelId}-desc`}
+            tabIndex={-1}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === 'Tab') {
@@ -108,7 +120,7 @@ export function FieldInfoHint({
                 closeRef.current?.focus();
               }
             }}
-            className="max-h-[70vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl"
+            className="max-h-[70vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl focus:outline-none"
             style={{ touchAction: 'manipulation' }}
           >
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -123,7 +135,7 @@ export function FieldInfoHint({
                 <span aria-hidden="true">✕</span>
               </button>
             </div>
-            <p className="text-sm leading-relaxed text-gray-700">{message}</p>
+            <p id={`${panelId}-desc`} className="text-sm leading-relaxed text-gray-700">{message}</p>
           </div>
         </div>
       )}

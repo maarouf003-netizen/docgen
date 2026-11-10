@@ -1493,6 +1493,7 @@ public class DocumentsIntegrationTests
                     father = "ثانٍ",
                     family = "العائلة",
                     representationType = "أصالة",
+                    legalRepresentative = "وكيل قديم",
                     representativeName = "القيم",
                     representativeCapacity = "قيم",
                     representativeLegalRepresentative = "المحامي القانوني",
@@ -1529,6 +1530,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("القيم", representativeApplicant.GetProperty("representativeName").GetString());
         Assert.Equal("قيم", representativeApplicant.GetProperty("representativeCapacity").GetString());
         Assert.Equal("المحامي القانوني", representativeApplicant.GetProperty("representativeLegalRepresentative").GetString());
+        Assert.Equal(JsonValueKind.Null, representativeApplicant.GetProperty("legalRepresentative").ValueKind);
 
         var person = root.GetProperty("executedNaturalPersons")[0];
         Assert.Equal("ولي الشخص", person.GetProperty("representativeName").GetString());

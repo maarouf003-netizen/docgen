@@ -20,7 +20,8 @@ public static class RightTypeCatalog
         AssetKindCatalog.RealEstate, AssetKindCatalog.Vehicle,
     };
 
-    public static bool IsSupported(string? kind) => kind is not null && SupportedKinds.Contains(kind);
+    public static bool IsSupported(string? kind) =>
+        !string.IsNullOrWhiteSpace(kind) && SupportedKinds.Contains(kind.Trim());
 
     public static bool IsValid(string? value) => value is not null && ValidTypes.Contains(value);
 

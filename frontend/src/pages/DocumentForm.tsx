@@ -831,16 +831,14 @@ export default function DocumentForm() {
     }
     const repConflict = representativeHeirConflictMessage({
       borrowerNature: form.borrowerNature,
-      borrowerHasHeirs: borrowerHeirs.some(hasHeirName),
-      borrowerHasRep: hasStoredRepresentative({
+      // الفحص يطابق الحمولة المرسلة: أطراف الجهة الأخرى لا تُرسل ولا تُفحص.
+      borrowerHasHeirs: !isExecutedSubmit && borrowerHeirs.some(hasHeirName),
+      borrowerHasRep: !isExecutedSubmit && hasStoredRepresentative({
         representativeName: form.borrowerRepresentativeName,
         representativeFather: form.borrowerRepresentativeFather,
         representativeFamily: form.borrowerRepresentativeFamily,
       }),
-      guarantors,
-      executionApplicants,
-      executedNaturalPersons,
-      generalEntitySide: form.generalEntitySide,
+      guarantors: isExecutedSubmit ? [] : guarantors,
     });
     if (repConflict) {
       setError(repConflict);

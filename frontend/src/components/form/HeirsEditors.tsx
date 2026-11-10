@@ -282,7 +282,6 @@ export function ExecutedHeirsEditor({
   onAdd,
   onRemove,
   idPrefix,
-  allowAdd = true,
   locked = false,
 }: {
   heirs: ExecutedHeirDto[];
@@ -290,32 +289,22 @@ export function ExecutedHeirsEditor({
   onAdd: () => void;
   onRemove: (i: number) => void;
   idPrefix: string;
-  allowAdd?: boolean;
   /** الملف المناب: يمنع حذف الورثة ويقفل ممثلهم المخزَّن. */
   locked?: boolean;
 }) {
   const drafts = useDraftRepresentatives();
 
-  if (heirs.length === 0 && !allowAdd) return null;
-
   return (
     <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
-      {allowAdd && (
-        <div className="flex flex-wrap items-center justify-end gap-2 mb-3">
-          <button
-            type="button"
-            onClick={onAdd}
-            className="bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-          >
-            ＋ إضافة وريث
-          </button>
-        </div>
-      )}
-      {!allowAdd && (
-        <p className="mb-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
-          الممثل الشرعي للطرف قائم — لا يمكن إضافة ورثة (لا يجتمعان). احذف الممثل الشرعي أولًا.
-        </p>
-      )}
+      <div className="flex flex-wrap items-center justify-end gap-2 mb-3">
+        <button
+          type="button"
+          onClick={onAdd}
+          className="bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+        >
+          ＋ إضافة وريث
+        </button>
+      </div>
 
       {heirs.map((h, i) => {
         const hHasStoredRep = hasStoredRepresentative(h);
