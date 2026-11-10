@@ -422,11 +422,11 @@ npm test
 > `appsettings.Production.json` لو أُضيف لاحقًا).
 
 - [ ] **2026-11-10 — `AddAssetCaseNumberRightType` / `AddAssetCaseNumberRightType_Pg`** (رقم المحضر ونوع الحق على الأصول):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
+  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑10 — عبر `dotnet ef database update` على `Supabase`، ثم نشر النسخة `0d4d232` على `docgen-1` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261110085853_AddAssetCaseNumberRightType.cs` — يضيف عمودين `nullable` إلى `Assets`: `CaseNumber` (`TEXT(100)`) و`RightType` (`TEXT(30)`).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261110085946_AddAssetCaseNumberRightType_Pg.cs` — نفسه (`character varying(100/30)`).
   - **لا Backfill:** القيم الافتراضية تُطبَّق عند الحفظ/العرض للأصول الجديدة (العقار/المركبة = «حق رقبة»)؛ البيانات القائمة تجريبية ولا تحتاج تعبئة.
-  - **التطبيق:** `dotnet ef database update --context DocGeneratorDbContext` ثم `dotnet ef database update --context DocGeneratorPostgresDbContext` قبل نشر النسخة؛ وإلا رفض الإقلاع (`Database:AutoMigrate=false`).
+  - **التطبيق:** تم تطبيق `PostgreSQL` حيًا في 2026‑11‑10. يبقى `SQLite` معلّقًا حتى استكمال سلسلة `G2`، ثم: `dotnet ef database update --context DocGeneratorDbContext`.
 
 - [ ] **2026-11-08 — `BaseNumberRegistry` / `BaseNumberRegistry_Pg`** (سجل أرقام الأساس v2 — جدول واحد + عمودا الإلغاء + فهرس فريد جزئي):
   - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑09 — 70 هجرة، عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أدناه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
