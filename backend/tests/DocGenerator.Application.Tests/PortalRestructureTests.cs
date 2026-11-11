@@ -654,6 +654,9 @@ public class PortalRestructureTests : IDisposable
         // النطاق الداخلي (§5): معرف الشعبة واسمها يُحجبان سلكيًا كالدائرة.
         Assert.Null(response.SectionId);
         Assert.Null(response.SectionName);
+        // بطاقة «تذكيرات الشطب» داخلية للمحامي: تاريخ آخر نشاط ومصدره محجوبان في البوابة.
+        Assert.Null(response.LastActivityDate);
+        Assert.Null(response.LastActivitySource);
     }
 
     [Fact]
@@ -712,6 +715,8 @@ public class PortalRestructureTests : IDisposable
             "SectionId", "SectionName",
             // RF-010: عدّاد التزامن يُصفَّر سلكيًا للبوابة (بلا سطح كتابة فيها).
             "Version",
+            // بطاقة «تذكيرات الشطب» داخلية للمحامي: يُصفَّران سلكيًا في البوابة.
+            "LastActivityDate", "LastActivitySource",
         };
         var consumed = new HashSet<string>(StringComparer.Ordinal)
         {

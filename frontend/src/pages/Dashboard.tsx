@@ -173,6 +173,13 @@ export default function Dashboard() {
     pendingRegistrationsQuery.isLoading ||
     pendingRegistrationsQuery.error != null ||
     pendingRegistrations > 0;
+
+  // شارة «تذكيرات الشطب»: عدد ملفات المحامي التي مضى على آخر إجراء فيها 5 أشهر.
+  const strikeOffReminders = useBadgeCount('/documents/strike-off-reminders/count', {
+    enabled: userReady && isLawyer,
+    shape: 'count',
+    pauseWhenHidden: true,
+  });
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
@@ -247,7 +254,7 @@ export default function Dashboard() {
           <GreetingHeader fullName={user?.fullName} />
           <div className="mt-4">
             <LawyerIconRow
-              counts={{ unseenReplies, unseenCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount }}
+              counts={{ unseenReplies, unseenCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount, strikeOffReminders }}
               showReferredFiles={showReferredFiles}
               pendingState={
                 pendingRegistrationsQuery.isLoading

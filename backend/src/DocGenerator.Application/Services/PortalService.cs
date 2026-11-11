@@ -208,6 +208,10 @@ public sealed class PortalService : IPortalService
         response.SectionId = null;
         response.SectionName = null;
         response.NeedsRegistration = false;
+        // بطاقة «تذكيرات الشطب» داخلية للمحامي: تاريخ آخر نشاط الملف ومصدره لا يُعرضان
+        // في البوابة القرائية (لا مستهلك لها في واجهة المندوب).
+        response.LastActivityDate = null;
+        response.LastActivitySource = null;
         response.ExecutionActions = response.ExecutionActions
             .Where(a => a.Type == "action")
             .OrderByDescending(a => a.CreatedAt)

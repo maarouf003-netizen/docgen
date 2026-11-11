@@ -68,6 +68,8 @@ public sealed class ExecutionActionService : IExecutionActionService
             Type = type,
             Text = text,
             ActionDate = actionDate,
+            // تاريخ الإجراء محلولًا للاستعلامات النطاقية (تذكيرات الشطب) — يُكتب هنا فقط.
+            ActionDateParsed = ActionDateParser.TryParse(actionDate),
             ReminderDuration = reminderDuration,
             ReminderColor = reminderColor,
             // تاريخ أساس التذكير يُثبَّت مرة واحدة عند الإنشاء من تاريخ الإجراء المحلول —
@@ -105,6 +107,8 @@ public sealed class ExecutionActionService : IExecutionActionService
         action.Type = type;
         action.Text = text;
         action.ActionDate = actionDate;
+        // التاريخ المحلول يتبع نص الإجراء المُدخل (لا يمسّه أي مسار تذكير).
+        action.ActionDateParsed = ActionDateParser.TryParse(actionDate);
 
         await _tx.RunAsync(async token =>
         {
@@ -307,6 +311,7 @@ public sealed class ExecutionActionService : IExecutionActionService
                 Type = type,
                 Text = text,
                 ActionDate = actionDate,
+                ActionDateParsed = ActionDateParser.TryParse(actionDate),
                 ReminderDuration = reminderDuration,
                 ReminderColor = reminderColor,
                 ReminderBaseDate = ActionReminderCalculator.BaseDateForNewReminder(reminderDuration, reminderColor, actionDate),

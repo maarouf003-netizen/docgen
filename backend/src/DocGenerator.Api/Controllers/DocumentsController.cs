@@ -36,6 +36,7 @@ public class DocumentsController : ControllerBase
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
+    private readonly IStrikeOffReminderService _strikeOffReminders;
     private readonly IAuditLogService _auditLogs;
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
@@ -50,6 +51,7 @@ public class DocumentsController : ControllerBase
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
         IDocumentAppealService appeals,
+        IStrikeOffReminderService strikeOffReminders,
         IAuditLogService auditLogs,
         IAuditLogger audit,
         TimeProvider clock,
@@ -63,6 +65,7 @@ public class DocumentsController : ControllerBase
         _generationOptions = generationOptions;
         _excel = excel;
         _appeals = appeals;
+        _strikeOffReminders = strikeOffReminders;
         _auditLogs = auditLogs;
         _audit = audit;
         _clock = clock;
@@ -296,6 +299,46 @@ public class DocumentsController : ControllerBase
 
         var result = await _search.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
+    }
+
+    /// <summary>
+    /// بطاقة «تذكيرات الشطب»: ملفات «طالبة تنفيذ» النشطة التي مضى على آخر إجراء فيها 5 أشهر —
+    /// المحامي فقط ولملفاته (النطاق من الرمز). القراءة محسوبة عند الطلب بلا كتابة.
+    /// </summary>
+    [HttpGet("strike-off-reminders")]
+    public async Task<IActionResult> GetStrikeOffReminders(
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+            return Forbid();
+
+        var result = await _strikeOffReminders.GetAsync(
+            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+        return OkSanitized(result);
+    }
+
+    /// <summary>عدد ملفات «تذكيرات الشطب» — لشارة بطاقة لوحة المحامي.</summary>
+    [HttpGet("strike-off-reminders/count")]
+    public async Task<IActionResult> GetStrikeOffRemindersCount(CancellationToken ct)
+    {
+        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+            return Forbid();
+
+        var count = await _strikeOffReminders.GetCountAsync(
+            User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+        return Ok(new { count });
+    }
+
+    /// <summary>إلغاء تذكير الشطب لملف يملكه المحامي (يُخفيه من البطاقة حتى إجراء أحدث).</summary>
+    [HttpPost("{id:int}/strike-off-reminder/dismiss")]
+    public async Task<IActionResult> DismissStrikeOffReminder(int id, CancellationToken ct)
+    {
+        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+            return Forbid();
+
+        return await _strikeOffReminders.DismissAsync(id, User.GetUserId(), ActorName, ct)
+            ? NoContent()
+            : NotFound();
     }
 
     [HttpGet("{id:int}")]

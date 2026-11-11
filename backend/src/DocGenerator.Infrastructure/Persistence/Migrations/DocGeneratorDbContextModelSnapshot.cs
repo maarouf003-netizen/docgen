@@ -1063,6 +1063,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("StrikeOffReminderDismissedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("StruckOffDate")
                         .HasColumnType("TEXT");
 
@@ -1913,6 +1916,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ActionDate")
                         .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ActionDateParsed")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")

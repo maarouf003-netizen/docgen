@@ -404,6 +404,13 @@ fileNumber?: string;
   executedExecutionDate?: string;
   /** لحظة شطب الملف (تاريخ إدخاله من النموذج وتبقى محفوظة بعد الإعادة). */
   struckOffDate?: string;
+  /**
+   * آخر نشاط للملف (بطاقة «تذكيرات الشطب»): أحدث إجراء مسجّل (الملاحظات لا تُحتسب)،
+   * وإلا تاريخ القيد، وإلا تاريخ الإدخال.
+   */
+  lastActivityDate?: string;
+  /** مصدر آخر نشاط: action | registration | created (يُعلن بصدق في العرض). */
+  lastActivitySource?: string;
   /** رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري). */
   renewalFileReceiptNumber?: string;
   /** تاريخ ورود اخطار التجديد عند إعادة الملف المشطوب (اختياري). */

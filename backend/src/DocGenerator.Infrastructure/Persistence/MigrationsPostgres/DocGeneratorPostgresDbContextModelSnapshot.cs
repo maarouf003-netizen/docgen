@@ -1096,6 +1096,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTime?>("StrikeOffReminderDismissedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("StruckOffDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -1969,6 +1972,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<string>("ActionDate")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("ActionDateParsed")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

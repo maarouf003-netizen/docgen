@@ -10,6 +10,8 @@ export interface LawyerIconCounts {
   pendingRegistrations: number;
   /** غير المقروء الشخصي (`scope=user` — `D6`) لبطاقة التنبيهات. */
   alertUnread: number;
+  /** ملفات المحامي المقاربة للشطب (مضى على آخر إجراء فيها 5 أشهر — بطاقة «تذكيرات الشطب»). */
+  strikeOffReminders: number;
 }
 
 /**
@@ -120,6 +122,26 @@ export function LawyerIconRow({
             }
           : undefined,
       to: '/alerts',
+    },
+    {
+      key: 'strike-off-reminders',
+      icon: ICONS.strikeOff,
+      title: 'تذكيرات الشطب',
+      subtitle:
+        counts.strikeOffReminders > 0 ? `${counts.strikeOffReminders} ملف قارب الشطب` : 'لا تذكيرات',
+      tone: 'bg-orange-100 text-orange-700',
+      badge:
+        counts.strikeOffReminders > 0
+          ? {
+              count: counts.strikeOffReminders,
+              label: arabicCount(
+                counts.strikeOffReminders,
+                'ملف واحد مضى على آخر إجراء فيه 5 أشهر',
+                'ملفات مضى على آخر إجراء فيها 5 أشهر',
+              ),
+            }
+          : undefined,
+      to: '/documents/strike-off-reminders',
     },
     {
       key: REFERRED_CARD_KEY,

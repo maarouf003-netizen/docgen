@@ -260,6 +260,12 @@ public class Document : IDocumentExecutionState
     public DateTime? StruckOffDate { get; set; }
 
     /// <summary>
+    /// لحظة «إلغاء تذكير الشطب» (UTC) من بطاقة تذكيرات الشطب: يُخفي الملف من البطاقة،
+    /// ويُبطَل منطقيًا عند تسجيل إجراء أحدث منه (بلا حذف — فلا يُفقد سجل الإلغاء).
+    /// </summary>
+    public DateTime? StrikeOffReminderDismissedAt { get; set; }
+
+    /// <summary>
     /// رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (تجديد الملف). اختياري.
     /// </summary>
     public string? RenewalFileReceiptNumber { get; set; }

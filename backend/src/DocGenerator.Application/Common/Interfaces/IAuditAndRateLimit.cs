@@ -297,6 +297,20 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>
+    /// معرّفات ملفات «تذكيرات الشطب» المستحقة (نشطة، «طالبة تنفيذ»، مضى على آخر إجراء فيها
+    /// ≥ عتبة الأشهر، وغير مُلغاة التذكير) مع تاريخ آخر نشاط UTC محسوبًا في SQL — مرتبةً
+    /// بالأقدم ركودًا. تُستكمل بتحميل الكتبة بـ`WithStandardIncludes` في الخدمة (خطوتان).
+    /// </summary>
+    Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items)> SearchStrikeOffReminderIdsAsync(
+        DateTime cutoffUtc,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
+    /// <summary>
     /// بحث ترحّلي عن الملفات المنفذة: ملفات وضع «منفذ عليه»/«عرض وايداع» بحالة «منفذ» فقط،
     /// وملفات «طالبة تنفيذ» المنفذة (بالتسوية أو الجبري الكامل) — يُعرض سجلها في صفحة
     /// «الملفات المنفذة». غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد المشطوبة.
@@ -323,6 +337,12 @@ public interface IDocumentRepository : IRepository<Document>
         int perPage,
         CancellationToken ct = default,
         int? ownerSectionId = null);
+
+    /// <summary>
+    /// تحميل مجموعة معرّفات بشجرة التحميل المعتمدة (`WithStandardIncludes`) لعرض
+    /// `DocumentResponse` كاملًا بعد تصفية/ترقيم في SQL (الترتيب يُعاد في الخدمة).
+    /// </summary>
+    Task<List<Document>> GetByIdsWithStandardIncludesAsync(List<int> ids, CancellationToken ct = default);
 }
 
 /// <summary>

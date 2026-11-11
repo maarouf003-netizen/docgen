@@ -10,27 +10,31 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-const zero = { unseenReplies: 0, unseenCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 0, alertUnread: 0 };
+const zero = { unseenReplies: 0, unseenCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 0, alertUnread: 0, strikeOffReminders: 0 };
 
 describe('LawyerIconRow', () => {
-  it('يعرض البطاقات السبع بروابطها الصحيحة', () => {
+  it('يعرض البطاقات الثماني بروابطها الصحيحة', () => {
     render(<LawyerIconRow counts={zero} showReferredFiles />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
-    expect(nav.querySelectorAll('a')).toHaveLength(7);
+    expect(nav.querySelectorAll('a')).toHaveLength(8);
     expect(screen.getByRole('link', { name: 'التنبيهات' })).toHaveAttribute('href', '/alerts');
     expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
     expect(screen.getByRole('link', { name: 'التقويم' })).toHaveAttribute('href', '/calendar');
     expect(screen.getByRole('link', { name: 'الحساب الشخصي' })).toHaveAttribute('href', '/account');
+    expect(screen.getByRole('link', { name: 'تذكيرات الشطب' })).toHaveAttribute(
+      'href',
+      '/documents/strike-off-reminders',
+    );
     expect(screen.getByRole('link', { name: 'ملفات معلقة' })).toHaveAttribute('href', '/pending-registrations');
   });
 
   it('يُظهر الأجراس الحمراء بعدّاداتها في التسمية عند وجود تنبيه', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 3, unseenCorrespondence: 0, calendarAlerts: 2, pendingRegistrations: 0, alertUnread: 0 }}
+        counts={{ unseenReplies: 3, unseenCorrespondence: 0, calendarAlerts: 2, pendingRegistrations: 0, alertUnread: 0, strikeOffReminders: 0 }}
         showReferredFiles
       />,
     );
@@ -45,7 +49,7 @@ describe('LawyerIconRow', () => {
   it('يُظهر شارة الملفات المحالة بعدّادها عند وجود معلقات', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 0, unseenCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 2, alertUnread: 0 }}
+        counts={{ unseenReplies: 0, unseenCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 2, alertUnread: 0, strikeOffReminders: 0 }}
         showReferredFiles
       />,
     );
@@ -55,10 +59,25 @@ describe('LawyerIconRow', () => {
     ).toBeInTheDocument();
   });
 
+  it('يعرض شارة تذكيرات الشطب بعدّادها (مفرد وجمع)', () => {
+    const { unmount } = render(
+      <LawyerIconRow counts={{ ...zero, strikeOffReminders: 3 }} showReferredFiles />,
+    );
+    expect(
+      screen.getByRole('link', { name: 'تذكيرات الشطب — 3 ملفات مضى على آخر إجراء فيها 5 أشهر' }),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(<LawyerIconRow counts={{ ...zero, strikeOffReminders: 1 }} showReferredFiles />);
+    expect(
+      screen.getByRole('link', { name: 'تذكيرات الشطب — ملف واحد مضى على آخر إجراء فيه 5 أشهر' }),
+    ).toBeInTheDocument();
+  });
+
   it('يستخدم المفرد التام عند العدّ 1 (لا «1 مراسلات» ولا «1 ردود»)', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 1, unseenCorrespondence: 1, calendarAlerts: 1, pendingRegistrations: 1, alertUnread: 0 }}
+        counts={{ unseenReplies: 1, unseenCorrespondence: 1, calendarAlerts: 1, pendingRegistrations: 1, alertUnread: 0, strikeOffReminders: 0 }}
         showReferredFiles
       />,
     );
@@ -77,7 +96,7 @@ describe('LawyerIconRow', () => {
     render(<LawyerIconRow counts={zero} showReferredFiles={false} />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
-    expect(nav.querySelectorAll('a')).toHaveLength(6);
+    expect(nav.querySelectorAll('a')).toHaveLength(7);
     expect(screen.queryByRole('link', { name: 'ملفات معلقة' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'لا معلقات' })).not.toBeInTheDocument();
   });
