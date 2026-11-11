@@ -147,15 +147,26 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (doc is null)
             return false;
 
+        await ClearReminderCoreAsync(action, doc, actorName, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه `ClearReminderAsync`،
+    /// ومسار `PUT .../reminder` بالحقلين الفارغين) فلا تنحرف رسالة التدقيق بين المسارين.
+    /// يستقبل الكيان المحمَّل والمستند تفاديًا لإعادة القراءة.
+    /// </summary>
+    private async Task ClearReminderCoreAsync(
+        ExecutionAction action, Document doc, string? actorName, CancellationToken ct)
+    {
         ClearReminderFields(action);
 
-        return await _tx.RunAsync(async token =>
+        await _tx.RunAsync(async token =>
         {
             _actions.Update(action);
             await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
+            await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
                 DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-            return true;
         }, ct);
     }
 
@@ -180,16 +191,7 @@ public sealed class ExecutionActionService : IExecutionActionService
 
         if (reminderDuration is null && reminderColor is null)
         {
-            ClearReminderFields(action);
-
-            await _tx.RunAsync(async token =>
-            {
-                _actions.Update(action);
-                await _uow.SaveChangesAsync(token);
-                await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                    DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-            }, ct);
-
+            await ClearReminderCoreAsync(action, doc, actorName, ct);
             return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
                 action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
         }
@@ -213,11 +215,10 @@ public sealed class ExecutionActionService : IExecutionActionService
     }
 
     /// <summary>
-    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل (`newDueDate`)
-    /// هو يوم الاستحقاق نفسه لا تاريخ الإجراء، فيُعاد حساب
-    /// `ActionDate = newDueDate − DurationDays(ReminderDuration)` مع بقاء المدة
-    /// وبقية الحقول دون مساس. لا منطق تواريخ جديد هنا — المصدر الوحيد
-    /// (`DocumentValidator` + `ActionReminderCalculator`) كما في بقية المسارات.
+    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل (`newDueDate`) هو يوم
+    /// الاستحقاق نفسه لا تاريخ الإجراء؛ وتُكتب `ReminderBaseDate = newDueDate − DurationDays`
+    /// مع بقاء المدة وبقية الحقول دون مساس. **تاريخ الإجراء لا يُكتب ولا يُعاد تنسيقه** —
+    /// واقعة قانونية (I1) — وكل حسابات التذكير على `DateTime` لا على نص (I7).
     /// </summary>
     public async Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default)
     {

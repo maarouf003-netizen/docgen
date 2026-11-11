@@ -1168,25 +1168,25 @@ public class DocumentAppealServiceTests : IDisposable
         var action = await _service.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء بلا تذكير", "10-11-2026", null, null),
             _lawyer2.Id, "lawyer2");
-        Assert.Null((await _db.AppealActions.FindAsync(action.Id))!.ReminderBaseDate);
+        Assert.Null((await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
 
         await _service.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest("3 أيام", "أحمر"), _lawyer2.Id, "lawyer2");
-        var stored = (await _db.AppealActions.FindAsync(action.Id))!;
+        var stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
         await _service.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer2.Id, "lawyer2");
-        stored = (await _db.AppealActions.FindAsync(action.Id))!;
+        stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("أسبوع", stored.ReminderDuration);
 
         // الإلغاء بالحقلين الفارغين = تصفير الكل.
         await _service.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest(null, null), _lawyer2.Id, "lawyer2");
-        stored = (await _db.AppealActions.FindAsync(action.Id))!;
+        stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Null(stored.ReminderDuration);
         Assert.Null(stored.ReminderColor);
         Assert.Null(stored.ReminderBaseDate);
@@ -1204,6 +1204,26 @@ public class DocumentAppealServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.SetReminderAsync(appealId, action.Id,
                 new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer1.Id, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task Reminders_IncludeAppealActionWithExplicitBaseOnly()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء", "1/11/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        // القاعدة تمنع تذكيرًا بلا مدة/لون عبر الخدمة ⇒ يُزرع الأساس مباشرة لإثبات
+        // أن فلتر بطاقة التذكيرات الموسّع لا يُسقط تذكيرًا له استحقاق صريح.
+        var tracked = await _db.AppealActions.FirstAsync(a => a.Id == action.Id);
+        tracked.ReminderBaseDate = new DateTime(2026, 11, 5);
+        await _db.SaveChangesAsync();
+
+        var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
+        var reminder = Assert.Single(reminders, r => r.ActionId == action.Id);
+        Assert.Equal(new DateTime(2026, 11, 5), reminder.DueDate.Date);
+        Assert.False(reminder.DueDateSuspect);
     }
 
     [Fact]

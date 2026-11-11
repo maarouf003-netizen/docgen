@@ -3,6 +3,7 @@ import { api, getApiErrorMessage } from '../../api/client';
 import { sanitizeRichText, richToPlainText } from '../../utils/richText';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import RichTextEditor from '../RichTextEditor';
+import { isReminderDirty, isReminderIncomplete, type LoadedReminder } from '../../utils/actionReminderInput';
 import type { AppealActionDto } from '../../types';
 
 function isNote(a: AppealActionDto) {
@@ -50,7 +51,7 @@ export default function AppealActionsModal({
   const [busyId, setBusyId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
   // حالة التذكير المحمّلة عند بدء التعديل — لا طلب تذكير في تعديل نص/تاريخ فقط.
-  const [loadedReminder, setLoadedReminder] = useState<{ duration: string; color: string } | null>(null);
+  const [loadedReminder, setLoadedReminder] = useState<LoadedReminder | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -93,6 +94,12 @@ export default function AppealActionsModal({
       document.getElementById('appeal-action-date')?.focus();
       return;
     }
+    // تذكير مفعّل بلا مدة/لون = طلب فارغ يعامله الخادم إلغاءً ⇒ يُرفض أماميًا.
+    if (isReminderIncomplete(remind, reminderDuration, reminderColor)) {
+      setSaveError('اختر مدة التذكير أو ألغِ التفعيل');
+      document.getElementById('appeal-reminder-duration')?.focus();
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
@@ -104,11 +111,7 @@ export default function AppealActionsModal({
       if (editingId !== null) {
         // تعديل الإجراء لا يمسّ التذكير (العقد لا يحمل حقول تذكير).
         await api.put(`/appeals/${appealId}/actions/${editingId}`, actionBody);
-        const reminderDirty =
-          remind !== (loadedReminder !== null) ||
-          (remind &&
-            (reminderDuration !== (loadedReminder?.duration ?? '') ||
-              reminderColor !== (loadedReminder?.color ?? '')));
+        const reminderDirty = isReminderDirty(remind, reminderDuration, reminderColor, loadedReminder);
         if (reminderDirty) {
           try {
             if (remind) {

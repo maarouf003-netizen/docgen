@@ -11,13 +11,6 @@ namespace DocGenerator.Application.Common;
 public static class ActionReminderCalculator
 {
     /// <summary>
-    /// تاريخ الاستحقاق = (تاريخ أساس التذكير ?? تاريخ الإجراء ?? تاريخ الإنشاء) + مدة التذكير.
-    /// </summary>
-    public static DateTime ComputeDueDate(
-        DateTime? reminderBaseDate, string? actionDate, string? duration, DateTime createdAt)
-        => TryComputeDueDate(reminderBaseDate, actionDate, duration, createdAt).DueDate;
-
-    /// <summary>
     /// يحسب تاريخ الاستحقاق مع وسم الجودة: مشتبه عندما يُسقط الحساب إلى احتياط صامت —
     /// أي حين يغيب تاريخ الأساس وتكون مدة غير معروفة أو تاريخ إجراء غير فارغ ولا يُحلَّل.
     /// الأساس الصريح (`ReminderBaseDate`) مؤكد بطبيعته فلا يرفع وسمًا بسبب نص تاريخ قديم.

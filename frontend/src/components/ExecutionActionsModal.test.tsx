@@ -303,6 +303,24 @@ describe('ExecutionActionsModal', () => {
     });
   });
 
+  it('يرفض «ذكرني» بلا مدة/لون بلا أي إرسال (لا مسح صامت)', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('لا توجد إجراءات أو ملاحظات بعد');
+    await user.click(screen.getByText('+ إضافة إجراء أو ملاحظة'));
+    await user.type(editorBox(), 'إجراء بتذكير ناقص');
+    await user.type(screen.getByPlaceholderText('مثال: 1/8/2026'), '3/8/2026');
+    await user.click(screen.getByRole('button', { name: 'ذكرني' }));
+    await user.click(screen.getByRole('button', { name: 'حفظ كإجراء' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('اختر مدة التذكير');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText('مدة التذكير'));
+  });
+
   it('يبقي أزرار الحفظ والإلغاء داخل النافذة في منطقة قابلة للتمرير داخليًا', async () => {
     const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });

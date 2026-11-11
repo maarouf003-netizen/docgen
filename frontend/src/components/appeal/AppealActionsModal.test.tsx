@@ -69,6 +69,22 @@ describe('AppealActionsModal', () => {
     });
   });
 
+  it('يرفض «ذكرني» بلا مدة/لون بلا أي إرسال', async () => {
+    const user = userEvent.setup();
+    render(<AppealActionsModal appealId={7} onClose={noop} canWrite />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إضافة إجراء أو ملاحظة' }));
+    await user.click(screen.getByLabelText('أدخل نص الإجراء أو الملاحظة...'));
+    await user.keyboard('إجراء بتذكير ناقص');
+    await user.type(screen.getByLabelText(/التاريخ/), '3/8/2026');
+    await user.click(screen.getByRole('button', { name: 'ذكرني' }));
+    await user.click(screen.getByRole('button', { name: 'حفظ كإجراء' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('اختر مدة التذكير');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText('مدة التذكير'));
+  });
+
   it('تعديل الإجراء يُرسَل بلا حقول تذكير (العقد لا يحملها)', async () => {
     const user = userEvent.setup();
     (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});

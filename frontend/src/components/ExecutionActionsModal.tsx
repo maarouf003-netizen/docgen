@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth';
 import { sanitizeRichText, richToPlainText } from '../utils/richText';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import RichTextEditor from './RichTextEditor';
+import { isReminderDirty, isReminderIncomplete, type LoadedReminder } from '../utils/actionReminderInput';
 import type { ExecutionActionDto } from '../types';
 
 function isNote(a: ExecutionActionDto) {
@@ -48,7 +49,7 @@ export default function ExecutionActionsModal({
   const [formSession, setFormSession] = useState(0);
   // حالة التذكير المحمّلة عند بدء التعديل — لتحديد إن كان المستخدم غيّرها فعلًا،
   // فلا يُرسل طلب تذكير في تعديل نص/تاريخ فقط (حقول التذكير خارج عقد تعديل الإجراء).
-  const [loadedReminder, setLoadedReminder] = useState<{ duration: string; color: string } | null>(null);
+  const [loadedReminder, setLoadedReminder] = useState<LoadedReminder | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -84,6 +85,13 @@ export default function ExecutionActionsModal({
       setSaveError('نص الإجراء أو الملاحظة مطلوب');
       return;
     }
+    // تذكير مفعّل بلا مدة/لون = طلب فارغ يعامله الخادم إلغاءً ⇒ يُرفض أماميًا
+    // بدل حفظ صامت بلا تذكير.
+    if (isReminderIncomplete(remind, reminderDuration, reminderColor)) {
+      setSaveError('اختر مدة التذكير أو ألغِ التفعيل');
+      document.getElementById('reminder-duration')?.focus();
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
@@ -96,11 +104,7 @@ export default function ExecutionActionsModal({
         // تعديل الإجراء (نص/تاريخ) لا يمسّ التذكير — العقد لا يحمل حقول تذكير.
         await api.put(`/documents/${documentId}/actions/${editingId}`, actionBody);
         // التذكير يُدار من مساره المستقل، وفقط إن غيّره المستخدم فعلًا.
-        const reminderDirty =
-          remind !== (loadedReminder !== null) ||
-          (remind &&
-            (reminderDuration !== (loadedReminder?.duration ?? '') ||
-              reminderColor !== (loadedReminder?.color ?? '')));
+        const reminderDirty = isReminderDirty(remind, reminderDuration, reminderColor, loadedReminder);
         if (reminderDirty) {
           try {
             if (remind) {

@@ -2692,7 +2692,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أسبوع", updated.ReminderDuration);
         Assert.Equal("أصفر", updated.ReminderColor);
         Assert.Equal(new DateTime(2026, 1, 1),
-            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
 
         var reminded = await _actions.SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "شهر", ReminderColor = "بنفسجي" }, "lawyer1");
@@ -2702,7 +2702,7 @@ public class DocumentServiceTests : IDisposable
         // تاريخ الإجراء لم يتغيّر بفعل مسار التذكير، والأساس ثابت لا يُعاد تأسيسه.
         Assert.Equal("2/2/2026", reminded.ActionDate);
         Assert.Equal(new DateTime(2026, 1, 1),
-            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     /// <summary>
@@ -2716,25 +2716,25 @@ public class DocumentServiceTests : IDisposable
         var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "إجراء بلا تذكير", ActionDate = "10-11-2026" },
             userId: 1, actorName: "lawyer1");
-        Assert.Null((await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+        Assert.Null((await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
 
         await _actions.SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
-        var stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        var stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
         await _actions.SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "أسبوع", ReminderColor = "أحمر" }, "lawyer1");
-        stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("أسبوع", stored.ReminderDuration);
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // الإلغاء بالحقلين الفارغين = تصفير الثلاثة (نقطة قرار واحدة مع DELETE).
         await _actions.SetReminderAsync(doc.Id, action.Id, new SetActionReminderRequest(), "lawyer1");
-        stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Null(stored.ReminderDuration);
         Assert.Null(stored.ReminderColor);
         Assert.Null(stored.ReminderBaseDate);
@@ -2764,7 +2764,7 @@ public class DocumentServiceTests : IDisposable
         await _actions.SetReminderAsync(doc.Id, legacy.Id,
             new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
 
-        var stored = (await _db.ExecutionActions.FindAsync(legacy.Id))!;
+        var stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!;
         Assert.Null(stored.ReminderBaseDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
             stored.ReminderBaseDate, stored.ActionDate, stored.ReminderDuration, stored.CreatedAt);

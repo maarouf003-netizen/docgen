@@ -86,7 +86,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         // تاريخ الإجراء واقعة قانونية: يبقى كما أُدخل حرفيًا.
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         // أساس التذكير انتقل خلفيًا: 10/8 − 3 أيام.
-        var stored = await _db.ExecutionActions.FindAsync(action.Id);
+        var stored = await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id);
         Assert.Equal(new DateTime(2026, 8, 7), stored!.ReminderBaseDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
             stored.ReminderBaseDate, rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
@@ -131,7 +131,7 @@ public class RescheduleDocumentReminderTests : IDisposable
 
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal(new DateTime(2026, 8, 7),
-            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Theory]
@@ -195,7 +195,7 @@ public class RescheduleDocumentReminderTests : IDisposable
             () => _actions.RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات", ex.Message);
         // التاريخ الأصلي لم يُمسّ.
-        Assert.Equal("1/8/2026", (await _db.ExecutionActions.FindAsync(legacy.Id))!.ActionDate);
+        Assert.Equal("1/8/2026", (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!.ActionDate);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         // بلا مدة ⇒ الأساس هو يوم الاستحقاق نفسه، وتاريخ الإجراء لا يُلمس.
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal(new DateTime(2026, 8, 10),
-            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal("note", rescheduled.Type);
         Assert.Equal(new DateTime(2026, 8, 8),
-            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Fact]
@@ -361,7 +361,7 @@ public class RescheduleAppealReminderTests : IDisposable
             appealId, action.Id, "15/8/2026", _lawyer2.Id, "lawyer2");
 
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
-        var stored = await _db.AppealActions.FindAsync(action.Id);
+        var stored = await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id);
         Assert.Equal(new DateTime(2026, 8, 8), stored!.ReminderBaseDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
             stored.ReminderBaseDate, rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);

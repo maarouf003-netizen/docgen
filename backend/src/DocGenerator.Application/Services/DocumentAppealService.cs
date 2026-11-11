@@ -892,6 +892,17 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
             ?? throw new ArgumentException("الإجراء غير موجود");
 
+        await ClearReminderCoreAsync(appeal, action, actorName, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه `ClearReminderAsync`
+    /// ومسار `PUT .../reminder` بالحقلين الفارغين) فلا تختلف رسالة التدقيق بين المسارين.
+    /// </summary>
+    private async Task ClearReminderCoreAsync(
+        DocumentAppeal appeal, AppealAction action, string? actorName, CancellationToken ct)
+    {
         ClearReminderFields(action);
 
         await _tx.RunAsync(async token =>
@@ -901,8 +912,6 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"ألغى تذكير إجراء على الاستئناف (رقم {appeal.Id})", token);
         }, ct);
-
-        return true;
     }
 
     /// <summary>
@@ -930,15 +939,14 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         if (reminderDuration is null && reminderColor is null)
         {
-            ClearReminderFields(action);
+            await ClearReminderCoreAsync(appeal, action, actorName, ct);
+            return ToActionDto(action);
         }
-        else
-        {
-            action.ReminderDuration = reminderDuration;
-            action.ReminderColor = reminderColor;
-            // بلا سقوط إلى `CreatedAt`: الأساس null يبقى سقوطًا ديناميكيًا موسومًا (§ الخطة).
-            action.ReminderBaseDate ??= ActionDateParser.TryParse(action.ActionDate);
-        }
+
+        action.ReminderDuration = reminderDuration;
+        action.ReminderColor = reminderColor;
+        // بلا سقوط إلى `CreatedAt`: الأساس null يبقى سقوطًا ديناميكيًا موسومًا (§ الخطة).
+        action.ReminderBaseDate ??= ActionDateParser.TryParse(action.ActionDate);
 
         await _tx.RunAsync(async token =>
         {

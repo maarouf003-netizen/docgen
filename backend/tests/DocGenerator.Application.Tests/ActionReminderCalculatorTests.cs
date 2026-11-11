@@ -122,16 +122,6 @@ public class ActionReminderCalculatorTests
             Assert.Null(baseDate);
     }
 
-    [Fact]
-    public void ComputeDueDate_MatchesTryComputeDueDate()
-    {
-        var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        Assert.Equal(
-            ActionReminderCalculator.TryComputeDueDate(null, "1/8/2026", "شهر", createdAt).DueDate,
-            ActionReminderCalculator.ComputeDueDate(null, "1/8/2026", "شهر", createdAt));
-    }
-
     [Theory]
     [InlineData("سنة", "أحمر")]
     [InlineData("أسبوع", "أخضر")]

@@ -1,6 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Entities;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
@@ -140,5 +144,71 @@ public class ActionReminderSeparationIntegrationTests
             new { reminderDuration = "أسبوع", reminderColor = "أحمر" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetReminder_InvalidDuration_BadRequest()
+    {
+        var (client, documentId, _) = await CreateDocAsync();
+        var action = await AddActionAsync(client, documentId);
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/documents/{documentId}/actions/{action.Id}/reminder",
+            new { reminderDuration = "سنة", reminderColor = "أحمر" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("مدة تذكير", await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// فلتر القراءة الموسّع: صف له تاريخ أساس صريح بلا مدة/لون لا يُنتجه الـAPI (القاعدة
+    /// تمنع تذكيرًا بلا مدة/لون)، فيُزرع مباشرة لإثبات أن الفلتر لا يُسقط تذكيرًا مؤكدًا.
+    /// </summary>
+    [Fact]
+    public async Task Reminders_IncludeRowWithExplicitBaseOnly()
+    {
+        var (client, documentId, _) = await CreateDocAsync();
+        int actionId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var lawyerId = db.Users.Single(u => u.Username == "lawyer1").Id;
+            var row = new ExecutionAction
+            {
+                DocumentId = documentId,
+                Type = "action",
+                Text = "إجراء بتاريخ أساس فقط",
+                ActionDate = "1/11/2026",
+                ReminderBaseDate = new DateTime(2026, 11, 5),
+                CreatedById = lawyerId,
+                CreatedAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc),
+            };
+            db.ExecutionActions.Add(row);
+            await db.SaveChangesAsync();
+            actionId = row.Id;
+        }
+
+        try
+        {
+            var reminders = await (await client.GetAsync("/api/reminders"))
+                .Content.ReadFromJsonAsync<List<ReminderDto>>();
+            var reminder = Assert.Single(reminders!, r => r.ActionId == actionId);
+            // بلا مدة: الأساس نفسه هو الاستحقاق.
+            Assert.Equal(new DateTime(2026, 11, 5), reminder.DueDate.Date);
+            Assert.False(reminder.DueDateSuspect);
+        }
+        finally
+        {
+            // تنظيف: قاعدة الاختبار مشتركة عبر المجموعة، فلا يُترك صف تذكير غريب لبقية الاختبارات.
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var seeded = await db.ExecutionActions.FirstOrDefaultAsync(a => a.Id == actionId);
+            if (seeded is not null)
+            {
+                db.ExecutionActions.Remove(seeded);
+                await db.SaveChangesAsync();
+            }
+        }
     }
 }
