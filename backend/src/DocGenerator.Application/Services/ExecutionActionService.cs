@@ -70,6 +70,9 @@ public sealed class ExecutionActionService : IExecutionActionService
             ActionDate = actionDate,
             ReminderDuration = reminderDuration,
             ReminderColor = reminderColor,
+            // تاريخ أساس التذكير يُثبَّت مرة واحدة عند الإنشاء من تاريخ الإجراء المحلول —
+            // ولا يُشتق لاحقًا من نص الإجراء ولا يُكتب فيه أي مسار تذكير.
+            ReminderBaseDate = ActionReminderCalculator.BaseDateForNewReminder(reminderDuration, reminderColor, actionDate),
             CreatedById = userId,
             CreatedAt = DateTime.UtcNow,
         };
@@ -87,8 +90,9 @@ public sealed class ExecutionActionService : IExecutionActionService
 
     public async Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default)
     {
+        // تعديل الإجراء (نوع/نص/تاريخ) لا يكتب أي حقل تذكير: حالة التذكير تُدار من
+        // `SetReminderAsync` و«نقل التذكير» حصرًا، فلا يتغيّر `ReminderBaseDate` هنا أبدًا.
         var (type, text, actionDate) = NormalizeAction(request.Type, request.Text, request.ActionDate);
-        var (reminderDuration, reminderColor) = NormalizeReminder(request.ReminderDuration, request.ReminderColor);
 
         var action = await _actions.GetByIdAsync(actionId, ct);
         if (action is null || action.DocumentId != documentId)
@@ -101,8 +105,6 @@ public sealed class ExecutionActionService : IExecutionActionService
         action.Type = type;
         action.Text = text;
         action.ActionDate = actionDate;
-        action.ReminderDuration = reminderDuration;
-        action.ReminderColor = reminderColor;
 
         await _tx.RunAsync(async token =>
         {
@@ -145,8 +147,7 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (doc is null)
             return false;
 
-        action.ReminderDuration = null;
-        action.ReminderColor = null;
+        ClearReminderFields(action);
 
         return await _tx.RunAsync(async token =>
         {
@@ -156,6 +157,59 @@ public sealed class ExecutionActionService : IExecutionActionService
                 DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
             return true;
         }, ct);
+    }
+
+    /// <summary>
+    /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون): تهيئة `ReminderBaseDate` من تاريخ الإجراء
+    /// مرة واحدة فقط (`??=`) — بلا سقوط إلى `CreatedAt` كي لا يُجمَّد احتياط صامت؛ والصفوف
+    /// القديمة غير القابلة للتحليل تبقى أساسها `null` فيُحسب الاستحقاق احتياطيًا **موسومًا**.
+    /// إرسال الحقلين فارغين = إلغاء التذكير (نقطة قرار واحدة مع `ClearReminderAsync`).
+    /// </summary>
+    public async Task<ExecutionActionDto> SetReminderAsync(
+        int documentId, int actionId, SetActionReminderRequest request, string? actorName, CancellationToken ct = default)
+    {
+        var action = await _actions.GetByIdAsync(actionId, ct);
+        if (action is null || action.DocumentId != documentId)
+            throw new KeyNotFoundException();
+
+        var doc = await _documents.GetByIdAsync(documentId, ct);
+        if (doc is null)
+            throw new KeyNotFoundException();
+
+        var (reminderDuration, reminderColor) = NormalizeReminder(request.ReminderDuration, request.ReminderColor);
+
+        if (reminderDuration is null && reminderColor is null)
+        {
+            ClearReminderFields(action);
+
+            await _tx.RunAsync(async token =>
+            {
+                _actions.Update(action);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
+                    DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
+            }, ct);
+
+            return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
+                action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+        }
+
+        action.ReminderDuration = reminderDuration;
+        action.ReminderColor = reminderColor;
+        action.ReminderBaseDate ??= ActionDateParser.TryParse(action.ActionDate);
+
+        await _tx.RunAsync(async token =>
+        {
+            _actions.Update(action);
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
+                DocumentText.AuditWithActor(
+                    $"ضبط تذكير {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)} ({reminderDuration ?? "—"} — {reminderColor ?? "—"})",
+                    doc), token);
+        }, ct);
+
+        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
+            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
     }
 
     /// <summary>
@@ -181,7 +235,9 @@ public sealed class ExecutionActionService : IExecutionActionService
         var due = DocumentValidator.ParseDateTime(newDueDate.Trim(), "اليوم الجديد")
             ?? throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
 
-        if (string.IsNullOrWhiteSpace(action.ReminderDuration) && string.IsNullOrWhiteSpace(action.ReminderColor))
+        if (string.IsNullOrWhiteSpace(action.ReminderDuration)
+            && string.IsNullOrWhiteSpace(action.ReminderColor)
+            && action.ReminderBaseDate is null)
             throw new ArgumentException("لا يوجد تذكير لإعادة جدولته");
 
         // حارس المدة الملتبسة (بيانات قديمة): مدة غير فارغة خارج المدد الأربع كانت
@@ -191,17 +247,19 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (!string.IsNullOrWhiteSpace(trimmedDuration) && !ActionReminderCalculator.ValidDurations.Contains(trimmedDuration))
             throw new ArgumentException("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات");
 
-        var oldActionDate = action.ActionDate;
-        var newActionDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration))
-            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        action.ActionDate = newActionDate;
+        // الإسناد إلى تاريخ أساس التذكير وحده (`DateTime` خالص): تاريخ الإجراء واقعة
+        // قانونية لا تُعاد كتابتها، ولا يُعاد تنسيق نصها — I1/I7.
+        var oldBaseDate = action.ReminderBaseDate;
+        action.ReminderBaseDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration));
 
         await _tx.RunAsync(async token =>
         {
             _actions.Update(action);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor($"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {newActionDate})", doc), token);
+                DocumentText.AuditWithActor(
+                    $"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الأساس: {oldBaseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—"} ← {action.ReminderBaseDate:yyyy-MM-dd}) — تاريخ الإجراء لم يتغير",
+                    doc), token);
         }, ct);
         return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
             action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
@@ -250,6 +308,7 @@ public sealed class ExecutionActionService : IExecutionActionService
                 ActionDate = actionDate,
                 ReminderDuration = reminderDuration,
                 ReminderColor = reminderColor,
+                ReminderBaseDate = ActionReminderCalculator.BaseDateForNewReminder(reminderDuration, reminderColor, actionDate),
                 CreatedById = userId.Value,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -287,6 +346,17 @@ public sealed class ExecutionActionService : IExecutionActionService
         ActionReminderCalculator.ValidateActionDate(trimmedDate, "تاريخ الإجراء");
 
         return (type, sanitizedText, trimmedDate);
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير كلها (المدة/اللون/الأساس) — نقطة واحدة يستخدمها الإلغاء المباشر
+    /// والـ`PUT` بالحقلين الفارغين، فلا ينحرف أحد المسارين عن الآخر.
+    /// </summary>
+    private static void ClearReminderFields(ExecutionAction action)
+    {
+        action.ReminderDuration = null;
+        action.ReminderColor = null;
+        action.ReminderBaseDate = null;
     }
 
     private static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)

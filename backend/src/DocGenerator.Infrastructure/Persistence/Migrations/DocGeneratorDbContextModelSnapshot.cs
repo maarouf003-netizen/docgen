@@ -65,6 +65,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("CreatedById")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ReminderBaseDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReminderColor")
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
@@ -1920,6 +1923,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("DocumentId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReminderBaseDate")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ReminderColor")
                         .HasMaxLength(20)

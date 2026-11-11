@@ -9,7 +9,7 @@ public class ActionReminderCalculatorTests
     {
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate("1/8/2026", "أسبوع", createdAt);
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, "1/8/2026", "أسبوع", createdAt);
 
         Assert.False(suspect);
         Assert.Equal(new DateTime(2026, 8, 8), dueDate);
@@ -21,7 +21,7 @@ public class ActionReminderCalculatorTests
         // الغياب قصد تصميمي (تاريخ الإنشاء + المدة) لا تلف — فلا وسم.
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, null, createdAt);
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, null, null, createdAt);
 
         Assert.False(suspect);
         Assert.Equal(new DateTime(2026, 8, 1), dueDate);
@@ -32,7 +32,7 @@ public class ActionReminderCalculatorTests
     {
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate("ليس تاريخا", "أسبوع", createdAt);
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, "ليس تاريخا", "أسبوع", createdAt);
 
         Assert.True(suspect);
         Assert.Equal(new DateTime(2026, 8, 8), dueDate);
@@ -43,7 +43,7 @@ public class ActionReminderCalculatorTests
     {
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate("1/8/2026", "سنة", createdAt);
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, "1/8/2026", "سنة", createdAt);
 
         Assert.True(suspect);
         Assert.Equal(new DateTime(2026, 8, 1), dueDate);
@@ -55,10 +55,71 @@ public class ActionReminderCalculatorTests
         // انحدار مُكتشف بالمراجعة: مسافات زائدة كانت توسم «سليمة» وتحسب `0` أيام معًا.
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate("1/8/2026", " أسبوع ", createdAt);
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(null, "1/8/2026", " أسبوع ", createdAt);
 
         Assert.False(suspect);
         Assert.Equal(new DateTime(2026, 8, 8), dueDate);
+    }
+
+    /// <summary>
+    /// الأساس الصريح (`ReminderBaseDate`) يتقدّم على تاريخ الإجراء، ولا يُوسم «مشتبه» بسبب
+    /// نص تاريخ قديم غير قابل للتحليل — الموعد بيانات مؤكدة لا نتيجة حساب احتياطي.
+    /// </summary>
+    [Fact]
+    public void TryComputeDueDate_ExplicitBase_WinsOverUnparsableActionDate_NotSuspect()
+    {
+        var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baseDate = new DateTime(2026, 10, 11);
+
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(
+            baseDate, "ليس تاريخا", "3 أيام", createdAt);
+
+        Assert.False(suspect);
+        Assert.Equal(new DateTime(2026, 10, 14), dueDate);
+    }
+
+    /// <summary>الأساس الصريح يتقدّم على تاريخ الإجراء الصالح أيضًا (حالة النقل).</summary>
+    [Fact]
+    public void TryComputeDueDate_ExplicitBase_WinsOverActionDate()
+    {
+        var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baseDate = new DateTime(2026, 11, 11);
+
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(
+            baseDate, "10/11/2026", "3 أيام", createdAt);
+
+        Assert.False(suspect);
+        Assert.Equal(new DateTime(2026, 11, 14), dueDate);
+    }
+
+    /// <summary>غياب الأساس يُبقي السلوك التاريخي: تاريخ الإجراء + المدة (لا انحدار للصفوف القديمة).</summary>
+    [Fact]
+    public void TryComputeDueDate_NoBase_FallsBackToActionDate()
+    {
+        var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(
+            null, "10/11/2026", "3 أيام", createdAt);
+
+        Assert.False(suspect);
+        Assert.Equal(new DateTime(2026, 11, 13), dueDate);
+    }
+
+    /// <summary>قاعدة الإنشاء: الأساس = تاريخ الإجراء عند طلب تذكير، و`null` بلا تذكير.</summary>
+    [Theory]
+    [InlineData("3 أيام", "أحمر", "10/11/2026", true)]
+    [InlineData(null, "أحمر", "10/11/2026", true)]
+    [InlineData("3 أيام", null, "10/11/2026", true)]
+    [InlineData(null, null, "10/11/2026", false)]
+    public void BaseDateForNewReminder_RequiresReminderAndParsesDate(
+        string? duration, string? color, string actionDate, bool expectBase)
+    {
+        var baseDate = ActionReminderCalculator.BaseDateForNewReminder(duration, color, actionDate);
+
+        if (expectBase)
+            Assert.Equal(new DateTime(2026, 11, 10), baseDate);
+        else
+            Assert.Null(baseDate);
     }
 
     [Fact]
@@ -67,8 +128,8 @@ public class ActionReminderCalculatorTests
         var createdAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal(
-            ActionReminderCalculator.TryComputeDueDate("1/8/2026", "شهر", createdAt).DueDate,
-            ActionReminderCalculator.ComputeDueDate("1/8/2026", "شهر", createdAt));
+            ActionReminderCalculator.TryComputeDueDate(null, "1/8/2026", "شهر", createdAt).DueDate,
+            ActionReminderCalculator.ComputeDueDate(null, "1/8/2026", "شهر", createdAt));
     }
 
     [Theory]

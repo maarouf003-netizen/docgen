@@ -1161,7 +1161,7 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
-    public async Task RescheduleReminder_AsLawyer_MovesDueDateKeepingDuration()
+    public async Task RescheduleReminder_AsLawyer_MovesReminderWithoutTouchingActionDate()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
@@ -1175,7 +1175,8 @@ public class DocumentsIntegrationTests
             new { newDueDate = "10/8/2026" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var rescheduled = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal("2026-08-07", rescheduled!.RootElement.GetProperty("actionDate").GetString());
+        // تاريخ الإجراء يبقى كما أُدخل حرفيًا (لا قيمةً ولا صيغةً) — والاستحقاق هو المتحرك.
+        Assert.Equal("1/8/2026", rescheduled!.RootElement.GetProperty("actionDate").GetString());
         Assert.Equal("3 أيام", rescheduled.RootElement.GetProperty("reminderDuration").GetString());
         Assert.Equal("أحمر", rescheduled.RootElement.GetProperty("reminderColor").GetString());
     }

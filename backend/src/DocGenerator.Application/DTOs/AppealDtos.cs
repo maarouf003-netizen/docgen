@@ -96,13 +96,21 @@ public record AddAppealActionRequest(
 public record UpdateAppealActionRequest(
     string? Type,
     string Text,
-    string? ActionDate,
+    string? ActionDate);
+// لا حقول تذكير عمدًا: تعديل الإجراء لا يكتب حالة تذكير — تُدار من `SetAppealReminderRequest`.
+
+/// <summary>
+/// إنشاء/تعديل تذكير إجراء استئناف قائم (المدة/اللون فقط) — نظير `SetActionReminderRequest`
+/// للملفات. الحقلان الفارغان يعنيان الإلغاء (كأثر `DELETE`).
+/// </summary>
+public record SetAppealReminderRequest(
     string? ReminderDuration,
     string? ReminderColor);
 
 /// <summary>
 /// نقل تذكير إجراء استئناف إلى يوم استحقاق جديد — نظير `RescheduleActionReminderRequest`
-/// للملفات (عرف الفصل بين `DocumentDtos` و`AppealDtos`). المدخل يوم الاستحقاق نفسه.
+/// للملفات (عرف الفصل بين `DocumentDtos` و`AppealDtos`). المدخل يوم الاستحقاق نفسه،
+/// وتُكتب `ReminderBaseDate` خلفيًا بلا أي مساس بـ`ActionDate`.
 /// </summary>
 public record RescheduleAppealReminderRequest(string? NewDueDate);
 

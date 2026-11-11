@@ -730,7 +730,10 @@ public class DocumentsController : ControllerBase
         return Ok(action);
     }
 
-    /// <summary>نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم — المحامي المالك (المدخل `dueDate` نفسه).</summary>
+    /// <summary>
+    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم — المحامي المالك (المدخل `dueDate`
+    /// نفسه). يكتب `ReminderBaseDate` وحده ولا يغيّر تاريخ الإجراء.
+    /// </summary>
     [HttpPost("{id:int}/actions/{actionId:int}/reschedule")]
     public async Task<IActionResult> RescheduleReminder(int id, int actionId, [FromBody] RescheduleActionReminderRequest? request, CancellationToken ct)
     {
@@ -760,6 +763,26 @@ public class DocumentsController : ControllerBase
         var deleted = await _executionActions.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
         if (!deleted) return NotFound();
         return NoContent();
+    }
+
+    /// <summary>
+    /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون) — مسار مستقل عن تعديل الإجراء: تعديل النص أو
+    /// التاريخ لا يكتب حالة تذكير، والعكس كذلك. إرسال الحقلين فارغين = إلغاء (كأثر `DELETE`).
+    /// </summary>
+    [HttpPut("{id:int}/actions/{actionId:int}/reminder")]
+    public async Task<IActionResult> SetReminder(
+        int id, int actionId, [FromBody] SetActionReminderRequest request, CancellationToken ct)
+    {
+        // إدارة التذكير للمحامي فقط
+        if (!CanManageActions)
+            return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+
+        var action = await _executionActions.SetReminderAsync(id, actionId, request, ActorName, ct);
+        return Ok(action);
     }
 
     [HttpDelete("{id:int}/actions/{actionId:int}/reminder")]

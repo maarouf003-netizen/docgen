@@ -844,7 +844,7 @@ public class StatisticsRepository : IStatisticsRepository
     public async Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)
     {
         var rows = await _db.ExecutionActions.AsNoTracking()
-            .Where(a => a.ReminderDuration != null || a.ReminderColor != null)
+            .Where(a => a.ReminderDuration != null || a.ReminderColor != null || a.ReminderBaseDate != null)
             .Where(a => a.Document.CreatedById == userId)
             .Select(a => new
             {
@@ -858,6 +858,7 @@ public class StatisticsRepository : IStatisticsRepository
                 a.ActionDate,
                 a.ReminderDuration,
                 a.ReminderColor,
+                a.ReminderBaseDate,
                 a.CreatedAt,
             })
             .ToListAsync(ct);
@@ -878,7 +879,8 @@ public class StatisticsRepository : IStatisticsRepository
         return rows
             .Select(r =>
             {
-                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt);
+                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(
+                    r.ReminderBaseDate, r.ActionDate, r.ReminderDuration, r.CreatedAt);
                 return new ReminderDto(
                     r.Id,
                     r.DocumentId,

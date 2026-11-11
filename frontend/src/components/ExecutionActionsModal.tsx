@@ -46,6 +46,9 @@ export default function ExecutionActionsModal({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
+  // حالة التذكير المحمّلة عند بدء التعديل — لتحديد إن كان المستخدم غيّرها فعلًا،
+  // فلا يُرسل طلب تذكير في تعديل نص/تاريخ فقط (حقول التذكير خارج عقد تعديل الإجراء).
+  const [loadedReminder, setLoadedReminder] = useState<{ duration: string; color: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -71,6 +74,7 @@ export default function ExecutionActionsModal({
     setReminderColor('');
     setShowForm(false);
     setEditingId(null);
+    setLoadedReminder(null);
     setSaveError('');
     setFormSession((s) => s + 1);
   };
@@ -83,17 +87,44 @@ export default function ExecutionActionsModal({
     setSaving(true);
     setSaveError('');
     try {
-      const payload = {
+      const actionBody = {
         type: targetType,
         text,
         actionDate: normalizeArabicDigits(actionDate) || null,
-        reminderDuration: remind ? reminderDuration || null : null,
-        reminderColor: remind ? reminderColor || null : null,
       };
       if (editingId !== null) {
-        await api.put(`/documents/${documentId}/actions/${editingId}`, payload);
+        // تعديل الإجراء (نص/تاريخ) لا يمسّ التذكير — العقد لا يحمل حقول تذكير.
+        await api.put(`/documents/${documentId}/actions/${editingId}`, actionBody);
+        // التذكير يُدار من مساره المستقل، وفقط إن غيّره المستخدم فعلًا.
+        const reminderDirty =
+          remind !== (loadedReminder !== null) ||
+          (remind &&
+            (reminderDuration !== (loadedReminder?.duration ?? '') ||
+              reminderColor !== (loadedReminder?.color ?? '')));
+        if (reminderDirty) {
+          try {
+            if (remind) {
+              await api.put(`/documents/${documentId}/actions/${editingId}/reminder`, {
+                reminderDuration: reminderDuration || null,
+                reminderColor: reminderColor || null,
+              });
+            } else {
+              await api.delete(`/documents/${documentId}/actions/${editingId}/reminder`);
+            }
+          } catch (err) {
+            // الإجراء محفوظ والتذكير لا: لا حفظ صامت ناقص.
+            setSaveError(`حُفظ الإجراء، وتعذّر حفظ التذكير: ${getApiErrorMessage(err)}`);
+            load();
+            onChanged?.();
+            return;
+          }
+        }
       } else {
-        await api.post(`/documents/${documentId}/actions`, payload);
+        await api.post(`/documents/${documentId}/actions`, {
+          ...actionBody,
+          reminderDuration: remind ? reminderDuration || null : null,
+          reminderColor: remind ? reminderColor || null : null,
+        });
       }
       resetForm();
       load();
@@ -113,6 +144,11 @@ export default function ExecutionActionsModal({
     setRemind(Boolean(a.reminderDuration || a.reminderColor));
     setReminderDuration(a.reminderDuration ?? '');
     setReminderColor(a.reminderColor ?? '');
+    setLoadedReminder(
+      a.reminderDuration || a.reminderColor
+        ? { duration: a.reminderDuration ?? '', color: a.reminderColor ?? '' }
+        : null,
+    );
     setShowForm(true);
     setSaveError('');
     setFormSession((s) => s + 1);
@@ -245,7 +281,10 @@ export default function ExecutionActionsModal({
                   </div>
                 )}
               </div>
-              {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
+              {editingId !== null && (
+                <p className="text-xs text-gray-500">تعديل التذكير لا يغيّر تاريخ الإجراء.</p>
+              )}
+              {saveError && <p role="alert" className="text-red-600 text-sm">{saveError}</p>}
               <div className="flex flex-wrap gap-2">
                 {editingId !== null ? (
                   <button

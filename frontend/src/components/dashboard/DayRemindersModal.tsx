@@ -480,7 +480,7 @@ function DayRow({
             className="w-full min-h-11 rounded-xl border border-gray-200 px-3 text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-emerald-600"
           />
           <p id={`reschedule-help-${rescheduleKey}`} className="text-[11px] text-gray-500 mt-1">
-            يوم الاستحقاق نفسه — المدة نفسها تُحفَظ، ويُعاد حساب تاريخ الإجراء تلقائيًا.
+            يوم الاستحقاق نفسه — المدة تبقى، ولا يتغيّر تاريخ الإجراء.
           </p>
           {rescheduleError ? (
             <p role="alert" className="text-red-700 text-xs mt-1.5">

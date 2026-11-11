@@ -33,14 +33,24 @@ public class UpdateExecutionActionRequest
     public string Type { get; set; } = "action";
     public string Text { get; set; } = string.Empty;
     public string? ActionDate { get; set; }
+    // لا حقول تذكير هنا عمدًا: تعديل الإجراء (نص/تاريخ) لا يكتب أي حالة تذكير —
+    // التذكير يُدار من `SetActionReminderRequest` و«نقل التذكير» حصرًا.
+}
+
+/// <summary>
+/// إنشاء/تعديل تذكير إجراء قائم (المدة/اللون فقط): إن كان للإجراء تذكير يُعدَّل، وإلا يُنشأ
+/// بتاريخ أساس = تاريخ الإجراء المحلول. إرسال الحقلين فارغين يعني إلغاء التذكير (كأثر `DELETE`).
+/// </summary>
+public class SetActionReminderRequest
+{
     public string? ReminderDuration { get; set; }
     public string? ReminderColor { get; set; }
 }
 
 /// <summary>
 /// نقل تذكير إجراء إلى يوم استحقاق جديد (`POST .../actions/{id}/reschedule` من نافذة
-/// اليوم): المدخل هو يوم الاستحقاق نفسه، والخلفية تعيد حساب `ActionDate` خلفيًا
-/// (`newDueDate − DurationDays`) مع بقاء المدة — لا مساس ببقية حقول الإجراء.
+/// اليوم): المدخل هو يوم الاستحقاق نفسه، والخلفية تكتب `ReminderBaseDate` خلفيًا
+/// (`newDueDate − DurationDays`) مع بقاء المدة — **بلا أي مساس بتاريخ الإجراء**.
 /// </summary>
 public class RescheduleActionReminderRequest
 {

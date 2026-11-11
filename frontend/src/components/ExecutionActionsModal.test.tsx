@@ -16,6 +16,7 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('../api/client', () => ({
   api: apiMock,
+  getApiErrorMessage: (err: unknown) => (err instanceof Error ? err.message : 'تعذّر تنفيذ العملية'),
 }));
 
 import { api } from '../api/client';
@@ -138,7 +139,7 @@ describe('ExecutionActionsModal', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it('يفتح نموذج التعديل ويرسل PUT عند حفظ التعديل', async () => {
+  it('يفتح نموذج التعديل ويرسل PUT بلا حقول تذكير (تعديل النص/التاريخ فقط)', async () => {
     const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: [{ id: 1, type: 'action', text: 'إجراء قديم', actionDate: '1/1/2026', createdAt: '2026-08-01' }],
@@ -159,11 +160,105 @@ describe('ExecutionActionsModal', () => {
         type: 'action',
         text: '<p>إجراء محدث</p>',
         actionDate: '1/1/2026',
-        reminderDuration: null,
-        reminderColor: null,
       });
     });
+    // لا نداء تذكير إطلاقًا حين لا يغيّر المستخدم حالة التذكير.
+    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(api.delete).not.toHaveBeenCalled();
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('يحفظ تعديل التذكير عبر مساره المستقل بلا مساس بتاريخ الإجراء', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{
+        id: 1,
+        type: 'action',
+        text: 'إجراء بتذكير',
+        actionDate: '10-11-2026',
+        reminderDuration: '3 أيام',
+        reminderColor: 'أحمر',
+        createdAt: '2026-11-10',
+      }],
+    });
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('إجراء بتذكير');
+    await user.click(screen.getByLabelText('تعديل'));
+
+    // تعديل المدة فقط ثم الحفظ.
+    await user.selectOptions(screen.getByLabelText('مدة التذكير'), 'أسبوع');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/documents/7/actions/1', {
+        type: 'action',
+        text: 'إجراء بتذكير',
+        actionDate: '10-11-2026',
+      });
+      expect(api.put).toHaveBeenCalledWith('/documents/7/actions/1/reminder', {
+        reminderDuration: 'أسبوع',
+        reminderColor: 'أحمر',
+      });
+    });
+    expect(api.delete).not.toHaveBeenCalled();
+  });
+
+  it('يلغي التذكير عبر DELETE عند إطفاء «ذكرني» في التعديل', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{
+        id: 1,
+        type: 'action',
+        text: 'إجراء بتذكير',
+        actionDate: '10-11-2026',
+        reminderDuration: '3 أيام',
+        reminderColor: 'أحمر',
+        createdAt: '2026-11-10',
+      }],
+    });
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (api.delete as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('إجراء بتذكير');
+    await user.click(screen.getByLabelText('تعديل'));
+    await user.click(screen.getByRole('button', { name: 'إلغاء التذكير' }));
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith('/documents/7/actions/1/reminder');
+    });
+  });
+
+  it('يعرض فشلًا صريحًا إن حُفظ الإجراء وتعذّر حفظ التذكير', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{
+        id: 1,
+        type: 'action',
+        text: 'إجراء بتذكير',
+        actionDate: '10-11-2026',
+        reminderDuration: '3 أيام',
+        reminderColor: 'أحمر',
+        createdAt: '2026-11-10',
+      }],
+    });
+    (api.put as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({})                                     // حفظ الإجراء ينجح
+      .mockRejectedValueOnce(new Error('فشل شبكي'));                 // حفظ التذكير يفشل
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('إجراء بتذكير');
+    await user.click(screen.getByLabelText('تعديل'));
+    await user.selectOptions(screen.getByLabelText('مدة التذكير'), 'أسبوع');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('حُفظ الإجراء، وتعذّر حفظ التذكير');
   });
 
   it('يستدعي onClose عند الضغط على زر الإغلاق', async () => {

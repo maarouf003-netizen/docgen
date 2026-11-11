@@ -2660,8 +2660,12 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(action.ReminderColor);
     }
 
+    /// <summary>
+    /// تعديل الإجراء (نص/تاريخ) لا يكتب أي حالة تذكير — والتذكير يُعدَّل من مساره المستقل
+    /// (`SetReminderAsync`). هذا ما يمنع إعادة اقتران تاريخ الإجراء بقرارات الجدولة.
+    /// </summary>
     [Fact]
-    public async Task UpdateAction_ChangesReminder()
+    public async Task UpdateAction_KeepsReminder_AndSetReminderChangesIt()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var action = await _actions.AddExecutionActionAsync(doc.Id,
@@ -2680,13 +2684,109 @@ public class DocumentServiceTests : IDisposable
                 Type = "action",
                 Text = "إجراء محدث",
                 ActionDate = "2/2/2026",
-                ReminderDuration = "شهر",
-                ReminderColor = "بنفسجي",
             }, "lawyer1");
 
+        // التعديل غيّر النص/التاريخ فقط — والتذكير كما هو، وأساس التذكير لم يُعد تأسيسه (I6).
         Assert.NotNull(updated);
-        Assert.Equal("شهر", updated!.ReminderDuration);
-        Assert.Equal("بنفسجي", updated.ReminderColor);
+        Assert.Equal("2/2/2026", updated!.ActionDate);
+        Assert.Equal("أسبوع", updated.ReminderDuration);
+        Assert.Equal("أصفر", updated.ReminderColor);
+        Assert.Equal(new DateTime(2026, 1, 1),
+            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+
+        var reminded = await _actions.SetReminderAsync(doc.Id, action.Id,
+            new SetActionReminderRequest { ReminderDuration = "شهر", ReminderColor = "بنفسجي" }, "lawyer1");
+
+        Assert.Equal("شهر", reminded.ReminderDuration);
+        Assert.Equal("بنفسجي", reminded.ReminderColor);
+        // تاريخ الإجراء لم يتغيّر بفعل مسار التذكير، والأساس ثابت لا يُعاد تأسيسه.
+        Assert.Equal("2/2/2026", reminded.ActionDate);
+        Assert.Equal(new DateTime(2026, 1, 1),
+            (await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+    }
+
+    /// <summary>
+    /// إنشاء تذكير على إجراء قائم: الأساس يُهيّأ من تاريخ الإجراء مرة واحدة، وتبقى ثابتة عند
+    /// تعديل المدة (I2)، وتُصفَّر الحقول الثلاثة عند الإلغاء (I5) بلا مساس بتاريخ الإجراء.
+    /// </summary>
+    [Fact]
+    public async Task SetReminder_InitializesBaseOnce_AndClearNullsAllThree()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
+            new AddExecutionActionRequest { Text = "إجراء بلا تذكير", ActionDate = "10-11-2026" },
+            userId: 1, actorName: "lawyer1");
+        Assert.Null((await _db.ExecutionActions.FindAsync(action.Id))!.ReminderBaseDate);
+
+        await _actions.SetReminderAsync(doc.Id, action.Id,
+            new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
+        var stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
+        Assert.Equal("10-11-2026", stored.ActionDate);
+
+        // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
+        await _actions.SetReminderAsync(doc.Id, action.Id,
+            new SetActionReminderRequest { ReminderDuration = "أسبوع", ReminderColor = "أحمر" }, "lawyer1");
+        stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
+        Assert.Equal("أسبوع", stored.ReminderDuration);
+        Assert.Equal("10-11-2026", stored.ActionDate);
+
+        // الإلغاء بالحقلين الفارغين = تصفير الثلاثة (نقطة قرار واحدة مع DELETE).
+        await _actions.SetReminderAsync(doc.Id, action.Id, new SetActionReminderRequest(), "lawyer1");
+        stored = (await _db.ExecutionActions.FindAsync(action.Id))!;
+        Assert.Null(stored.ReminderDuration);
+        Assert.Null(stored.ReminderColor);
+        Assert.Null(stored.ReminderBaseDate);
+        Assert.Equal("10-11-2026", stored.ActionDate);
+    }
+
+    /// <summary>
+    /// بيانات قديمة بتاريخ إجراء غير قابل للتحليل: **لا** يُجمَّد احتياط `CreatedAt` في الأساس
+    /// (وإلا طُفئ وسم «تاريخ مشتبه» بصمت)، بل يبقى `null` فيُحسب الاستحقاق ديناميكيًا موسومًا.
+    /// </summary>
+    [Fact]
+    public async Task SetReminder_LegacyUnparsableActionDate_LeavesBaseNullAndSuspect()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var legacy = new ExecutionAction
+        {
+            DocumentId = doc.Id,
+            Type = "action",
+            Text = "إجراء قديم بتاريخ غير صالح",
+            ActionDate = "10.11.2026",
+            CreatedById = 1,
+            CreatedAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        _db.ExecutionActions.Add(legacy);
+        await _db.SaveChangesAsync();
+
+        await _actions.SetReminderAsync(doc.Id, legacy.Id,
+            new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
+
+        var stored = (await _db.ExecutionActions.FindAsync(legacy.Id))!;
+        Assert.Null(stored.ReminderBaseDate);
+        var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
+            stored.ReminderBaseDate, stored.ActionDate, stored.ReminderDuration, stored.CreatedAt);
+        Assert.True(suspect);
+        Assert.Equal(new DateTime(2026, 8, 4), due);
+    }
+
+    [Fact]
+    public async Task SetReminder_MissingActionOrMismatchedDocument_ThrowsKeyNotFound()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
+            new AddExecutionActionRequest { Text = "إجراء", ActionDate = "1/1/2026" },
+            userId: 1, actorName: "lawyer1");
+        var other = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            _actions.SetReminderAsync(doc.Id, 999999,
+                new SetActionReminderRequest { ReminderDuration = "أسبوع" }, "lawyer1"));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            _actions.SetReminderAsync(other.Id, action.Id,
+                new SetActionReminderRequest { ReminderDuration = "أسبوع" }, "lawyer1"));
     }
 
     [Fact]
