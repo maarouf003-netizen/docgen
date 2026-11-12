@@ -30,8 +30,10 @@ public static class DocumentInterventionText
             throw new ArgumentException("تاريخ ورود طلب التدخل مطلوب");
 
         var acceptanceDate = DocumentValidator.ParseDateTime(request.AcceptanceDate, "تاريخ قبول طلب التدخل");
-        if (acceptanceDate is not null && receiptDate is not null && acceptanceDate < receiptDate)
-            throw new ArgumentException("تاريخ قبول طلب التدخل لا يسبق تاريخ الورود");
+        // قاعدة العمل: قبول طلب التدخل يسبق ورود الطلب دائمًا (الورود هو تاريخ ورود
+        // الطلب بعد القبول)، فلا يُقبل القبول في تاريخ الورود نفسه أو بعده.
+        if (acceptanceDate is not null && acceptanceDate >= receiptDate)
+            throw new ArgumentException("تاريخ قبول طلب التدخل يجب أن يسبق تاريخ الورود");
 
         var intervention = new DocumentIntervention
         {
@@ -192,11 +194,21 @@ public static class DocumentInterventionText
         intervention.Birth = Clean(request.Birth, InterventionLimitsCatalog.MaxBirth, "مكان وتاريخ ولادة المتدخل");
         intervention.Register = Clean(request.Register, InterventionLimitsCatalog.MaxRegister, "مكان ورقم قيد المتدخل");
         intervention.NationalId = Clean(request.NationalId, InterventionLimitsCatalog.MaxNationalId, "الرقم الوطني للمتدخل");
-        intervention.AddressType = NormalizePartyAddressType(request.AddressType);
-        intervention.Address = Clean(request.Address, InterventionLimitsCatalog.MaxAddress, "عنوان المتدخل أو وكيله");
 
+        var heirs = NormalizeHeirs(request.Heirs);
         var hasRepresentative = !DocumentText.IsEmptyRepresentative(
             request.RepresentativeName, request.RepresentativeFather, request.RepresentativeFamily);
+        if (hasRepresentative && heirs.Count > 0)
+            throw new ArgumentException("لا يجتمع الممثل الشرعي مع ورثة المتدخل");
+
+        // عنوان المتدخل أو وكيله لا يُطلب إذا وُجد ممثل شرعي (عنوان الممثل هو المعتبر)
+        // أو ورثة (المتدخل متوفى). تُصفَّر الحقول صراحةً حتى لا تبقى بيانات قديمة في التعديل.
+        var suppressAddress = hasRepresentative || heirs.Count > 0;
+        intervention.AddressType = suppressAddress ? null : NormalizePartyAddressType(request.AddressType);
+        intervention.Address = suppressAddress
+            ? null
+            : Clean(request.Address, InterventionLimitsCatalog.MaxAddress, "عنوان المتدخل أو وكيله");
+
         if (hasRepresentative)
         {
             intervention.RepresentativeName = Require(
@@ -212,13 +224,9 @@ public static class DocumentInterventionText
                 request.RepresentativeAddressType);
             intervention.RepresentativeAddress = Clean(
                 request.RepresentativeAddress, InterventionLimitsCatalog.MaxAddress, "عنوان الممثل الشرعي أو وكيله");
-
-            // الممثل الشرعي يعني حياة الطرف، فلا يجتمع مع ورثة.
-            if ((request.Heirs ?? new List<HeirDto>()).Count > 0)
-                throw new ArgumentException("لا يجتمع الممثل الشرعي مع ورثة المتدخل");
         }
 
-        foreach (var heir in NormalizeHeirs(request.Heirs))
+        foreach (var heir in heirs)
             intervention.Heirs.Add(heir);
     }
 

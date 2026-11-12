@@ -15,6 +15,7 @@ import {
   addressLabelOf,
   ADDRESS_TYPE_OPTIONS,
   emptyIntervention,
+  hasHeirName,
   hasStoredRepresentative,
   INTERVENTION_LIMITS,
   INTERVENTION_NATURE_OPTIONS,
@@ -60,6 +61,9 @@ export function InterventionModal({
 
   const isEdit = initial != null;
   const title = isEdit ? 'تعديل بيانات المتدخل' : 'إضافة متدخل';
+  // وجود ممثل شرعي أو ورثة يلغي الحاجة لعنوان المتدخل: عنوان الممثل هو المعتبر،
+  // والورثة تعني وفاة المتدخل. تُخفى الحقول وتُصفَّر في الحمولة.
+  const addressSuppressed = showRepresentative || (form.heirs ?? []).some(hasHeirName);
 
   const setField = useCallback(
     <K extends keyof DocumentInterventionUpsertRequest>(
@@ -87,8 +91,11 @@ export function InterventionModal({
   const addRepresentative = () => {
     setForm((prev) => ({
       ...prev,
-      // الممثل الشرعي والورثة لا يجتمعان (حارس خلفي كذلك) — تفعيل الممثل يفرّغ الورثة.
+      // الممثل الشرعي والورثة لا يجتمعان (حارس خلفي كذلك) — تفعيل الممثل يفرّغ الورثة
+      // والعنوان (عنوان الممثل هو المعتبر).
       heirs: [],
+      addressType: '',
+      address: '',
       representativeCapacity: prev.representativeCapacity || 'ولي',
       representativeAddressType: prev.representativeAddressType || 'عنوان',
     }));
@@ -118,10 +125,13 @@ export function InterventionModal({
     }));
 
   const setHeir = (index: number, key: keyof HeirDto, value: string) =>
-    setForm((prev) => ({
-      ...prev,
-      heirs: (prev.heirs ?? []).map((h, i) => (i === index ? { ...h, [key]: value } : h)),
-    }));
+    setForm((prev) => {
+      const heirs = (prev.heirs ?? []).map((h, i) => (i === index ? { ...h, [key]: value } : h));
+      // أول وريث مُسمّى يعني وفاة المتدخل: يُصفَّر عنوانه فورًا (عنوان الوريث هو المعتبر).
+      return heirs.some(hasHeirName)
+        ? { ...prev, heirs, addressType: '', address: '' }
+        : { ...prev, heirs };
+    });
 
   const removeHeir = (index: number) =>
     setForm((prev) => ({ ...prev, heirs: (prev.heirs ?? []).filter((_, i) => i !== index) }));
@@ -190,8 +200,8 @@ export function InterventionModal({
             birth: (form.birth ?? '').trim(),
             register: (form.register ?? '').trim(),
             nationalId: (form.nationalId ?? '').trim(),
-            addressType: form.addressType,
-            address: (form.address ?? '').trim(),
+            addressType: addressSuppressed ? '' : form.addressType,
+            address: addressSuppressed ? '' : (form.address ?? '').trim(),
             representativeName: showRepresentative ? (form.representativeName ?? '').trim() : '',
             representativeFather: showRepresentative ? (form.representativeFather ?? '').trim() : '',
             representativeFamily: showRepresentative ? (form.representativeFamily ?? '').trim() : '',
@@ -325,9 +335,10 @@ export function InterventionModal({
                   autoComplete="off"
                   value={form.acceptanceDate ?? ''}
                   onChange={(e) => setField('acceptanceDate', e.target.value)}
-                  placeholder="مثال: 5/8/2026"
+                  placeholder="مثال: 28/7/2026"
                   className={inputCls}
                 />
+                <p className="mt-1 text-[11px] text-gray-500">يسبق تاريخ ورود الطلب دائمًا.</p>
               </div>
             </div>
             <div className="mt-3">
@@ -373,38 +384,51 @@ export function InterventionModal({
                 <NamedInput id="intervention-birth" label="مكان وتاريخ الولادة" value={form.birth} onChange={(v) => setField('birth', v)} maxLength={50} />
                 <NamedInput id="intervention-register" label="مكان ورقم القيد" value={form.register} onChange={(v) => setField('register', v)} maxLength={100} />
                 <NamedInput id="intervention-national-id" label="الرقم الوطني" value={form.nationalId} onChange={(v) => setField('nationalId', v)} maxLength={50} />
-                <div>
-                  <label htmlFor="intervention-address-type" className={labelCls}>
-                    نوع العنوان
-                  </label>
-                  <select
-                    id="intervention-address-type"
-                    name="addressType"
-                    value={form.addressType ?? 'موطن مختار'}
-                    onChange={(e) => setField('addressType', e.target.value)}
-                    className={inputCls}
+                {!addressSuppressed ? (
+                  <>
+                    <div>
+                      <label htmlFor="intervention-address-type" className={labelCls}>
+                        نوع العنوان
+                      </label>
+                      <select
+                        id="intervention-address-type"
+                        name="addressType"
+                        value={form.addressType ?? 'موطن مختار'}
+                        onChange={(e) => setField('addressType', e.target.value)}
+                        className={inputCls}
+                      >
+                        {ADDRESS_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label htmlFor="intervention-address" className={labelCls}>
+                        {addressLabelOf(form.addressType)}
+                      </label>
+                      <input
+                        id="intervention-address"
+                        name="address"
+                        autoComplete="street-address"
+                        maxLength={INTERVENTION_LIMITS.address}
+                        value={form.address ?? ''}
+                        onChange={(e) => setField('address', e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p
+                    className="sm:col-span-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"
+                    role="note"
                   >
-                    {ADDRESS_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label htmlFor="intervention-address" className={labelCls}>
-                    {addressLabelOf(form.addressType)}
-                  </label>
-                  <input
-                    id="intervention-address"
-                    name="address"
-                    autoComplete="street-address"
-                    maxLength={INTERVENTION_LIMITS.address}
-                    value={form.address ?? ''}
-                    onChange={(e) => setField('address', e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
+                    {showRepresentative
+                      ? 'الممثل الشرعي موجود — عنوانه أو موطنه أو وكيله القانوني هو المعتبر، ولا حاجة لعنوان المتدخل.'
+                      : 'المتدخل له ورثة — لا حاجة لعنوانه أو موطنه أو وكيله.'}
+                  </p>
+                )}
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">

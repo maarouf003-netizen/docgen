@@ -68,7 +68,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Nature = PartyNatureCatalog.Natural,
         ReceiptNumber = "123",
         ReceiptDate = "1/8/2026",
-        AcceptanceDate = "10/8/2026",
+        AcceptanceDate = "28/7/2026",
         Subject = "طلب تدخل في الملف",
         Notes = "ملاحظة أولى\nملاحظة ثانية",
         Name = "سامر",
@@ -132,8 +132,10 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.True(dto.Id > 0);
         Assert.Equal("سامر محمود الحسن", dto.DisplayName);
         Assert.Equal("2026-08-01", dto.ReceiptDate);
-        Assert.Equal("2026-08-10", dto.AcceptanceDate);
+        Assert.Equal("2026-07-28", dto.AcceptanceDate);
         Assert.Single(dto.Heirs);
+        Assert.Null(dto.AddressType);
+        Assert.Null(dto.Address);
 
         var stored = await _db.DocumentInterventions
             .Include(i => i.Heirs)
@@ -151,7 +153,7 @@ public class DocumentInterventionServiceTests : IDisposable
         var (details, text) = OccurrenceDetails.Split(occurrence.Details);
         Assert.Null(text);
         Assert.Equal("سامر محمود الحسن", details!["intervenorName"]);
-        Assert.Equal("2026-08-10", details["acceptanceDate"]);
+        Assert.Equal("2026-07-28", details["acceptanceDate"]);
         Assert.Equal(InterventionOccurrenceLabel, OccurrenceTypeCatalog.ToLabel(occurrence.OccurrenceType));
 
         var refreshed = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == _document.Id);
@@ -315,15 +317,17 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("تاريخ ورود طلب التدخل مطلوب", ex.Message);
     }
 
-    [Fact]
-    public async Task Add_AcceptanceBeforeReceipt_Throws()
+    [Theory]
+    [InlineData("10/8/2026")] // بعد الورود
+    [InlineData("1/8/2026")]  // في يوم الورود نفسه
+    public async Task Add_AcceptanceNotBeforeReceipt_Throws(string acceptanceDate)
     {
         var request = NaturalRequest();
-        request.AcceptanceDate = "31/7/2026";
+        request.AcceptanceDate = acceptanceDate;
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
-        Assert.Contains("لا يسبق", ex.Message);
+        Assert.Contains("يجب أن يسبق تاريخ الورود", ex.Message);
     }
 
     [Fact]
@@ -337,6 +341,27 @@ public class DocumentInterventionServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("لا يجتمع", ex.Message);
+    }
+
+    [Fact]
+    public async Task Add_Representative_ClearsPartyAddress()
+    {
+        var request = NaturalRequest();
+        request.AddressType = "موطن مختار";
+        request.Address = "المزة";
+        request.RepresentativeName = "خالد";
+        request.RepresentativeFather = "أحمد";
+        request.RepresentativeFamily = "الحسن";
+        request.RepresentativeCapacity = "ولي";
+        request.RepresentativeAddressType = "عنوان";
+        request.RepresentativeAddress = "دمشق";
+
+        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+
+        Assert.Null(dto.AddressType);
+        Assert.Null(dto.Address);
+        Assert.Equal("دمشق", dto.RepresentativeAddress);
+        Assert.Equal("ولي", dto.RepresentativeCapacity);
     }
 
     [Fact]
@@ -368,20 +393,20 @@ public class DocumentInterventionServiceTests : IDisposable
 
         var request = NaturalRequest();
         request.Name = "سامر سعيد";
-        request.AcceptanceDate = "11/8/2026";
+        request.AcceptanceDate = "30/7/2026";
         request.Subject = "موضوع معدّل";
         var updated = await _service.UpdateAsync(
             _document.Id, dto.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.NotNull(updated);
         Assert.Equal("سامر سعيد محمود الحسن", updated!.DisplayName);
-        Assert.Equal("2026-08-11", updated.AcceptanceDate);
+        Assert.Equal("2026-07-30", updated.AcceptanceDate);
 
         var occurrence = await _db.DocumentOccurrences.SingleAsync();
         Assert.Equal(new DateTime(2026, 8, 1), occurrence.EventDate!.Value.Date);
         var (details, _) = OccurrenceDetails.Split(occurrence.Details);
         Assert.Equal("سامر سعيد محمود الحسن", details!["intervenorName"]);
-        Assert.Equal("2026-08-11", details["acceptanceDate"]);
+        Assert.Equal("2026-07-30", details["acceptanceDate"]);
 
         var refreshed = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == _document.Id);
         Assert.Contains("سامر سعيد", refreshed.SearchText);
