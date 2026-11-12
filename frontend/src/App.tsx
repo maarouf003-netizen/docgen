@@ -16,6 +16,7 @@ const AppealsList = lazy(() => import('./pages/AppealsList'));
 const AppealDetail = lazy(() => import('./pages/AppealDetail'));
 const DeletedDocuments = lazy(() => import('./pages/DeletedDocuments'));
 const StruckOffDocuments = lazy(() => import('./pages/StruckOffDocuments'));
+const StrikeOffRemindersPage = lazy(() => import('./pages/StrikeOffRemindersPage'));
 const ExecutedDocuments = lazy(() => import('./pages/ExecutedDocuments'));
 const ReferredToStartDocuments = lazy(() => import('./pages/ReferredToStartDocuments'));
 const Rotation = lazy(() => import('./pages/Rotation'));
@@ -210,6 +211,14 @@ export default function App() {
               element={
                 <RequireRole allowed={allowInternal}>
                   <StruckOffDocuments />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/strike-off-reminders"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <StrikeOffRemindersPage />
                 </RequireRole>
               }
             />

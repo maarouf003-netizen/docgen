@@ -238,6 +238,14 @@ public class DocumentResponse : IDocumentSheetFields
     public string? FileArrivalDate { get; set; }
 
     /// <summary>
+    /// آخر نشاط للملف (UTC) بالقاعدة المعتمدة لتذكيرات الشطب: أحدث إجراء (`Type = "action"`
+    /// والملاحظات لا تُحتسب)، فإن غاب فتاريخ القيد المحلول، فإن غاب فتاريخ الإدخال.
+    /// </summary>
+    public DateTime? LastActivityDate { get; set; }
+    /// <summary>مصدر تاريخ آخر نشاط: `action` أو `registration` أو `created` (للصدق في العرض).</summary>
+    public string? LastActivitySource { get; set; }
+
+    /// <summary>
     /// «وقوعات الملف» في وضع «منفذ عليه»/«عرض وايداع»: سجل زمني لكل شطب وتجديد،
     /// مرتب تصاعديًا حسب تاريخ الوقعة (سرد زمني من الأقدم إلى الأحدث).
     /// </summary>
@@ -249,6 +257,13 @@ public class DocumentResponse : IDocumentSheetFields
         // للتوافق الخلفي (قراءة فقط) — ولا تُكتب بعد الآن.
         var orderedAnnexes = d.Annexes.OrderBy(a => a.Sequence).ToList();
         var firstAnnex = orderedAnnexes.FirstOrDefault();
+        // آخر نشاط (تذكيرات الشطب): الإجراءات فقط ← تاريخ القيد المحلول ← تاريخ الإدخال.
+        var lastActionAt = d.ExecutionActions
+            .Where(a => a.Type == "action")
+            .Select(a => (DateTime?)(a.ActionDateParsed ?? a.CreatedAt))
+            .Max();
+        var registrationAt = d.RegistrationDate?.DateParsed;
+        var lastActivityAt = lastActionAt ?? registrationAt ?? d.CreatedAt;
         return new()
         {
 
@@ -395,6 +410,10 @@ public class DocumentResponse : IDocumentSheetFields
         SourceDelegationId = d.SourceDelegationId,
         DelegationReturnDate = FreeDateParser.ToResponse(d.SourceDelegation?.ReturnDate),
         NeedsRotation = NeedsRotationOf(d, currentYear),
+        LastActivityDate = lastActivityAt,
+        LastActivitySource = lastActionAt is not null
+            ? "action"
+            : registrationAt is not null ? "registration" : "created",
         Guarantors = d.Guarantors
             .OrderBy(g => g.GuarantorNumber)
             .Select(g => new GuarantorDto(g.Id, g.GuarantorNumber, g.GuarantorName, g.GuarantorFather,

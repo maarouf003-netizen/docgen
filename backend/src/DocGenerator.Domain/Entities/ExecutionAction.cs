@@ -7,6 +7,12 @@ public class ExecutionAction
     public string Type { get; set; } = "action";
     public string Text { get; set; } = string.Empty;
     public string? ActionDate { get; set; }
+    /// <summary>
+    /// تاريخ الإجراء محلولًا زمنيًا للاستعلامات النطاقية (بطاقة «تذكيرات الشطب»): يُكتب عند
+    /// إضافة/تعديل/زرع الإجراء من نص `ActionDate`، ولا يمسّه أي مسار تذكير. `null` للصفوف
+    /// القديمة ⇒ يسقط حساب آخر نشاط إلى `CreatedAt` (قرار المالك: بلا Backfill).
+    /// </summary>
+    public DateTime? ActionDateParsed { get; set; }
     public string? ReminderDuration { get; set; }
     public string? ReminderColor { get; set; }
     /// <summary>

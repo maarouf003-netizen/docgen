@@ -20,7 +20,7 @@ public class DocumentGenerationDisabledTests
                 Enabled = enabled,
                 DisabledMessage = "الميزة معطلة حاليًا لحين توحيد النماذج المولدة",
             }),
-            null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!);
 
     [Fact]
     public async Task Generate_WhenDisabled_Returns503WithConfiguredMessage()

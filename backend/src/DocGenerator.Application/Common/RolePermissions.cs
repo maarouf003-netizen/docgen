@@ -168,6 +168,12 @@ public static class RolePermissions
     public static bool CanManagePersonalReminders(UserRole role) => role == UserRole.Lawyer;
 
     /// <summary>
+    /// بطاقة/صفحة «تذكيرات الشطب» (ملفات المحامي المقاربة للشطب) — المحامي فقط،
+    /// وإلغاء التذكير لمالك الملف وحده (يُفرض في الخدمة أيضًا).
+    /// </summary>
+    public static bool CanViewStrikeOffReminders(UserRole role) => IsLawyer(role);
+
+    /// <summary>
     /// قراءة كل اقتراحات التطوير وتعليمها مقروءة — مشرف ومدير (`BQ-001`).
     /// </summary>
     public static bool CanViewAppSuggestions(UserRole role) => role is UserRole.Manager or UserRole.Admin;

@@ -19,7 +19,8 @@ export const ICONS: Record<
   | 'delegation'
   | 'entity'
   | 'audit'
-  | 'delegate',
+  | 'delegate'
+  | 'strikeOff',
   ReactNode
 > = {
   documents: (
@@ -121,6 +122,12 @@ export const ICONS: Record<
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="m16 11 2 2 4-4" />
+    </svg>
+  ),
+  strikeOff: (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
     </svg>
   ),
 };

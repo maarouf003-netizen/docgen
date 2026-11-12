@@ -750,6 +750,20 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// تحميل مجموعة معرّفات بشجرة `WithStandardIncludes` المعتمدة (لعرض `DocumentResponse`
+    /// كاملًا في قوائم تُفلتر/تُرقَّم في SQL أولًا ثم تُحمَّل بالترتيب المطلوب في الخدمة).
+    /// </summary>
+    public async Task<List<Document>> GetByIdsWithStandardIncludesAsync(List<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return new List<Document>();
+
+        return await WithStandardIncludes(Db.Documents.AsNoTracking())
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<List<int>> ListOwnerIdsByCircuitIdsAsync(
         IReadOnlyCollection<int> circuitIds,
         CancellationToken ct = default)
@@ -1108,6 +1122,64 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
 
         return (total, items);
+    }
+
+    public async Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items)> SearchStrikeOffReminderIdsAsync(
+        DateTime cutoffUtc,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        // ملفات «طالبة تنفيذ» النشطة فقط: المسودات والمشطوبة والمنفذة (بالتسوية/الإنابة/المسترد/
+        // الجبري الكامل) و«محال الى البداية» خارج التذكير — والجزئي/المتريث داخلان (متداولان).
+        // التعريف مطابق لمفهوم «الملف المخفي» في ApplySearchFilters، ولا يشمل عائلة «منفذ عليه».
+        IQueryable<Document> q = Db.Documents.AsNoTracking()
+            .Where(d => d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant)
+            .Where(d => !d.IsDraft)
+            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff
+                && d.ExecStatus != ExecutionStatusCatalog.ReferredToStart
+                && d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
+                && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
+                && d.ExecStatus != ExecutionStatusCatalog.Recovered
+                && !(d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                    && (d.ExecSubStatus == null
+                        || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)));
+
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
+
+        // آخر نشاط: أحدث إجراء محفوظ (الملاحظات مستثناة) → تاريخ القيد المحلول → تاريخ الإدخال.
+        // يُحسب في SQL داخل إسقاط واحد ثم يُفلتر عليه (المصدر الوحيد للقاعدة في
+        // StrikeOffReminderCalculator، وتطابقه مع الحساب المعروض مُختبَر صراحةً).
+        var projected = q.Select(d => new
+        {
+            d.Id,
+            LastActivity = d.ExecutionActions
+                .Where(a => a.Type == "action")
+                .Max(a => (DateTime?)(a.ActionDateParsed ?? a.CreatedAt))
+                ?? (d.RegistrationDate != null ? d.RegistrationDate.DateParsed : null)
+                ?? d.CreatedAt,
+            d.StrikeOffReminderDismissedAt,
+        });
+
+        // الإلغاء صالح ما دام لا يوجد إجراء أحدث منه؛ وأي إجراء جديد يُعيد الملف للدورة بعد العتبة.
+        var due = projected.Where(x =>
+            x.LastActivity <= cutoffUtc
+            && (x.StrikeOffReminderDismissedAt == null || x.StrikeOffReminderDismissedAt < x.LastActivity));
+
+        var total = await due.CountAsync(ct);
+
+        var items = await due
+            .OrderBy(x => x.LastActivity)
+            .ThenBy(x => x.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(x => new { x.Id, x.LastActivity })
+            .ToListAsync(ct);
+
+        return (total, items.Select(x => (x.Id, x.LastActivity)).ToList());
     }
 
     public async Task<(int TotalCount, List<Document> Items)> SearchExecutedAsync(
