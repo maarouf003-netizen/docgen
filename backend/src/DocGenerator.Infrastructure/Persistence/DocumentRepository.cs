@@ -395,6 +395,17 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 h.HeirName != null &&
                 ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
                  (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            // المتدخلون: أسماؤهم (طبيعي/اعتباري/جهة عامة) وأسماء ورثتهم — فرع صريح
+            // كبقية الأطراف ليبقى البحث صالحًا حتى لو قُصّ SearchText عند 1000 حرف.
+            d.Interventions.Any(i =>
+                (i.Name != null &&
+                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
+                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
+                (i.EntityName != null && i.EntityName.Contains(term)) ||
+                i.Heirs.Any(h =>
+                    h.HeirName != null &&
+                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))) ||
             appeals.Any(a =>
                 a.DocumentId == d.Id &&
                 ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
@@ -438,6 +449,17 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 h.HeirName != null &&
                 ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
                  (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            // المتدخلون: أسماؤهم (طبيعي/اعتباري/جهة عامة) وأسماء ورثتهم — فرع صريح
+            // كبقية الأطراف ليبقى البحث صالحًا حتى لو قُصّ SearchText عند 1000 حرف.
+            d.Interventions.Any(i =>
+                (i.Name != null &&
+                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
+                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
+                (i.EntityName != null && i.EntityName.Contains(term)) ||
+                i.Heirs.Any(h =>
+                    h.HeirName != null &&
+                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))) ||
             appeals.Any(a =>
                 a.DocumentId == d.Id &&
                 ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||

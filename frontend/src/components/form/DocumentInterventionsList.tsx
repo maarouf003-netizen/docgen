@@ -41,17 +41,18 @@ export function DocumentInterventionsList({
     }
   };
 
+  const openDelete = (intervention: DocumentInterventionDto) => {
+    setError('');
+    setDeleteTarget(intervention);
+  };
+
+  const closeDelete = () => {
+    setDeleteTarget(null);
+    setError('');
+  };
+
   return (
     <div className="mt-3">
-      {error && (
-        <div
-          role="alert"
-          className="mb-2 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2"
-        >
-          {error}
-        </div>
-      )}
-
       {interventions.length > 0 && (
         <>
           <h4 className="text-xs font-bold text-gray-600 mb-2">المتدخلون المحفوظون</h4>
@@ -95,7 +96,7 @@ export function DocumentInterventionsList({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDeleteTarget(intervention)}
+                    onClick={() => openDelete(intervention)}
                     className="min-h-11 px-3 rounded-lg border border-red-200 text-red-700 text-xs hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                     aria-label={`حذف المتدخل ${intervention.displayName}`}
                   >
@@ -122,10 +123,18 @@ export function DocumentInterventionsList({
               هل تريد حذف المتدخل «{deleteTarget.displayName || '—'}»؟ سيُحذف معه سطر «طلب تدخل»
               من وقوعات الملف، ويبقى أثر العملية في سجل التدقيق.
             </p>
+            {error && (
+              <div
+                role="alert"
+                className="mb-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2"
+              >
+                {error}
+              </div>
+            )}
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setDeleteTarget(null)}
+                onClick={closeDelete}
                 disabled={busy}
                 className="min-h-11 px-4 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >

@@ -33,6 +33,7 @@ const ACTION_LABELS: Record<string, string> = {
   restore: 'استعادة مستند',
   status: 'تغيير حالة',
   action: 'إجراء/ملاحظة',
+  intervention: 'متدخل',
   transfer: 'نقل ملف',
   create_user: 'إنشاء مستخدم',
   update_user: 'تعديل مستخدم',

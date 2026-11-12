@@ -160,6 +160,9 @@ public sealed partial class PublicEntityService : IPublicEntityService
                 var rebuilt = ApplicantTextBuilder.Build(doc.ApplicantPublicEntities);
                 if (!string.IsNullOrWhiteSpace(rebuilt) || string.IsNullOrWhiteSpace(doc.Applicant))
                     doc.Applicant = rebuilt;
+                var interventionsChanged = SyncPublicInterventionNames(doc, oldNorm, newCanonical);
+                if (interventionsChanged > 0)
+                    AddLog(doc.Id, "__Col_Interventions", "المتدخلون", oldCanonical, newCanonical);
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                 affectedDocs[doc.Id] = doc;
@@ -189,6 +192,9 @@ public sealed partial class PublicEntityService : IPublicEntityService
             foreach (var doc in executedDocs)
             {
                 affectedDocs[doc.Id] = doc;
+                var interventionsChanged = SyncPublicInterventionNames(doc, oldNorm, newCanonical);
+                if (interventionsChanged > 0)
+                    AddLog(doc.Id, "__Col_Interventions", "المتدخلون", oldCanonical, newCanonical);
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
             }
@@ -364,6 +370,25 @@ public sealed partial class PublicEntityService : IPublicEntityService
     }
     private static string? Clamp(string? value)
         => value is null ? null : DocumentSearchTextBuilder.Truncate(value);
+
+    /// <summary>
+    /// مزامنة الاسم المجمّد لجهة عامة متدخلة عند إعادة تسمية/دمج/حلول الهوية:
+    /// تُطابق بالاسم المعياري القديم (كسائر صفوف الأطراف) وتُعيد العدد المتغير.
+    /// </summary>
+    private static int SyncPublicInterventionNames(Document doc, string oldNorm, string newCanonical)
+    {
+        var changed = 0;
+        foreach (var intervention in doc.Interventions.Where(i =>
+                     i.Nature == PartyNatureCatalog.PublicEntity))
+        {
+            if (ArabicNameNormalizer.Normalize(intervention.EntityName ?? string.Empty) != oldNorm)
+                continue;
+            intervention.EntityName = newCanonical;
+            changed++;
+        }
+
+        return changed;
+    }
     // ── مساعدا الطيّ المشتركان (الدمج/النقل-طي/التوحيد) ──
     // دلالة حرفية لمنطق الدمج (المرجع الأكمل): إعادة توجيه روابط القيد الثلاث وإعادة اشتقاق
     // المركّب، ثم الأسماء البديلة (المعياري + الكامل + سوابق القيد الممتصّ) بشروط الاستثناء نفسها.
@@ -375,6 +400,11 @@ public sealed partial class PublicEntityService : IPublicEntityService
             a.RegistryId = toEntryId;
         foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == fromEntryId))
             e.RegistryId = toEntryId;
+        // المتدخلون الجهات العامة: يتبعون القيد ذاته عند الطيّ/النقل/الدمج،
+        // وإلا بقيت روابطهم معلّقة على قيد مُعطَّل/ممتصّ بعد نجاح العملية.
+        foreach (var i in doc.Interventions.Where(i =>
+                     i.Nature == PartyNatureCatalog.PublicEntity && i.RegistryId == fromEntryId))
+            i.RegistryId = toEntryId;
         doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
     }
     /// <summary>أسماء بديلة «للبحث فقط» على قيد الناجي: المعياري + الكامل + سوابق القيد الممتصّ.</summary>

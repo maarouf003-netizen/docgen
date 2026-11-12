@@ -127,7 +127,6 @@ public static class OccurrenceTypeCatalog
     public static bool IsStruckOff(string? type) => type == StruckOff;
     public static bool IsRenewal(string? type) => type == Renewal;
     public static bool IsRecovered(string? type) => type == Recovered;
-    public static bool IsIntervention(string? type) => type == Intervention;
     public static bool IsStatusChange(string? type) =>
         type == Deferred || type == Settled || type == Forcible || type == Revert
         || type == ReferredToStart;

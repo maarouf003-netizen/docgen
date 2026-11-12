@@ -216,13 +216,8 @@ public static class DocumentText
             if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(father) && string.IsNullOrWhiteSpace(family))
                 continue;
 
-            var addressType = (h.AddressType ?? string.Empty).Trim();
-            if (addressType != "عنوان" && addressType != "وكيل" && addressType != "موطن مختار")
-                addressType = "عنوان";
-
-            var capacity = (h.Capacity ?? string.Empty).Trim();
-            if (capacity != "إضافة لتركة" && capacity != "أصالة وإضافة")
-                capacity = "أصالة";
+            var addressType = NormalizeHeirAddressType(h.AddressType);
+            var capacity = NormalizeHeirCapacity(h.Capacity);
 
             var hasRep = !IsEmptyRepresentative(h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily);
             var rep = NormalizeRepresentativeFields(
@@ -336,6 +331,26 @@ public static class DocumentText
     {
         var value = (capacity ?? string.Empty).Trim();
         return value is "ولي" or "وصي" or "قيم" ? value : string.Empty;
+    }
+
+    /// <summary>
+    /// نوع عنوان الوريث المقبول: عنوان / موطن مختار / وكيل؛ أي قيمة أخرى أو فارغة تُعيَّر
+    /// إلى «عنوان». مشترك بين ورثة المقترض/الكفيل وورثة المتدخل.
+    /// </summary>
+    public static string NormalizeHeirAddressType(string? addressType)
+    {
+        var value = (addressType ?? string.Empty).Trim();
+        return value is "عنوان" or "موطن مختار" or "وكيل" ? value : "عنوان";
+    }
+
+    /// <summary>
+    /// صفة الوريث المقبولة: أصالة / إضافة لتركة / أصالة وإضافة؛ أي قيمة أخرى أو فارغة
+    /// تُعيَّر إلى «أصالة». مشتركة بين ورثة المقترض/الكفيل وورثة المتدخل.
+    /// </summary>
+    public static string NormalizeHeirCapacity(string? capacity)
+    {
+        var value = (capacity ?? string.Empty).Trim();
+        return value is "إضافة لتركة" or "أصالة وإضافة" ? value : "أصالة";
     }
 
     /// <summary>

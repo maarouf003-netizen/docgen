@@ -92,6 +92,7 @@ describe('InterventionModal', () => {
     await user.type(screen.getByLabelText(/الاسم$/), 'سامر');
     await user.type(screen.getByLabelText('اسم الأب'), 'محمود');
     await user.type(screen.getByLabelText('النسبة'), 'الحسن');
+    await user.type(screen.getByLabelText('رقم ورود طلب التدخل'), '١٢٣');
     await user.type(screen.getByLabelText(/تاريخ ورود طلب التدخل/), '1/8/2026');
     await user.type(screen.getByLabelText('تاريخ قبول طلب التدخل'), '10/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
@@ -104,6 +105,7 @@ describe('InterventionModal', () => {
         name: 'سامر',
         father: 'محمود',
         family: 'الحسن',
+        receiptNumber: '123',
         receiptDate: '1/8/2026',
         acceptanceDate: '10/8/2026',
       }),

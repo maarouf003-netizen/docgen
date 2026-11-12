@@ -165,8 +165,93 @@ public class DocumentInterventionServiceTests : IDisposable
     private const string InterventionOccurrenceLabel = "طلب تدخل";
 
     [Fact]
-    public async Task Add_PublicEntity_AdoptsCanonicalRegistryValues()
+    public async Task Add_NormalizesReceiptNumberDigits()
     {
+        var request = NaturalRequest();
+        request.ReceiptNumber = "ورود ١٢٣";
+
+        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+
+        Assert.Equal("ورود 123", dto.ReceiptNumber);
+    }
+
+    [Fact]
+    public async Task Search_FindsDocumentByInterventionName_EvenWithStaleSearchText()
+    {
+        var request = NaturalRequest();
+        request.Name = "اسم فريد للبحث";
+        await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+
+        // محاكاة تقادم/قصّ SearchText: البحث الاسمي المباشر على جدول المتدخلين
+        // يجب أن يبقى صالحًا (كبقية فروع الأطراف في الكتلة الموحدة).
+        _document.SearchText = "نص قديم لا يضم الاسم";
+        await _db.SaveChangesAsync();
+
+        var search = DocumentServiceFactory.Create(_db, _audit).Search;
+        var page = await search.SearchAsync(
+            "اسم فريد للبحث", null, null, null, null, null, null, null, null,
+            page: 1, perPage: 20, visibleBranchId: null, visibleUserId: _lawyer.Id);
+
+        Assert.Contains(page.Items, item => item.Id == _document.Id);
+    }
+
+    [Fact]
+    public async Task Update_PublicEntity_KeepsSameRegistryAfterDeactivation()
+    {
+        var (group, entry) = await SeedPublicEntityAsync();
+        var addRequest = new DocumentInterventionUpsertRequest
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            ReceiptDate = "3/8/2026",
+            EntityName = "جهة",
+            RegistryId = entry.Id,
+        };
+        var created = await _service.AddAsync(_document.Id, addRequest, _lawyer.Id, "المحامي الأول");
+
+        // تعطيل القيد والجهة الأم بعد الإضافة (بيانات تاريخية): يبقى التعديل ممكنًا
+        // ما دام المتدخل محافظًا على القيد نفسه؛ القيد الجديد يُشترط نشطًا.
+        entry.IsActive = false;
+        group.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var updated = await _service.UpdateAsync(
+            _document.Id,
+            created.Id,
+            new DocumentInterventionUpsertRequest
+            {
+                Nature = PartyNatureCatalog.PublicEntity,
+                ReceiptDate = "3/8/2026",
+                EntityName = "جهة",
+                RegistryId = entry.Id,
+                Notes = "تعديل لاحق",
+            },
+            _lawyer.Id,
+            "المحامي الأول");
+
+        Assert.NotNull(updated);
+        Assert.Equal("وزارة العدل", updated!.EntityName);
+        Assert.Equal("تعديل لاحق", updated.Notes);
+    }
+
+    [Fact]
+    public async Task Add_PublicEntity_WithoutClientName_AdoptsRegistryName()
+    {
+        var (_, entry) = await SeedPublicEntityAsync();
+        var request = new DocumentInterventionUpsertRequest
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            ReceiptDate = "3/8/2026",
+            RegistryId = entry.Id,
+        };
+
+        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+
+        Assert.Equal("وزارة العدل", dto.EntityName);
+        Assert.Equal("وزارة العدل مديرية التنفيذ", dto.DisplayName);
+    }
+
+    [Fact]
+    public async Task Add_PublicEntity_AdoptsCanonicalRegistryValues()    {
         var (_, entry) = await SeedPublicEntityAsync();
         var request = new DocumentInterventionUpsertRequest
         {

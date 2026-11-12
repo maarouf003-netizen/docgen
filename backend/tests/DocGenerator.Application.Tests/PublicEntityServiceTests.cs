@@ -380,6 +380,17 @@ public class PublicEntityServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        // متدخل جهة عامة مرتبط بالقيد نفسه: إعادة التسمية يجب أن تزامن اسمه المجمّد كذلك
+        // (فرع __Col_Interventions) لا صفوف الأطراف فقط.
+        applicantDoc.Interventions.Add(new DocumentIntervention
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            EntityName = "وزارة التعليم",
+            RegistryId = entry.Id,
+            ReceiptDate = new DateTime(2026, 8, 1),
+            CreatedById = _lawyerId,
+        });
+        await _db.SaveChangesAsync();
         _audit.Actions.Clear();
 
         var updated = await _service.UpdateAsync(entry.Id,
@@ -409,6 +420,13 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(executedLog.Changes, ch => ch.FieldKey == "__Col_ExecutedPublicEntities"
             && ch.OldValue!.Contains("وزارة التعليم")
             && ch.NewValue!.Contains("وزارة التربية"));
+
+        var intervention = await _db.DocumentInterventions.AsNoTracking().SingleAsync();
+        Assert.Equal("وزارة التربية", intervention.EntityName);
+        Assert.Contains(applicantLog.Changes, ch => ch.FieldKey == "__Col_Interventions"
+            && ch.OldValue == "وزارة التعليم"
+            && ch.NewValue == "وزارة التربية");
+
         Assert.Contains("rename_public_entity", _audit.Actions);
     }
 
@@ -816,6 +834,14 @@ public class PublicEntityServiceTests : IDisposable
         var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
         row.RegistryId = e1;
+        doc.Interventions.Add(new DocumentIntervention
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            EntityName = "وزارة التعليم",
+            RegistryId = e1,
+            ReceiptDate = new DateTime(2026, 8, 1),
+            CreatedById = _lawyerId,
+        });
         await _db.SaveChangesAsync();
 
         var result = await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
@@ -831,6 +857,10 @@ public class PublicEntityServiceTests : IDisposable
 
         var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
         Assert.Equal(e2, updatedRow!.RegistryId);
+
+        // متدخل الجهة العامة يتبع نفس القيد بعد الطيّ (لا يبقى على قيد مُعطَّل).
+        var intervention = await _db.DocumentInterventions.AsNoTracking().SingleAsync();
+        Assert.Equal(e2, intervention.RegistryId);
 
         Assert.Contains("move_entity_registry", _audit.Actions);
     }
@@ -3159,6 +3189,14 @@ public class PublicEntityServiceTests : IDisposable
         var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
         row.RegistryId = e1;
+        doc.Interventions.Add(new DocumentIntervention
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            EntityName = "وزارة التعليم",
+            RegistryId = e1,
+            ReceiptDate = new DateTime(2026, 8, 1),
+            CreatedById = _lawyerId,
+        });
         await _db.SaveChangesAsync();
 
         await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());

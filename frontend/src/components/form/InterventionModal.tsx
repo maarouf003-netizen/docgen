@@ -12,18 +12,16 @@ import type {
   PublicEntityEntryDto,
 } from '../../types';
 import {
+  addressLabelOf,
   ADDRESS_TYPE_OPTIONS,
   emptyIntervention,
+  hasStoredRepresentative,
+  INTERVENTION_LIMITS,
   INTERVENTION_NATURE_OPTIONS,
   interventionToRequest,
 } from './documentFormConstants';
 import { HeirsEditor } from './HeirsEditors';
 import { RepresentativeEditor } from './RepresentativeEditor';
-
-const MAX_SUBJECT = 2000;
-const MAX_NOTES = 2000;
-const MAX_NAME = 100;
-const MAX_ADDRESS = 300;
 
 const labelCls = 'block text-xs font-bold text-gray-600 mb-1';
 const inputCls =
@@ -52,7 +50,9 @@ export function InterventionModal({
     [initial],
   );
   const [form, setForm] = useState<DocumentInterventionUpsertRequest>(initialRequest);
-  const [showRepresentative, setShowRepresentative] = useState(() => hasRepresentative(initialRequest));
+  const [showRepresentative, setShowRepresentative] = useState(() =>
+    hasStoredRepresentative(initialRequest),
+  );
   const [registryPickerOpen, setRegistryPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -139,7 +139,7 @@ export function InterventionModal({
 
   const reset = () => {
     setForm(initialRequest);
-    setShowRepresentative(hasRepresentative(initialRequest));
+    setShowRepresentative(hasStoredRepresentative(initialRequest));
     setError('');
     setRegistryPickerOpen(false);
   };
@@ -147,26 +147,26 @@ export function InterventionModal({
   const submit = async () => {
     setError('');
 
-    const partyName =
-      form.nature === 'natural'
+    if (form.nature === 'public') {
+      if (form.registryId == null) {
+        setError('اختر جهة عامة صالحة من السجل المرجعي');
+        return;
+      }
+    } else {
+      const partyName = form.nature === 'natural'
         ? (form.name ?? '').trim()
         : (form.entityName ?? '').trim();
-    if (!partyName) {
-      setError(
-        form.nature === 'natural'
-          ? 'اسم المتدخل مطلوب'
-          : form.nature === 'legal'
-            ? 'اسم الشخص الاعتباري مطلوب'
-            : 'اسم الجهة العامة مطلوب',
-      );
-      return;
+      if (!partyName) {
+        setError(
+          form.nature === 'natural'
+            ? 'اسم المتدخل مطلوب'
+            : 'اسم الشخص الاعتباري مطلوب',
+        );
+        return;
+      }
     }
     if (!(form.receiptDate ?? '').trim()) {
       setError('تاريخ ورود طلب التدخل مطلوب');
-      return;
-    }
-    if (form.nature === 'public' && form.registryId == null) {
-      setError('اختر جهة عامة صالحة من السجل المرجعي');
       return;
     }
     if (showRepresentative && !(form.representativeName ?? '').trim()) {
@@ -176,7 +176,7 @@ export function InterventionModal({
 
     const payload: DocumentInterventionUpsertRequest = {
       nature: form.nature,
-      receiptNumber: (form.receiptNumber ?? '').trim(),
+      receiptNumber: normalizeArabicDigits(form.receiptNumber ?? '').trim(),
       receiptDate: normalizeArabicDigits(form.receiptDate ?? '').trim(),
       acceptanceDate: normalizeArabicDigits(form.acceptanceDate ?? '').trim(),
       subject: (form.subject ?? '').trim(),
@@ -262,15 +262,6 @@ export function InterventionModal({
         </div>
 
         <div className="px-4 sm:px-5 py-4 overflow-y-auto space-y-4">
-          {error && (
-            <div
-              role="alert"
-              className="rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2"
-            >
-              {error}
-            </div>
-          )}
-
           <div>
             <label htmlFor="intervention-nature" className={labelCls}>
               صفة المتدخل
@@ -346,13 +337,13 @@ export function InterventionModal({
               <AutoResizeTextarea
                 id="intervention-subject"
                 value={form.subject ?? ''}
-                onChange={(value) => setField('subject', value)}
+                onChange={(value) => setField('subject', value.slice(0, INTERVENTION_LIMITS.subject))}
                 placeholder="موضوع طلب التدخل…"
                 minRows={3}
                 maxHeight={200}
                 className={`${inputCls} resize-none`}
               />
-              <p className="mt-1 text-[11px] text-gray-500">حتى {MAX_SUBJECT} محرفًا.</p>
+              <p className="mt-1 text-[11px] text-gray-500">حتى {INTERVENTION_LIMITS.subject} محرفًا.</p>
             </div>
             <div className="mt-3">
               <label htmlFor="intervention-notes" className={labelCls}>
@@ -361,13 +352,13 @@ export function InterventionModal({
               <AutoResizeTextarea
                 id="intervention-notes"
                 value={form.notes ?? ''}
-                onChange={(value) => setField('notes', value)}
+                onChange={(value) => setField('notes', value.slice(0, INTERVENTION_LIMITS.notes))}
                 placeholder="ملاحظات إضافية…"
                 minRows={3}
                 maxHeight={200}
                 className={`${inputCls} resize-none`}
               />
-              <p className="mt-1 text-[11px] text-gray-500">حتى {MAX_NOTES} محرفًا.</p>
+              <p className="mt-1 text-[11px] text-gray-500">حتى {INTERVENTION_LIMITS.notes} محرفًا.</p>
             </div>
           </fieldset>
 
@@ -408,7 +399,7 @@ export function InterventionModal({
                     id="intervention-address"
                     name="address"
                     autoComplete="street-address"
-                    maxLength={MAX_ADDRESS}
+                    maxLength={INTERVENTION_LIMITS.address}
                     value={form.address ?? ''}
                     onChange={(e) => setField('address', e.target.value)}
                     className={inputCls}
@@ -485,7 +476,7 @@ export function InterventionModal({
                     id="intervention-legal-address"
                     name="address"
                     autoComplete="street-address"
-                    maxLength={MAX_ADDRESS}
+                    maxLength={INTERVENTION_LIMITS.address}
                     value={form.address ?? ''}
                     onChange={(e) => setField('address', e.target.value)}
                     className={inputCls}
@@ -554,6 +545,15 @@ export function InterventionModal({
           )}
         </div>
 
+        {error && (
+          <div
+            role="alert"
+            className="mx-4 sm:mx-5 my-2 shrink-0 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2"
+          >
+            {error}
+          </div>
+        )}
+
         <div className="px-4 sm:px-5 py-3 border-t border-gray-200 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 shrink-0">
           <button
             type="button"
@@ -597,7 +597,7 @@ function NamedInput({
   label,
   value,
   onChange,
-  maxLength = MAX_NAME,
+  maxLength = INTERVENTION_LIMITS.name,
 }: {
   id: string;
   label: string;
@@ -621,18 +621,4 @@ function NamedInput({
       />
     </div>
   );
-}
-
-function hasRepresentative(form: DocumentInterventionUpsertRequest): boolean {
-  return Boolean(
-    (form.representativeName ?? '').trim()
-      || (form.representativeFather ?? '').trim()
-      || (form.representativeFamily ?? '').trim(),
-  );
-}
-
-/** تسمية قيمة العنوان/الوكيل حسب النوع المخزَّن (كما في بقية النماذج). */
-function addressLabelOf(addressType?: string): string {
-  if (addressType === 'يمثله') return 'وكيله القانوني';
-  return 'العنوان';
 }

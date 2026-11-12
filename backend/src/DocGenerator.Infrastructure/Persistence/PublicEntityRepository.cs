@@ -93,8 +93,8 @@ public class PublicEntityRepository : IPublicEntityRepository
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
     //
     // إعادة بناء SearchText تمرّ على كل مجموعات الملف (ورثة/كفلاء/طالبو تنفيذ/منفذ
-    // عليهم/ورثة الجهات)، لذا يجب تحميلها كاملة مع الملف وإلا فقدت توكنات بحث غير
-    // متأثرة بإعادة التسمية. SplitQuery مفعّل على السياق فيجعل التحميل المتعدد فعالًا.
+    // عليهم/ورثة الجهات/المتدخلون)، لذا يجب تحميلها كاملة مع الملف وإلا فقدت توكنات
+    // بحث غير متأثرة بإعادة التسمية. SplitQuery مفعّل على السياق فيجعل التحميل المتعدد فعالًا.
 
     public Task<List<ApplicantPublicEntity>> ListApplicantRowsByNamesAsync(
         IReadOnlyCollection<string> names, CancellationToken ct = default)
@@ -106,6 +106,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(a => a.Document).ThenInclude(d => d.ExecutedPublicEntities)
             .Include(a => a.Document).ThenInclude(d => d.ExecutedNaturalPersons)
             .Include(a => a.Document).ThenInclude(d => d.ExecutedHeirs)
+            .Include(a => a.Document).ThenInclude(d => d.Interventions).ThenInclude(i => i.Heirs)
             .Where(a => a.Name != null && names.Contains(a.Name))
             .ToListAsync(ct);
 
@@ -119,6 +120,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(e => e.Document).ThenInclude(d => d.ExecutedPublicEntities)
             .Include(e => e.Document).ThenInclude(d => d.ExecutedNaturalPersons)
             .Include(e => e.Document).ThenInclude(d => d.ExecutedHeirs)
+            .Include(e => e.Document).ThenInclude(d => d.Interventions).ThenInclude(i => i.Heirs)
             .Where(e => e.EntityName != null && e.EntityNature == PartyNatureCatalog.PublicEntity
                 && names.Contains(e.EntityName))
             .ToListAsync(ct);
@@ -149,6 +151,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(d => d.ExecutionApplicants)
             .Include(d => d.ExecutedNaturalPersons)
             .Include(d => d.ExecutedHeirs)
+            .Include(d => d.Interventions).ThenInclude(i => i.Heirs)
             .Where(d => uniqueIds.Contains(d.Id))
             .ToListAsync(ct);
     }

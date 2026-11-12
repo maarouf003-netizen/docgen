@@ -52,7 +52,7 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
                 $"عدد المتدخلين في الملف يتجاوز الحد الأقصى ({InterventionLimitsCatalog.MaxPerDocument})");
 
         var intervention = DocumentInterventionText.Normalize(request);
-        await ResolveRegistryAsync(intervention, ct);
+        await ResolveRegistryAsync(intervention, existingRegistryId: null, ct);
         intervention.DocumentId = documentId;
         intervention.CreatedById = userId;
         intervention.CreatedAt = DateTime.UtcNow;
@@ -90,7 +90,7 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
             return null;
 
         var normalized = DocumentInterventionText.Normalize(request);
-        await ResolveRegistryAsync(normalized, ct);
+        await ResolveRegistryAsync(normalized, intervention.RegistryId, ct);
 
         return await _tx.RunAsync(async token =>
         {
@@ -155,10 +155,15 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
     }
 
     /// <summary>
-    /// للجهة العامة: يتحقق من قيد السجل المرجعي وجهته الأم (نشطان)، ويعتمد اسم الجهة
-    /// المعتمد وفرعها ومحافظتها من السجل لا من نص العميل — فيبقى الربط صحيحًا مهما عبث الطلب.
+    /// للجهة العامة: يتحقق من قيد السجل المرجعي وجهته الأم، ويعتمد اسم الجهة المعتمد
+    /// وفرعها ومحافظتها من السجل لا من نص العميل — فيبقى الربط صحيحًا مهما عبث الطلب.
+    /// عند التعديل يُقبل القيد نفسه وإن كان قد عُطّل لاحقًا (حفاظًا على قابلية تعديل
+    /// بيانات تاريخية مرتبطة بجهة عُطّلت)، أما القيد الجديد/المختلف فيجب أن يكون نشطًا.
     /// </summary>
-    private async Task ResolveRegistryAsync(DocumentIntervention intervention, CancellationToken ct)
+    private async Task ResolveRegistryAsync(
+        DocumentIntervention intervention,
+        int? existingRegistryId,
+        CancellationToken ct)
     {
         if (intervention.Nature != PartyNatureCatalog.PublicEntity)
             return;
@@ -169,7 +174,12 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
         var group = registry is null
             ? null
             : await _publicEntityGroups.GetByIdAsync(registry.GroupId, ct);
-        if (registry is null || !registry.IsActive || group is null || !group.IsActive)
+        var keepExisting = existingRegistryId is not null
+            && intervention.RegistryId == existingRegistryId;
+        if (registry is null
+            || group is null
+            || (!registry.IsActive && !keepExisting)
+            || (!group.IsActive && !keepExisting))
             throw new ArgumentException("اختر جهة عامة صالحة من السجل المرجعي");
 
         intervention.EntityName = group.CanonicalName;

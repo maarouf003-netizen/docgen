@@ -63,6 +63,14 @@ export const INTERVENTION_NATURE_OPTIONS: LabelValueOption[] = [
   { value: 'public', label: 'جهة عامة' },
 ];
 
+/** حدود حقول المتدخل في الواجهة — مرآة `InterventionLimitsCatalog` في الخلفية. */
+export const INTERVENTION_LIMITS = {
+  subject: 2000,
+  notes: 2000,
+  name: 100,
+  address: 300,
+} as const;
+
 /** الحالة الابتدائية لنافذة متدخل جديد — ومرجع «إعادة التعيين». */
 export function emptyIntervention(): DocumentInterventionUpsertRequest {
   return {

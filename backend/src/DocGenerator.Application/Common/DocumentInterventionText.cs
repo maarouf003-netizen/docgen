@@ -13,7 +13,6 @@ namespace DocGenerator.Application.Common;
 public static class DocumentInterventionText
 {
     private const string DefaultPartyAddressType = "موطن مختار";
-    private const string DefaultHeirAddressType = "عنوان";
 
     /// <summary>
     /// يبني كيان متدخل من الطلب بعد كل التحققات: الصفة، إلزام الاسم وتاريخ الورود،
@@ -37,7 +36,8 @@ public static class DocumentInterventionText
         var intervention = new DocumentIntervention
         {
             Nature = nature,
-            ReceiptNumber = Clean(request.ReceiptNumber, InterventionLimitsCatalog.MaxReceiptNumber, "رقم ورود طلب التدخل"),
+            ReceiptNumber = DigitNormalizer.NormalizeDigitsOrNull(
+                Clean(request.ReceiptNumber, InterventionLimitsCatalog.MaxReceiptNumber, "رقم ورود طلب التدخل")),
             ReceiptDate = receiptDate,
             AcceptanceDate = acceptanceDate,
             Subject = Clean(request.Subject, InterventionLimitsCatalog.MaxSubject, "موضوع التدخل", multiline: true),
@@ -242,9 +242,10 @@ public static class DocumentInterventionText
         if (request.RegistryId is null)
             throw new ArgumentException("اختر جهة عامة صالحة من السجل المرجعي");
 
-        intervention.EntityName = Require(
-            Clean(request.EntityName, InterventionLimitsCatalog.MaxEntityName, "اسم الجهة العامة"),
-            "اسم الجهة العامة مطلوب");
+        // الاسم/الفرع/المحافظة تُعتمد من السجل المرجعي في الخدمة؛ هنا نُبقي نص العميل
+        // (اختياريًا) للتحقق من الطول فقط، فلا يصبح غيابه سبب رفض زائف.
+        intervention.EntityName = Clean(
+            request.EntityName, InterventionLimitsCatalog.MaxEntityName, "اسم الجهة العامة");
         intervention.EntityBranch = Clean(
             request.EntityBranch, InterventionLimitsCatalog.MaxEntityBranch, "فرع الجهة العامة");
         intervention.Governorate = Clean(
@@ -277,8 +278,8 @@ public static class DocumentInterventionText
                 HeirName = name,
                 HeirFather = father,
                 HeirFamily = family,
-                Capacity = NormalizeHeirCapacity(h.Capacity),
-                AddressType = hasRepresentative ? null : NormalizeHeirAddressType(h.AddressType),
+                Capacity = DocumentText.NormalizeHeirCapacity(h.Capacity),
+                AddressType = hasRepresentative ? null : DocumentText.NormalizeHeirAddressType(h.AddressType),
                 HeirAddress = hasRepresentative
                     ? null
                     : Clean(h.Address, InterventionLimitsCatalog.MaxAddress, "عنوان الوريث أو وكيله"),
@@ -325,18 +326,6 @@ public static class DocumentInterventionText
     {
         var value = (addressType ?? string.Empty).Trim();
         return value is "موطن مختار" or "عنوان" or "يمثله" ? value : DefaultPartyAddressType;
-    }
-
-    private static string NormalizeHeirAddressType(string? addressType)
-    {
-        var value = (addressType ?? string.Empty).Trim();
-        return value is "عنوان" or "موطن مختار" or "وكيل" ? value : DefaultHeirAddressType;
-    }
-
-    private static string NormalizeHeirCapacity(string? capacity)
-    {
-        var value = (capacity ?? string.Empty).Trim();
-        return value is "إضافة لتركة" or "أصالة وإضافة" ? value : "أصالة";
     }
 
     private static string? Clean(string? value, int max, string label, bool multiline = false)
