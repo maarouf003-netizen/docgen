@@ -233,6 +233,9 @@ export interface DocumentAnnexDto {
   annexDate?: string;
 }
 
+/** مصدر تاريخ «آخر نشاط» المحسوب خلفيًا لبطاقة تذكيرات الشطب (يُعرض صراحةً عند عدم كونه إجراءً). */
+export type LastActivitySource = 'action' | 'registration' | 'created';
+
 export interface DocumentResponse {
   id: number;
   createdAt: string;
@@ -410,7 +413,7 @@ fileNumber?: string;
    */
   lastActivityDate?: string;
   /** مصدر آخر نشاط: action | registration | created (يُعلن بصدق في العرض). */
-  lastActivitySource?: string;
+  lastActivitySource?: LastActivitySource;
   /** رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري). */
   renewalFileReceiptNumber?: string;
   /** تاريخ ورود اخطار التجديد عند إعادة الملف المشطوب (اختياري). */

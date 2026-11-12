@@ -31,8 +31,4 @@ public static class StrikeOffReminderCalculator
         => TimeZoneInfo.ConvertTimeToUtc(
             DateTime.SpecifyKind(nowLocal.Date.AddMonths(-Months), DateTimeKind.Unspecified),
             timeZone);
-
-    /// <summary>هل بلغ الملف العتبة؟ (آخر نشاط ≤ الحد ⇒ مستحق للتذكير).</summary>
-    public static bool IsDue(DateTime lastActivityUtc, DateTime cutoffUtc)
-        => lastActivityUtc <= cutoffUtc;
 }

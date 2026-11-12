@@ -1,7 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Services;
 

@@ -48,8 +48,7 @@ public sealed class ExecutionActionService : IExecutionActionService
             return new List<ExecutionActionDto>();
         return doc.ExecutionActions
             .OrderByDescending(a => a.CreatedAt)
-            .Select(a => new ExecutionActionDto(a.Id, a.Type, a.Text, a.ActionDate,
-                a.ReminderDuration, a.ReminderColor, a.CreatedBy?.FullName, a.CreatedAt))
+            .Select(a => ToDto(a, a.CreatedBy?.FullName))
             .ToList();
     }
 
@@ -86,8 +85,7 @@ public sealed class ExecutionActionService : IExecutionActionService
             await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
                 DocumentText.AuditWithActor($"أضاف {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
         }, ct);
-        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
-            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+        return ToDto(action, actorName);
     }
 
     public async Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default)
@@ -117,8 +115,7 @@ public sealed class ExecutionActionService : IExecutionActionService
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
                 DocumentText.AuditWithActor($"عدّل {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
         }, ct);
-        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
-            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+        return ToDto(action, actorName);
     }
 
     public async Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default)
@@ -196,8 +193,7 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (reminderDuration is null && reminderColor is null)
         {
             await ClearReminderCoreAsync(action, doc, actorName, ct);
-            return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
-                action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+            return ToDto(action, actorName);
         }
 
         action.ReminderDuration = reminderDuration;
@@ -214,8 +210,7 @@ public sealed class ExecutionActionService : IExecutionActionService
                     doc), token);
         }, ct);
 
-        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
-            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+        return ToDto(action, actorName);
     }
 
     /// <summary>
@@ -266,8 +261,7 @@ public sealed class ExecutionActionService : IExecutionActionService
                     $"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الأساس: {oldBaseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—"} ← {action.ReminderBaseDate:yyyy-MM-dd}) — تاريخ الإجراء لم يتغير",
                     doc), token);
         }, ct);
-        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
-            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
+        return ToDto(action, actorName);
     }
 
     /// <summary>
@@ -364,6 +358,14 @@ public sealed class ExecutionActionService : IExecutionActionService
         action.ReminderColor = null;
         action.ReminderBaseDate = null;
     }
+
+    /// <summary>
+    /// تحويل إجراء إلى DTO موحّد (اسم العرض: منشئ السجل للقراءة، والفاعل للعمليات الجارية) —
+    /// نقطة واحدة فلا تنحرف الحقول بين المسارات الستة.
+    /// </summary>
+    private static ExecutionActionDto ToDto(ExecutionAction action, string? createdByName)
+        => new(action.Id, action.Type, action.Text, action.ActionDate,
+            action.ReminderDuration, action.ReminderColor, createdByName, action.CreatedAt);
 
     private static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)
     {
