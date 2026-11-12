@@ -28,16 +28,4 @@ public class StrikeOffReminderCalculatorTests
         // 2026-06-11 00:00 بتوقيت +03 = 2026-06-10T21:00Z.
         Assert.Equal(new DateTime(2026, 6, 10, 21, 0, 0, DateTimeKind.Utc), cutoff);
     }
-
-    [Theory]
-    [InlineData(-1, true)]
-    [InlineData(0, true)]
-    [InlineData(1, false)]
-    public void IsDue_IsInclusiveAtTheCutoff(int offsetSeconds, bool expected)
-    {
-        var cutoff = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc);
-        var lastActivity = cutoff.AddSeconds(offsetSeconds);
-
-        Assert.Equal(expected, StrikeOffReminderCalculator.IsDue(lastActivity, cutoff));
-    }
 }

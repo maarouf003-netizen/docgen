@@ -6,10 +6,10 @@ import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { formatDate } from '../utils/dates';
 import { applicantName, fullName } from '../utils/documentDisplay';
-import type { DocumentResponse, PagedResult } from '../types';
+import type { DocumentResponse, LastActivitySource, PagedResult } from '../types';
 
 /** مصدر تاريخ «آخر إجراء» المعروض — يُعلن بصدق حين لا يكون إجراءً مسجّلًا. */
-function sourceLabel(source?: string): string | null {
+function sourceLabel(source?: LastActivitySource): string | null {
   if (source === 'registration') return 'تاريخ القيد';
   if (source === 'created') return 'تاريخ الإدخال';
   return null;
@@ -42,11 +42,14 @@ export default function StrikeOffRemindersPage() {
   const dismiss = async (d: DocumentResponse) => {
     setDismissingId(d.id);
     setActionError('');
+    setMessage('');
     try {
       await api.post(`/documents/${d.id}/strike-off-reminder/dismiss`);
       setMessage(`أُلغي تذكير الشطب للملف «${fullName(d) || d.displayFileNumber || d.id}» — يعود عند تسجيل إجراء جديد.`);
       setConfirmId(null);
-      listQuery.refetch();
+      // آخر عنصر في صفحة غير أولى: الرجوع صفحةً بدل عرض صفحة فارغة بعد الاختفاء.
+      if (data?.items.length === 1 && page > 1) setPage(page - 1);
+      else listQuery.refetch();
     } catch (err) {
       setActionError(getApiErrorMessage(err));
     } finally {

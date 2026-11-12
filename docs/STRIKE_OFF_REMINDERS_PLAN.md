@@ -40,8 +40,7 @@
 
 ## 3) الخلفية
 
-- `StrikeOffReminderCalculator` (Application/Common): `Months = 5`، `CutoffUtc(now, tz)`،
-  `IdleMonths` (للعرض إن لزم)، وثابتا الترقيم.
+- `StrikeOffReminderCalculator` (Application/Common): `Months = 5`، `CutoffUtc(now, tz)`، وثابتا الترقيم.
 - `IDocumentRepository.SearchStrikeOffReminderIdsAsync(...)` + `Count...`: استعلام خطوتين —
   (1) تصفية/عدّ/ترتيب/ترقيم وإرجاع المعرّفات + تاريخ آخر نشاط من SQL؛ (2) تحميل الكتبة
   بـ`WithStandardIncludes` بالترتيب نفسه.
