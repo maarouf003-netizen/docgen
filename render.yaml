@@ -1,25 +1,37 @@
-databases:
-  - name: docgen-db
-    databaseName: docgen
-    user: docgen
-    plan: free
+# تعريف البنية التحتية لخدمة الإنتاج الفعلية على Render.
+#
+# ملاحظات ملزمة (مطابَقة للخدمة الحية `docgen-1` — تحقّق 2026-11-08):
+# - قاعدة البيانات PostgreSQL **خارجية** (Supabase) وتُحقن في الخدمة عبر `DATABASE_URL`،
+#   لذلك لا يوجد مورد `databases` هنا: Render لا يدير قواعد خارجية، وقد أُزيل
+#   التعريف القديم `docgen-db` لعدم وجود أي نسخة Postgres داخل مساحة العمل.
+# - الأسرار (`DATABASE_URL`, `Jwt__Secret`, `Bootstrap__AdminPassword`) لا تُخزَّن في
+#   المستودع؛ تُضبط يدويًا في لوحة Render عبر `sync: false`.
+# - `Database:AutoMigrate=false` في الإنتاج (appsettings.json) ومُعلَن صراحةً هنا كذلك،
+#   ⇒ يجب تطبيق الهجرات قبل النشر، وإلا يرفض التطبيق الإقلاع (انظر RUN_GUIDE.md §9).
+# - الخدمة القديمة `docgen` (oregon، موقوفة) و`docgen-db` غير موجودة في المساحة،
+#   فأُزيلتا من التعريف: المصدر الوحيد للبنية التحتية هو هذا الملف.
 
 services:
   - type: web
-    name: docgen
+    name: docgen-1
     runtime: docker
     plan: free
+    region: frankfurt
+    branch: master
+    autoDeploy: true
+    healthCheckPath: /healthz
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: Database__UsePostgres
         value: "true"
-      - key: ConnectionStrings__DefaultConnection
-        fromDatabase:
-          name: docgen-db
-          property: connectionString
+      - key: DATABASE_URL
+        sync: false
       - key: Jwt__Secret
         sync: false
       - key: Bootstrap__AdminPassword
         sync: false
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+      - key: Database__AutoMigrate
+        value: "false"
