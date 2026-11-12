@@ -205,4 +205,19 @@ render(<DocumentForm />);
     expect(payload.applicantPublicEntities).toEqual([]);
   });
 
+  it('يعرض زر «إضافة متدخل» في نهاية سطر صفة الجهة العامة لملف التعديل ويفتح النافذة', async () => {
+    const user = userEvent.setup();
+    await renderEdit();
+
+    const button = screen.getByRole('button', { name: '＋ إضافة متدخل' });
+    expect(button).toBeInTheDocument();
+    await user.click(button);
+    expect(screen.getByRole('dialog', { name: 'إضافة متدخل' })).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر «إضافة متدخل» في ملف «عرض وايداع»', async () => {
+    await renderExecutedEdit({ generalEntitySide: 'deposit' });
+    expect(screen.queryByRole('button', { name: '＋ إضافة متدخل' })).not.toBeInTheDocument();
+  });
+
 });

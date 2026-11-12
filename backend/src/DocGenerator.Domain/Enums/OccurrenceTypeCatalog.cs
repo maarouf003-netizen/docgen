@@ -81,6 +81,13 @@ public static class OccurrenceTypeCatalog
     public const string MirrorFileMoved = "mirror-file-moved";
 
     /// <summary>
+    /// طلب تدخل طرفٍ (شخص طبيعي/اعتباري/جهة عامة) في الملف: وقعة مولَّدة آليًا من
+    /// بيانات المتدخل (تاريخ الورود = تاريخ الوقعة، والقبول/الاسم لقطة في Details)،
+    /// تُحذف مع المتدخل تلقائيًا عبر `DocumentInterventionId`.
+    /// </summary>
+    public const string Intervention = "intervention";
+
+    /// <summary>
     /// مرآة عقدية للاختبارات (لا مستهلك إنتاجي): تضم ثوابت الكتالوج — الأنواع الصالحة —
     /// كلها دون سواها. أي نوع جديد يُدخل الكتالوج يُضاف إليها مع ثابته و<see cref="ToLabel"/>،
     /// ويفرض اختبار التكافؤ الانعكاسي هذه المطابقة، فيسري على الثوابت كلها حارسُ حد عمود
@@ -90,7 +97,7 @@ public static class OccurrenceTypeCatalog
     {
         StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
         ReferredToStart, CircuitReferred, CircuitReregistered, CircuitRenamed,
-        SourceFileMoved, MirrorFileMoved,
+        SourceFileMoved, MirrorFileMoved, Intervention,
     };
 
     /// <summary>
@@ -113,6 +120,7 @@ public static class OccurrenceTypeCatalog
         CircuitRenamed => "إعادة تسمية دائرة",
         SourceFileMoved => "نقل الملف المنيب",
         MirrorFileMoved => "نقل الملف المناب",
+        Intervention => "طلب تدخل",
         _ => type,
     };
 

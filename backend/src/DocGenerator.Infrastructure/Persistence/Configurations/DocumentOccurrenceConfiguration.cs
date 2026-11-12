@@ -29,10 +29,17 @@ public class DocumentOccurrenceConfiguration : IEntityTypeConfiguration<Document
         builder.Property(o => o.FromCircuitName).HasMaxLength(200);
         builder.Property(o => o.ToCircuitName).HasMaxLength(200);
         builder.HasIndex(o => o.DocumentId);
+        // ربط وقعة «طلب تدخل» بالمتدخل: حذف المتدخل يحذف وقعته (وفهرسة للنافذة).
+        builder.HasIndex(o => o.DocumentInterventionId);
 
         builder.HasOne(o => o.Document)
             .WithMany(d => d.Occurrences)
             .HasForeignKey(o => o.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(o => o.DocumentIntervention)
+            .WithMany()
+            .HasForeignKey(o => o.DocumentInterventionId)
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(o => o.CreatedBy)

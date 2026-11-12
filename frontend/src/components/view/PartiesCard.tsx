@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type {
   ApplicantPublicEntityDto,
+  DocumentInterventionDto,
   DocumentResponse,
   ExecutionApplicantDto,
 } from '../../types';
@@ -331,10 +332,42 @@ function ApplicantSideDebtors({
   return <div>{rows}</div>;
 }
 
+/** المتدخلون في الملف (شخص طبيعي/اعتباري/جهة عامة) — صف لكل متدخل قابل للنقر. */
+function InterventionsGroup({
+  interventions,
+  onOpen,
+}: {
+  interventions: DocumentInterventionDto[];
+  onOpen?: (intervention: DocumentInterventionDto) => void;
+}) {
+  return (
+    <div>
+      {interventions.map((intervention, i) => (
+        <PartyRow
+          key={intervention.id ?? i}
+          label={`متدخل ${i + 1} — ${intervention.natureLabel || ''}`}
+          name={intervention.displayName || '—'}
+          subtitle={intervention.subject ? `موضوع التدخل: ${intervention.subject}` : undefined}
+          onClick={onOpen ? () => onOpen(intervention) : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
 /** بطاقة «أطراف الملف التنفيذي» الموحّدة: طالب التنفيذ + المنفذ عليه لكل الصفات. */
-export function PartiesCard({ doc, onOpen }: { doc: DocumentResponse; onOpen: (m: PartyModal) => void }) {
+export function PartiesCard({
+  doc,
+  onOpen,
+  onOpenIntervention,
+}: {
+  doc: DocumentResponse;
+  onOpen: (m: PartyModal) => void;
+  onOpenIntervention?: (intervention: DocumentInterventionDto) => void;
+}) {
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const isOrdinary = doc.contractTypeSelector === 'عادي';
+  const interventions = doc.interventions ?? [];
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
@@ -353,6 +386,11 @@ export function PartiesCard({ doc, onOpen }: { doc: DocumentResponse; onOpen: (m
           <ApplicantSideDebtors doc={doc} isOrdinary={isOrdinary} onOpen={onOpen} />
         )}
       </PartiesGroup>
+      {interventions.length > 0 && (
+        <PartiesGroup title="المتدخلون">
+          <InterventionsGroup interventions={interventions} onOpen={onOpenIntervention} />
+        </PartiesGroup>
+      )}
     </div>
   );
 }

@@ -37,7 +37,7 @@ import { DelegationStatusCard } from '../components/delegation/DelegationStatusC
 import DocumentReviewLettersCard from '../components/review/DocumentReviewLettersCard';
 import AppealFormModal from '../components/appeal/AppealFormModal';
 import AppealInfoModal from '../components/appeal/AppealInfoModal';
-import type { AppealDirection, AppealDto, DelegationDto, DocumentResponse } from '../types';
+import type { AppealDirection, AppealDto, DelegationDto, DocumentInterventionDto, DocumentResponse } from '../types';
 import DocumentGenerationModal from '../components/view/DocumentGenerationModal';
 import { ExecutoryDocumentCard } from '../components/view/ExecutoryDocumentCard';
 import { FileDataCard } from '../components/view/FileDataCard';
@@ -45,6 +45,7 @@ import { OccurrencesCard } from '../components/view/OccurrencesCard';
 import { OccurrencesModal } from '../components/view/OccurrencesModal';
 import { PartiesCard } from '../components/view/PartiesCard';
 import { PartyDetailsModal } from '../components/view/PartyDetailsModal';
+import { InterventionDetailsModal } from '../components/view/InterventionDetailsModal';
 import { AssetsSection } from '../components/view/AssetsSection';
 import { TransferHistoryModal } from '../components/view/TransferHistoryModal';
 import DocumentChangesModal from '../components/view/DocumentChangesModal';
@@ -88,6 +89,7 @@ export default function DocumentView() {
   const [assignmentsOpen, setAssignmentsOpen] = useState(false);
   const [generationOpen, setGenerationOpen] = useState(false);
   const [partyModal, setPartyModal] = useState<PartyModal | null>(null);
+  const [interventionModal, setInterventionModal] = useState<DocumentInterventionDto | null>(null);
   const [delegationFormOpen, setDelegationFormOpen] = useState(false);
   const [editingDelegation, setEditingDelegation] = useState<DelegationDto | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -276,7 +278,7 @@ export default function DocumentView() {
   // والثالث «الإنابات والوقوعات» — وتتحول على الجوال إلى تبويبات يختارها المستخدم.
   const infoPanel = (
     <>
-      <PartiesCard doc={doc} onOpen={setPartyModal} />
+      <PartiesCard doc={doc} onOpen={setPartyModal} onOpenIntervention={setInterventionModal} />
       <FileDataCard
         doc={doc}
         isLawyer={isLawyer}
@@ -350,6 +352,7 @@ export default function DocumentView() {
         appeals={appeals}
         onOpen={() => setOccurrencesOpen(true)}
         onOpenAppeal={setInfoAppeal}
+        onOpenIntervention={setInterventionModal}
       />
     </>
   );
@@ -833,11 +836,23 @@ export default function DocumentView() {
         <OccurrencesModal
           documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
           occurrences={doc.occurrences ?? []}
+          interventions={doc.interventions ?? []}
+          onOpenIntervention={(intervention) => {
+            setOccurrencesOpen(false);
+            setInterventionModal(intervention);
+          }}
           onClose={() => setOccurrencesOpen(false)}
         />
       )}
 
       {partyModal && <PartyDetailsModal modal={partyModal} onClose={() => setPartyModal(null)} />}
+
+      {interventionModal && (
+        <InterventionDetailsModal
+          intervention={interventionModal}
+          onClose={() => setInterventionModal(null)}
+        />
+      )}
 
       {appealFormVariant && doc && (
         <AppealFormModal

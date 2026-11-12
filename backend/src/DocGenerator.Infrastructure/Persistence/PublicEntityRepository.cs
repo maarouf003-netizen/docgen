@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -93,8 +94,8 @@ public class PublicEntityRepository : IPublicEntityRepository
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
     //
     // إعادة بناء SearchText تمرّ على كل مجموعات الملف (ورثة/كفلاء/طالبو تنفيذ/منفذ
-    // عليهم/ورثة الجهات)، لذا يجب تحميلها كاملة مع الملف وإلا فقدت توكنات بحث غير
-    // متأثرة بإعادة التسمية. SplitQuery مفعّل على السياق فيجعل التحميل المتعدد فعالًا.
+    // عليهم/ورثة الجهات/المتدخلون)، لذا يجب تحميلها كاملة مع الملف وإلا فقدت توكنات
+    // بحث غير متأثرة بإعادة التسمية. SplitQuery مفعّل على السياق فيجعل التحميل المتعدد فعالًا.
 
     public Task<List<ApplicantPublicEntity>> ListApplicantRowsByNamesAsync(
         IReadOnlyCollection<string> names, CancellationToken ct = default)
@@ -106,6 +107,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(a => a.Document).ThenInclude(d => d.ExecutedPublicEntities)
             .Include(a => a.Document).ThenInclude(d => d.ExecutedNaturalPersons)
             .Include(a => a.Document).ThenInclude(d => d.ExecutedHeirs)
+            .Include(a => a.Document).ThenInclude(d => d.Interventions).ThenInclude(i => i.Heirs)
             .Where(a => a.Name != null && names.Contains(a.Name))
             .ToListAsync(ct);
 
@@ -119,6 +121,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(e => e.Document).ThenInclude(d => d.ExecutedPublicEntities)
             .Include(e => e.Document).ThenInclude(d => d.ExecutedNaturalPersons)
             .Include(e => e.Document).ThenInclude(d => d.ExecutedHeirs)
+            .Include(e => e.Document).ThenInclude(d => d.Interventions).ThenInclude(i => i.Heirs)
             .Where(e => e.EntityName != null && e.EntityNature == PartyNatureCatalog.PublicEntity
                 && names.Contains(e.EntityName))
             .ToListAsync(ct);
@@ -141,17 +144,50 @@ public class PublicEntityRepository : IPublicEntityRepository
         var uniqueIds = ids.Distinct().ToList();
         if (uniqueIds.Count == 0)
             return new List<Document>();
-        return await _db.Documents
-            .Include(d => d.ApplicantPublicEntities).ThenInclude(a => a.Registry).ThenInclude(r => r!.Group)
-            .Include(d => d.ExecutedPublicEntities).ThenInclude(e => e.Registry).ThenInclude(r => r!.Group)
-            .Include(d => d.Heirs)
-            .Include(d => d.Guarantors)
-            .Include(d => d.ExecutionApplicants)
-            .Include(d => d.ExecutedNaturalPersons)
-            .Include(d => d.ExecutedHeirs)
+        return await WithSearchTextCollections(_db.Documents)
             .Where(d => uniqueIds.Contains(d.Id))
             .ToListAsync(ct);
     }
+
+    public async Task<List<Document>> ListDocumentsByPublicInterventionNameAsync(
+        string name, CancellationToken ct = default)
+    {
+        var norm = ArabicNameNormalizer.Normalize(name);
+        if (norm.Length == 0)
+            return new List<Document>();
+
+        // اللقطة مجمّدة بلا عمود معياري: تُطبَّع في الذاكرة كما تفعل مزامنة صفوف الأطراف.
+        // إعادة التسمية عملية نادرة، فلا يضر تحميل أسماء المتدخلين الجهات العامة فقط.
+        var candidates = await _db.DocumentInterventions.AsNoTracking()
+            .Where(i => i.Nature == PartyNatureCatalog.PublicEntity && i.EntityName != null)
+            .Select(i => new { i.DocumentId, i.EntityName })
+            .ToListAsync(ct);
+        var ids = candidates
+            .Where(i => ArabicNameNormalizer.Normalize(i.EntityName!) == norm)
+            .Select(i => i.DocumentId)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+            return new List<Document>();
+
+        return await WithSearchTextCollections(_db.Documents)
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// شجرة التحميل اللازمة لإعادة بناء SearchText بعد تغيير جهة: كل المجموعات التي
+    /// يقرؤها الباني، ومنها المتدخلون وورثتهم — فلا تُفقد توكنات بحث غير متأثرة بالتغيير.
+    /// </summary>
+    private static IQueryable<Document> WithSearchTextCollections(IQueryable<Document> q) => q
+        .Include(d => d.ApplicantPublicEntities).ThenInclude(a => a.Registry).ThenInclude(r => r!.Group)
+        .Include(d => d.ExecutedPublicEntities).ThenInclude(e => e.Registry).ThenInclude(r => r!.Group)
+        .Include(d => d.Heirs)
+        .Include(d => d.Guarantors)
+        .Include(d => d.ExecutionApplicants)
+        .Include(d => d.ExecutedNaturalPersons)
+        .Include(d => d.ExecutedHeirs)
+        .Include(d => d.Interventions).ThenInclude(i => i.Heirs);
 
     public Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default)
         => _db.PublicEntities.FirstOrDefaultAsync(

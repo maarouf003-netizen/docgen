@@ -63,6 +63,8 @@ public class Repository<T> : IRepository<T> where T : class
                 .Include(d => ((Document)(object)d).ExecutedHeirs)
                 .Include(d => ((Document)(object)d).Occurrences)
                 .ThenInclude(o => o.CreatedBy)
+                .Include(d => ((Document)(object)d).Interventions)
+                .ThenInclude(i => i.Heirs)
                 .Include(d => ((Document)(object)d).ApplicantPublicEntities)
                 .Include(d => ((Document)(object)d).Assignments)
                 .Include(d => ((Document)(object)d).Delegations)

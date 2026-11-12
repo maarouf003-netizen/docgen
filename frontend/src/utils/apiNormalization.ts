@@ -1,5 +1,6 @@
 import type {
   ApplicantPublicEntityDto,
+  DocumentInterventionDto,
   DocumentOccurrenceDto,
   DocumentResponse,
   ExecutedNaturalPersonDto,
@@ -23,6 +24,7 @@ export type NormalizedDocumentResponse = DocumentResponse & {
   executedPublicEntities: ExecutedPublicEntityDto[];
   applicantPublicEntities: ApplicantPublicEntityDto[];
   executedNaturalPersons: ExecutedNaturalPersonDto[];
+  interventions: DocumentInterventionDto[];
   occurrences: DocumentOccurrenceDto[];
 };
 
@@ -41,6 +43,7 @@ export function normalizeDocumentResponse(d: DocumentResponse): NormalizedDocume
     executedPublicEntities: asArray(d.executedPublicEntities),
     applicantPublicEntities: asArray(d.applicantPublicEntities),
     executedNaturalPersons: asArray(d.executedNaturalPersons),
+    interventions: asArray(d.interventions),
     occurrences: asArray(d.occurrences),
   };
 }

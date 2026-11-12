@@ -1612,6 +1612,207 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentFieldChanges", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("AcceptanceDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Birth")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityBranch")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Family")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Father")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Mother")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NationalId")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Nature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("natural");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReceiptDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Register")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RegistryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("RegistryId");
+
+                    b.ToTable("DocumentInterventions", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentInterventionHeir", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Capacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentInterventionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HeirAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentInterventionId");
+
+                    b.ToTable("DocumentInterventionHeirs", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.Property<int>("Id")
@@ -1628,6 +1829,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DocumentInterventionId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("EventDate")
@@ -1679,6 +1883,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("DocumentInterventionId");
 
                     b.HasIndex("EventDate");
 
@@ -3641,6 +3847,43 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("AuditLog");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Interventions")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "Registry")
+                        .WithMany()
+                        .HasForeignKey("RegistryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Registry");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentInterventionHeir", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentIntervention", "DocumentIntervention")
+                        .WithMany("Heirs")
+                        .HasForeignKey("DocumentInterventionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentIntervention");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
@@ -3655,9 +3898,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentIntervention", "DocumentIntervention")
+                        .WithMany()
+                        .HasForeignKey("DocumentInterventionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("DocumentIntervention");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentRegistrationDate", b =>
@@ -4196,6 +4446,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Heirs");
 
+                    b.Navigation("Interventions");
+
                     b.Navigation("Occurrences");
 
                     b.Navigation("RegistrationDate");
@@ -4213,6 +4465,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Assets");
 
                     b.Navigation("TargetDocument");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.Navigation("Heirs");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedNaturalPerson", b =>

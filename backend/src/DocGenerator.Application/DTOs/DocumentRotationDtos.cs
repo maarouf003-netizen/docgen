@@ -90,4 +90,6 @@ public record DocumentOccurrenceDto(
     string? Source = null,
     string? DetailsText = null,
     string? FromCircuitName = null,
-    string? ToCircuitName = null);
+    string? ToCircuitName = null,
+    /// <summary>معرّف المتدخل المرتبط بوقعة «طلب تدخل» (يُفتح منه نافذة تفاصيله).</summary>
+    int? InterventionId = null);

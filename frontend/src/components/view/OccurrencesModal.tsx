@@ -1,4 +1,4 @@
-import type { DocumentOccurrenceDto } from '../../types';
+import type { DocumentInterventionDto, DocumentOccurrenceDto } from '../../types';
 import { formatDate } from '../../utils/dates';
 import { EXEC_STATUS_SETTLED } from '../../utils/documentStatus';
 import { occurrenceLine } from './viewFormat';
@@ -13,13 +13,20 @@ import { occurrenceLine } from './viewFormat';
 export function OccurrencesModal({
   documentTitle,
   occurrences,
+  interventions = [],
+  onOpenIntervention,
   onClose,
 }: {
   documentTitle?: string;
   occurrences: DocumentOccurrenceDto[];
+  interventions?: DocumentInterventionDto[];
+  onOpenIntervention?: (intervention: DocumentInterventionDto) => void;
   onClose: () => void;
 }) {
-  const nonEntityOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const interventionOccurrences = occurrences.filter((o) => o.occurrenceType === 'intervention');
+  const nonEntityOccurrences = occurrences.filter(
+    (o) => o.occurrenceType !== 'entity-change' && o.occurrenceType !== 'intervention',
+  );
   const struckRenewalOccurrences = nonEntityOccurrences.filter(
     (o) => o.occurrenceType === 'struck-off' || o.occurrenceType === 'renewal',
   );
@@ -75,6 +82,30 @@ export function OccurrencesModal({
                 {statusChangeOccurrences.map((occurrence) => (
                   <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
                 ))}
+              </div>
+            </section>
+          )}
+
+          {interventionOccurrences.length > 0 && (
+            <section aria-label="طلبات التدخل" className="mt-5">
+              <h4 className="text-sm font-bold text-purple-700 mb-2">طلبات التدخل</h4>
+              <div className="space-y-3">
+                {interventionOccurrences.map((occurrence) => {
+                  const intervention = interventions.find(
+                    (i) => i.id === occurrence.interventionId,
+                  );
+                  return (
+                    <button
+                      key={occurrence.id}
+                      type="button"
+                      onClick={() => intervention && onOpenIntervention?.(intervention)}
+                      disabled={!intervention || !onOpenIntervention}
+                      className="w-full text-right rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800 hover:bg-purple-100 min-h-11 disabled:cursor-default disabled:hover:bg-purple-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                    >
+                      {occurrenceLine(occurrence)}
+                    </button>
+                  );
+                })}
               </div>
             </section>
           )}

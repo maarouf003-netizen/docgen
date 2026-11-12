@@ -16,6 +16,7 @@ import { OccurrencesCard } from '../components/view/OccurrencesCard';
 import { OccurrencesModal } from '../components/view/OccurrencesModal';
 import { StatusCard } from '../components/view/StatusCard';
 import { PartyDetailsModal } from '../components/view/PartyDetailsModal';
+import { InterventionDetailsModal } from '../components/view/InterventionDetailsModal';
 import { TransferHistoryModal } from '../components/view/TransferHistoryModal';
 import type { PartyModal } from '../components/view/viewTypes';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
@@ -27,6 +28,7 @@ import { PortalExecutionActionsCard } from '../components/portal/PortalExecution
 import type {
   AppealDto,
   DelegationDto,
+  DocumentInterventionDto,
   DocumentResponse,
   PortalExecutionActionDto,
 } from '../types';
@@ -64,6 +66,7 @@ export default function PortalFileDetail() {
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
   const [partyModal, setPartyModal] = useState<PartyModal | null>(null);
+  const [interventionModal, setInterventionModal] = useState<DocumentInterventionDto | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [assignmentsOpen, setAssignmentsOpen] = useState(false);
   const [occurrencesOpen, setOccurrencesOpen] = useState(false);
@@ -190,7 +193,7 @@ export default function PortalFileDetail() {
 
   const infoPanel = (
     <>
-      <PartiesCard doc={doc} onOpen={setPartyModal} />
+      <PartiesCard doc={doc} onOpen={setPartyModal} onOpenIntervention={setInterventionModal} />
       <FileDataCard
         doc={doc}
         isLawyer={false}
@@ -259,6 +262,7 @@ export default function PortalFileDetail() {
             appeals={appeals}
             onOpen={() => setOccurrencesOpen(true)}
             onOpenAppeal={setInfoAppeal}
+            onOpenIntervention={setInterventionModal}
           />
         ) : (
           <SectionCard title="وقوعات الملف">
@@ -396,6 +400,13 @@ export default function PortalFileDetail() {
 
       {partyModal && <PartyDetailsModal modal={partyModal} onClose={() => setPartyModal(null)} />}
 
+      {interventionModal && (
+        <InterventionDetailsModal
+          intervention={interventionModal}
+          onClose={() => setInterventionModal(null)}
+        />
+      )}
+
       {historyOpen && id !== undefined && (
         <BaseNumbersModal
           documentId={Number(id)}
@@ -417,6 +428,11 @@ export default function PortalFileDetail() {
         <OccurrencesModal
           documentTitle={modalTitle}
           occurrences={doc.occurrences ?? []}
+          interventions={doc.interventions ?? []}
+          onOpenIntervention={(intervention) => {
+            setOccurrencesOpen(false);
+            setInterventionModal(intervention);
+          }}
           onClose={() => setOccurrencesOpen(false)}
         />
       )}
