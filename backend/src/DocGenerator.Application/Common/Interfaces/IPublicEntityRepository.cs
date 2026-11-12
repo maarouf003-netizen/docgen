@@ -72,6 +72,13 @@ public interface IPublicEntityRepository
     /// </summary>
     Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default);
 
+    /// <summary>
+    /// الملفات التي تحمل متدخلًا جهةً عامة باسم معياري معيّن (حتى لو لم تحمل صف طرف
+    /// مطابقًا في ApplicantPublicEntities/ExecutedPublicEntities) — لإعادة تسمية
+    /// اللقطة المجمّدة ضمن مزامنة تغيير الجهة، مع تحميل مجموعات نص البحث كاملة.
+    /// </summary>
+    Task<List<Document>> ListDocumentsByPublicInterventionNameAsync(string name, CancellationToken ct = default);
+
     /// <summary>إيجاد قيد في هوية أم محددة بنفس المحافظة والفرع.</summary>
     Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default);
 

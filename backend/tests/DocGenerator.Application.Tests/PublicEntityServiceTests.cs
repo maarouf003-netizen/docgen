@@ -377,6 +377,20 @@ public class PublicEntityServiceTests : IDisposable
             EntityName = "وزارة التعليم", EntityBranch = "فرع التنفيذ", EntityNature = "public",
         });
         _db.Documents.Add(executedDoc);
+
+        // ملف يحمل متدخل جهة عامة فقط (بلا صف طرف مطابق): يختبر مسار المزامنة
+        // المستقل عبر جدول المتدخلين، لا عبر استعلامات الأطراف.
+        var interventionOnlyDoc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "ملف متدخل فقط",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "applicant",
+        };
+        _db.Documents.Add(interventionOnlyDoc);
         await _db.SaveChangesAsync();
 
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -388,6 +402,14 @@ public class PublicEntityServiceTests : IDisposable
             EntityName = "وزارة التعليم",
             RegistryId = entry.Id,
             ReceiptDate = new DateTime(2026, 8, 1),
+            CreatedById = _lawyerId,
+        });
+        interventionOnlyDoc.Interventions.Add(new DocumentIntervention
+        {
+            Nature = PartyNatureCatalog.PublicEntity,
+            EntityName = "وزارة التعليم",
+            RegistryId = entry.Id,
+            ReceiptDate = new DateTime(2026, 8, 2),
             CreatedById = _lawyerId,
         });
         await _db.SaveChangesAsync();
@@ -411,7 +433,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة التربية", executedRow.EntityName);
 
         var syncedLogs = _audit.ChangeLogs.Where(c => c.ActionType == "rename_public_entity_sync").ToList();
-        Assert.Equal(2, syncedLogs.Count);
+        Assert.Equal(3, syncedLogs.Count);
         var applicantLog = syncedLogs.Single(c => c.DocumentId == applicantDoc.Id);
         Assert.Contains(applicantLog.Changes, ch => ch.FieldKey == nameof(Document.Applicant)
             && ch.OldValue == "وزارة التعليم - محافظة دمشق"
@@ -421,10 +443,22 @@ public class PublicEntityServiceTests : IDisposable
             && ch.OldValue!.Contains("وزارة التعليم")
             && ch.NewValue!.Contains("وزارة التربية"));
 
-        var intervention = await _db.DocumentInterventions.AsNoTracking().SingleAsync();
+        var intervention = await _db.DocumentInterventions.AsNoTracking()
+            .SingleAsync(i => i.DocumentId == applicantDoc.Id);
         Assert.Equal("وزارة التربية", intervention.EntityName);
         Assert.Contains(applicantLog.Changes, ch => ch.FieldKey == "__Col_Interventions"
             && ch.OldValue == "وزارة التعليم"
+            && ch.NewValue == "وزارة التربية");
+
+        // ملف المتدخل وحده (بلا صف طرف) يُلتقط عبر مزامنة جدول المتدخلين.
+        var interventionOnly = await _db.DocumentInterventions.AsNoTracking()
+            .SingleAsync(i => i.DocumentId == interventionOnlyDoc.Id);
+        Assert.Equal("وزارة التربية", interventionOnly.EntityName);
+        var interventionOnlyAfter = await _db.Documents.AsNoTracking()
+            .SingleAsync(d => d.Id == interventionOnlyDoc.Id);
+        Assert.Contains("وزاره التربيه", interventionOnlyAfter.SearchText);
+        var interventionOnlyLog = syncedLogs.Single(c => c.DocumentId == interventionOnlyDoc.Id);
+        Assert.Contains(interventionOnlyLog.Changes, ch => ch.FieldKey == "__Col_Interventions"
             && ch.NewValue == "وزارة التربية");
 
         Assert.Contains("rename_public_entity", _audit.Actions);

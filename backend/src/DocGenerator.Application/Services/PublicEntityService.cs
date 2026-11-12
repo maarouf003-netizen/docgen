@@ -200,6 +200,20 @@ public sealed partial class PublicEntityService : IPublicEntityService
             }
         }
 
+        // ملفات تحمل متدخل جهة عامة فقط (بلا صف طرف مطابق في الجدولين) لا تلتقطها
+        // استعلامات الأطراف أعلاه؛ يُزامَن اسمها المجمّد ويُعاد بناء بحثها هنا.
+        var interventionDocs = await _entities.ListDocumentsByPublicInterventionNameAsync(oldCanonical, token);
+        foreach (var doc in interventionDocs)
+        {
+            var changed = SyncPublicInterventionNames(doc, oldNorm, newCanonical);
+            if (changed == 0)
+                continue;
+            AddLog(doc.Id, "__Col_Interventions", "المتدخلون", oldCanonical, newCanonical);
+            doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+            doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
+            affectedDocs[doc.Id] = doc;
+        }
+
         await _uow.SaveChangesAsync(token);
         var details = $"مزامنة إعادة تسمية الجهة: «{oldCanonical}» ← «{newCanonical}»";
         foreach (var (documentId, changes) in logs)
