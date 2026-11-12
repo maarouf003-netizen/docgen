@@ -17,6 +17,11 @@ public class AppealAction
     public string? ReminderDuration { get; set; }
     /// <summary>لون شارة التذكير.</summary>
     public string? ReminderColor { get; set; }
+    /// <summary>
+    /// تاريخ أساس التذكير (ليس تاريخ الإجراء): يُضبط مرة عند إنشاء التذكير من تاريخ الإجراء
+    /// المجلول، ويعدّله «نقل التذكير» وحده — فلا تكتب أي عملية تذكير في `ActionDate`.
+    /// </summary>
+    public DateTime? ReminderBaseDate { get; set; }
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

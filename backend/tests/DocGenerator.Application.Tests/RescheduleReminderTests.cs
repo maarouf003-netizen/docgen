@@ -77,15 +77,19 @@ public class RescheduleDocumentReminderTests : IDisposable
     }
 
     [Fact]
-    public async Task Reschedule_MovesDueDateKeepingDuration()
+    public async Task Reschedule_MovesReminderBaseKeepingDuration()
     {
         var (documentId, action) = await SeedActionAsync();
 
         var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
-        Assert.Equal("2026-08-07", rescheduled.ActionDate);
+        // تاريخ الإجراء واقعة قانونية: يبقى كما أُدخل حرفيًا.
+        Assert.Equal(action.ActionDate, rescheduled.ActionDate);
+        // أساس التذكير انتقل خلفيًا: 10/8 − 3 أيام.
+        var stored = await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id);
+        Assert.Equal(new DateTime(2026, 8, 7), stored!.ReminderBaseDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
-            rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
+            stored.ReminderBaseDate, rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
         Assert.Equal(new DateTime(2026, 8, 10), due);
         Assert.False(suspect);
         // بقية الحقول دون مساس.
@@ -94,10 +98,28 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("3 أيام", rescheduled.ReminderDuration);
         Assert.Equal("أحمر", rescheduled.ReminderColor);
         Assert.Equal(action.CreatedAt, rescheduled.CreatedAt);
-        // التدقيق يوثق الوجهة والتاريخين (قديم ← جديد).
+        // التدقيق يوثق الوجهة وتاريخ الأساس ويصرّح بثبات تاريخ الإجراء.
         Assert.Contains("action", _audit.Actions);
         Assert.Contains(_audit.Details,
-            d => d != null && d.Contains("نقل التذكير إلى 2026-08-10") && d.Contains("2026-08-07"));
+            d => d != null
+                && d.Contains("نقل التذكير إلى 2026-08-10")
+                && d.Contains("تاريخ الأساس")
+                && d.Contains("2026-08-07")
+                && d.Contains("تاريخ الإجراء لم يتغير"));
+    }
+
+    /// <summary>
+    /// العيب المُبلَّغ عنه: نقل التذكير يجب ألا يمسّ تاريخ الإجراء — لا قيمةً ولا صيغةً
+    /// (المدخل `10-11-2026` يبقى حرفيًا، والقيمة المشتقة تذهب إلى `ReminderBaseDate`).
+    /// </summary>
+    [Fact]
+    public async Task Reschedule_DoesNotTouchActionDate()
+    {
+        var (documentId, action) = await SeedActionAsync("10-11-2026");
+
+        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "14-11-2026", "lawyer1");
+
+        Assert.Equal("10-11-2026", rescheduled.ActionDate);
     }
 
     [Fact]
@@ -107,7 +129,9 @@ public class RescheduleDocumentReminderTests : IDisposable
 
         var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "١٠/٨/٢٠٢٦", "lawyer1");
 
-        Assert.Equal("2026-08-07", rescheduled.ActionDate);
+        Assert.Equal(action.ActionDate, rescheduled.ActionDate);
+        Assert.Equal(new DateTime(2026, 8, 7),
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Theory]
@@ -171,28 +195,35 @@ public class RescheduleDocumentReminderTests : IDisposable
             () => _actions.RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات", ex.Message);
         // التاريخ الأصلي لم يُمسّ.
-        Assert.Equal("1/8/2026", (await _db.ExecutionActions.FindAsync(legacy.Id))!.ActionDate);
+        Assert.Equal("1/8/2026", (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!.ActionDate);
     }
 
     [Fact]
-    public async Task Reschedule_ColorOnly_SetsActionDateToDueDate()
+    public async Task Reschedule_ColorOnly_UsesDueDateAsBase()
     {
         var (documentId, action) = await SeedActionAsync(duration: null, color: "أصفر");
 
         var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
-        Assert.Equal("2026-08-10", rescheduled.ActionDate);
+        // بلا مدة ⇒ الأساس هو يوم الاستحقاق نفسه، وتاريخ الإجراء لا يُلمس.
+        Assert.Equal(action.ActionDate, rescheduled.ActionDate);
+        Assert.Equal(new DateTime(2026, 8, 10),
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Fact]
-    public async Task Reschedule_NoteWithoutDate_GetsExplicitDate()
+    public async Task Reschedule_NoteWithoutDate_KeepsItsExplicitDate()
     {
         var (documentId, action) = await SeedActionAsync(type: "note", actionDate: null, duration: "أسبوع");
+        // الملاحظة بلا تاريخ تُؤرَّخ تلقائيًا عند الإنشاء — وهذا التاريخ لا يُعاد كتابته بالنقل.
+        Assert.False(string.IsNullOrWhiteSpace(action.ActionDate));
 
         var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "15/8/2026", "lawyer1");
 
-        Assert.Equal("2026-08-08", rescheduled.ActionDate);
+        Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal("note", rescheduled.Type);
+        Assert.Equal(new DateTime(2026, 8, 8),
+            (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
     [Fact]
@@ -319,7 +350,7 @@ public class RescheduleAppealReminderTests : IDisposable
     }
 
     [Fact]
-    public async Task Reschedule_MovesDueDateKeepingDuration()
+    public async Task Reschedule_MovesReminderBaseKeepingDuration()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
         var action = await _service.AddActionAsync(appealId,
@@ -329,9 +360,11 @@ public class RescheduleAppealReminderTests : IDisposable
         var rescheduled = await _service.RescheduleAppealReminderAsync(
             appealId, action.Id, "15/8/2026", _lawyer2.Id, "lawyer2");
 
-        Assert.Equal("2026-08-08", rescheduled.ActionDate);
+        Assert.Equal(action.ActionDate, rescheduled.ActionDate);
+        var stored = await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id);
+        Assert.Equal(new DateTime(2026, 8, 8), stored!.ReminderBaseDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
-            rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
+            stored.ReminderBaseDate, rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
         Assert.Equal(new DateTime(2026, 8, 15), due);
         Assert.False(suspect);
         Assert.Equal("action", rescheduled.Type);
@@ -340,7 +373,25 @@ public class RescheduleAppealReminderTests : IDisposable
         Assert.Equal("أحمر", rescheduled.ReminderColor);
         Assert.Contains("reschedule_appeal_reminder", _audit.Actions);
         Assert.Contains(_audit.Details,
-            d => d != null && d.Contains("نقل تذكير إجراء على الاستئناف") && d.Contains("2026-08-08"));
+            d => d != null
+                && d.Contains("نقل تذكير إجراء على الاستئناف")
+                && d.Contains("2026-08-08")
+                && d.Contains("تاريخ الإجراء لم يتغير"));
+    }
+
+    /// <summary>المرآة: نقل تذكير إجراء الاستئناف لا يمسّ `AppealAction.ActionDate`.</summary>
+    [Fact]
+    public async Task Reschedule_DoesNotTouchActionDate()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء", "10-11-2026", "3 أيام", "أحمر"),
+            _lawyer2.Id, "lawyer2");
+
+        var rescheduled = await _service.RescheduleAppealReminderAsync(
+            appealId, action.Id, "14-11-2026", _lawyer2.Id, "lawyer2");
+
+        Assert.Equal("10-11-2026", rescheduled.ActionDate);
     }
 
     [Theory]

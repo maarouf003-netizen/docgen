@@ -1031,11 +1031,18 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(action.Id > 0);
 
         var updatedAction = await _service.UpdateActionAsync(created.Id, action.Id,
-            new UpdateAppealActionRequest("action", "نص معدّل", "4/8/2026", "شهر", "أصفر"),
+            new UpdateAppealActionRequest("action", "نص معدّل", "4/8/2026"),
             _lawyer2.Id, "lawyer2");
         Assert.Equal("نص معدّل", updatedAction!.Text);
-        Assert.Equal("أصفر", updatedAction!.ReminderColor);
         Assert.Equal("4/8/2026", updatedAction!.ActionDate);
+        // تعديل الإجراء لا يمسّ التذكير (يُدار من مساره المستقل).
+        Assert.Equal("أحمر", updatedAction!.ReminderColor);
+
+        var reminded = await _service.SetReminderAsync(created.Id, action.Id,
+            new SetAppealReminderRequest("شهر", "أصفر"), _lawyer2.Id, "lawyer2");
+        Assert.Equal("أصفر", reminded.ReminderColor);
+        Assert.Equal("شهر", reminded.ReminderDuration);
+        Assert.Equal("4/8/2026", reminded.ActionDate);
 
         // تذكير يظهر للمتابع فقط.
         var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
@@ -1142,7 +1149,7 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Actions_UpdateWithInvalidDuration_Throws()
+    public async Task Actions_SetReminderWithInvalidDuration_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
         var action = await _service.AddActionAsync(appealId,
@@ -1150,9 +1157,73 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer2.Id, "lawyer2");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateActionAsync(appealId, action.Id,
-                new UpdateAppealActionRequest("action", "إجراء سليم", "3/8/2026", "سنة", "أحمر"),
-                _lawyer2.Id, "lawyer2"));
+            _service.SetReminderAsync(appealId, action.Id,
+                new SetAppealReminderRequest("سنة", "أحمر"), _lawyer2.Id, "lawyer2"));
+    }
+
+    [Fact]
+    public async Task Actions_SetReminder_InitializesBaseOnce_AndClearNullsFields()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء بلا تذكير", "10-11-2026", null, null),
+            _lawyer2.Id, "lawyer2");
+        Assert.Null((await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
+
+        await _service.SetReminderAsync(appealId, action.Id,
+            new SetAppealReminderRequest("3 أيام", "أحمر"), _lawyer2.Id, "lawyer2");
+        var stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
+        Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
+        Assert.Equal("10-11-2026", stored.ActionDate);
+
+        // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
+        await _service.SetReminderAsync(appealId, action.Id,
+            new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer2.Id, "lawyer2");
+        stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
+        Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
+        Assert.Equal("أسبوع", stored.ReminderDuration);
+
+        // الإلغاء بالحقلين الفارغين = تصفير الكل.
+        await _service.SetReminderAsync(appealId, action.Id,
+            new SetAppealReminderRequest(null, null), _lawyer2.Id, "lawyer2");
+        stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
+        Assert.Null(stored.ReminderDuration);
+        Assert.Null(stored.ReminderColor);
+        Assert.Null(stored.ReminderBaseDate);
+        Assert.Equal("10-11-2026", stored.ActionDate);
+    }
+
+    [Fact]
+    public async Task Actions_SetReminder_NonFollower_Throws()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SetReminderAsync(appealId, action.Id,
+                new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer1.Id, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task Reminders_IncludeAppealActionWithExplicitBaseOnly()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء", "1/11/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        // القاعدة تمنع تذكيرًا بلا مدة/لون عبر الخدمة ⇒ يُزرع الأساس مباشرة لإثبات
+        // أن فلتر بطاقة التذكيرات الموسّع لا يُسقط تذكيرًا له استحقاق صريح.
+        var tracked = await _db.AppealActions.FirstAsync(a => a.Id == action.Id);
+        tracked.ReminderBaseDate = new DateTime(2026, 11, 5);
+        await _db.SaveChangesAsync();
+
+        var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
+        var reminder = Assert.Single(reminders, r => r.ActionId == action.Id);
+        Assert.Equal(new DateTime(2026, 11, 5), reminder.DueDate.Date);
+        Assert.False(reminder.DueDateSuspect);
     }
 
     [Fact]
@@ -1171,7 +1242,7 @@ public class DocumentAppealServiceTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateActionAsync(appealId, action.Id,
-                new UpdateAppealActionRequest("xyz", "إجراء سليم", "3/8/2026", null, null),
+                new UpdateAppealActionRequest("xyz", "إجراء سليم", "3/8/2026"),
                 _lawyer2.Id, "lawyer2"));
     }
 
@@ -1197,7 +1268,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer2.Id, "lawyer2");
         var exUpdate = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateActionAsync(appealId, action.Id,
-                new UpdateAppealActionRequest("action", "إجراء مؤرخ", null, null, null),
+                new UpdateAppealActionRequest("action", "إجراء مؤرخ", null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("تاريخ الإجراء", exUpdate.Message);
     }

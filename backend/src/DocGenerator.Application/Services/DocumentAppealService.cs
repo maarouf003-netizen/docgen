@@ -782,6 +782,10 @@ public sealed class DocumentAppealService : IDocumentAppealService
         ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
         ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
+        var reminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير");
+        var reminderColor = Bounded(request.ReminderColor, 20, "لون التذكير");
+        var actionDate = Bounded(request.ActionDate, 50, "تاريخ الإجراء");
+
         var action = new AppealAction
         {
             AppealId = appeal.Id,
@@ -789,9 +793,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
             // FR-009: تعقيم خادمي عند الكتابة (القائمة البيضاء المركزية) — النص المعروض
             // كـ HTML يُخزَّن معقّمًا أصلًا، وتعقيم العرض يبقى طبقة ثانية.
             Text = RequireText(HtmlInputSanitizer.Sanitize(request.Text), "نص الإجراء"),
-            ActionDate = Bounded(request.ActionDate, 50, "تاريخ الإجراء"),
-            ReminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير"),
-            ReminderColor = Bounded(request.ReminderColor, 20, "لون التذكير"),
+            ActionDate = actionDate,
+            ReminderDuration = reminderDuration,
+            ReminderColor = reminderColor,
+            // تاريخ أساس التذكير يُثبَّت مرة واحدة عند الإنشاء — ولا يكتب أي مسار تذكير في ActionDate.
+            ReminderBaseDate = ActionReminderCalculator.BaseDateForNewReminder(reminderDuration, reminderColor, actionDate),
             CreatedById = userId,
             CreatedAt = DateTime.UtcNow,
         };
@@ -822,13 +828,13 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
             ?? throw new ArgumentException("الإجراء غير موجود");
 
-        // ذات تحقق الإضافة أعلاه — التعديل يستبدل الحقول wholesale فتُرفض القيم الميتة هنا أيضًا.
+        // ذات تحقق الإضافة أعلاه — التعديل يستبدل حقول الإجراء (نوع/نص/تاريخ) wholesale،
+        // ولا يكتب أي حقل تذكير: حالة التذكير تُدار من `SetReminderAsync` و«نقل التذكير» حصرًا.
         ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
         var effectiveType = (request.Type ?? action.Type ?? "action").Trim();
         if (effectiveType == "action" && string.IsNullOrWhiteSpace(request.ActionDate))
             throw new ArgumentException("يجب إدخال تاريخ الإجراء");
         ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
-        ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
         // FR-013: إبقاء القديم عند الغياب بصيغة صريحة بلا تحذير `CS8601` (الدلالة مطابقة تمامًا).
         var newType = Bounded(request.Type, 20, "نوع الإجراء");
@@ -836,8 +842,6 @@ public sealed class DocumentAppealService : IDocumentAppealService
             action.Type = newType;
         action.Text = RequireText(HtmlInputSanitizer.Sanitize(request.Text), "نص الإجراء");
         action.ActionDate = Bounded(request.ActionDate, 50, "تاريخ الإجراء");
-        action.ReminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير");
-        action.ReminderColor = Bounded(request.ReminderColor, 20, "لون التذكير");
 
         await _tx.RunAsync(async token =>
         {
@@ -888,8 +892,18 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
             ?? throw new ArgumentException("الإجراء غير موجود");
 
-        action.ReminderDuration = null;
-        action.ReminderColor = null;
+        await ClearReminderCoreAsync(appeal, action, actorName, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه `ClearReminderAsync`
+    /// ومسار `PUT .../reminder` بالحقلين الفارغين) فلا تختلف رسالة التدقيق بين المسارين.
+    /// </summary>
+    private async Task ClearReminderCoreAsync(
+        DocumentAppeal appeal, AppealAction action, string? actorName, CancellationToken ct)
+    {
+        ClearReminderFields(action);
 
         await _tx.RunAsync(async token =>
         {
@@ -898,14 +912,57 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"ألغى تذكير إجراء على الاستئناف (رقم {appeal.Id})", token);
         }, ct);
+    }
 
-        return true;
+    /// <summary>
+    /// إنشاء/تعديل تذكير إجراء استئناف قائم (مدة/لون) عبر مسار مستقل عن تعديل الإجراء —
+    /// نظير `ExecutionActionService.SetReminderAsync`. يهيّئ `ReminderBaseDate` من تاريخ
+    /// الإجراء مرة واحدة فقط، والحقلان الفارغان يعنيان الإلغاء.
+    /// </summary>
+    public async Task<AppealActionDto> SetReminderAsync(
+        int appealId,
+        int actionId,
+        SetAppealReminderRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+            ?? throw new ArgumentException("الاستئناف غير موجود");
+        EnsureAssignedFollower(appeal, userId);
+        var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
+            ?? throw new ArgumentException("الإجراء غير موجود");
+
+        ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
+        var reminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير");
+        var reminderColor = Bounded(request.ReminderColor, 20, "لون التذكير");
+
+        if (reminderDuration is null && reminderColor is null)
+        {
+            await ClearReminderCoreAsync(appeal, action, actorName, ct);
+            return ToActionDto(action);
+        }
+
+        action.ReminderDuration = reminderDuration;
+        action.ReminderColor = reminderColor;
+        // بلا سقوط إلى `CreatedAt`: الأساس null يبقى سقوطًا ديناميكيًا موسومًا (§ الخطة).
+        action.ReminderBaseDate ??= ActionDateParser.TryParse(action.ActionDate);
+
+        await _tx.RunAsync(async token =>
+        {
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "set_appeal_reminder",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"ضبط تذكير إجراء على الاستئناف (رقم {appeal.Id}) ({reminderDuration ?? "—"} — {reminderColor ?? "—"})", token);
+        }, ct);
+
+        return ToActionDto(action);
     }
 
     /// <summary>
     /// نقل تذكير إجراء استئناف إلى يوم استحقاق جديد من نافذة اليوم — مرآة
-    /// `DocumentService.RescheduleReminderAsync` للملفات: المدخل يوم الاستحقاق
-    /// نفسه، ويُعاد حساب `ActionDate` خلفيًا مع بقاء المدة وبقية الحقول.
+    /// `ExecutionActionService.RescheduleReminderAsync` للملفات: المدخل يوم الاستحقاق
+    /// نفسه، وتُكتب `ReminderBaseDate` خلفيًا مع بقاء المدة — **تاريخ الإجراء لا يُكتب**.
     /// الغياب يُردّ `ArgumentException` (عرف مسار الاستئناف) لا `KeyNotFoundException`.
     /// </summary>
     public async Task<AppealActionDto> RescheduleAppealReminderAsync(
@@ -928,23 +985,27 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var due = DocumentValidator.ParseDateTime(newDueDate.Trim(), "اليوم الجديد")
             ?? throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
 
-        if (string.IsNullOrWhiteSpace(action.ReminderDuration) && string.IsNullOrWhiteSpace(action.ReminderColor))
+        if (string.IsNullOrWhiteSpace(action.ReminderDuration)
+            && string.IsNullOrWhiteSpace(action.ReminderColor)
+            && action.ReminderBaseDate is null)
             throw new ArgumentException("لا يوجد تذكير لإعادة جدولته");
 
         var trimmedDuration = action.ReminderDuration?.Trim();
         if (!string.IsNullOrWhiteSpace(trimmedDuration) && !ActionReminderCalculator.ValidDurations.Contains(trimmedDuration))
             throw new ArgumentException("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات");
 
-        var oldActionDate = action.ActionDate;
-        action.ActionDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration))
-            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        // `DateTime` خالص في تاريخ الأساس؛ `ActionDate` واقعة قانونية لا تُعاد كتابتها ولا تُعاد صياغتها.
+        var oldBaseDate = action.ReminderBaseDate;
+        action.ReminderBaseDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration));
 
         await _tx.RunAsync(async token =>
         {
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "reschedule_appeal_reminder",
                 appeal.DocumentId, appeal.Document.DocumentType,
-                $"نقل تذكير إجراء على الاستئناف (رقم {appeal.Id}) إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {action.ActionDate})", token);
+                $"نقل تذكير إجراء على الاستئناف (رقم {appeal.Id}) إلى {due:yyyy-MM-dd} "
+                + $"(تاريخ الأساس: {oldBaseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—"} ← {action.ReminderBaseDate:yyyy-MM-dd}) — تاريخ الإجراء لم يتغير",
+                token);
         }, ct);
 
         return ToActionDto(action);
@@ -956,7 +1017,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         return rows
             .Select(r =>
             {
-                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt);
+                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(
+                    r.ReminderBaseDate, r.ActionDate, r.ReminderDuration, r.CreatedAt);
                 return new AppealReminderDto(
                     r.ActionId,
                     r.AppealId,
@@ -977,19 +1039,20 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
     private async Task<List<(int ActionId, int AppealId, int DocumentId, string AppealTitle,
         string DocumentLabel, string Text, string? ActionDate, string? ReminderDuration,
-        string? ReminderColor, DateTime CreatedAt)>>
+        string? ReminderColor, DateTime? ReminderBaseDate, DateTime CreatedAt)>>
         ListReminderRowsAsync(int userId, CancellationToken ct)
     {
         var appeals = await _appeals.ListByAssigneeAsync(userId, null, asNoTracking: true, ct);
-        var rows = new List<(int, int, int, string, string, string, string?, string?, string?, DateTime)>();
+        var rows = new List<(int, int, int, string, string, string, string?, string?, string?, DateTime?, DateTime)>();
         foreach (var appeal in appeals)
         {
             var documentLabel = DocumentDisplayName.Build(appeal.Document);
-            foreach (var action in appeal.Actions.Where(a => a.ReminderDuration != null || a.ReminderColor != null))
+            foreach (var action in appeal.Actions.Where(a =>
+                         a.ReminderDuration != null || a.ReminderColor != null || a.ReminderBaseDate != null))
             {
                 rows.Add((action.Id, appeal.Id, appeal.DocumentId,
                     AppealTitleOf(appeal), documentLabel, action.Text, action.ActionDate,
-                    action.ReminderDuration, action.ReminderColor, action.CreatedAt));
+                    action.ReminderDuration, action.ReminderColor, action.ReminderBaseDate, action.CreatedAt));
             }
         }
         return rows;
@@ -1018,6 +1081,17 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         if (appeal.AssignedLawyerId != userId)
             throw new ArgumentException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير كلها (المدة/اللون/الأساس) — نقطة واحدة للإلغاء المباشر
+    /// وللـ`PUT` بالحقلين الفارغين، فلا ينحرف أحد المسارين عن الآخر.
+    /// </summary>
+    private static void ClearReminderFields(AppealAction action)
+    {
+        action.ReminderDuration = null;
+        action.ReminderColor = null;
+        action.ReminderBaseDate = null;
     }
 
     private async Task<DocumentAppeal> LoadForHeadActionAsync(int appealId, int callerUserId, CancellationToken ct)

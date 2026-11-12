@@ -68,4 +68,59 @@ describe('AppealActionsModal', () => {
       }));
     });
   });
+
+  it('يرفض «ذكرني» بلا مدة/لون بلا أي إرسال', async () => {
+    const user = userEvent.setup();
+    render(<AppealActionsModal appealId={7} onClose={noop} canWrite />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إضافة إجراء أو ملاحظة' }));
+    await user.click(screen.getByLabelText('أدخل نص الإجراء أو الملاحظة...'));
+    await user.keyboard('إجراء بتذكير ناقص');
+    await user.type(screen.getByLabelText(/التاريخ/), '3/8/2026');
+    await user.click(screen.getByRole('button', { name: 'ذكرني' }));
+    await user.click(screen.getByRole('button', { name: 'حفظ كإجراء' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('اختر مدة التذكير');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText('مدة التذكير'));
+  });
+
+  it('تعديل الإجراء يُرسَل بلا حقول تذكير (العقد لا يحملها)', async () => {
+    const user = userEvent.setup();
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    render(<AppealActionsModal appealId={7} onClose={noop} canWrite />);
+
+    await user.click(await screen.findByLabelText('تعديل الإجراء'));
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/appeals/7/actions/3', {
+        type: 'action',
+        text: '<p>جلسة سابقة</p>',
+        actionDate: '2026-07-01',
+      });
+    });
+    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(api.delete).not.toHaveBeenCalled();
+  });
+
+  it('تعديل التذكير يُحفظ عبر مساره المستقل ولا يغيّر تاريخ الإجراء', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{ ...existingAction(), reminderDuration: '3 أيام', reminderColor: 'أحمر' }],
+    });
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    render(<AppealActionsModal appealId={7} onClose={noop} canWrite />);
+
+    await user.click(await screen.findByLabelText('تعديل الإجراء'));
+    await user.selectOptions(screen.getByLabelText('مدة التذكير'), 'أسبوع');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/appeals/7/actions/3/reminder', {
+        reminderDuration: 'أسبوع',
+        reminderColor: 'أحمر',
+      });
+    });
+  });
 });

@@ -5,7 +5,8 @@ namespace DocGenerator.Application.Services;
 
 /// <summary>
 /// خدمة إجراءات التنفيذ والتذكيرات (مستخرجة من `DocumentService` — المرحلة 1):
-/// الدوال الست لنقاط الإجراءات + زرع «الإدخال المبدئي» داخل معاملة حفظ المستند.
+/// دوال نقاط الإجراءات (قراءة/إضافة/تعديل/حذف) + مسارات التذكير الثلاثة المستقلة
+/// (ضبط/إلغاء/نقل) + زرع «الإدخال المبدئي» داخل معاملة حفظ المستند.
 /// الاتجاه الوحيد المسموح: النواة ← الإجراءات (النواة تستدعي الزرع عبر هذه الواجهة).
 /// </summary>
 public interface IExecutionActionService
@@ -21,9 +22,17 @@ public interface IExecutionActionService
     Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
 
     /// <summary>
+    /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون) عبر مسار مستقل عن تعديل الإجراء:
+    /// يهيّئ `ReminderBaseDate` من تاريخ الإجراء مرة واحدة فقط. الحقلان الفارغان = إلغاء.
+    /// </summary>
+    Task<ExecutionActionDto> SetReminderAsync(
+        int documentId, int actionId, SetActionReminderRequest request, string? actorName, CancellationToken ct = default);
+
+    /// <summary>
     /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل هو `dueDate`
-    /// نفسه، ويُعاد حساب `ActionDate = newDueDate − DurationDays` مع بقاء المدة
-    /// وبقية الحقول دون مساس. يرفض غياب التذكير والمدد الملتبسة برسائل ودية.
+    /// نفسه، وتُكتب `ReminderBaseDate = newDueDate − DurationDays` مع بقاء المدة
+    /// وبقية الحقول دون مساس — تاريخ الإجراء لا يُكتب أبدًا. يرفض غياب التذكير
+    /// والمدد الملتبسة برسائل ودية.
     /// </summary>
     Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default);
 

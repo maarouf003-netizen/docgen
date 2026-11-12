@@ -5,30 +5,27 @@ namespace DocGenerator.Application.Common;
 /// <summary>
 /// حساب موعد استحقاق التذكير لإجراء (ملف أو استئناف) — المصدر الوحيد للخوارزمية
 /// المشتركة بين بطاقة تذكيرات الملفات وتذكيرات الاستئنافات:
-/// تاريخ الإجراء + مدة التذكير، وإن غاب التاريخ فتاريخ إنشاء الإجراء + المدة.
+/// تاريخ أساس التذكير المستقل إن وُجد (`ReminderBaseDate`)، وإلا تاريخ الإجراء،
+/// وإن غابا فتاريخ إنشاء الإجراء — ثم تُضاف مدة التذكير.
 /// </summary>
 public static class ActionReminderCalculator
 {
-    /// <summary>تاريخ الاستحقاق = تاريخ الإجراء + مدة التذكير، وإن غاب فتاريخ الإنشاء + المدة.</summary>
-    public static DateTime ComputeDueDate(string? actionDate, string? duration, DateTime createdAt)
-        => TryComputeDueDate(actionDate, duration, createdAt).DueDate;
-
     /// <summary>
-    /// يحسب تاريخ الاستحقاق مع وسم الجودة: مشتبه عندما يكون تاريخ الإجراء غير فارغ ولا يُحلَّل،
-    /// أو المدة غير فارغة وغير معروفة — أي عندما سقط الحساب إلى احتياط كان صامتًا (تاريخ
-    /// الإنشاء أو صفر أيام). الكتابة الجديدة مرفوضة عند الإدخال، فالوسم يكشف البيانات القديمة.
+    /// يحسب تاريخ الاستحقاق مع وسم الجودة: مشتبه عندما يُسقط الحساب إلى احتياط صامت —
+    /// أي حين يغيب تاريخ الأساس وتكون مدة غير معروفة أو تاريخ إجراء غير فارغ ولا يُحلَّل.
+    /// الأساس الصريح (`ReminderBaseDate`) مؤكد بطبيعته فلا يرفع وسمًا بسبب نص تاريخ قديم.
     /// </summary>
-    public static (DateTime DueDate, bool IsSuspect) TryComputeDueDate(string? actionDate, string? duration, DateTime createdAt)
+    public static (DateTime DueDate, bool IsSuspect) TryComputeDueDate(
+        DateTime? reminderBaseDate, string? actionDate, string? duration, DateTime createdAt)
     {
         // تطبيع واحد للمقارنة والحساب معًا: مدة بمسافات زائدة كانت تُحكم «سليمة» (بعد القصّ)
         // وتُحسب `0` أيام (بلا قصّ) — تناقض صامت بين الوسم والناتج.
         var trimmedDate = actionDate?.Trim();
         var trimmedDuration = duration?.Trim();
-        var parsed = ActionDateParser.TryParse(trimmedDate);
-        var suspect = (!string.IsNullOrWhiteSpace(trimmedDate) && parsed is null)
+        var baseDate = reminderBaseDate ?? ActionDateParser.TryParse(trimmedDate);
+        var suspect = (baseDate is null && !string.IsNullOrWhiteSpace(trimmedDate))
             || (!string.IsNullOrWhiteSpace(trimmedDuration) && !ValidDurations.Contains(trimmedDuration));
-        var baseDate = parsed ?? createdAt;
-        return (baseDate.Date.AddDays(DurationDays(trimmedDuration)), suspect);
+        return ((baseDate ?? createdAt).Date.AddDays(DurationDays(trimmedDuration)), suspect);
     }
 
     /// <summary>نوعا الإجراء/الملاحظة المقبولان في الواجهة — المصدر الوحيد للحقيقة.</summary>
@@ -49,6 +46,16 @@ public static class ActionReminderCalculator
         if (!ValidActionTypes.Contains(trimmed))
             throw new ArgumentException($"{fieldName} غير صالح");
     }
+
+    /// <summary>
+    /// تاريخ أساس التذكير عند إنشائه: تاريخ الإجراء المحلول إن طُلب تذكير، وإلا `null`.
+    /// لا سقوط إلى `CreatedAt` — إبقاء الأساس `null` يُبقي سقوط الحساب ديناميكيًا وموسومًا
+    /// في <see cref="TryComputeDueDate"/> بدل تجميد احتياط صامت في القاعدة (المصدر الوحيد للقاعدة).
+    /// </summary>
+    public static DateTime? BaseDateForNewReminder(string? duration, string? color, string? actionDate)
+        => string.IsNullOrWhiteSpace(duration) && string.IsNullOrWhiteSpace(color)
+            ? null
+            : ActionDateParser.TryParse(actionDate);
 
     /// <summary>مدد التذكير المقبولة في الواجهة — المصدر الوحيد للحقيقة كتابةً وقراءةً.</summary>
     public static readonly IReadOnlySet<string> ValidDurations = new HashSet<string>

@@ -412,7 +412,20 @@ public class AppealsController : ControllerBase
         return updated is null ? NotFound() : Ok(updated);
     }
 
-    /// <summary>نقل تذكير إجراء على الاستئناف إلى يوم استحقاق جديد من نافذة اليوم — المحامي المتابع.</summary>
+    /// <summary>
+    /// إنشاء/تعديل تذكير إجراء على الاستئناف (مدة/لون) — مسار مستقل عن تعديل الإجراء؛
+    /// الحقلان الفارغان = إلغاء. لا يمسّ تاريخ الإجراء.
+    /// </summary>
+    [HttpPut("appeals/{id:int}/actions/{actionId:int}/reminder")]
+    public async Task<IActionResult> SetReminder(int id, int actionId, [FromBody] SetAppealReminderRequest request, CancellationToken ct)
+    {
+        if (!CanManageAppeals)
+            return Forbid();
+        var action = await _appeals.SetReminderAsync(id, actionId, request, User.GetUserId(), ActorName, ct);
+        return Ok(action);
+    }
+
+    /// <summary>نقل تذكير إجراء على الاستئناف إلى يوم استحقاق جديد من نافذة اليوم — المحامي المتابع (لا يغيّر تاريخ الإجراء).</summary>
     [HttpPost("appeals/{id:int}/actions/{actionId:int}/reschedule")]
     public async Task<IActionResult> RescheduleReminder(int id, int actionId, [FromBody] RescheduleAppealReminderRequest? request, CancellationToken ct)
     {

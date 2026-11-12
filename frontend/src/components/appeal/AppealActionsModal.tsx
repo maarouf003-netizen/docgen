@@ -3,6 +3,7 @@ import { api, getApiErrorMessage } from '../../api/client';
 import { sanitizeRichText, richToPlainText } from '../../utils/richText';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import RichTextEditor from '../RichTextEditor';
+import { isReminderDirty, isReminderIncomplete, type LoadedReminder } from '../../utils/actionReminderInput';
 import type { AppealActionDto } from '../../types';
 
 function isNote(a: AppealActionDto) {
@@ -49,6 +50,8 @@ export default function AppealActionsModal({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
+  // حالة التذكير المحمّلة عند بدء التعديل — لا طلب تذكير في تعديل نص/تاريخ فقط.
+  const [loadedReminder, setLoadedReminder] = useState<LoadedReminder | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -74,6 +77,7 @@ export default function AppealActionsModal({
     setReminderColor('');
     setShowForm(false);
     setEditingId(null);
+    setLoadedReminder(null);
     setSaveError('');
     setFormSession((s) => s + 1);
   };
@@ -90,20 +94,47 @@ export default function AppealActionsModal({
       document.getElementById('appeal-action-date')?.focus();
       return;
     }
+    // تذكير مفعّل بلا مدة/لون = طلب فارغ يعامله الخادم إلغاءً ⇒ يُرفض أماميًا.
+    if (isReminderIncomplete(remind, reminderDuration, reminderColor)) {
+      setSaveError('اختر مدة التذكير أو ألغِ التفعيل');
+      document.getElementById('appeal-reminder-duration')?.focus();
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
-      const payload = {
+      const actionBody = {
         type: targetType,
         text,
         actionDate: normalizeArabicDigits(actionDate) || null,
-        reminderDuration: remind ? reminderDuration || null : null,
-        reminderColor: remind ? reminderColor || null : null,
       };
       if (editingId !== null) {
-        await api.put(`/appeals/${appealId}/actions/${editingId}`, payload);
+        // تعديل الإجراء لا يمسّ التذكير (العقد لا يحمل حقول تذكير).
+        await api.put(`/appeals/${appealId}/actions/${editingId}`, actionBody);
+        const reminderDirty = isReminderDirty(remind, reminderDuration, reminderColor, loadedReminder);
+        if (reminderDirty) {
+          try {
+            if (remind) {
+              await api.put(`/appeals/${appealId}/actions/${editingId}/reminder`, {
+                reminderDuration: reminderDuration || null,
+                reminderColor: reminderColor || null,
+              });
+            } else {
+              await api.delete(`/appeals/${appealId}/actions/${editingId}/reminder`);
+            }
+          } catch (err) {
+            setSaveError(`حُفظ الإجراء، وتعذّر حفظ التذكير: ${getApiErrorMessage(err)}`);
+            load();
+            onChanged?.();
+            return;
+          }
+        }
       } else {
-        await api.post(`/appeals/${appealId}/actions`, payload);
+        await api.post(`/appeals/${appealId}/actions`, {
+          ...actionBody,
+          reminderDuration: remind ? reminderDuration || null : null,
+          reminderColor: remind ? reminderColor || null : null,
+        });
       }
       resetForm();
       load();
@@ -123,6 +154,11 @@ export default function AppealActionsModal({
     setRemind(Boolean(a.reminderDuration || a.reminderColor));
     setReminderDuration(a.reminderDuration ?? '');
     setReminderColor(a.reminderColor ?? '');
+    setLoadedReminder(
+      a.reminderDuration || a.reminderColor
+        ? { duration: a.reminderDuration ?? '', color: a.reminderColor ?? '' }
+        : null,
+    );
     setShowForm(true);
     setSaveError('');
     setFormSession((s) => s + 1);
@@ -273,7 +309,10 @@ export default function AppealActionsModal({
                   </div>
                 )}
               </div>
-              {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
+              {editingId !== null && (
+                <p className="text-xs text-gray-500">تعديل التذكير لا يغيّر تاريخ الإجراء.</p>
+              )}
+              {saveError && <p role="alert" className="text-red-600 text-sm">{saveError}</p>}
               <div className="flex flex-wrap gap-2">
                 {editingId !== null ? (
                   <button

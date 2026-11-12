@@ -421,6 +421,14 @@ npm test
 > `Production` (القيمة المشوّهة كانت تُبقي `IsDevelopment()` خاطئة فقط، لكنها كانت ستُفشل تحميل
 > `appsettings.Production.json` لو أُضيف لاحقًا).
 
+- [ ] **2026-11-11 — `SeparateReminderBaseDate` / `SeparateReminderBaseDate_Pg`** (فصل تاريخ أساس التذكير عن تاريخ الإجراء/الملاحظة — إصلاح عيب «نقل التذكير يغيّر تاريخ الإجراء»):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (تُطبَّق قبل نشر النسخة) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111173744_SeparateReminderBaseDate.cs` — يضيف `ReminderBaseDate` (`TEXT`, `NULL`) إلى `ExecutionActions` و`AppealActions`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261111173853_SeparateReminderBaseDate_Pg.cs` — نفسه (`timestamp with time zone`, `NULL`).
+  - **لا Backfill ولا فهرسة:** الصفوف القائمة `NULL` ⇒ يسقط الحساب ديناميكيًا إلى تاريخ الإجراء (سلوك اليوم حرفيًا) بلا أي انزياح في مواعيد التذكيرات.
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) بحارس المخطط؛ وعلى `SQLite` ضمن سلسلة `G2` ثم `--context DocGeneratorDbContext`.
+  - **الوثيقة المرجعية:** `docs/ACTION_REMINDER_DATE_SEPARATION_PLAN.md` (§3، §11).
+
 - [ ] **2026-11-10 — `AddAssetCaseNumberRightType` / `AddAssetCaseNumberRightType_Pg`** (رقم المحضر ونوع الحق على الأصول):
   - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑10 — عبر `dotnet ef database update` على `Supabase`، ثم نشر النسخة `0d4d232` على `docgen-1` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261110085853_AddAssetCaseNumberRightType.cs` — يضيف عمودين `nullable` إلى `Assets`: `CaseNumber` (`TEXT(100)`) و`RightType` (`TEXT(30)`).

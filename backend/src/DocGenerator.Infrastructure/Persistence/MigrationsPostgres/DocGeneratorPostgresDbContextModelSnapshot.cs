@@ -74,6 +74,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int>("CreatedById")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("ReminderBaseDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ReminderColor")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
@@ -1975,6 +1978,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<int>("DocumentId")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReminderBaseDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ReminderColor")
                         .HasMaxLength(20)
