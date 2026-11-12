@@ -422,7 +422,7 @@ npm test
 > `appsettings.Production.json` لو أُضيف لاحقًا).
 
 - [ ] **2026-11-11 — `AddStrikeOffReminders` / `AddStrikeOffReminders_Pg`** (بطاقة «تذكيرات الشطب» — عمودا التاريخ المحلول والإلغاء):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (تُطبَّق قبل نشر النسخة) · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2`).
+  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — عبر `dotnet ef database update` على `Supabase` باستخدام `DATABASE_URL` من خدمة `docgen-1`، ثم نشر النسخة `22efd40` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111193953_AddStrikeOffReminders.cs` — يضيف `ExecutionActions.ActionDateParsed` و`Documents.StrikeOffReminderDismissedAt` (`TEXT`, `NULL`).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261111194021_AddStrikeOffReminders_Pg.cs` — نفسه (`timestamp with time zone`, `NULL`).
   - **لا Backfill ولا فهرسة (قرار المالك):** `ActionDateParsed = NULL` للصفوف القائمة ⇒ يُحسب آخر نشاط من `CreatedAt` لها (قد يتأخر ظهورها في البطاقة).
@@ -430,7 +430,7 @@ npm test
   - **الوثيقة المرجعية:** `docs/STRIKE_OFF_REMINDERS_PLAN.md`.
 
 - [ ] **2026-11-11 — `SeparateReminderBaseDate` / `SeparateReminderBaseDate_Pg`** (فصل تاريخ أساس التذكير عن تاريخ الإجراء/الملاحظة — إصلاح عيب «نقل التذكير يغيّر تاريخ الإجراء»):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (تُطبَّق قبل نشر النسخة) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
+  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — قبل نشر `5aec5b1`، و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111173744_SeparateReminderBaseDate.cs` — يضيف `ReminderBaseDate` (`TEXT`, `NULL`) إلى `ExecutionActions` و`AppealActions`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261111173853_SeparateReminderBaseDate_Pg.cs` — نفسه (`timestamp with time zone`, `NULL`).
   - **لا Backfill ولا فهرسة:** الصفوف القائمة `NULL` ⇒ يسقط الحساب ديناميكيًا إلى تاريخ الإجراء (سلوك اليوم حرفيًا) بلا أي انزياح في مواعيد التذكيرات.
