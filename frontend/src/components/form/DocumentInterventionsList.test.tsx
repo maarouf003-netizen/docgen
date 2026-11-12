@@ -25,7 +25,7 @@ const items: DocumentInterventionDto[] = [
     natureLabel: 'شخص طبيعي',
     displayName: 'سامر محمود الحسن',
     receiptDate: '2026-08-01',
-    acceptanceDate: '2026-08-10',
+    acceptanceDate: '2026-07-28',
     subject: 'طلب تدخل',
     heirs: [],
   },

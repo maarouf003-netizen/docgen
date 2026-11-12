@@ -58,7 +58,7 @@ const saved: DocumentInterventionDto = {
   natureLabel: 'شخص طبيعي',
   displayName: 'سامر محمود الحسن',
   receiptDate: '2026-08-01',
-  acceptanceDate: '2026-08-10',
+  acceptanceDate: '2026-07-28',
   name: 'سامر',
   father: 'محمود',
   family: 'الحسن',
@@ -94,7 +94,7 @@ describe('InterventionModal', () => {
     await user.type(screen.getByLabelText('النسبة'), 'الحسن');
     await user.type(screen.getByLabelText('رقم ورود طلب التدخل'), '١٢٣');
     await user.type(screen.getByLabelText(/تاريخ ورود طلب التدخل/), '1/8/2026');
-    await user.type(screen.getByLabelText('تاريخ قبول طلب التدخل'), '10/8/2026');
+    await user.type(screen.getByLabelText('تاريخ قبول طلب التدخل'), '28/7/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -107,7 +107,7 @@ describe('InterventionModal', () => {
         family: 'الحسن',
         receiptNumber: '123',
         receiptDate: '1/8/2026',
-        acceptanceDate: '10/8/2026',
+        acceptanceDate: '28/7/2026',
       }),
     );
     // الحقول غير المعنية بالصفة الطبيعية لا تُرسل.
@@ -128,6 +128,61 @@ describe('InterventionModal', () => {
       'تاريخ ورود طلب التدخل مطلوب',
     );
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('وجود ممثل شرعي يخفي عنوان المتدخل ويصفّره في الحمولة', async () => {
+    const user = userEvent.setup();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: saved });
+    setup();
+
+    await user.type(screen.getByLabelText(/الاسم$/), 'سامر');
+    await user.type(screen.getByLabelText(/تاريخ ورود طلب التدخل/), '1/8/2026');
+    expect(document.getElementById('intervention-address-type')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    expect(document.getElementById('intervention-address-type')).not.toBeInTheDocument();
+    expect(screen.getByText(/الممثل الشرعي موجود/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('اسم الممثل الشرعي'), 'خالد');
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post).toHaveBeenCalledWith(
+      '/documents/1/interventions',
+      expect.objectContaining({
+        name: 'سامر',
+        addressType: '',
+        address: '',
+        representativeName: 'خالد',
+      }),
+    );
+  });
+
+  it('وجود ورثة يخفي عنوان المتدخل ويصفّره في الحمولة', async () => {
+    const user = userEvent.setup();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: saved });
+    setup();
+
+    await user.type(screen.getByLabelText(/الاسم$/), 'سامر');
+    await user.type(screen.getByLabelText(/تاريخ ورود طلب التدخل/), '1/8/2026');
+    await user.click(screen.getByRole('button', { name: '＋ إضافة وريث' }));
+    await user.type(screen.getByLabelText('اسم الوريث'), 'وليد');
+
+    expect(document.getElementById('intervention-address-type')).not.toBeInTheDocument();
+    expect(screen.getByText(/المتدخل له ورثة/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post).toHaveBeenCalledWith(
+      '/documents/1/interventions',
+      expect.objectContaining({
+        name: 'سامر',
+        addressType: '',
+        address: '',
+        heirs: [expect.objectContaining({ name: 'وليد' })],
+      }),
+    );
   });
 
   it('عند صفة «جهة عامة» يلزم اختيارها من السجل المرجعي ويرسل معرّف القيد', async () => {

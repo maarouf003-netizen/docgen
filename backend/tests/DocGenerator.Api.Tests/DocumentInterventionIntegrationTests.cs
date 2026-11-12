@@ -31,7 +31,7 @@ public class DocumentInterventionIntegrationTests
         nature = PartyNatureCatalog.Natural,
         receiptNumber = "123",
         receiptDate = "1/8/2026",
-        acceptanceDate = "10/8/2026",
+        acceptanceDate = "28/7/2026",
         subject = "طلب تدخل",
         notes = "ملاحظة",
         name,

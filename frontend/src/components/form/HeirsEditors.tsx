@@ -165,8 +165,8 @@ export function HeirsEditor({
         const rowKey = heirRowKey(h.id, i);
         return (
           <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
-            <div className={hHasStoredRep ? 'grid grid-cols-1 md:grid-cols-5 gap-3' : 'grid grid-cols-1 md:grid-cols-8 gap-3'}>
-              <div className="md:col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'name')} className={labelCls}>اسم الوريث</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'name')}
@@ -177,7 +177,7 @@ export function HeirsEditor({
                   className={inputCls}
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'father')} className={labelCls}>اسم أب الوريث</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'father')}
@@ -188,7 +188,7 @@ export function HeirsEditor({
                   className={inputCls}
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'family')} className={labelCls}>النسبة</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'family')}
@@ -199,7 +199,7 @@ export function HeirsEditor({
                   className={inputCls}
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'capacity')} className={labelCls}>صفة الوريث</label>
                 <select
                   id={heirFieldId(idPrefix, rowKey, 'capacity')}
@@ -215,7 +215,7 @@ export function HeirsEditor({
               </div>
               {!hHasStoredRep && (
                 <>
-                  <div className="md:col-span-1">
+                  <div className="min-w-0">
                     <label htmlFor={heirFieldId(idPrefix, rowKey, 'type')} className={labelCls}>نوع العنوان</label>
                     <select
                       id={heirFieldId(idPrefix, rowKey, 'type')}
@@ -229,7 +229,7 @@ export function HeirsEditor({
                       ))}
                     </select>
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="sm:col-span-2 min-w-0">
                     <label htmlFor={heirFieldId(idPrefix, rowKey, 'address')} className={labelCls}>
                       {heirAddressLabelOf(h.addressType)}
                     </label>
@@ -244,7 +244,7 @@ export function HeirsEditor({
                   </div>
                 </>
               )}
-              <div className="flex items-end">
+              <div className="flex items-end justify-end sm:col-span-2 lg:col-span-3">
                 {!locked && (
                   <button type="button" onClick={() => onRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
                     ✖ حذف
@@ -311,8 +311,8 @@ export function ExecutedHeirsEditor({
         const rowKey = heirRowKey(h.id, i);
         return (
           <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
-            <div className={hHasStoredRep ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'grid grid-cols-1 md:grid-cols-7 gap-3'}>
-              <div className="md:col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'name')} className={labelCls}>الاسم</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'name')}
@@ -323,7 +323,7 @@ export function ExecutedHeirsEditor({
                   className={inputCls}
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'father')} className={labelCls}>اسم الأب</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'father')}
@@ -334,7 +334,7 @@ export function ExecutedHeirsEditor({
                   className={inputCls}
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="min-w-0">
                 <label htmlFor={heirFieldId(idPrefix, rowKey, 'family')} className={labelCls}>النسبة</label>
                 <input
                   id={heirFieldId(idPrefix, rowKey, 'family')}
@@ -347,7 +347,7 @@ export function ExecutedHeirsEditor({
               </div>
               {!hHasStoredRep && (
                 <>
-                  <div className="md:col-span-1">
+                  <div className="min-w-0">
                     <label htmlFor={heirFieldId(idPrefix, rowKey, 'type')} className={labelCls}>نوع العنوان</label>
                     <select
                       id={heirFieldId(idPrefix, rowKey, 'type')}
@@ -361,7 +361,7 @@ export function ExecutedHeirsEditor({
                       ))}
                     </select>
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="sm:col-span-2 min-w-0">
                     <label htmlFor={heirFieldId(idPrefix, rowKey, 'address')} className={labelCls}>
                       {heirAddressLabelOf(h.addressType)}
                     </label>
@@ -376,7 +376,7 @@ export function ExecutedHeirsEditor({
                   </div>
                 </>
               )}
-              <div className="flex items-end">
+              <div className="flex items-end justify-end sm:col-span-2 lg:col-span-3">
                 {!locked && (
                   <button type="button" onClick={() => onRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
                     ✖ حذف

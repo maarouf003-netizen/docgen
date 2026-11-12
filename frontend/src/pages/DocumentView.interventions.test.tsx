@@ -32,7 +32,7 @@ const intervention = {
   displayName: 'سامر محمود الحسن',
   receiptNumber: '123',
   receiptDate: '2026-08-01',
-  acceptanceDate: '2026-08-10',
+  acceptanceDate: '2026-07-28',
   subject: 'طلب تدخل في الملف',
   notes: 'ملاحظة أولى\nملاحظة ثانية',
   name: 'سامر',
@@ -78,7 +78,7 @@ const doc = {
       eventDate: '2026-08-01T00:00:00Z',
       details: {
         intervenorName: 'سامر محمود الحسن',
-        acceptanceDate: '2026-08-10',
+        acceptanceDate: '2026-07-28',
         nature: 'natural',
       },
       interventionId: 5,

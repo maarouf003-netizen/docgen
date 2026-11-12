@@ -23,7 +23,7 @@ public class DocumentIntervention
     /// <summary>تاريخ ورود طلب التدخل (إلزامي فعليًا — محور وقعة «طلب تدخل»).</summary>
     public DateTime? ReceiptDate { get; set; }
 
-    /// <summary>تاريخ قبول طلب التدخل (اختياري، ولا يسبق تاريخ الورود).</summary>
+    /// <summary>تاريخ قبول طلب التدخل (اختياري، ويسبق تاريخ ورود الطلب دائمًا).</summary>
     public DateTime? AcceptanceDate { get; set; }
 
     /// <summary>موضوع التدخل (نص حر متعدد الأسطر).</summary>
@@ -43,10 +43,13 @@ public class DocumentIntervention
     public string? Register { get; set; }
     public string? NationalId { get; set; }
 
-    /// <summary>نوع العنوان: موطن مختار / عنوان / يمثله (تُعرض «وكيله القانوني»).</summary>
+    /// <summary>
+    /// نوع العنوان: موطن مختار / عنوان / يمثله (تُعرض «وكيله القانوني»).
+    /// يُصفَّر عند وجود ممثل شرعي أو ورثة — عنوان الممثل هو المعتبر، والورثة يعني وفاة المتدخل.
+    /// </summary>
     public string? AddressType { get; set; } = "موطن مختار";
 
-    /// <summary>العنوان أو الوكيل القانوني حسب <see cref="AddressType"/>.</summary>
+    /// <summary>العنوان أو الوكيل القانوني حسب <see cref="AddressType"/> — لا يُستخدم مع الممثل الشرعي أو الورثة.</summary>
     public string? Address { get; set; }
 
     // ── الممثل الشرعي للشخص الطبيعي ────────────────────────────────────

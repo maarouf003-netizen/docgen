@@ -16,7 +16,7 @@ public class DocumentInterventionUpsertRequest
     /// <summary>تاريخ ورود طلب التدخل (نص حر، إلزامي فعليًا — مثال: 1/8/2026).</summary>
     public string? ReceiptDate { get; set; }
 
-    /// <summary>تاريخ قبول طلب التدخل (نص حر اختياري، لا يسبق تاريخ الورود).</summary>
+    /// <summary>تاريخ قبول طلب التدخل (نص حر اختياري، ويسبق تاريخ ورود الطلب دائمًا).</summary>
     public string? AcceptanceDate { get; set; }
 
     /// <summary>موضوع التدخل (نص حر متعدد الأسطر).</summary>
