@@ -38,6 +38,8 @@ import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
 import { FieldInfoHint } from '../components/form/FieldInfoHint';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
+import { InterventionModal } from '../components/form/InterventionModal';
+import { DocumentInterventionsList } from '../components/form/DocumentInterventionsList';
 import FloatingFormAlert from '../components/FloatingFormAlert';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
 import CircuitPickerModal from '../components/circuit/CircuitPickerModal';
@@ -56,6 +58,7 @@ import type {
   DelegationDto,
   DocumentResponse,
   DocumentUpsertRequest,
+  DocumentInterventionDto,
   ExecutedHeirDto,
   ExecutedNaturalPersonDto,
   ExecutedPublicEntityDto,
@@ -136,6 +139,11 @@ export default function DocumentForm() {
   const [executedPublicEntities, setExecutedPublicEntities] = useState<ExecutedPublicEntityDto[]>([freshExecutedEntity()]);
   const [applicantPublicEntities, setApplicantPublicEntities] = useState<ApplicantPublicEntityDto[]>([freshApplicantEntity()]);
   const [executedNaturalPersons, setExecutedNaturalPersons] = useState<ExecutedNaturalPersonDto[]>([]);
+  // المتدخلون: تُحمَّل مع الملف وتُدار عبر مسارات فرعية مستقلة (لا تدخل حمولة PUT)،
+  // فلا يفقد حفظ المتدخل تعديلات النموذج غير المحفوظة والعكس.
+  const [interventions, setInterventions] = useState<DocumentInterventionDto[]>([]);
+  const [interventionModalOpen, setInterventionModalOpen] = useState(false);
+  const [editingIntervention, setEditingIntervention] = useState<DocumentInterventionDto | null>(null);
   const [showInclusionAmount, setShowInclusionAmount] = useState(false);
   const [paidAmountSlots, setPaidAmountSlots] = useState(1);
   const [showRequiredAmount, setShowRequiredAmount] = useState(false);
@@ -203,6 +211,9 @@ export default function DocumentForm() {
     setExecutedPublicEntities([freshExecutedEntity()]);
     setApplicantPublicEntities([freshApplicantEntity()]);
     setExecutedNaturalPersons([]);
+    setInterventions([]);
+    setInterventionModalOpen(false);
+    setEditingIntervention(null);
     setShowInclusionAmount(false);
     setPaidAmountSlots(1);
     setShowRequiredAmount(false);
@@ -278,6 +289,7 @@ export default function DocumentForm() {
         setExecutedPublicEntities(d.executedPublicEntities.length ? d.executedPublicEntities : [{ ...emptyExecutedPublicEntity(), governorate: defaultGovernorateRef.current }]);
         setApplicantPublicEntities(d.applicantPublicEntities.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
         setExecutedNaturalPersons(d.executedNaturalPersons);
+        setInterventions(d.interventions ?? []);
         setWasOriginallyStruckOff(d.executedStatus === EXEC_STATUS_STRUCK_OFF);
         setOriginalExecutedStatus(d.executedStatus ?? '');
         setLoading(false);
@@ -1006,6 +1018,29 @@ export default function DocumentForm() {
 
   const isOrdinary = form.contractTypeSelector === 'عادي';
   const isExecuted = isExecutedLike(form.generalEntitySide);
+  // المتدخلون متاحون لصفتَي «طالبة التنفيذ» و«منفذ عليها» فقط (لا «عرض وايداع»)،
+  // للمحامي المالك في وضع التعديل — في أي حالة للملف غير المحذوف.
+  const canManageInterventions =
+    isEdit
+    && user?.role === 'lawyer'
+    && (form.generalEntitySide === 'applicant' || form.generalEntitySide === 'executed');
+  const openAddIntervention = () => {
+    setEditingIntervention(null);
+    setInterventionModalOpen(true);
+  };
+  const openEditIntervention = (intervention: DocumentInterventionDto) => {
+    setEditingIntervention(intervention);
+    setInterventionModalOpen(true);
+  };
+  const applyInterventionSaved = (saved: DocumentInterventionDto) => {
+    setInterventions((prev) =>
+      prev.some((i) => i.id === saved.id)
+        ? prev.map((i) => (i.id === saved.id ? saved : i))
+        : [...prev, saved],
+    );
+    setInterventionModalOpen(false);
+    setEditingIntervention(null);
+  };
   const executedSide = form.generalEntitySide === 'deposit' ? 'deposit' : 'executed';
   const sideLabel = form.generalEntitySide === 'deposit'
     ? 'عرض وايداع'
@@ -1070,13 +1105,24 @@ export default function DocumentForm() {
         <FormSectionTitle title="⚖️ صفة الجهة العامة" />
         <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 mb-2">
           {isEdit ? (
-            <p className="text-sm text-gray-700">
-              صفة الجهة العامة:{' '}
-              <span className="font-bold">{sideLabel}</span>
-              <span className="block text-xs text-gray-500 mt-1">
-                لا يمكن تغيير صفة الجهة العامة بعد إنشائها
-              </span>
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="text-sm text-gray-700 min-w-0">
+                صفة الجهة العامة:{' '}
+                <span className="font-bold">{sideLabel}</span>
+                <span className="block text-xs text-gray-500 mt-1">
+                  لا يمكن تغيير صفة الجهة العامة بعد إنشائها
+                </span>
+              </p>
+              {canManageInterventions && (
+                <button
+                  type="button"
+                  onClick={openAddIntervention}
+                  className="ms-auto shrink-0 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg px-4 py-2 min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  ＋ إضافة متدخل
+                </button>
+              )}
+            </div>
           ) : (
             <div role="radiogroup" aria-label="صفة الجهة العامة" className="flex flex-wrap gap-x-6 gap-y-2">
               <label className="flex items-center gap-2 min-h-11 cursor-pointer text-sm text-gray-700">
@@ -1110,6 +1156,14 @@ export default function DocumentForm() {
                 عرض وايداع
               </label>
             </div>
+          )}
+          {canManageInterventions && (
+            <DocumentInterventionsList
+              documentId={Number(id)}
+              interventions={interventions}
+              onChanged={setInterventions}
+              onEdit={openEditIntervention}
+            />
           )}
         </div>
 
@@ -1435,6 +1489,18 @@ export default function DocumentForm() {
             setCircuitPickerOpen(false);
           }}
           onClose={() => setCircuitPickerOpen(false)}
+        />
+      )}
+
+      {interventionModalOpen && id !== undefined && (
+        <InterventionModal
+          documentId={Number(id)}
+          initial={editingIntervention}
+          onSaved={applyInterventionSaved}
+          onClose={() => {
+            setInterventionModalOpen(false);
+            setEditingIntervention(null);
+          }}
         />
       )}
 

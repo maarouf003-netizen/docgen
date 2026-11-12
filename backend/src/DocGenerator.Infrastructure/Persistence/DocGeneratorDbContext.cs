@@ -37,6 +37,8 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<ExecutedNaturalPerson> ExecutedNaturalPersons => Set<ExecutedNaturalPerson>();
     public DbSet<ExecutedHeir> ExecutedHeirs => Set<ExecutedHeir>();
     public DbSet<DocumentOccurrence> DocumentOccurrences => Set<DocumentOccurrence>();
+    public DbSet<DocumentIntervention> DocumentInterventions => Set<DocumentIntervention>();
+    public DbSet<DocumentInterventionHeir> DocumentInterventionHeirs => Set<DocumentInterventionHeir>();
     public DbSet<ApplicantPublicEntity> ApplicantPublicEntities => Set<ApplicantPublicEntity>();
     public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
     public DbSet<DocumentDelegation> DocumentDelegations => Set<DocumentDelegation>();

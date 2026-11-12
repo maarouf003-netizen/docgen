@@ -30,6 +30,7 @@ public class DocumentsController : ControllerBase
 
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
+    private readonly IDocumentInterventionService _interventions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
@@ -45,6 +46,7 @@ public class DocumentsController : ControllerBase
     public DocumentsController(
         IDocumentService documents,
         IExecutionActionService executionActions,
+        IDocumentInterventionService interventions,
         IDocumentSearchService search,
         IDocumentStatusService status,
         IWordDocumentGenerator generator,
@@ -59,6 +61,7 @@ public class DocumentsController : ControllerBase
     {
         _documents = documents;
         _executionActions = executionActions;
+        _interventions = interventions;
         _search = search;
         _status = status;
         _generator = generator;
@@ -459,6 +462,56 @@ public class DocumentsController : ControllerBase
 
         var updated = await _documents.UpdateAsync(id, request, ActorName, User.GetUserId(), ct);
         return updated is null ? NotFound() : Ok(Sanitize(updated));
+    }
+
+    /// <summary>
+    /// إضافة متدخل (شخص طبيعي/اعتباري/جهة عامة) إلى الملف — المحامي المالك فقط.
+    /// تُحفظ فورًا وتُزامن وقعة «طلب تدخل» في المعاملة نفسها (لا تنتظر حفظ النموذج).
+    /// </summary>
+    [HttpPost("{id:int}/interventions")]
+    public async Task<IActionResult> AddIntervention(
+        int id, [FromBody] DocumentInterventionUpsertRequest request, CancellationToken ct)
+    {
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+
+        var created = await _interventions.AddAsync(id, request, User.GetUserId(), ActorName, ct);
+        return Ok(created);
+    }
+
+    /// <summary>تعديل متدخل قائم ومزامنة وقعته — المحامي المالك فقط.</summary>
+    [HttpPut("{id:int}/interventions/{interventionId:int}")]
+    public async Task<IActionResult> UpdateIntervention(
+        int id, int interventionId, [FromBody] DocumentInterventionUpsertRequest request, CancellationToken ct)
+    {
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+
+        var updated = await _interventions.UpdateAsync(
+            id, interventionId, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>حذف متدخل وورثته ووقعته — المحامي المالك فقط (بتأكيد في الواجهة).</summary>
+    [HttpDelete("{id:int}/interventions/{interventionId:int}")]
+    public async Task<IActionResult> DeleteIntervention(
+        int id, int interventionId, CancellationToken ct)
+    {
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+
+        return await _interventions.DeleteAsync(id, interventionId, ActorName, ct)
+            ? NoContent()
+            : NotFound();
     }
 
     [HttpGet("rotate")]

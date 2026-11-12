@@ -1,9 +1,9 @@
-import type { AppealDto, DocumentResponse } from '../../types';
+import type { AppealDto, DocumentInterventionDto, DocumentResponse } from '../../types';
 import { formatDate } from '../../utils/dates';
 import { appealStatusBadge } from '../../utils/appealStatus';
 import { FieldCell } from './FieldCell';
 import { SectionCard } from './SectionCard';
-import { buildOccurrenceLines } from './viewFormat';
+import { buildOccurrenceLines, occurrenceLine } from './viewFormat';
 
 /**
  * بطاقة «وقوعات الملف» مجزأة إلى أربعة أجزاء:
@@ -20,14 +20,19 @@ export function OccurrencesCard({
   appeals = [],
   onOpen,
   onOpenAppeal,
+  onOpenIntervention,
 }: {
   doc: DocumentResponse;
   appeals?: AppealDto[];
   onOpen: () => void;
   onOpenAppeal: (appeal: AppealDto) => void;
+  onOpenIntervention?: (intervention: DocumentInterventionDto) => void;
 }) {
   const occurrences = doc.occurrences ?? [];
-  const nonEntityOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const interventionOccurrences = occurrences.filter((o) => o.occurrenceType === 'intervention');
+  const nonEntityOccurrences = occurrences.filter(
+    (o) => o.occurrenceType !== 'entity-change' && o.occurrenceType !== 'intervention',
+  );
   const struckRenewalOccurrences = nonEntityOccurrences.filter(
     (o) => o.occurrenceType === 'struck-off' || o.occurrenceType === 'renewal',
   );
@@ -45,6 +50,7 @@ export function OccurrencesCard({
   if (
     !hasStruckPart &&
     !hasStatusPart &&
+    interventionOccurrences.length === 0 &&
     entityChangeOccurrences.length === 0 &&
     appeals.length === 0
   )
@@ -81,8 +87,34 @@ export function OccurrencesCard({
           </section>
         )}
 
-        {/* الجزء الثالث: التغييرات التي وقعت على الجهة العامة (مرآة النافذة) */}
-        {entityChangeOccurrences.length > 0 && (
+        {/* الجزء الثالث: طلبات التدخل (بنفسجي + نافذة التفاصيل عند النقر) */}
+        {interventionOccurrences.length > 0 && (
+          <section aria-label="طلبات التدخل" className="space-y-2">
+            <h4 className="text-sm font-bold text-purple-700">طلبات التدخل</h4>
+            <ul className="space-y-1.5">
+              {interventionOccurrences.map((occurrence) => {
+                const intervention = (doc.interventions ?? []).find(
+                  (i) => i.id === occurrence.interventionId,
+                );
+                return (
+                  <li key={occurrence.id}>
+                    <button
+                      type="button"
+                      onClick={() => intervention && onOpenIntervention?.(intervention)}
+                      disabled={!intervention || !onOpenIntervention}
+                      aria-label={`عرض تفاصيل طلب التدخل: ${occurrenceLine(occurrence)}`}
+                      className="w-full text-right text-sm text-purple-700 hover:text-purple-900 hover:underline min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-default disabled:no-underline"
+                    >
+                      {occurrenceLine(occurrence)}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* الجزء الرابع: التغييرات التي وقعت على الجهة العامة (مرآة النافذة) */}        {entityChangeOccurrences.length > 0 && (
           <section aria-label="التغييرات التي وقعت على الجهة العامة" className="space-y-2">
             <h4 className="text-sm font-bold text-gray-600">التغييرات التي وقعت على الجهة العامة</h4>
             <ul className="text-gray-800 text-sm space-y-1.5">
@@ -93,7 +125,7 @@ export function OccurrencesCard({
           </section>
         )}
 
-        {/* الجزء الرابع: الاستئنافات */}
+        {/* الجزء الخامس: الاستئنافات */}
         <section aria-label="الاستئنافات" className="space-y-2">
           <h4 className="text-sm font-bold text-gray-600">الاستئنافات</h4>
           {appeals.length > 0 ? (

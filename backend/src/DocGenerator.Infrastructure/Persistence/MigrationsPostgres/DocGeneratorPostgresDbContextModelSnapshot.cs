@@ -1657,6 +1657,211 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("DocumentFieldChanges", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AcceptanceDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Birth")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EntityBranch")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Family")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Father")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Mother")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NationalId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Nature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("natural");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("ReceiptDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Register")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("RegistryId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("RegistryId");
+
+                    b.ToTable("DocumentInterventions", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentInterventionHeir", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Capacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("DocumentInterventionId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HeirAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("HeirFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("HeirFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("HeirName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentInterventionId");
+
+                    b.ToTable("DocumentInterventionHeirs", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.Property<int>("Id")
@@ -1675,6 +1880,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasColumnType("text");
 
                     b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DocumentInterventionId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("EventDate")
@@ -1726,6 +1934,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("DocumentInterventionId");
 
                     b.HasIndex("EventDate");
 
@@ -3740,6 +3950,43 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("AuditLog");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Interventions")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "Registry")
+                        .WithMany()
+                        .HasForeignKey("RegistryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Registry");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentInterventionHeir", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentIntervention", "DocumentIntervention")
+                        .WithMany("Heirs")
+                        .HasForeignKey("DocumentInterventionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentIntervention");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
@@ -3754,9 +4001,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentIntervention", "DocumentIntervention")
+                        .WithMany()
+                        .HasForeignKey("DocumentInterventionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("DocumentIntervention");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentRegistrationDate", b =>
@@ -4295,6 +4549,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Navigation("Heirs");
 
+                    b.Navigation("Interventions");
+
                     b.Navigation("Occurrences");
 
                     b.Navigation("RegistrationDate");
@@ -4312,6 +4568,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("Assets");
 
                     b.Navigation("TargetDocument");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentIntervention", b =>
+                {
+                    b.Navigation("Heirs");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedNaturalPerson", b =>

@@ -498,6 +498,18 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
       const narrative = occurrence.detailsText?.trim();
       return narrative ? narrative : occurrence.occurrenceTypeLabel;
     }
+    case 'intervention': {
+      // وقعة مولَّدة من بيانات المتدخل: الاسم والقبول لقطة لحظة الحفظ في Details،
+      // وتاريخ الوقعة هو تاريخ ورود الطلب نفسه.
+      const name = d.intervenorName?.trim();
+      const parts = ['ورد طلب تدخل'];
+      if (name) parts.push(`من ${name}`);
+      if (occurrence.eventDate) parts.push(`بتاريخ ${formatDate(occurrence.eventDate)}`);
+      else if (d.receiptDate) parts.push(`بتاريخ ${formatDate(d.receiptDate)}`);
+      const acceptance = d.acceptanceDate?.trim();
+      if (acceptance) parts.push(`(تاريخ قبول طلب التدخل: ${formatDate(acceptance)})`);
+      return parts.join(' ');
+    }
     case 'circuit-referred': {
       // السطر الثابت لتبديل الدائرة من التعديل العادي (via=edit) بإرقام الملف الحالية؛
       // أما الإحالة الجماعية (تفريغ الدائرة) فسطر موحّد بالأرقام القديمة الملتقطة وقتها،

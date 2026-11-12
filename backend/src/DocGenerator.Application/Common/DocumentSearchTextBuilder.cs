@@ -47,6 +47,20 @@ public static class DocumentSearchTextBuilder
             .SelectMany(g => new[] { g.GuarantorName, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy })
             .Where(v => !string.IsNullOrWhiteSpace(v));
         parts = parts.Concat(guarantorLegalNames);
+        // المتدخلون (بكل صفاتهم) وأرقام تسجيلهم وأسماء ورثتهم: البحث بالاسم يصل إلى الملف.
+        var interventionNames = doc.Interventions
+            .Select(i => PartyNatureCatalog.IsLegal(i.Nature)
+                    || i.Nature == PartyNatureCatalog.PublicEntity
+                ? string.Join(' ', i.EntityName, i.EntityBranch, i.RegistrationNumber)
+                : string.Join(' ', i.Name, i.Father, i.Family, i.NationalId))
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        var interventionHeirNames = doc.Interventions
+            .SelectMany(i => i.Heirs)
+            .Select(h => string.Join(' ', h.HeirName, h.HeirFather, h.HeirFamily))
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        parts = parts
+            .Concat(interventionNames)
+            .Concat(interventionHeirNames);
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {
             // ملف «منفذ عليه»/«عرض وايداع»: اسم البحث يضم أسماء طلبات التنفيذ/العرض

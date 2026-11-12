@@ -391,4 +391,10 @@ public class Document : IDocumentExecutionState
     /// (يسمح بتكرارهما عدة مرات)، مرتبة زمنيًا حسب تاريخ الحدث عند العرض.
     /// </summary>
     public ICollection<DocumentOccurrence> Occurrences { get; set; } = new List<DocumentOccurrence>();
+
+    /// <summary>
+    /// المتدخلون في الملف (شخص طبيعي/اعتباري/جهة عامة) مع بيانات طلب التدخل —
+    /// صفة «الجهة العامة طالبة التنفيذ» أو «الجهة العامة منفذ عليها» فقط.
+    /// </summary>
+    public ICollection<DocumentIntervention> Interventions { get; set; } = new List<DocumentIntervention>();
 }

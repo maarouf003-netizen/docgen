@@ -14,7 +14,7 @@ public class DocumentGenerationDisabledTests
 {
     private static DocumentsController ControllerWithGeneration(bool enabled) =>
         new(
-            null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!,
             Options.Create(new DocumentGenerationOptions
             {
                 Enabled = enabled,

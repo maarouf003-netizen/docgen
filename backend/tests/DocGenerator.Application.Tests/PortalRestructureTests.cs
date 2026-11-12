@@ -768,7 +768,7 @@ public class PortalRestructureTests : IDisposable
             "ExecutionApplicants", "ExecutedPublicEntities", "ExecutedNaturalPersons",
             "ApplicantPublicEntities", "Assignments",
             "FileArrivalNumber", "FileArrivalDate",
-            "Occurrences",
+            "Occurrences", "Interventions",
         };
         var accepted = new HashSet<string>(StringComparer.Ordinal)
         {

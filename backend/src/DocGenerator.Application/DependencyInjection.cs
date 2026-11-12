@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddSingleton(new NumberRegistryOptions());
         services.AddScoped<IDocumentNumberRegistry, DocumentNumberRegistry>();
         services.AddScoped<IExecutionActionService, ExecutionActionService>();
+        services.AddScoped<IDocumentInterventionService, DocumentInterventionService>();
         services.AddScoped<IDocumentSearchService, DocumentSearchService>();
         services.AddScoped<IDocumentStatusService, DocumentStatusService>();
         services.AddScoped<IDocumentWriteGuard, DocumentWriteGuard>();

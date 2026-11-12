@@ -469,6 +469,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Include(d => d.ExecutedHeirs)
             .Include(d => d.Occurrences)
             .ThenInclude(o => o.CreatedBy)
+            .Include(d => d.Interventions)
+            .ThenInclude(i => i.Heirs)
             .Include(d => d.ApplicantPublicEntities)
             .Include(d => d.Assignments)
             // صف الإنابة المصدر: تاريخ إعادة الملف للدائرة المنيبة في «تاريخ التنفيذ»

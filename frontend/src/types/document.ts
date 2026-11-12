@@ -186,9 +186,92 @@ export interface ApplicantPublicEntityDto {
   registryId?: number | null;
 }
 
-/** سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer). */
-export interface DocumentAssignmentDto {
+/** صفة المتدخل في الملف: شخص طبيعي / شخص اعتباري / جهة عامة. */
+export type InterventionNature = 'natural' | 'legal' | 'public';
+
+/**
+ * متدخل في الملف (شخص طبيعي/اعتباري/جهة عامة) مع بيانات طلب التدخل.
+ * قادم من الخادم في استجابة الملف — والفصل بين الصفات كما في عقود الأطراف القائمة.
+ */
+export interface DocumentInterventionDto {
   id: number;
+  nature: InterventionNature;
+  /** التسمية العربية للصفة (شخص طبيعي/شخص اعتباري/جهة عامة) — من الخادم. */
+  natureLabel: string;
+  /** اسم العرض الجاهز: الاسم الثلاثي أو اسم الكيان/الجهة وفرعها. */
+  displayName: string;
+  receiptNumber?: string;
+  /** تاريخ ورود طلب التدخل (yyyy-MM-dd). */
+  receiptDate?: string;
+  /** تاريخ قبول طلب التدخل (yyyy-MM-dd) — اختياري. */
+  acceptanceDate?: string;
+  subject?: string;
+  notes?: string;
+
+  name?: string;
+  father?: string;
+  family?: string;
+  mother?: string;
+  birth?: string;
+  register?: string;
+  nationalId?: string;
+  addressType?: string;
+  address?: string;
+
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+  representativeCapacity?: string;
+  representativeAddressType?: string;
+  representativeAddress?: string;
+
+  entityName?: string;
+  entityBranch?: string;
+  registrationNumber?: string;
+  representedBy?: string;
+  governorate?: string;
+  /** معرّف قيد الجهة في السجل المرجعي (للجهة العامة). */
+  registryId?: number | null;
+  heirs?: HeirDto[];
+}
+
+/** طلب إضافة/تعديل متدخل — التواريخ نصوص حرة تُفسَّر خادميًا. */
+export interface DocumentInterventionUpsertRequest {
+  nature: InterventionNature;
+  receiptNumber?: string;
+  receiptDate?: string;
+  acceptanceDate?: string;
+  subject?: string;
+  notes?: string;
+
+  name?: string;
+  father?: string;
+  family?: string;
+  mother?: string;
+  birth?: string;
+  register?: string;
+  nationalId?: string;
+  addressType?: string;
+  address?: string;
+
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+  representativeCapacity?: string;
+  representativeAddressType?: string;
+  representativeAddress?: string;
+
+  entityName?: string;
+  entityBranch?: string;
+  registrationNumber?: string;
+  representedBy?: string;
+  governorate?: string;
+  registryId?: number | null;
+  heirs?: HeirDto[];
+}
+
+/** سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer). */
+export interface DocumentAssignmentDto {  id: number;
   kind: 'create' | 'transfer';
   lawyerName?: string;
   assignedByName?: string;
@@ -441,6 +524,8 @@ fileNumber?: string;
   executedNaturalPersons: ExecutedNaturalPersonDto[];
   /** الجهات العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (واحدة أو أكثر). */
   applicantPublicEntities?: ApplicantPublicEntityDto[];
+  /** المتدخلون في الملف (شخص طبيعي/اعتباري/جهة عامة) مع بيانات طلب التدخل. */
+  interventions?: DocumentInterventionDto[];
   /** سجل تعاقب المحامين على الملف (منشئ + كل المحامين المتعاقبين مع تواريخ الإحالة). */
   assignments?: DocumentAssignmentDto[];
   /** رقم ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (اختياري). */
@@ -656,7 +741,7 @@ export interface CorrectBaseNumberRequest {
  * نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»)
  * أو تغيير جهة آلي أو نقل دوائر (`circuit-*` ولإبلاغ الطرف المقابل `*-file-moved`).
  */
-export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start' | 'circuit-referred' | 'circuit-reregistered' | 'circuit-renamed' | 'source-file-moved' | 'mirror-file-moved';
+export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start' | 'intervention' | 'circuit-referred' | 'circuit-reregistered' | 'circuit-renamed' | 'source-file-moved' | 'mirror-file-moved';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
 export interface DocumentOccurrenceDto {
@@ -688,6 +773,8 @@ export interface DocumentOccurrenceDto {
   fromCircuitName?: string | null;
   /** اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة). */
   toCircuitName?: string | null;
+  /** معرّف المتدخل المرتبط بوقعة «طلب تدخل» — يُفتح منه نافذة تفاصيله. */
+  interventionId?: number | null;
 }
 
 /* ── سجل تعديلات الملف على مستوى الحقول ───────────────────────────────── */

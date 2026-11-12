@@ -48,6 +48,15 @@ public class DocumentOccurrence
     public string? Details { get; set; }
 
     /// <summary>
+    /// ربط وقعة «طلب تدخل» بالمتدخل الذي أنشأها (FK اختياري): يضمن حذف الوقعة مع
+    /// المتدخل تلقائيًا، ويتيح فتح نافذة تفاصيله من سطر الوقعة بلا فكّ JSON.
+    /// </summary>
+    public int? DocumentInterventionId { get; set; }
+
+    /// <summary>المتدخل المرتبط بوقعة «طلب تدخل» (فارغ لبقية الأنواع).</summary>
+    public DocumentIntervention? DocumentIntervention { get; set; }
+
+    /// <summary>
     /// اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred — وعند
     /// نقل الطرف المقابل — source-file-moved/mirror-file-moved).
     /// مبدأ التاريخ المجمد: إنابات مكتملة تستهدف دائرة محذوفة تبقي عرض اسمها القديم عمدًا.

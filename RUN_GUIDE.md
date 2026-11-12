@@ -421,6 +421,14 @@ npm test
 > `Production` (القيمة المشوّهة كانت تُبقي `IsDevelopment()` خاطئة فقط، لكنها كانت ستُفشل تحميل
 > `appsettings.Production.json` لو أُضيف لاحقًا).
 
+- [ ] **2026-11-12 — `AddDocumentInterventions` / `AddDocumentInterventions_Pg`** (متدخلو الملف — جدولان + عمود ربط الوقعة):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2` كبقية الهجرات المعلّقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261112093527_AddDocumentInterventions.cs` — ينشئ `DocumentInterventions` و`DocumentInterventionHeirs`، ويضيف `DocumentOccurrences.DocumentInterventionId` (FK `SET NULL`/Cascade إلى المتدخل + فهرس) وفهارس الملف/السجل/الأب.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261112093636_AddDocumentInterventions_Pg.cs` — نفسه (`timestamp with time zone`، بلا `datetime2`).
+  - **لا Backfill:** ميزة جديدة لا صفوف سابقة؛ الصفوف القديمة بلا متدخلين تبقى كما هي.
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة (حارس المخطط)، و`--context DocGeneratorDbContext` على `SQLite` (ضمن `G2`).
+  - **الوثيقة المرجعية:** `docs/audit/15-document-interventions-20261112.md`.
+
 - [ ] **2026-11-11 — `AddStrikeOffReminders` / `AddStrikeOffReminders_Pg`** (بطاقة «تذكيرات الشطب» — عمودا التاريخ المحلول والإلغاء):
   - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — عبر `dotnet ef database update` على `Supabase` باستخدام `DATABASE_URL` من خدمة `docgen-1`، ثم نشر النسخة `22efd40` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111193953_AddStrikeOffReminders.cs` — يضيف `ExecutionActions.ActionDateParsed` و`Documents.StrikeOffReminderDismissedAt` (`TEXT`, `NULL`).

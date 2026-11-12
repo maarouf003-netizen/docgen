@@ -230,6 +230,11 @@ public class DocumentResponse : IDocumentSheetFields
     public List<ExecutedNaturalPersonDto> ExecutedNaturalPersons { get; set; } = new();
     /// <summary>الجهات العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (واحدة أو أكثر).</summary>
     public List<ApplicantPublicEntityDto> ApplicantPublicEntities { get; set; } = new();
+    /// <summary>
+    /// المتدخلون في الملف (شخص طبيعي/اعتباري/جهة عامة) مع بيانات طلب التدخل —
+    /// يظهرون في بطاقة الأطراف وفي وقوعات الملف.
+    /// </summary>
+    public List<DocumentInterventionDto> Interventions { get; set; } = new();
     /// <summary>سجل تعاقب المحامين على الملف (منشئ + كل المحامين المتعاقبين مع تواريخ الإحالة).</summary>
     public List<DocumentAssignmentDto> Assignments { get; set; } = new();
     /// <summary>رقم ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (اختياري).</summary>
@@ -470,6 +475,11 @@ public class DocumentResponse : IDocumentSheetFields
         ApplicantPublicEntities = d.ApplicantPublicEntities
             .Select(e => new ApplicantPublicEntityDto(e.Id, e.Name, e.Branch, e.Governorate, e.RegistryId))
             .ToList(),
+        Interventions = d.Interventions
+            .OrderBy(i => i.CreatedAt)
+            .ThenBy(i => i.Id)
+            .Select(DocumentInterventionText.ToDto)
+            .ToList(),
         Assignments = d.Assignments
             .OrderBy(a => a.AssignedAt)
             .Select(a => new DocumentAssignmentDto(a.Id, a.Kind, a.LawyerName, a.AssignedByName, a.AssignedAt))
@@ -489,7 +499,7 @@ public class DocumentResponse : IDocumentSheetFields
             OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
             o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
             details, o.CreatedBy?.FullName, o.Source, detailsText,
-            o.FromCircuitName, o.ToCircuitName);
+            o.FromCircuitName, o.ToCircuitName, o.DocumentInterventionId);
     }
 
     /// <summary>فكّ قائمة معرّفات الأموال المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>
