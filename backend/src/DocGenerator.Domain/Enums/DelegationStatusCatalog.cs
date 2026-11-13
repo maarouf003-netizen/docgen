@@ -18,8 +18,12 @@ public static class DelegationStatusCatalog
     /// <summary>منفذ إنابة: أُتم بيع الأموال موضوع الإنابة بالمزاد وأُعيد الملف للدائرة المنيبة.</summary>
     public const string Executed = "منفذ إنابة";
 
-    public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
+    /// <summary>ترتيب ثابت لقيد `CK_DocumentDelegations_Status` — مطابق للقطة.</summary>
+    public static readonly IReadOnlyList<string> OrderedStatuses = new[]
     {
         PendingHead, Assigned, Registered, Executed,
     };
+
+    public static readonly IReadOnlySet<string> ValidStatuses =
+        new HashSet<string>(OrderedStatuses);
 }

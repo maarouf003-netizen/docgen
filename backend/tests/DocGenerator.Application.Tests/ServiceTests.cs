@@ -2416,6 +2416,7 @@ public class DocumentServiceTests : IDisposable
 
         var updated = await _service.GetAsync(doc.Id);
         Assert.Equal(string.Empty, updated!.ExecStatus);
+        Assert.Equal(new DateTime(2024, 2, 1), updated.StruckOffDate);
         Assert.Equal("999", updated.RenewalFileNumber);
         Assert.Contains(updated.Occurrences, o => o.OccurrenceType == OccurrenceTypeCatalog.Renewal);
     }
@@ -3867,6 +3868,37 @@ public class DocumentServiceTests : IDisposable
         {
             new ExecutionApplicantDto(null, "بديل", "خالد", "الخطيب", null, "أصالة",
                 null, null, null, null, null, null, null, null, new()),
+        };
+
+        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");
+        Assert.NotNull(updated);
+
+        var storedHeirs = await _db.ExecutedHeirs
+            .AsNoTracking()
+            .Where(h => h.DocumentId == doc.Id)
+            .ToListAsync();
+        Assert.Empty(storedHeirs);
+    }
+
+    [Fact]
+    public async Task Update_ExecutedSide_ReplacingNaturalPerson_RemovesOldHeirs()
+    {
+        var req = ExecutedSample();
+        req.ExecutedNaturalPersons = new()
+        {
+            new ExecutedNaturalPersonDto(null, "منفذ", "والد", "عائلة", "أم", "دمشق", "عنوان",
+                null, null, null, null, null, null, null, null, null, new()
+                {
+                    new ExecutedHeirDto(null, "وريث أول", "والد1", "عائلة1", "عنوان", "دمشق"),
+                }),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        req.ExecutedNaturalPersons = new()
+        {
+            new ExecutedNaturalPersonDto(null, "بديل", "والد", "عائلة", null, null, null,
+                null, null, null, null, null, null, null, null, null, new()),
         };
 
         var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");

@@ -162,6 +162,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Empty(loaded!.ApplicantPublicEntities);
+        Assert.True(string.IsNullOrEmpty(loaded.Applicant));
     }
 
     [Fact]

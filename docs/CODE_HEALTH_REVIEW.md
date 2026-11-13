@@ -91,10 +91,11 @@ if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Applicant)
 
 - لا تُستخدم `!IsExecutedLike` هنا.
 - يبقى توافق `applicant` القديم كما هو.
+- لغير صفة `applicant`: يُصفَّر `doc.Applicant` أيضًا، فلا يبقى نص طالب تنفيذ قديم في حقل عرض.
 
 **الاختبارات:**
 - إنشاء `applicant` مع `Applicant` نصي ⇒ صف واحد (السلوك القديم).
-- صفة أخرى مع `Applicant` نصي ⇒ `ApplicantPublicEntities` فارغة.
+- صفة أخرى مع `Applicant` نصي ⇒ `ApplicantPublicEntities` فارغة و`Applicant` فارغ.
 - تعديل لا يضيف صفًا وهميًا.
 
 **النشر:** لا هجرة.
@@ -158,6 +159,7 @@ doc.ExecutedNaturalPersons.Clear();
 
 **الاختبارات:**
 - ملف فيه طالب A ووريث H1؛ تعديله ليحذف A ويضيف B ⇒ لا H1.
+- استبدال `ExecutedNaturalPerson` بآخر بلا ورثة ⇒ لا ورثة قدامى.
 - إضافة ورثة جدد ⇒ لا تكرار.
 - سجل التعديلات يظهر تغييرًا واحدًا مفهومًا.
 
@@ -224,11 +226,13 @@ q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormali
   - `ApplicantPublicEntities`/`ExecutedPublicEntities`.
 - استخدام `EXISTS`/`Any` وليس تحميلًا في الذاكرة.
 - قياس الأداء على بيانات كثيرة؛ إن لزم فهارس/`pg_trgm`.
+- **التنفيذ:** استخراج `DocumentPartySearch` في `Infrastructure` كمصدر وحيد للفروع، بعلامات `includeExecutedFamily`/`includeAppeals` تُبنى في شجرة التعبير (لا فروع ميتة كمعاملات `bool` في SQL).
 
 **الاختبارات:**
 - اسم في آخر `SearchText` أو خارج القص ⇒ البحث يجده.
 - لا تسرب خارج النطاق.
 - زمن استجابة مقبول (ميزانية رقمية).
+- **المنفذ:** اختبار الكفيل مع `SearchText` فارغ + `SearchMeasurementTests` على 10k مستند + اختبارات عزل البوابة + `PortalSearchPostgresTests` (تحقق ترجمة الباني على Npgsql).
 
 **النشر:** لا هجرة (إلا فهرس اختياري).
 
@@ -253,6 +257,7 @@ q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormali
 - `PortalAmountRow`: أضف `ContractTypeSelector`.
 - `PortalService.DebtAmountPairs`: اختر مجموعة واحدة حسب `ContractTypeSelector`.
 - لا تجمع المجموعتين لأي ملف.
+- توحيد قاعدة `IsBanking` في `ContractTypeCatalog` (Domain) واستخدامها في `StatisticsRepository` و`PortalService` — لا نسختان تتباعدان.
 - لا حاجة لهجرة بيانات (قاعدة البيانات تجريبية)، لكن أضف اختبارات للقيمتين.
 
 **الاختبارات:**
@@ -260,6 +265,7 @@ q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormali
 - عادي: `Inclusion*` فقط.
 - ملف بالقيمتين: لا يتضاعف؛ يختار حسب المحدد.
 - لوحة/فرع/بوابة متطابقة.
+- `ContractTypeCatalog.IsBanking` على القيم الفارغة/المجهولة/«عادي».
 
 **النشر:** لا هجرة.
 
@@ -295,26 +301,21 @@ q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormali
 
 ### C-08 — ترتيب قيد `CHECK` غير حتمي — P1
 
-**الموقع:** `GeneralEntitySideCatalog.ValidSides` (`HashSet`), `CheckConstraintLists.InList` (لا فرز).
+**الموقع:** كتالوجات القيود (`ExecutionStatusCatalog`/`ExecutedStatusCatalog`/`AppealStatusCatalog`/`AppealForwardCatalog`/`DelegationStatusCatalog`/`HeadSuccessionEventCatalog`/`GeneralEntitySideCatalog`) و`CheckConstraintLists.InList`.
 
-**السبب:** `HashSet<string>` يعتمد على تجزئة النص، وقد يختلف ترتيبه بين العمليات.
+**السبب:** `HashSet<string>` يعتمد على تجزئة النص، وقد يختلف ترتيبه بين العمليات؛ و`InList` كان يقبل `IEnumerable` غير مرتب.
 
-**الأثر:** توليد هجرة قد يرى نص القيد مختلفًا عن اللقطة، فيُنشئ `Drop/Add` غير متوقع.
+**الأثر:** توليد هجرة قد يرى نص القيد مختلفًا عن اللقطة، فيُنشئ `Drop/Add` غير متوقع. الثغرة صنفية لا تخص قيدًا واحدًا.
 
-**الإصلاح القياسي:**
-- **لا تغيّر `InList` عالميًا** (سيسبب Churn لكل القيود).
-- في `DocumentConfiguration` استخدم قائمة مرتبة صريحة لـ`GeneralEntitySide`:
-  ```csharp
-  table.HasCheckConstraint(
-      "CK_Documents_GeneralEntitySide",
-      "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')");
-  ```
-  أو أضف `InListOrdered` تستخدمها هذه القيود فقط.
-- أضف اختبارًا يثبت ثبات النص.
+**الإصلاح القياسي (المنفذ):**
+- قائمة `Ordered*` صريحة في كل كتالوج، بترتيب مطابق للقطة الحالية، واشتقاق `Valid*` منها.
+- كل `HasCheckConstraint` يستخدم القائمة المرتبة (بما فيها `ExecStatus` مع `StateStruckOff` في موضعه).
+- تغيير توقيع `CheckConstraintLists.InList` إلى `IReadOnlyList<string?>` — تمرير `HashSet` ممنوع وقت الترجمة، فلا تتكرر الثغرة.
+- عدم تغيير الترتيب الحالي ⇒ لا هجرة.
 
-**الاختبارات (المنفذ):** `PB002StatusCheckTests.GeneralEntitySide_Constraint_UsesDeterministicOrder` يثبت نص القيد من `IDesignTimeModel` وترتيب `OrderedSides`؛ إضافة إلى `migration-guard`.
+**الاختبارات (المنفذ):** `PB002StatusCheckTests.CheckConstraints_UseDeterministicOrderedLists` يثبت النصوص الثمانية من `IDesignTimeModel` وترتيب كل قائمة؛ إضافة إلى `migration-guard`.
 
-**النشر:** لا هجرة إن حافظت على الترتيب الحالي.
+**النشر:** لا هجرة (الترتيب محفوظ).
 
 ---
 

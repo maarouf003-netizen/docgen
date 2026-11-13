@@ -169,53 +169,13 @@ public class PortalRepository : IPortalRepository
     }
 
     /// <summary>
-    /// بحث نصي مباشر في أطراف الملف، لا يعتمد على `SearchText` وحده — فهو يُقصّ عند
-    /// 1000 حرف. يطابق نفس فروع البحث الاسمي في قوائم المحامين، مع الحفاظ على نطاق
-    /// المندوب في `ScopedQuery`.
+    /// تفويض إلى <see cref="DocumentPartySearch"/> (المصدر الوحيد لبحث الأطراف) مع بقاء
+    /// نطاق المندوب في <see cref="ScopedQuery"/>. لا يعتمد على `SearchText` وحده لأنه
+    /// يُقصّ عند 1000 حرف. لقطات الاستئناف لا تُبحث مباشرة هنا (`includeAppeals: false`):
+    /// `SearchText` يغطيها في البوابة، بخلاف قوائم المحامين.
     /// </summary>
-    private static IQueryable<Document> ApplyScopedPersonNameSearch(IQueryable<Document> q, string term)
-    {
-        var normTerm = ArabicNameNormalizer.Normalize(term);
-        return q.Where(d =>
-            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
-            (d.BorrowerName != null &&
-                ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-            d.Guarantors.Any(g =>
-                g.GuarantorName != null &&
-                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
-            d.Heirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            d.ExecutionApplicants.Any(a =>
-                (a.Name != null &&
-                    ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
-                     (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
-                ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
-            d.ExecutedPublicEntities.Any(e =>
-                e.EntityName != null && e.EntityName.Contains(term)) ||
-            d.ExecutedNaturalPersons.Any(p =>
-                p.Name != null &&
-                ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
-                 (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
-            d.ExecutedHeirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            d.ApplicantPublicEntities.Any(a =>
-                a.Name != null && a.Name.Contains(term)) ||
-            d.Interventions.Any(i =>
-                (i.Name != null &&
-                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
-                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
-                (i.EntityName != null && i.EntityName.Contains(term)) ||
-                i.Heirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))));
-    }
+    private IQueryable<Document> ApplyScopedPersonNameSearch(IQueryable<Document> q, string term)
+        => DocumentPartySearch.Apply(q, _db.DocumentAppeals, term, includeExecutedFamily: true, includeAppeals: false);
 
     // ── مساعدات خاصة ──
 

@@ -13,7 +13,7 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.ToTable("DocumentDelegations", table =>
         {
             table.HasCheckConstraint("CK_DocumentDelegations_Status",
-                $"\"Status\" IN ({CheckConstraintLists.InList(DelegationStatusCatalog.ValidStatuses)})");
+                $"\"Status\" IN ({CheckConstraintLists.InList(DelegationStatusCatalog.OrderedStatuses)})");
         });
         builder.HasKey(d => d.Id);
 

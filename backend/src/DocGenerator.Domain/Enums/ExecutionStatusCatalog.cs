@@ -51,16 +51,34 @@ public static class ExecutionStatusCatalog
     /// <summary>قيمة فلتر "تحت رفع" في البحث.</summary>
     public const string DraftFilter = "تحت رفع";
 
-    public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
+    /// <summary>
+    /// ترتيب ثابت لقيد `CHECK` (بلا المشطوب) — لا تعتمد على ترتيب `HashSet` غير الحتمي.
+    /// </summary>
+    public static readonly IReadOnlyList<string> OrderedStatuses = new[]
     {
         None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted, Recovered,
         ReferredToStart,
     };
 
-    public static readonly IReadOnlySet<string> ValidSubStatuses = new HashSet<string>
+    /// <summary>
+    /// ترتيب قيد `CK_Documents_ExecStatus` — يطابق اللقطة الحالية (المشطوب آخرًا).
+    /// </summary>
+    public static readonly IReadOnlyList<string> OrderedStatusesWithStruckOff = new[]
+    {
+        None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted, Recovered,
+        ReferredToStart, StateStruckOff,
+    };
+
+    public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>(OrderedStatuses);
+
+    /// <summary>ترتيب ثابت لقيد `CK_Documents_ExecSubStatus`.</summary>
+    public static readonly IReadOnlyList<string> OrderedSubStatuses = new[]
     {
         SubPartiallyExecuted, SubFullyExecuted,
     };
+
+    public static readonly IReadOnlySet<string> ValidSubStatuses =
+        new HashSet<string>(OrderedSubStatuses);
 
     /// <summary>
     /// قيم فلتر «الحالة» المقبولة في البحث/التصدير/خيارات الفلاتر — أي قيمة خارجها تُرفض

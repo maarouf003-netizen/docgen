@@ -507,7 +507,7 @@ public sealed class PortalService : IPortalService
     /// </summary>
     private static List<(int DocId, string? Currency, decimal Amount)> DebtAmountPairs(PortalAmountRow row)
     {
-        var pairs = IsBanking(row.ContractTypeSelector)
+        var pairs = ContractTypeCatalog.IsBanking(row.ContractTypeSelector)
             ? new (int DocId, string? Currency, decimal Amount)[]
             {
                 (row.DocumentId, row.Currency, row.AmountNumeric),
@@ -522,10 +522,6 @@ public sealed class PortalService : IPortalService
             };
         return pairs.Where(p => p.Amount != 0).ToList();
     }
-
-    /// <summary>ملف مصرفي ما لم يُحدد «عادي» صراحة (مرآة `StatisticsRepository.IsBanking`).</summary>
-    private static bool IsBanking(string? contractTypeSelector) =>
-        !string.Equals(contractTypeSelector?.Trim(), "عادي", StringComparison.Ordinal);
 
     /// <summary>
     /// تجميع مبالغ حسب العملة (تطبيع الفراغ إلى «غير محددة») مرتبًا بعدد الملفات

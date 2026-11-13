@@ -13,7 +13,7 @@ public class HeadSuccessionConfiguration : IEntityTypeConfiguration<HeadSuccessi
         builder.ToTable("HeadSuccessions", table =>
         {
             table.HasCheckConstraint("CK_HeadSuccessions_Event",
-                $"\"Event\" IN ({CheckConstraintLists.InList(HeadSuccessionEventCatalog.ValidEvents)})");
+                $"\"Event\" IN ({CheckConstraintLists.InList(HeadSuccessionEventCatalog.OrderedEvents)})");
         });
         builder.HasKey(h => h.Id);
 

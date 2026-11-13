@@ -790,6 +790,12 @@ public sealed class DocumentService : IDocumentService
             foreach (var a in DocumentText.NormalizeApplicantPublicEntities(applicantList))
                 doc.ApplicantPublicEntities.Add(a);
         }
+        else
+        {
+            // النص القديم `Applicant` لا يخصّ أوضاع «منفذ عليه/عرض وايداع»؛ تصفيره يمنع
+            // بقاء اسم طالب تنفيذ قديم في حقل عرض يُقرأ احتياطيًا في الواجهة.
+            doc.Applicant = null;
+        }
 
         doc.ExecutedNaturalPersons.Clear();
         foreach (var p in NormalizeExecutedNaturalPersons(r.ExecutedNaturalPersons))

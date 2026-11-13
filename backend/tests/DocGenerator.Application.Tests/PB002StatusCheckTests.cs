@@ -77,6 +77,60 @@ public class PB002StatusCheckTests : IDisposable
     }
 
     [Fact]
+    public void CheckConstraints_UseDeterministicOrderedLists()
+    {
+        // C-08 (كصنف): كل قيود CHECK المبنية من كتالوجات يجب أن تكون مرتبة صراحةً،
+        // لا أن تعتمد على ترتيب HashSet غير الحتمي بين العمليات.
+        var designTimeModel = _db.GetService<IDesignTimeModel>().Model;
+        var constraints = designTimeModel.GetRelationalModel().Tables
+            .SelectMany(t => t.CheckConstraints)
+            .ToDictionary(c => c.Name!, c => c.Sql, StringComparer.Ordinal);
+
+        Assert.Equal(
+            "\"ExecStatus\" IN ('', 'منفذ جبريا', 'منفذ بالتسوية', 'تريث', 'منفذ إنابة', 'مسترد', 'محال الى البداية', 'مشطوب')",
+            constraints["CK_Documents_ExecStatus"]);
+        Assert.Equal(
+            "\"ExecSubStatus\" IN ('منفذ جزئيا', 'منفذ كاملا')",
+            constraints["CK_Documents_ExecSubStatus"]);
+        Assert.Equal(
+            "\"ExecutedStatus\" IN ('', 'منفذ', 'مشطوب')",
+            constraints["CK_Documents_ExecutedStatus"]);
+        Assert.Equal(
+            "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')",
+            constraints["CK_Documents_GeneralEntitySide"]);
+        Assert.Equal(
+            "\"Status\" IN ('pending', 'decided', 'struck-off')",
+            constraints["CK_DocumentAppeals_Status"]);
+        Assert.Equal(
+            "\"ForwardState\" IN ('Owned', 'ForwardedToHead')",
+            constraints["CK_DocumentAppeals_ForwardState"]);
+        Assert.Equal(
+            "\"Status\" IN ('بانتظار رئيس القسم', 'محالة', 'مسجلة أصولًا', 'منفذ إنابة')",
+            constraints["CK_DocumentDelegations_Status"]);
+        Assert.Equal(
+            "\"Event\" IN ('appointed', 'deactivated', 'succeeded', 'circuit-transferred', 'renamed')",
+            constraints["CK_HeadSuccessions_Event"]);
+
+        Assert.Equal(
+            new[] { "", "منفذ جبريا", "منفذ بالتسوية", "تريث", "منفذ إنابة", "مسترد", "محال الى البداية", "مشطوب" },
+            ExecutionStatusCatalog.OrderedStatusesWithStruckOff);
+        Assert.Equal(
+            new[] { "منفذ جزئيا", "منفذ كاملا" },
+            ExecutionStatusCatalog.OrderedSubStatuses);
+        Assert.Equal(new[] { "", "منفذ", "مشطوب" }, ExecutedStatusCatalog.OrderedStatuses);
+        Assert.Equal(
+            new[] { "pending", "decided", "struck-off" },
+            AppealStatusCatalog.OrderedStatuses);
+        Assert.Equal(new[] { "Owned", "ForwardedToHead" }, AppealForwardCatalog.OrderedStates);
+        Assert.Equal(
+            new[] { "بانتظار رئيس القسم", "محالة", "مسجلة أصولًا", "منفذ إنابة" },
+            DelegationStatusCatalog.OrderedStatuses);
+        Assert.Equal(
+            new[] { "appointed", "deactivated", "succeeded", "circuit-transferred", "renamed" },
+            HeadSuccessionEventCatalog.OrderedEvents);
+    }
+
+    [Fact]
     public async Task Delegation_OrphanStatus_Rejected()
     {
         var uid = await SeedUserAsync();
