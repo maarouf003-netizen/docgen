@@ -16,10 +16,16 @@ public static class AppealStatusCatalog
     /// <summary>مشطوب: شوط الاستئناف بقرار شطب برقمه وتاريخه.</summary>
     public const string StruckOff = "struck-off";
 
-    public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
+    /// <summary>
+    /// ترتيب ثابت لقيد `CK_DocumentAppeals_Status` — مطابق للقطة الحالية.
+    /// </summary>
+    public static readonly IReadOnlyList<string> OrderedStatuses = new[]
     {
         Pending, Decided, StruckOff,
     };
+
+    public static readonly IReadOnlySet<string> ValidStatuses =
+        new HashSet<string>(OrderedStatuses);
 
     /// <summary>التسمية العربية للحالة — المجهول يُعرض خامه لا «منظور» مخترعة.</summary>
     public static string ToLabel(string status) => status switch

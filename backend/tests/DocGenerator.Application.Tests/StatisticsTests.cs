@@ -187,6 +187,40 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Dashboard_DoesNotDoubleCountAmountAndInclusionSets()
+    {
+        using var db = TestDb.Create();
+        var branch = new Branch { Name = "دمشق", Code = "DAM" };
+        db.Branches.Add(branch);
+        db.SaveChanges();
+        db.Users.Add(new User { Username = "u1", FullName = "مستخدم 1", Role = UserRole.Lawyer, BranchId = branch.Id });
+        db.SaveChanges();
+        db.Documents.AddRange(
+            new Document
+            {
+                BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "مصرفي",
+                BorrowerFamily = "أ", ContractTypeSelector = "مصرفي",
+                AmountNumeric = 100, InclusionAmountNumeric = 50,
+                ExecStatus = string.Empty,
+            },
+            new Document
+            {
+                BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "عادي",
+                BorrowerFamily = "ب", ContractTypeSelector = "عادي",
+                AmountNumeric = 60, InclusionAmountNumeric = 30,
+                ExecStatus = string.Empty,
+            });
+        db.SaveChanges();
+
+        var repo = new StatisticsRepository(db, TimeProvider.System, TestClock.TimeZone);
+        var dashboard = await repo.GetDashboardStatsAsync(branch.Id);
+        var branches = await repo.GetBranchesSummaryAsync();
+
+        Assert.Equal(130m, dashboard.TotalAmount);
+        Assert.Equal(130m, branches.Single(b => b.BranchId == branch.Id).TotalAmount);
+    }
+
+    [Fact]
     public async Task Reminders_ReturnsOnlyActionsWithRemindersOrderedByDueDate()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFather = "خالد", BorrowerFamily = "العلي", AmountNumeric = 100, ExecStatus = string.Empty, DocumentType = "متداول - أحمد خالد العلي" };

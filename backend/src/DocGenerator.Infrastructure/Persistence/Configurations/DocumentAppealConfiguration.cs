@@ -17,9 +17,9 @@ public class DocumentAppealConfiguration : IEntityTypeConfiguration<DocumentAppe
         builder.ToTable("DocumentAppeals", table =>
         {
             table.HasCheckConstraint("CK_DocumentAppeals_Status",
-                $"\"Status\" IN ({CheckConstraintLists.InList(AppealStatusCatalog.ValidStatuses)})");
+                $"\"Status\" IN ({CheckConstraintLists.InList(AppealStatusCatalog.OrderedStatuses)})");
             table.HasCheckConstraint("CK_DocumentAppeals_ForwardState",
-                $"\"ForwardState\" IN ({CheckConstraintLists.InList(AppealForwardCatalog.ValidStates)})");
+                $"\"ForwardState\" IN ({CheckConstraintLists.InList(AppealForwardCatalog.OrderedStates)})");
         });
         builder.HasKey(a => a.Id);
 

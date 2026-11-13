@@ -36,6 +36,11 @@ public static class DocumentSearchTextBuilder
             doc.BorrowerRegistrationNumber, doc.BorrowerRepresentedBy,
             doc.FileArrivalNumber, doc.FileArrivalDate }
             .Where(v => !string.IsNullOrWhiteSpace(v)));
+        // أسماء الجهات الطالبة تُضاف مباشرة؛ `Applicant` نص عرض قد يُقصّ عند حد العمود
+        // (200)، فلا يجب أن يعتمد البحث على النص المجمّع وحده.
+        parts = parts.Concat(doc.ApplicantPublicEntities
+            .SelectMany(a => new[] { a.Name, a.Branch, a.Governorate })
+            .Where(v => !string.IsNullOrWhiteSpace(v)));
         // أسماء ورثة المتوفين (المقترض/الكفلاء) تنضم إلى نص البحث ليكون البحث بأسماء الورثة
         // متسقًا عبر SearchText وفلتر الورثة المباشر في المستودع.
         var applicantHeirNames = doc.Heirs

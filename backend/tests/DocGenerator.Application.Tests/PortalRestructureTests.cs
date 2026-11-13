@@ -68,7 +68,8 @@ public class PortalRestructureTests : IDisposable
         string? inclusionCurrency2 = null, decimal inclusionAmount2 = 0,
         string? inclusionCurrency3 = null, decimal inclusionAmount3 = 0,
         string generalEntitySide = "applicant",
-        string? executedStatus = null)
+        string? executedStatus = null,
+        string contractTypeSelector = "مصرفي")
     {
         var doc = new Document
         {
@@ -81,6 +82,7 @@ public class PortalRestructureTests : IDisposable
             ExecSubStatus = execSubStatus,
             AmountNumeric = amount,
             Currency = currency,
+            ContractTypeSelector = contractTypeSelector,
             Amount2Numeric = amount2,
             Currency2 = currency2,
             Amount3Numeric = amount3,
@@ -438,9 +440,9 @@ public class PortalRestructureTests : IDisposable
     }
 
     [Fact]
-    public async Task SixPairs_GroupedByCurrency_ZeroSkipped()
+    public async Task AmountSet_GroupedByCurrency_ZeroSkipped()
     {
-        // قرار المالك: الأزواج الستة (المبلغ×3 + الإدراج×3) حسب عملة كلٍّ منها.
+        // قاعدة واحدة: المصرفي يقرأ Amount* فقط، ولا يُجمع مع InclusionAmount*.
         // الصفري يُسقط فلا ملف وهمي في العملة الافتراضية — والملف الصفري كليًا
         // يُحتسب عددًا في سلّته دون أي مجموع.
         await SeedDocAsync("متعدد", null, null, _entryDamascusId, null, false,
@@ -453,12 +455,29 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(2, stats.CirculatingFiles);
 
         var lira = stats.AmountTotals!.Single(c => c.Currency == "ليرة سورية");
-        Assert.Equal(1200m, lira.TotalAmount);
+        Assert.Equal(1000m, lira.TotalAmount);
         Assert.Equal(1, lira.Files);
         var dollar = stats.AmountTotals!.Single(c => c.Currency == "دولار أمريكي");
         Assert.Equal(50m, dollar.TotalAmount);
         Assert.Equal(1, dollar.Files);
         Assert.Equal(2, stats.AmountTotals!.Count);
+    }
+
+    [Fact]
+    public async Task InclusionSet_GroupedByCurrency_ZeroSkipped()
+    {
+        // العادي يقرأ InclusionAmount* فقط، حتى لو وُجد Amount* قديم — لا جمع.
+        await SeedDocAsync("عادي", null, null, _entryDamascusId, null, false,
+            "ليرة سورية", 1000,
+            inclusionCurrency: "ليرة سورية", inclusionAmount: 200,
+            contractTypeSelector: "عادي");
+
+        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+
+        var lira = Assert.Single(stats.AmountTotals!);
+        Assert.Equal("ليرة سورية", lira.Currency);
+        Assert.Equal(200m, lira.TotalAmount);
+        Assert.Equal(1, lira.Files);
     }
 
     [Fact]
@@ -660,9 +679,9 @@ public class PortalRestructureTests : IDisposable
     }
 
     [Fact]
-    public async Task SixPairs_AllSixPairsGroupedPerCurrency_ZeroSkipped()
+    public async Task AmountSet_AllAmountsGroupedPerCurrency_ZeroSkipped()
     {
-        // قرار المالك: الأزواج الستة كلها — هذا الاختبار يلمسها جميعًا (السابق غطّى ثلاثة فقط).
+        // المصرفي: Amount* فقط؛ Inclusion* لا تُجمع معها.
         await SeedDocAsync("ستة", null, null, _entryDamascusId, null, false,
             "ليرة", 100, currency2: "دولار", amount2: 50,
             inclusionCurrency: "ليرة", inclusionAmount: 200,
@@ -671,11 +690,11 @@ public class PortalRestructureTests : IDisposable
             inclusionCurrency3: "دينار", inclusionAmount3: 7);
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
-        Assert.Equal(4, stats.AmountTotals!.Count);
-        Assert.Equal(300m, stats.AmountTotals.Single(c => c.Currency == "ليرة").TotalAmount);
-        Assert.Equal(55m, stats.AmountTotals.Single(c => c.Currency == "دولار").TotalAmount);
+        Assert.Equal(3, stats.AmountTotals!.Count);
+        Assert.Equal(100m, stats.AmountTotals.Single(c => c.Currency == "ليرة").TotalAmount);
+        Assert.Equal(50m, stats.AmountTotals.Single(c => c.Currency == "دولار").TotalAmount);
         Assert.Equal(30m, stats.AmountTotals.Single(c => c.Currency == "يورو").TotalAmount);
-        Assert.Equal(7m, stats.AmountTotals.Single(c => c.Currency == "دينار").TotalAmount);
+        Assert.DoesNotContain(stats.AmountTotals, c => c.Currency == "دينار");
         Assert.All(stats.AmountTotals, c => Assert.Equal(1, c.Files));
     }
 

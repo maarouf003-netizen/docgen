@@ -6,6 +6,10 @@ namespace DocGenerator.Infrastructure.Persistence.Configurations;
 /// </summary>
 internal static class CheckConstraintLists
 {
-    internal static string InList(IEnumerable<string?> values) =>
+    /// <summary>
+    /// يبني قائمة `IN` من تسلسل **مرتب** صراحةً. النوع `IReadOnlyList` مقصود:
+    /// تمرير `HashSet`/`IEnumerable` غير مرتب ممنوع وقت الترجمة لمنع عدم حتمية القيود.
+    /// </summary>
+    internal static string InList(IReadOnlyList<string?> values) =>
         string.Join(", ", values.Select(v => $"'{v}'"));
 }

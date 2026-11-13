@@ -37,6 +37,7 @@ public sealed record PortalAmountRow(
     string? ExecStatus,
     string? ExecSubStatus,
     int? SourceDelegationId,
+    string? ContractTypeSelector,
     string? Currency,
     decimal AmountNumeric,
     string? Currency2,

@@ -14,13 +14,13 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.ToTable("Documents", table =>
         {
             table.HasCheckConstraint("CK_Documents_ExecStatus",
-                $"\"ExecStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.ValidStatuses.Append(ExecutionStatusCatalog.StateStruckOff))})");
+                $"\"ExecStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.OrderedStatusesWithStruckOff)})");
             table.HasCheckConstraint("CK_Documents_ExecSubStatus",
-                $"\"ExecSubStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.ValidSubStatuses)})");
+                $"\"ExecSubStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.OrderedSubStatuses)})");
             table.HasCheckConstraint("CK_Documents_ExecutedStatus",
-                $"\"ExecutedStatus\" IN ({CheckConstraintLists.InList(ExecutedStatusCatalog.ValidStatuses)})");
+                $"\"ExecutedStatus\" IN ({CheckConstraintLists.InList(ExecutedStatusCatalog.OrderedStatuses)})");
             table.HasCheckConstraint("CK_Documents_GeneralEntitySide",
-                $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.ValidSides)})");
+                $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.OrderedSides)})");
         });
         builder.HasKey(d => d.Id);
 

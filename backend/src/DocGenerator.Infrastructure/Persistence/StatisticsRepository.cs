@@ -64,11 +64,13 @@ public class StatisticsRepository : IStatisticsRepository
         // الملف المصرفي يضع مبلغه في AmountNumeric والعادي في InclusionAmountNumeric.
         // ب6: الملفات المنابة مستثناة من مبالغ اللوحة — مبالغها نسخ للمنيب ولا تُحسب مرتين.
         var amounts = await q
-            .Select(d => new { d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount, d.SourceDelegationId })
+            .Select(d => new { d.IsDraft, d.ContractTypeSelector, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount, d.SourceDelegationId })
             .ToListAsync(ct);
 
+        // مبلغ الملف يُقرأ من مجموعة واحدة حسب نوع السند: المصرفي من Amount*،
+        // والعادي من InclusionAmount* — كما في AccumulateContract، لا جمعًا للمجموعتين.
         var totalAmount = amounts.Where(d => !d.IsDraft && d.SourceDelegationId == null)
-            .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric);
+            .Sum(d => ContractTypeCatalog.IsBanking(d.ContractTypeSelector) ? d.AmountNumeric : d.InclusionAmountNumeric);
         // ب6: محصّلات المناب نسخةٌ للمنيب — تُستثنى من إجمالي المحصّل كما مبالغ الأساس.
         var totalCollectedAmount = amounts.Where(d => d.SourceDelegationId == null).Sum(d => d.CollectedAmount) ?? 0;
 
@@ -112,7 +114,7 @@ public class StatisticsRepository : IStatisticsRepository
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId != null)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
-            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.SourceDelegationId })
+            .Select(d => new { d.BranchId, d.IsDraft, d.ContractTypeSelector, d.AmountNumeric, d.InclusionAmountNumeric, d.SourceDelegationId })
             .ToListAsync(ct);
 
         var grouped = rows
@@ -125,7 +127,7 @@ public class StatisticsRepository : IStatisticsRepository
                 Drafts = g.Count(d => d.IsDraft),
                 // ب6: المبالغ الحقيقية للمنيب فقط؛ المناب عدد بلا مبالغ (لا تُحسب نسخه مرتين).
                 Amount = g.Where(d => !d.IsDraft && d.SourceDelegationId == null)
-                    .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric),
+                    .Sum(d => ContractTypeCatalog.IsBanking(d.ContractTypeSelector) ? d.AmountNumeric : d.InclusionAmountNumeric),
             })
             .ToList();
 
@@ -419,10 +421,6 @@ public class StatisticsRepository : IStatisticsRepository
     private static string NormalizeCurrency(string? currency) =>
         string.IsNullOrWhiteSpace(currency) ? "ليرة سورية" : currency.Trim();
 
-    /// <summary>ملف «مصرفي» ما لم يُحدد «عادي» صراحة (القيمة الافتراضية للعقد مصرفي).</summary>
-    private static bool IsBanking(string? contractTypeSelector) =>
-        !string.Equals(contractTypeSelector?.Trim(), "عادي", StringComparison.Ordinal);
-
     /// <summary>
     /// يُضيف مبلغًا لسلة عملته متجاهلًا الصفر والغائب؛
     /// والعملات خارج المعروفة تُجمَّع في سلة «أخرى» (`BQ-030`) لمراجعتها بدل إسقاطها بصمت.
@@ -669,7 +667,7 @@ public class StatisticsRepository : IStatisticsRepository
         Dictionary<string, decimal> bankingBuckets, Dictionary<string, decimal> ordinaryBuckets,
         Dictionary<string, decimal> totalBuckets)
     {
-        var banking = IsBanking(r.ContractTypeSelector);
+        var banking = ContractTypeCatalog.IsBanking(r.ContractTypeSelector);
         if (banking) bankingCount++;
         else ordinaryCount++;
 

@@ -64,7 +64,7 @@ public class Document : IDocumentExecutionState
     public string? BorrowerRepresentedBy { get; set; }
 
     public string? ContractType { get; set; }
-    public string? ContractTypeSelector { get; set; } = "مصرفي";
+    public string? ContractTypeSelector { get; set; } = ContractTypeCatalog.Banking;
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
     /// <summary>

@@ -11,10 +11,14 @@ public static class AppealForwardCatalog
     /// <summary>محال لرئيس قسم نفس الفرع — استثناء قرائي حتى الحسم.</summary>
     public const string ForwardedToHead = "ForwardedToHead";
 
-    public static readonly IReadOnlySet<string> ValidStates = new HashSet<string>
+    /// <summary>ترتيب ثابت لقيد `CK_DocumentAppeals_ForwardState` — مطابق للقطة.</summary>
+    public static readonly IReadOnlyList<string> OrderedStates = new[]
     {
         Owned, ForwardedToHead,
     };
+
+    public static readonly IReadOnlySet<string> ValidStates =
+        new HashSet<string>(OrderedStates);
 }
 
 /// <summary>
@@ -28,8 +32,12 @@ public static class HeadSuccessionEventCatalog
     public const string CircuitTransferred = "circuit-transferred";
     public const string Renamed = "renamed";
 
-    public static readonly IReadOnlySet<string> ValidEvents = new HashSet<string>
+    /// <summary>ترتيب ثابت لقيد `CK_HeadSuccessions_Event` — مطابق للقطة.</summary>
+    public static readonly IReadOnlyList<string> OrderedEvents = new[]
     {
         Appointed, Deactivated, Succeeded, CircuitTransferred, Renamed,
     };
+
+    public static readonly IReadOnlySet<string> ValidEvents =
+        new HashSet<string>(OrderedEvents);
 }

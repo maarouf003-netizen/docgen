@@ -168,6 +168,15 @@ public class PortalRepository : IPortalRepository
             Array.Empty<(int, string, string, bool)>());
     }
 
+    /// <summary>
+    /// تفويض إلى <see cref="DocumentPartySearch"/> (المصدر الوحيد لبحث الأطراف) مع بقاء
+    /// نطاق المندوب في <see cref="ScopedQuery"/>. لا يعتمد على `SearchText` وحده لأنه
+    /// يُقصّ عند 1000 حرف. لقطات الاستئناف لا تُبحث مباشرة هنا (`includeAppeals: false`):
+    /// `SearchText` يغطيها في البوابة، بخلاف قوائم المحامين.
+    /// </summary>
+    private IQueryable<Document> ApplyScopedPersonNameSearch(IQueryable<Document> q, string term)
+        => DocumentPartySearch.Apply(q, _db.DocumentAppeals, term, includeExecutedFamily: true, includeAppeals: false);
+
     // ── مساعدات خاصة ──
 
     /// <summary>
@@ -202,7 +211,7 @@ public class PortalRepository : IPortalRepository
         var term = query?.Trim();
         // `PB-001`: البلوب مطبَّع — تُطبَّع الكلمة (البند الوحيد هنا).
         if (!string.IsNullOrWhiteSpace(term))
-            q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormalizer.Normalize(term)));
+            q = ApplyScopedPersonNameSearch(q, term);
 
         if (status != null)
         {
@@ -268,6 +277,7 @@ public class PortalRepository : IPortalRepository
                 d.ExecStatus,
                 d.ExecSubStatus,
                 d.SourceDelegationId,
+                d.ContractTypeSelector,
                 d.Currency,
                 d.AmountNumeric,
                 d.Currency2,

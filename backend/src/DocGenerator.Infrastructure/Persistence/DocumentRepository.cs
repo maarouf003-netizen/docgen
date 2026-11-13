@@ -5,6 +5,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
@@ -18,6 +19,38 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// <summary>فحص وجود رخيص (يحترم فلتر الحذف المنطقي).</summary>
     public Task<bool> ExistsAsync(int id, CancellationToken ct = default)
         => Db.Documents.AnyAsync(d => d.Id == id, ct);
+
+    /// <summary>
+    /// قراءة داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق العدّ/الإضافة.
+    /// SQLite لا يدعم `FOR UPDATE`؛ يعتمد قفل الكتابة عند أول تعديل في المعاملة.
+    /// </summary>
+    public async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
+    {
+        if (Db.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) != true)
+            return await GetByIdAsync(id, ct);
+
+        // أمر خام مقصود: تركيب `FromSql` مع `FirstOrDefault` قد يلفّ SQL في استعلام فرعي
+        // فتتغير دلالات القفل. هنا يُنفَّذ `FOR UPDATE` كما هو داخل معاملة الخدمة.
+        var transaction = Db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException(
+                "GetByIdForUpdateAsync يتطلب معاملة نشطة — القفل يُحرَّر فور نهاية الأمر خارجها.");
+        var connection = Db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(ct);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "SELECT 1 FROM \"Documents\" WHERE \"Id\" = @id FOR UPDATE";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "id";
+            parameter.Value = id;
+            command.Parameters.Add(parameter);
+            await command.ExecuteScalarAsync(ct);
+        }
+
+        return await GetByIdAsync(id, ct);
+    }
 
     /// <summary>
     /// قراءة طازجة بلا تتبع (B2): الأصول + الإنابات مع لقطاتها + المنابات (لحالاتها فقط).
@@ -348,123 +381,22 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     }
 
     /// <summary>
-    /// كتلة البحث النصي الشاملة الموحدة (أسماء الأطراف): المصدر الوحيد لمنطق مطابقة
-    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحات «الملفات المشطوبة»
-    /// (SearchStruckOffAsync) و«الملفات المنفذة» (SearchExecutedAsync) و«المحذوفة»
-    /// (SearchDeletedAsync) — توحيدٌ يمنع تباعد التغطية بين المسارات (الكفيل/الوريث/
-    /// لقطات الاستئناف/عائلة «منفذ عليه» الصريحة). صفحة «محال الى البداية» وحدها
-    /// تستخدم كتلتها المخصصة (ApplyReferredPersonNameSearch) بتضييق دلالي معتمد.
+    /// كتلة البحث النصي الشاملة الموحدة (أسماء الأطراف): تُفوَّض إلى
+    /// <see cref="DocumentPartySearch"/> — المصدر الوحيد لمنطق مطابقة الأسماء في القائمة
+    /// الرئيسية وصفحات «الملفات المشطوبة» و«المنفذة» و«المحذوفة». صفحة «محال الى البداية»
+    /// وحدها تستخدم الكتلة المضيَّقة (ApplyReferredPersonNameSearch).
     /// </summary>
     private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
-    {
-        // `PB-001`: البلوب مطبَّع — تُطبَّع الكلمة لبنده فقط؛ البنود الحرفية على
-        // النص الخام تبقى كما هي (فلا تنحدر المطابقات الدقيقة).
-        var normTerm = ArabicNameNormalizer.Normalize(term);
-        // البحث بأسماء المستأنف/المستأنف عليهم من لقطات الاستئنافات: ملفٌ يطابق
-        // إذا كان عليه استئناف تحوي الاسم في لقطته — تظهر نتائجه بشارة «استئناف».
-        var appeals = Db.DocumentAppeals;
-        return q.Where(d =>
-            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
-            (d.BorrowerName != null &&
-                ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-            // فروع عائلة «منفذ عليه» الصريحة — بنسخة كتلة المشطوبة حرفيًا: تصلّبٌ للبحث
-            // لا تبديلٌ لـ SearchText الذي يضم هذه الأسماء لكنه مقصوص عند 1000 حرف
-            // وقابل للتقادم — فلا تُزال هذه الفروع بصمت لاحقًا.
-            d.ExecutionApplicants.Any(a =>
-                (a.Name != null &&
-                    ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
-                     (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
-                ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
-            d.ExecutedNaturalPersons.Any(p =>
-                p.Name != null &&
-                ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
-                 (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
-            d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
-            d.Guarantors.Any(g =>
-                g.GuarantorName != null &&
-                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
-            // البحث بأسماء الورثة: ورثة المقترض/الكفلاء في وضع «طالب تنفيذ» (اسم ثلاثي كالكفلاء)،
-            // وورثة المورثين المتوفين في وضع «منفذ عليه» (اسم ثلاثي).
-            d.Heirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            d.ExecutedHeirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            // المتدخلون: أسماؤهم (طبيعي/اعتباري/جهة عامة) وأسماء ورثتهم — فرع صريح
-            // كبقية الأطراف ليبقى البحث صالحًا حتى لو قُصّ SearchText عند 1000 حرف.
-            d.Interventions.Any(i =>
-                (i.Name != null &&
-                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
-                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
-                (i.EntityName != null && i.EntityName.Contains(term)) ||
-                i.Heirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))) ||
-            appeals.Any(a =>
-                a.DocumentId == d.Id &&
-                ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
-                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
-    }
+        => DocumentPartySearch.Apply(q, Db.DocumentAppeals, term, includeExecutedFamily: true, includeAppeals: true);
 
     /// <summary>
-    /// كتلة البحث النصي الخاصة بصفحة «محال الى البداية»: نسخة <see cref="ApplyPersonNameSearch"/>
-    /// بلا فروع عائلة «منفذ عليه» الثلاثة (طالب التنفيذ/الطبيعي/الجهة العامة) — الصفحة
-    /// «طالبة تنفيذ» حصرًا (GeneralEntitySide == Applicant)، وهذه الجداول تُعبَّأ لملفات
-    /// منفذ-عليها عبر الواجهة (ExecutedSideSections لا يُعرض لغيرها)؛ والصفحة — كما كانت
-    /// قبل التوحيد (ج) — تجيب البحث الاسمي من الفروع المشتركة حصرًا (تضييق معتمد 2026-09-24).
-    /// أي تعديل على الفروع المشتركة هنا يجب عكسه في الكتلة الموحدة (والعكس) — ويحرس
-    /// ذلك اختبارا ArchiveSearch_ReferredPage_MatchesApplicantSideBranches (تكافؤ على
-    /// بيانات واقعية) وArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables (تثبيت التضييق).
+    /// كتلة البحث الخاصة بصفحة «محال الى البداية»: تفويض إلى <see cref="DocumentPartySearch"/>
+    /// مع استبعاد فروع عائلة «منفذ عليه» الثلاثة (تضييق معتمد 2026-09-24). يحرس التضييق
+    /// اختبارا ArchiveSearch_ReferredPage_MatchesApplicantSideBranches
+    /// وArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables.
     /// </summary>
     private IQueryable<Document> ApplyReferredPersonNameSearch(IQueryable<Document> q, string term)
-    {
-        // البنية نسخة حرفية من الكتلة الموحدة (راجع تعليقات فروعها هناك) بلا الفروع الثلاثة.
-        // ويُبقى فرع ورثة المنفذ عليه عمدًا رغم اسمه: مطابقته على هذه الصفحة سلوك قائم
-        // منذ قبل التوحيد (ج) — فإزالته انحدار خارج نطاق التضييق المعتمد، لا تتميم له.
-        // `PB-001`: الكلمة مطبَّعة لبند البلوب فقط كالكتلة الموحدة.
-        var normTerm = ArabicNameNormalizer.Normalize(term);
-        var appeals = Db.DocumentAppeals;
-        return q.Where(d =>
-            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
-            (d.BorrowerName != null &&
-                ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-            d.Guarantors.Any(g =>
-                g.GuarantorName != null &&
-                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
-            // البحث بأسماء الورثة: ورثة المقترض/الكفلاء في وضع «طالب تنفيذ» (اسم ثلاثي كالكفلاء)،
-            // وورثة المورثين المتوفين في وضع «منفذ عليه» (اسم ثلاثي).
-            d.Heirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            d.ExecutedHeirs.Any(h =>
-                h.HeirName != null &&
-                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-            // المتدخلون: أسماؤهم (طبيعي/اعتباري/جهة عامة) وأسماء ورثتهم — فرع صريح
-            // كبقية الأطراف ليبقى البحث صالحًا حتى لو قُصّ SearchText عند 1000 حرف.
-            d.Interventions.Any(i =>
-                (i.Name != null &&
-                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
-                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
-                (i.EntityName != null && i.EntityName.Contains(term)) ||
-                i.Heirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))) ||
-            appeals.Any(a =>
-                a.DocumentId == d.Id &&
-                ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
-                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
-    }
+        => DocumentPartySearch.Apply(q, Db.DocumentAppeals, term, includeExecutedFamily: false, includeAppeals: true);
 
     /// <summary>
     /// شجرة التحميل المسبق (Include) المعتمدة لكائن Document كاملًا،

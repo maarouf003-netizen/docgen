@@ -22,10 +22,16 @@ public static class ExecutedStatusCatalog
     /// <summary>قيمة فلتر «متداول» في البحث عن ملفات وضع «منفذ عليه».</summary>
     public const string TradingFilter = "متداول";
 
-    public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
+    /// <summary>
+    /// ترتيب ثابت لقيد `CK_Documents_ExecutedStatus` — مطابق للقطة الحالية.
+    /// </summary>
+    public static readonly IReadOnlyList<string> OrderedStatuses = new[]
     {
         None, Executed, StruckOff,
     };
+
+    public static readonly IReadOnlySet<string> ValidStatuses =
+        new HashSet<string>(OrderedStatuses);
 
     /// <summary>هل الملف مشطوب؟ المشطوب يُخفى من القوائم والتصدير ويظهر في صفحة «الملفات المشطوبة».</summary>
     public static bool IsStruckOff(string? status) => status == StruckOff;

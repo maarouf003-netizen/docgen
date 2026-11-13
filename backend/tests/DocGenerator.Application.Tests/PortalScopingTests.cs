@@ -133,6 +133,27 @@ public class PortalScopingTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_FindsGuarantorName_EvenWhenSearchTextIsEmpty()
+    {
+        var id = await SeedDocumentAsync("ملف بلا نص بحث", applicantRegistryId: _entryAId);
+        var doc = await _db.Documents.FindAsync(id);
+        doc!.SearchText = string.Empty;
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = id,
+            GuarantorNumber = 1,
+            GuarantorName = "اسم كفيل مخفي",
+            GuarantorFather = "أب",
+            GuarantorFamily = "عائلة",
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _portal.ListFilesAsync(_delegateGroupId, "اسم كفيل مخفي", null, 1, 20);
+
+        Assert.Contains(result.Items, i => i.Id == id);
+    }
+
+    [Fact]
     public async Task GroupScope_MatchesAnySide_FinalOnly_AndExcludesUnrelated()
     {
         var docApplicant = await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
