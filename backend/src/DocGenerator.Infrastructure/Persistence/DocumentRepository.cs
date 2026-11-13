@@ -21,6 +21,22 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         => Db.Documents.AnyAsync(d => d.Id == id, ct);
 
     /// <summary>
+    /// إسقاط خفيف (F-01) لفحص وصول المستند: خمسة أعمدة فقط بدل شجرة التحميل الكاملة.
+    /// <c>SectionId</c> مشتق من الدائرة كما في <c>DocumentResponse.SectionId</c> بالضبط.
+    /// </summary>
+    public Task<DocumentAccessInfo?> GetAccessInfoAsync(int id, CancellationToken ct = default)
+        => Db.Documents
+            .AsNoTracking()
+            .Where(d => d.Id == id)
+            .Select(d => new DocumentAccessInfo(
+                d.Id,
+                d.CreatedById,
+                d.BranchId,
+                d.ExecutionCircuitId,
+                d.ExecutionCircuit != null ? d.ExecutionCircuit.SectionId : null))
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
     /// قراءة داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق العدّ/الإضافة.
     /// SQLite لا يدعم `FOR UPDATE`؛ يعتمد قفل الكتابة عند أول تعديل في المعاملة.
     /// </summary>

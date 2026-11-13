@@ -12,6 +12,13 @@ public interface IDocumentRepository : IRepository<Document>
     Task<bool> ExistsAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// إسقاط خفيف (F-01) لفحص وصول المستند: الحقول الخمسة التي تعتمد عليها قاعدة
+    /// <c>DocumentsController.CanAccessAsync</c> فقط، بلا شجرة <c>Include</c> الكاملة.
+    /// قراءة فقط (<c>AsNoTracking</c>)؛ تُعاد <c>null</c> للملف غير الموجود/المحذوف.
+    /// </summary>
+    Task<DocumentAccessInfo?> GetAccessInfoAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
     /// قراءة المستند داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق
     /// العدّ/الإضافة (مثل حد المتدخلين). SQLite يعتمد قفل الكتابة في المعاملة.
     /// </summary>
