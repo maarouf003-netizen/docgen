@@ -190,9 +190,11 @@ return await _tx.RunAsync(async token => { doc.Interventions.Add(...); ... });
   - SQLite: معاملة كتابة (BEGIN IMMEDIATE) عبر `TransactionRunner` أو نمط معاملة مخصص.
 - أو عدّاد ذري على `Document` (`InterventionCount`) يُحدَّث بـ`UPDATE ... WHERE count < 50`.
 - لا يُقبل «عدّ داخل المعاملة فقط» على PostgreSQL Read Committed بلا قفل/عدّاد.
+- **تفريغ المتتبَّع قبل القراءة تحت القفل** (`IUnitOfWork.ClearChanges`): المستند قد يكون محمّلًا في الطلب نفسه (فحص الوصول) أو في محاولة سابقة أعادتها `ExecutionStrategy`؛ إعادة استخدام كيان متتبَّع تُبقي العدّ/`SearchText` على حالة قديمة رغم قفل الصف.
 
 **الاختبارات (المنفذ):**
 - `DocumentInterventionLimitPostgresTests.AddAsync_AtLimit_BlocksOnRowLock_AndRejectsFreshCount` (في `Api.Tests`، مُقيَّد بـ`DOCGEN_TEST_POSTGRES`): يمسك معاملة أولى قفل صف الملف، يتحقق من انتظار الطلب الثاني فعليًا عبر `pg_blocking_pids`، ثم يُدخل المتدخل الخمسين ويحرر القفل ⇒ الطلب الثاني يرى 50 ويرفض، والعدد النهائي 50 لا 51.
+- `DocumentInterventionLimitStaleTrackingTests.Add_AfterConcurrentDelete_ReloadsFreshCount`: يثبت أن حذف متدخل في طلب آخر ثم إضافة متدخل جديد تنجح (49 ⇒ 50) رغم أن مجموعة المستند المتتبَّعة كانت 50 — يفشل قبل `ClearChanges`.
 - `Add_AboveDocumentLimit_Throws`: الحد العادي 50.
 
 **النشر:** لا هجرة إن استُخدم القفل؛ هجرة إن استُخدم عدّاد.

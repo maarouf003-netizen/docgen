@@ -11,6 +11,8 @@ namespace DocGenerator.Application.Services;
 /// وتزامن وقعة «طلب تدخل» المرتبطة به، وتعيد بناء `SearchText`، وتكتب سجل التدقيق.
 /// لا تمسّ `Document.Version` (كالإجراءات): حقول النموذج العامة لا تتغير، فلا تُسبب
 /// 409 لنموذج ملف مفتوح، ولا يمكن لـ`PUT` العام أن يمحو المتدخلين (جدول مستقل).
+/// الإضافة تفرّغ المتتبَّع قبل القراءة تحت القفل — لا تُستخدم في سياق يحمل تغييرات
+/// غير محفوظة قبل استدعائها.
 /// </summary>
 public sealed class DocumentInterventionService : IDocumentInterventionService
 {
@@ -46,6 +48,11 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
     {
         return await _tx.RunAsync(async token =>
         {
+            // تفريغ المتتبَّع قبل القراءة الطازجة: قد يكون المستند محمّلًا في الطلب نفسه
+            // (فحص الوصول في المتحكم) أو في محاولة سابقة أعادت ExecutionStrategy تنفيذها.
+            // إعادة استخدام كيان متتبَّع تُبقي المجموعة/العدّ على حالة قديمة رغم قفل الصف.
+            _uow.ClearChanges();
+
             // القفل داخل المعاملة يمنع سباق العدّ/الإضافة (طلبَان يقرآن 49 ثم يضيفان معًا).
             var doc = await _documents.GetByIdForUpdateAsync(documentId, token)
                 ?? throw new KeyNotFoundException();
