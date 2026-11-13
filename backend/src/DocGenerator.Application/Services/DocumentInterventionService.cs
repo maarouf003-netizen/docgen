@@ -44,22 +44,23 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
         string? actorName,
         CancellationToken ct = default)
     {
-        var doc = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new KeyNotFoundException();
-        EnsureSupportedSide(doc);
-        if (doc.Interventions.Count >= InterventionLimitsCatalog.MaxPerDocument)
-            throw new ArgumentException(
-                $"عدد المتدخلين في الملف يتجاوز الحد الأقصى ({InterventionLimitsCatalog.MaxPerDocument})");
-
-        var intervention = DocumentInterventionText.Normalize(request);
-        await ResolveRegistryAsync(intervention, existingRegistryId: null, ct);
-        intervention.DocumentId = documentId;
-        intervention.CreatedById = userId;
-        intervention.CreatedAt = DateTime.UtcNow;
-        intervention.UpdatedAt = DateTime.UtcNow;
-
         return await _tx.RunAsync(async token =>
         {
+            // القفل داخل المعاملة يمنع سباق العدّ/الإضافة (طلبَان يقرآن 49 ثم يضيفان معًا).
+            var doc = await _documents.GetByIdForUpdateAsync(documentId, token)
+                ?? throw new KeyNotFoundException();
+            EnsureSupportedSide(doc);
+            if (doc.Interventions.Count >= InterventionLimitsCatalog.MaxPerDocument)
+                throw new ArgumentException(
+                    $"عدد المتدخلين في الملف يتجاوز الحد الأقصى ({InterventionLimitsCatalog.MaxPerDocument})");
+
+            var intervention = DocumentInterventionText.Normalize(request);
+            await ResolveRegistryAsync(intervention, existingRegistryId: null, token);
+            intervention.DocumentId = documentId;
+            intervention.CreatedById = userId;
+            intervention.CreatedAt = DateTime.UtcNow;
+            intervention.UpdatedAt = DateTime.UtcNow;
+
             doc.Interventions.Add(intervention);
             doc.Occurrences.Add(
                 DocumentInterventionText.BuildOccurrence(intervention, documentId, userId));

@@ -532,6 +532,11 @@ public sealed partial class PublicEntityService : IPublicEntityService
 
         foreach (var appeal in appeals)
         {
+            // القرار المعتمد: لقطات الاستئناف المنظورة فقط تتغير مع تغيير الجهة؛
+            // المحسوم/المشطوب يبقى لقطة تاريخية لا تُمس (دليل قانوني).
+            if (appeal.Status != AppealStatusCatalog.Pending)
+                continue;
+
             // اللقطة التالفة تُتخطى حمايةً للمعاملة — وتُدوَّن واقعة تخطٍّ بدل الصمت، فبقاء الاسم
             // القديم في اللقطة بعد إعادة تسمية ناجحة يُقرأ خطأً كفشل العملية.
             if (AppealSnapshotSerializer.IsCorruptedSnapshot(appeal.AppellantsJson)

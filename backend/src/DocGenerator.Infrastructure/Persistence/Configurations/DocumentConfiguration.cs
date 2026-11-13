@@ -20,7 +20,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
             table.HasCheckConstraint("CK_Documents_ExecutedStatus",
                 $"\"ExecutedStatus\" IN ({CheckConstraintLists.InList(ExecutedStatusCatalog.ValidStatuses)})");
             table.HasCheckConstraint("CK_Documents_GeneralEntitySide",
-                $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.ValidSides)})");
+                $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.OrderedSides)})");
         });
         builder.HasKey(d => d.Id);
 

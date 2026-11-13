@@ -12,6 +12,12 @@ public interface IDocumentRepository : IRepository<Document>
     Task<bool> ExistsAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// قراءة المستند داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق
+    /// العدّ/الإضافة (مثل حد المتدخلين). SQLite يعتمد قفل الكتابة في المعاملة.
+    /// </summary>
+    Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
     /// قراءة طازجة للمنيب مع أصوله وإناباته ولقطاتها ومناباتها — بلا تتبع (B2):
     /// تُستخدم داخل معاملة فحص الحجب لتجاوز تجمّد الهوية في السياق المتتبَّع،
     /// فترى الملتزَم حديثًا من معاملة منافسة. لا تُعدَّل الكيانات المعادة أبدًا.

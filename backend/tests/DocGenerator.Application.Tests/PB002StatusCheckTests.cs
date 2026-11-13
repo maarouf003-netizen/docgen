@@ -2,6 +2,8 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace DocGenerator.Application.Tests;
 
@@ -54,6 +56,24 @@ public class PB002StatusCheckTests : IDisposable
             _db.Documents.Add(new Document { CreatedById = uid, GeneralEntitySide = s });
 
         await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public void GeneralEntitySide_Constraint_UsesDeterministicOrder()
+    {
+        // C-08: النص لا يعتمد على ترتيب HashSet غير الحتمي، بل على OrderedSides الصريح.
+        var designTimeModel = _db.GetService<IDesignTimeModel>().Model;
+        var table = designTimeModel.GetRelationalModel().Tables
+            .Single(t => t.Name == "Documents");
+        var constraint = table.CheckConstraints
+            .Single(c => c.Name == "CK_Documents_GeneralEntitySide");
+
+        Assert.Equal(
+            "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')",
+            constraint.Sql);
+        Assert.Equal(
+            new[] { "applicant", "executed", "deposit" },
+            GeneralEntitySideCatalog.OrderedSides);
     }
 
     [Fact]

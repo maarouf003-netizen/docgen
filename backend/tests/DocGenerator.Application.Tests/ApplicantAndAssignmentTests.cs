@@ -102,6 +102,26 @@ public class ApplicantAndAssignmentTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_WithManyLongApplicantEntities_TruncatesApplicantTextToColumnLimit()
+    {
+        var req = ApplicantSample();
+        var longName = new string('ا', 100);
+        req.ApplicantPublicEntities = new()
+        {
+            new ApplicantPublicEntityDto(null, longName, "فرع 1", "دمشق"),
+            new ApplicantPublicEntityDto(null, longName, "فرع 2", "حلب"),
+            new ApplicantPublicEntityDto(null, longName, "فرع 3", "حمص"),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var loaded = await _service.GetAsync(doc.Id);
+
+        Assert.NotNull(loaded);
+        Assert.True(loaded!.Applicant!.Length <= ApplicantTextBuilder.MaxLength);
+        Assert.EndsWith("…", loaded.Applicant);
+    }
+
+    [Fact]
     public async Task Create_WithLegacyApplicantString_CreatesSingleEntity()
     {
         var req = ApplicantSample();
@@ -128,6 +148,38 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Empty(loaded!.ApplicantPublicEntities);
         Assert.Null(loaded.FileArrivalNumber);
         Assert.Null(loaded.FileArrivalDate);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_WithLegacyApplicantString_DoesNotCreatePhantomEntity()
+    {
+        // C-01: النص القديم `Applicant` توافقٌ لوضع «طالبة تنفيذ» فقط — لا يُحوَّل
+        // إلى صف جهة عامة بلا RegistryId في الأوضاع الأخرى.
+        var req = ExecutedSample();
+        req.Applicant = "مدعي قديم";
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var loaded = await _service.GetAsync(doc.Id);
+
+        Assert.Empty(loaded!.ApplicantPublicEntities);
+    }
+
+    [Fact]
+    public async Task Update_StruckOffApplicant_PreservesStruckOffDate()
+    {
+        var created = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
+        var stored = await _db.Documents.SingleAsync(d => d.Id == created.Id);
+        stored.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        stored.StruckOffDate = new DateTime(2026, 1, 1);
+        await _db.SaveChangesAsync();
+
+        var update = ApplicantSample();
+        update.BorrowerName = "اسم محدث";
+        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal(new DateTime(2026, 1, 1), updated!.StruckOffDate);
+        Assert.Equal(ExecutionStatusCatalog.StateStruckOff, updated.ExecStatus);
     }
 
     [Fact]

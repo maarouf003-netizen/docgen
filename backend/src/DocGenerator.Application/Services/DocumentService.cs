@@ -756,9 +756,13 @@ public sealed class DocumentService : IDocumentService
             doc.ExecutedPaidCurrency3 = null;
             doc.ExecutedDepositDate = null;
             doc.ExecutedExecutionDate = null;
-            doc.StruckOffDate = null;
+            // لا يُمس StruckOffDate هنا: يديره DocumentStatusService، ويبقى تاريخًا
+            // محفوظًا بعد إعادة الملف المشطوب إلى المتداول لعرضه في السجل.
         }
 
+        // تفريغ صريح لورثة المنفذ عليهم قبل إعادة بنائهم: كان الاعتماد على Cascade
+        // يترك صفوفًا قديمة/مكررة في الذاكرة وسجل التعديلات عند استبدال المورث.
+        doc.ExecutedHeirs.Clear();
         doc.ExecutionApplicants.Clear();
         foreach (var a in NormalizeExecutionApplicants(r.ExecutionApplicants))
         {
@@ -774,8 +778,10 @@ public sealed class DocumentService : IDocumentService
             doc.ExecutedPublicEntities.Add(e);
 
         // قائمة الجهات طالبة التنفيذ: تخص وضع «طالبة تنفيذ» فقط وتُصفَّر بغيره.
+        // لا تُستخدم `!IsExecutedLike` هنا: أي صفة مستقبلية ليست منفذًا عليها كانت
+        // ستُحوِّل نص `Applicant` القديم إلى صف جهة عامة وهمي بلا RegistryId.
         doc.ApplicantPublicEntities.Clear();
-        if (!GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Applicant)
         {
             var applicantList = r.ApplicantPublicEntities;
             // توافق مع الطلبات القديمة: نص «طالب التنفيذ» المرسل بلا قائمة يُعامَل كجهة واحدة.

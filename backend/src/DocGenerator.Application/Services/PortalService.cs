@@ -499,24 +499,33 @@ public sealed class PortalService : IPortalService
         && row.ExecStatus != ExecutionStatusCatalog.Recovered;
 
     /// <summary>
-    /// أزواج مبالغ الدين الستة كما سُجّلت في النموذج (المبلغ×3 + مبلغ الإدراج×3
-    /// بعملاتها — قرار المالك) مع إسقاط الصفري: ملف بلا مبلغ لا يُنشئ ملفًا وهميًا
-    /// في عملته الافتراضية (مرآة `AddAmount` في إحصاءات المدير) — يبقى في عدّاد
-    /// سلّته (عددًا) دون أن يدخل أي مجموع عملة.
+    /// أزواج مبالغ الدين كما سُجّلت في النموذج، من مجموعة واحدة حسب نوع السند:
+    /// المصرفي من Amount*، والعادي من InclusionAmount* — لا جمعًا للمجموعتين
+    /// (ملف قديم/عميل مباشر يحمل القيمتين لا يتضاعف مبلغه). مع إسقاط الصفري:
+    /// ملف بلا مبلغ لا يُنشئ ملفًا وهميًا في عملته الافتراضية (مرآة `AddAmount`
+    /// في إحصاءات المدير) — يبقى في عدّاد سلّته (عددًا) دون أن يدخل أي مجموع عملة.
     /// </summary>
     private static List<(int DocId, string? Currency, decimal Amount)> DebtAmountPairs(PortalAmountRow row)
     {
-        var pairs = new (int DocId, string? Currency, decimal Amount)[]
-        {
-            (row.DocumentId, row.Currency, row.AmountNumeric),
-            (row.DocumentId, row.Currency2, row.Amount2Numeric),
-            (row.DocumentId, row.Currency3, row.Amount3Numeric),
-            (row.DocumentId, row.InclusionCurrency, row.InclusionAmountNumeric),
-            (row.DocumentId, row.InclusionCurrency2, row.InclusionAmount2Numeric),
-            (row.DocumentId, row.InclusionCurrency3, row.InclusionAmount3Numeric),
-        };
+        var pairs = IsBanking(row.ContractTypeSelector)
+            ? new (int DocId, string? Currency, decimal Amount)[]
+            {
+                (row.DocumentId, row.Currency, row.AmountNumeric),
+                (row.DocumentId, row.Currency2, row.Amount2Numeric),
+                (row.DocumentId, row.Currency3, row.Amount3Numeric),
+            }
+            : new (int DocId, string? Currency, decimal Amount)[]
+            {
+                (row.DocumentId, row.InclusionCurrency, row.InclusionAmountNumeric),
+                (row.DocumentId, row.InclusionCurrency2, row.InclusionAmount2Numeric),
+                (row.DocumentId, row.InclusionCurrency3, row.InclusionAmount3Numeric),
+            };
         return pairs.Where(p => p.Amount != 0).ToList();
     }
+
+    /// <summary>ملف مصرفي ما لم يُحدد «عادي» صراحة (مرآة `StatisticsRepository.IsBanking`).</summary>
+    private static bool IsBanking(string? contractTypeSelector) =>
+        !string.Equals(contractTypeSelector?.Trim(), "عادي", StringComparison.Ordinal);
 
     /// <summary>
     /// تجميع مبالغ حسب العملة (تطبيع الفراغ إلى «غير محددة») مرتبًا بعدد الملفات

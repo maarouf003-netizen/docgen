@@ -3849,6 +3849,37 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_ExecutedSide_ReplacingDeceased_RemovesOldHeirs()
+    {
+        var req = ExecutedSample();
+        req.ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "أحمد", "خالد", "الخطيب", "الوكيل", "إضافة لتركة",
+                "مورث", "م1", "م2", null, null, null, null, null, new()
+                {
+                    new ExecutedHeirDto(null, "وريث أول", "والد1", "عائلة1", "عنوان", "دمشق"),
+                }),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        req.ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "بديل", "خالد", "الخطيب", null, "أصالة",
+                null, null, null, null, null, null, null, null, new()),
+        };
+
+        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");
+        Assert.NotNull(updated);
+
+        var storedHeirs = await _db.ExecutedHeirs
+            .AsNoTracking()
+            .Where(h => h.DocumentId == doc.Id)
+            .ToListAsync();
+        Assert.Empty(storedHeirs);
+    }
+
+    [Fact]
     public async Task Create_ExecutedSide_WithCombinedCapacity_MapsDeceased()
     {
         var req = ExecutedSample();

@@ -13,10 +13,17 @@ public static class GeneralEntitySideCatalog
     public const string Executed = "executed";
     public const string Deposit = "deposit";
 
-    public static readonly IReadOnlySet<string> ValidSides = new HashSet<string>
+    /// <summary>
+    /// ترتيب ثابت لبناء قيد `CHECK` — لا تعتمد على ترتيب `HashSet` غير الحتمي بين العمليات.
+    /// يجب أن يبقى مطابقًا لترتيب القيد في الهجرة/اللقطة الحالية (`applicant, executed, deposit`).
+    /// </summary>
+    public static readonly IReadOnlyList<string> OrderedSides = new[]
     {
         Applicant, Executed, Deposit,
     };
+
+    /// <summary>مجموعة الصفات الصالحة — مشتقة من الترتيب الثابت كمصدر وحيد.</summary>
+    public static readonly IReadOnlySet<string> ValidSides = new HashSet<string>(OrderedSides);
 
     /// <summary>العنوان العربي الظاهر للمستخدم للصفة المحددة — المجهول يُعرض خامه.</summary>
     public static string ToLabel(string side) => side switch

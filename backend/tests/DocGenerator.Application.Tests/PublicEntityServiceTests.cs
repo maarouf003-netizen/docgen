@@ -3126,6 +3126,32 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RenameGroup_DecidedAppeal_StaysHistorical()
+    {
+        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "وزارة النقل") },
+            new List<AppealPartyDto>());
+        appeal.Status = AppealStatusCatalog.Decided;
+        appeal.DecisionDate = new DateTime(2026, 7, 5);
+        await _db.SaveChangesAsync();
+        var originalJson = appeal.AppellantsJson;
+
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(group.GroupId, "وزارة النقل والمواصلات",
+                DecreeKind: "قرار", DecreeNumber: "106", DecreeDate: "6/7/2026"), ManagerActor());
+
+        var unchanged = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        Assert.Equal(originalJson, unchanged!.AppellantsJson);
+        Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
     public async Task RenameGroup_ExecutedParty_UpdatesAppealSnapshots()
     {
         var group = await _service.CreateAsync(new CreatePublicEntityRequest(

@@ -5,6 +5,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
@@ -18,6 +19,38 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// <summary>فحص وجود رخيص (يحترم فلتر الحذف المنطقي).</summary>
     public Task<bool> ExistsAsync(int id, CancellationToken ct = default)
         => Db.Documents.AnyAsync(d => d.Id == id, ct);
+
+    /// <summary>
+    /// قراءة داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق العدّ/الإضافة.
+    /// SQLite لا يدعم `FOR UPDATE`؛ يعتمد قفل الكتابة عند أول تعديل في المعاملة.
+    /// </summary>
+    public async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
+    {
+        if (Db.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) != true)
+            return await GetByIdAsync(id, ct);
+
+        // أمر خام مقصود: تركيب `FromSql` مع `FirstOrDefault` قد يلفّ SQL في استعلام فرعي
+        // فتتغير دلالات القفل. هنا يُنفَّذ `FOR UPDATE` كما هو داخل معاملة الخدمة.
+        var transaction = Db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException(
+                "GetByIdForUpdateAsync يتطلب معاملة نشطة — القفل يُحرَّر فور نهاية الأمر خارجها.");
+        var connection = Db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(ct);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "SELECT 1 FROM \"Documents\" WHERE \"Id\" = @id FOR UPDATE";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "id";
+            parameter.Value = id;
+            command.Parameters.Add(parameter);
+            await command.ExecuteScalarAsync(ct);
+        }
+
+        return await GetByIdAsync(id, ct);
+    }
 
     /// <summary>
     /// قراءة طازجة بلا تتبع (B2): الأصول + الإنابات مع لقطاتها + المنابات (لحالاتها فقط).
@@ -368,6 +401,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
                  (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
+            // الجهات الطالبة: فرع مباشر لأن Applicant نص عرض قد يُقصّ عند حد العمود.
+            d.ApplicantPublicEntities.Any(a =>
+                a.Name != null && a.Name.Contains(term)) ||
             // فروع عائلة «منفذ عليه» الصريحة — بنسخة كتلة المشطوبة حرفيًا: تصلّبٌ للبحث
             // لا تبديلٌ لـ SearchText الذي يضم هذه الأسماء لكنه مقصوص عند 1000 حرف
             // وقابل للتقادم — فلا تُزال هذه الفروع بصمت لاحقًا.
@@ -435,6 +471,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
                  (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
+            // الجهات الطالبة: فرع مباشر لأن Applicant نص عرض قد يُقصّ عند حد العمود.
+            d.ApplicantPublicEntities.Any(a =>
+                a.Name != null && a.Name.Contains(term)) ||
             d.Guarantors.Any(g =>
                 g.GuarantorName != null &&
                 ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||

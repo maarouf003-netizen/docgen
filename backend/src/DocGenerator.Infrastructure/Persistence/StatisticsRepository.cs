@@ -64,11 +64,13 @@ public class StatisticsRepository : IStatisticsRepository
         // الملف المصرفي يضع مبلغه في AmountNumeric والعادي في InclusionAmountNumeric.
         // ب6: الملفات المنابة مستثناة من مبالغ اللوحة — مبالغها نسخ للمنيب ولا تُحسب مرتين.
         var amounts = await q
-            .Select(d => new { d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount, d.SourceDelegationId })
+            .Select(d => new { d.IsDraft, d.ContractTypeSelector, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount, d.SourceDelegationId })
             .ToListAsync(ct);
 
+        // مبلغ الملف يُقرأ من مجموعة واحدة حسب نوع السند: المصرفي من Amount*،
+        // والعادي من InclusionAmount* — كما في AccumulateContract، لا جمعًا للمجموعتين.
         var totalAmount = amounts.Where(d => !d.IsDraft && d.SourceDelegationId == null)
-            .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric);
+            .Sum(d => IsBanking(d.ContractTypeSelector) ? d.AmountNumeric : d.InclusionAmountNumeric);
         // ب6: محصّلات المناب نسخةٌ للمنيب — تُستثنى من إجمالي المحصّل كما مبالغ الأساس.
         var totalCollectedAmount = amounts.Where(d => d.SourceDelegationId == null).Sum(d => d.CollectedAmount) ?? 0;
 
@@ -112,7 +114,7 @@ public class StatisticsRepository : IStatisticsRepository
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId != null)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
-            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.SourceDelegationId })
+            .Select(d => new { d.BranchId, d.IsDraft, d.ContractTypeSelector, d.AmountNumeric, d.InclusionAmountNumeric, d.SourceDelegationId })
             .ToListAsync(ct);
 
         var grouped = rows
@@ -125,7 +127,7 @@ public class StatisticsRepository : IStatisticsRepository
                 Drafts = g.Count(d => d.IsDraft),
                 // ب6: المبالغ الحقيقية للمنيب فقط؛ المناب عدد بلا مبالغ (لا تُحسب نسخه مرتين).
                 Amount = g.Where(d => !d.IsDraft && d.SourceDelegationId == null)
-                    .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric),
+                    .Sum(d => IsBanking(d.ContractTypeSelector) ? d.AmountNumeric : d.InclusionAmountNumeric),
             })
             .ToList();
 

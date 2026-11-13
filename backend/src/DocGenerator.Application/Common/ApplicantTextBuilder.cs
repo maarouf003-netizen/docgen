@@ -10,8 +10,12 @@ namespace DocGenerator.Application.Common;
 /// </summary>
 public static class ApplicantTextBuilder
 {
-    public static string Build(IEnumerable<ApplicantPublicEntity> entities) =>
-        string.Join(" و ", entities
+    /// <summary>حد عمود `Document.Applicant` (200) — القص يمنع فشل PostgreSQL عند تعدد الجهات.</summary>
+    public const int MaxLength = 200;
+
+    public static string Build(IEnumerable<ApplicantPublicEntity> entities)
+    {
+        var text = string.Join(" و ", entities
             .Select(e =>
             {
                 var name = (e.Name ?? string.Empty).Trim();
@@ -21,4 +25,14 @@ public static class ApplicantTextBuilder
                 return string.IsNullOrWhiteSpace(governorate) ? name : $"{name} - محافظة {governorate}";
             })
             .Where(v => v.Length > 0));
+
+        if (text.Length <= MaxLength)
+            return text;
+
+        // قصّ آمن لبداية زوج بديل UTF-16 ثم علامة استمرار.
+        var end = MaxLength - 1;
+        if (end > 0 && char.IsHighSurrogate(text[end - 1]) && char.IsLowSurrogate(text[end]))
+            end--;
+        return string.Concat(text.AsSpan(0, end), "…");
+    }
 }
