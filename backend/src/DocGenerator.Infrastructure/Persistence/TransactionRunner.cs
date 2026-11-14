@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
@@ -59,9 +60,25 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
         });
 
     /// <summary>
-    /// يشغّل الإجراء ضمن معاملة واحدة عبر ExecutionStrategy ليظل آمنًا إن فُعّل لاحقًا
-    /// EnableRetryOnFailure في PostgreSQL. أي حفظ داخلي (بما فيه حفظ سجل التدقيق)
-    /// يلتحم بنفس المعاملة، فيُثبَّت الكل أو يُتراجع الكل.
+    /// يشغّل الإجراء ضمن معاملة واحدة. أي حفظ داخلي (بما فيه حفظ سجل التدقيق) يلتحم
+    /// بنفس المعاملة، فيُثبَّت الكل أو يُتراجع الكل.
+    ///
+    /// <para><b>عقد إعادة المحاولة (F-02 — at-most-once):</b> لا يُعاد تنفيذ الإجراء
+    /// تلقائيًا أبدًا، حتى لو كان <c>EnableRetryOnFailure</c> مفعّلًا على المزوّد.
+    /// السبب مزدوج: (1) الـ<c>DbContext</c> مسجّل في نطاق الطلب نفسه، فتبقى فيه كيانات
+    /// المجموعات المحمّلة وتغييرات المحاولة الفاشلة، وإعادة التنفيذ عليه تُكرّر
+    /// الإدراج أو تُبقي حالة قديمة تُبنى عليها قرارات خاطئة؛ (2) الإجراء نفسه قد يحمل
+    /// آثارًا جانبية غير idempotent (ملفات، تدقيق، صندوق صادر) لا تتراجع مع المعاملة.
+    /// إعادة المحاولة الآمنة تتطلب سياقًا/نطاق DI جديدًا لكل محاولة وإجراءات idempotent
+    /// — وهي ترقية معمارية مستقلة، لا تُحاكى بـ<c>ClearChanges</c> لأن تفريغ المتتبَّع
+    /// يفصل كيانات محمّلة قبل المعاملة فتُفقد تعديلاتها صامتة.
+    /// لذلك الفشل العابر يظهر للمستخدم، وإعادة المحاولة تكون بنطاق جديد.</para>
+    ///
+    /// <para><b>حدود العقد:</b> الإستراتيجية المحلية تحمي الـdelegate كاملًا، لكن
+    /// <c>SaveChangesAsync</c> الداخلي يستخدم إستراتيجية السياق العامة (StateManager)،
+    /// فقد يعيد EF محاولته إن كانت معيدة. لا تُفعّل <c>EnableRetryOnFailure</c> قبل
+    /// استراتيجية واعية بالمعاملة أو idempotency لكل عملية كتابة.</para>
+    ///
     /// B1 (قرار تسلسل موثّق): لا معامل عزل هنا عمدًا — التسلسل بين متزامنَي التسطير
     /// يضمنه القيد الفريد لجدول حجوزات الأصول (B3) على العزل الافتراضي، لا Serializable
     /// (الذي لا يغلق السباق على SQLite المؤجَّلة، ويرمي serialization_failure بلا إعادة
@@ -69,7 +86,14 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
     /// </summary>
     private async Task<T> RunInTransactionAsync<T>(CancellationToken ct, Func<CancellationToken, Task<T>> action)
     {
-        var strategy = _db.Database.CreateExecutionStrategy();
+        // F-02: نستخدم الإستراتيجية المضبوطة إن كانت غير معيدة للمحاولة (الوضع الحالي)،
+        // ونستبدلها صراحةً بـNonRetryingExecutionStrategy إن فُعّل EnableRetryOnFailure
+        // لاحقًا — فلا تعيد المحاولة على معاملة تفاعلية أبدًا.
+        var configured = _db.Database.CreateExecutionStrategy();
+        var strategy = configured.RetriesOnFailure
+            ? new NonRetryingExecutionStrategy(_db)
+            : configured;
+
         return await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await _db.Database.BeginTransactionAsync(ct);

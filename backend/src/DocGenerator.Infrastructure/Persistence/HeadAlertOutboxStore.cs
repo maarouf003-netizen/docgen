@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
@@ -243,20 +244,27 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         Func<CancellationToken, Task<T>> action,
         CancellationToken ct = default)
     {
-        // معاملة صريحة بلا ExecutionStrategy: التفعيل المستقبلي لـEnableRetryOnFailure
-        // يعيد «المعاملات التي يبدؤها المستخدم» غير مدعومة، فنبقي المعاملة الشفافة.
-        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-        try
+        // F-02: معاملة تفاعلية at-most-once كـTransactionRunner: لو فُعّل
+        // EnableRetryOnFailure لاحقًا فلا تعيد الإستراتيجية تنفيذ الـdelegate على
+        // الـDbContext نفسه (كيانات/تغييرات المحاولة الفاشلة تبقى متتبَّعة).
+        // NonRetryingExecutionStrategy تحافظ على دعم المعاملات التي يبدؤها المستخدم
+        // بدل أن ترفضها إستراتيجية معيدة.
+        var strategy = new NonRetryingExecutionStrategy(_db);
+        return await strategy.ExecuteAsync(async () =>
         {
-            var result = await action(ct);
-            await transaction.CommitAsync(ct);
-            return result;
-        }
-        catch
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
+            await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                var result = await action(ct);
+                await transaction.CommitAsync(ct);
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
     }
 
     private Task<HeadAlertOutboxMessage?> FindAsync(long id, CancellationToken ct)
