@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Design;
 namespace DocGenerator.Api;
 
 /// <summary>
-/// مصنع تصميم-وقت لتوليد هجرات Postgres المنفصلة عن هجرات SQLite:
+/// مصنع تصميم-وقت لسياق PostgreSQL (سياق الهجرات الوحيد بعد P0-02):
 /// dotnet ef migrations add &lt;Name&gt; --context DocGeneratorPostgresDbContext
 /// </summary>
 public class PostgresDbContextFactory : IDesignTimeDbContextFactory<DocGeneratorPostgresDbContext>

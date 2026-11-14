@@ -1,14 +1,14 @@
 using DocGenerator.Application.Common;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// يحرس إعداد قاعدة بيانات مضيف الاختبار المشترك: الترحيل التلقائي مفعّل صراحةً
-/// في <see cref="ApiFactory"/> لأن <c>appsettings.Development.json</c> مستبعد من Git
-/// (إعدادات محلية)، وقيمة <c>appsettings.json</c> الأساسية <c>false</c> عمدًا للإنتاج.
-/// غياب التفعيل لا يظهر محليًا (الملف موجود) لكنه يُسقط كل اختبارات القاعدة في CI.
+/// يحرس إعداد قاعدة مضيف الاختبار المشترك بعد P0-02: المخطط يُبنى بـ<see cref="EnsureCreatedDatabaseInitializer"/>
+/// (EnsureCreated) لا بالهجرات، والترحيل التلقائي معطَّل صراحةً.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
 public sealed class ApiFactoryDatabaseConfigurationTests
@@ -18,14 +18,13 @@ public sealed class ApiFactoryDatabaseConfigurationTests
     public ApiFactoryDatabaseConfigurationTests(ApiFactory factory) => _factory = factory;
 
     [Fact]
-    public void AutoMigrate_IsEnabledExplicitlyInTheTestHost()
+    public void AutoMigrate_IsDisabled_AndEnsureCreatedSchemaIsPresent()
     {
         using var scope = _factory.Services.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+        Assert.False(options.AutoMigrate, "المضيف الاختباري يبني المخطط بـEnsureCreated لا بالهجرات.");
 
-        Assert.True(
-            options.AutoMigrate,
-            "مضيف الاختبار يجب أن يفعّل Database:AutoMigrate صراحةً: "
-            + "appsettings.Development.json غير موجود في CI وappsettings.json يضبطها false.");
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        Assert.True(db.Branches.Any(), "مخطط EnsureCreated لم يُنشأ قبل التهيئة/البذر.");
     }
 }

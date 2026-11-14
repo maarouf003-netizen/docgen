@@ -10,7 +10,7 @@ namespace DocGenerator.Infrastructure.Persistence.Configurations;
 /// **مرحلة التشديد (PR-3 / M3):** <code>Kind</code> و<code>LastContentChangedAt</code>
 /// غير قابلين للفراغ في النموذج، وقيد <c>CK_HeadAlerts_Kind_NotEmpty</c> يرفض
 /// النوع الفارغ/الأبيض. الفهرس الفريد الجزئي لمفتاح المنع مُعرَّف في
-/// <see cref="DocGeneratorDbContext.ConfigureHeadAlertProviderSpecific"/> وفق §6.2/§6.3.
+/// قيود التنبيهات المشتركة وفق §6.2/§6.3 (صياغة PostgreSQL فقط — ADR-0001).
 /// </summary>
 public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
 {

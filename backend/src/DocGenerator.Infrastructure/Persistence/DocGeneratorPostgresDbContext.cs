@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore;
 namespace DocGenerator.Infrastructure.Persistence;
 
 /// <summary>
-/// سياق بيانات مخصص لـ Postgres (يُستخدم كهوية لمجموعة هجرات منفصلة عن هجرات SQLite).
+/// سياق بيانات PostgreSQL — بعد P0-02 هو سياق الهجرات الوحيد (Baseline واحد).
 /// التسجيل عبر AddDbContext&lt;DocGeneratorDbContext, DocGeneratorPostgresDbContext&gt;
-/// يجعل كل التبعيات القائمة تتعامل معه وهو النوع الفعلي عند استخدام Postgres.
+/// يجعل كل التبعيات القائمة تتعامل معه.
 /// </summary>
 public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
 {

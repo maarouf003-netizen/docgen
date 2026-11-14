@@ -63,7 +63,7 @@ public class ProductionSpaFactory : WebApplicationFactory<Program>
         builder.UseSetting("Security:KnownProxies:0", "127.0.0.1");
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-        builder.UseSetting("Database:AutoMigrate", "true");
+        builder.UseSetting("Database:AutoMigrate", "false");
         // لا مشغّل صندوق صادر في الاختبار: لا اتصال حقيقي بقاعدة Postgres الشكلية.
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
         builder.UseSetting("Swagger:Enabled", "false");

@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,7 +34,8 @@ public static class TestDatabase
                 || serviceType == typeof(DocGeneratorPostgresDbContext)
                 || serviceType == typeof(DbContextOptions)
                 || serviceType == typeof(DbContextOptions<DocGeneratorDbContext>)
-                || serviceType == typeof(DbContextOptions<DocGeneratorPostgresDbContext>))
+                || serviceType == typeof(DbContextOptions<DocGeneratorPostgresDbContext>)
+                || serviceType == typeof(IDatabaseInitializer))
             {
                 services.RemoveAt(i);
             }
@@ -47,5 +49,6 @@ public static class TestDatabase
                 .Options;
             return new DocGeneratorDbContext(options);
         });
+        services.AddScoped<IDatabaseInitializer, EnsureCreatedDatabaseInitializer>();
     }
 }

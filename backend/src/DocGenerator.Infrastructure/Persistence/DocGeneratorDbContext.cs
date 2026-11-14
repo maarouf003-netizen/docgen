@@ -91,31 +91,12 @@ public class DocGeneratorDbContext : DbContext
             .IsRequired()
             .OnDelete(DeleteBehavior.Restrict);
 
-        ConfigureHeadAlertProviderSpecific(modelBuilder);
-    }
-
-    /// <summary>
-    /// فروق مزوّد قاعدة البيانات لعقد التنبيهات (الخطة §6.2): الفهرس الفريد الجزئي
-    /// على <c>DedupeKey</c> يحتاج صياغة منطقية مختلفة بين SQLite وPostgreSQL.
-    /// يُستدعى من <see cref="OnModelCreating"/> بعد التكوينات المشتركة حصرًا.
-    /// ملاحظة ADR-0001: مسار التشغيل صار PostgreSQL فقط؛ يبقى هذا الفرع مؤقتًا
-    /// لاختبارات SQLite حتى تُحذف هجراتها ويُوحّد النموذج في P0-02.
-    /// </summary>
-    private void ConfigureHeadAlertProviderSpecific(ModelBuilder modelBuilder)
-    {
-        var isPostgres = string.Equals(
-            Database.ProviderName,
-            "Npgsql.EntityFrameworkCore.PostgreSQL",
-            StringComparison.Ordinal);
-
-        var activeDedupeFilter = isPostgres
-            ? "\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = false"
-            : "\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = 0";
-
+        // ADR-0001: نموذج واحد بصياغة PostgreSQL — لا فروق مزوّد.
+        // فهرس فريد جزئي على DedupeKey للتنبيهات النشطة.
         modelBuilder.Entity<HeadAlert>()
             .HasIndex(a => a.DedupeKey)
             .HasDatabaseName("UX_HeadAlerts_DedupeKey_Active")
             .IsUnique()
-            .HasFilter(activeDedupeFilter);
+            .HasFilter("\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = false");
     }
 }
