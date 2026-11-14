@@ -4,9 +4,9 @@
 >
 > 1. **افتح §9 «تطبيق هجرات قاعدة البيانات عند النشر»** واقرأ **قائمة المهجرات المعلّقة**
 >    (قائمة تراكمية في نهاية §9) — كل سطر غير مشطوب **يجب** تطبيقه في نافذة النشر.
-> 2. **الهجرات المعلّقة:** المرجع الوحيد للنشر هو `PostgreSQL`؛ راجع الحالة التفصيلية في
->    القائمة التراكمية بنهاية §9. سطور `SQLite` في القائمة **تاريخية/اختبارية فقط** بعد ADR-0001
->    ولم تعد شرط نشر (ستُحذف هجراتها في `P0-02`).
+> 2. **الهجرات المعلّقة:** بعد `P0-02` يوجد **Baseline PostgreSQL واحد**
+>    (`20261114101737_InitialPostgresBaseline`)؛ راجع الحالة التفصيلية في القائمة
+>    التراكمية بنهاية §9. لا هجرات `SQLite` في التشغيل بعد اليوم.
 > 3. **⚠️ `Database:AutoMigrate=false` في الإنتاج** ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات
 >    غير مطبّقة على القاعدة الحية. **طبّق الهجرات قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 > 4. **نسخة احتياطية + استعادة مجرَّبة قبل النافذة** — لا «نسخة لم تُجرَّب استعادتها ليست نسخة».
@@ -314,22 +314,26 @@ npm test
 
 ### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
 
-- أي تغيير في الكود يضيف/يعدّل هجرات EF (`Persistence\MigrationsPostgres\` لـ PostgreSQL) **لا يصل إلى قواعد البيانات الموجودة تلقائيًا** — الكود الجديد وحده لا يكفي.
-- أثناء نافذة نشر خاضعة للتحكم نفّذ على الخادم (من مجلد `backend\`):
-  ```powershell
-  dotnet ef database update --context DocGeneratorPostgresDbContext   # قاعدة PostgreSQL في الإنتاج
-  ```
+- بعد `P0-02` يوجد **Baseline واحد** (`20261114101737_InitialPostgresBaseline`). أي
+  تغيير لاحق يضيف هجرة جديدة (`dotnet ef migrations add ...`) **لا يصل تلقائيًا** إلى
+  القواعد الموجودة؛ الكود الجديد وحده لا يكفي.
+- أثناء نافذة نشر خاضعة للتحكم (من مجلد `backend\`):
+  1. نسخة احتياطية + استعادة مجرَّبة.
+  2. `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+  3. تحقق: `__EFMigrationsHistory` = صف واحد، و51 جدولًا في `public`، والمشغّلات
+     الأربعة موجودة.
+  4. **ثم** شغّل النسخة الجديدة (`Database:AutoMigrate=false` يرفض الإقلاع إن كان
+     المخطط ناقصًا).
 - تتصل أوامر التصميم بسلسلة `PostgreSQL` من `POSTGRES_CONNECTION` (يقرأها
   `PostgresDbContextFactory` حصرًا)؛ أما التشغيل فيقرأ `DATABASE_URL` أو
   `ConnectionStrings__DefaultConnection`. إن لم يكن `dotnet-ef` مثبتًا عالميًا:
   `dotnet tool install --global dotnet-ef`.
+- **لا تُشغّل `--context DocGeneratorDbContext`**: لم يبقَ له هجرات بعد P0-02،
+  والمرجع الوحيد هو `DocGeneratorPostgresDbContext`.
 - **سياسة «صفر تحذيرات» تسري على هذا الأمر** (يبني الخلفية وقت التصميم): أي تحذير مترجم/محلل/NuGet
   أو من محرك MSBuild في مرحلة البناء يُفشِله برسالة `Build failed. Use dotnet build to see the errors.` —
   أصلح التحذير أو وثّق `NoWarn` مضيقة في الـ`PR` (المصدر: `backend/Directory.Build.props`؛ وتُغطّى تحذيرات
   تقييم المشروع المبكرة في بوابة CI بمفتاح `-warnaserror`).
-- **ملاحظة (ADR-0001):** أي بند في هذا القسم أو في القائمة التراكمية يذكر `--context DocGeneratorDbContext`
-  أو هجرات `SQLite` هو **تاريخي/اختباري فقط** ولا يُطبَّق على قاعدة تشغيل. المرجع الوحيد هو
-  `DocGeneratorPostgresDbContext`.
 - **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.
 
 ### سلامة التراجع `Down` (تحذيرات — `RF-001`/`INT-013`)
@@ -389,330 +393,25 @@ npm test
 
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
-> ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
+> **P0-02 (2026-11-14):** سُحقت الهجرات إلى Baseline واحد. لا هجرات SQLite في التشغيل،
+> ولا تُشغَّل `--context DocGeneratorDbContext` على أي قاعدة. المرجع الوحيد:
+> `DocGeneratorPostgresDbContext` + `20261114101737_InitialPostgresBaseline`.
+> النسخة الاحتياطية والتحقق في `docs/audit/17-postgres-baseline-20261114.md`.
+
+- [x] **2026-11-14 — `InitialPostgresBaseline`** — طُبِّق على القاعدة التجريبية بعد
+  النسخة الاحتياطية. `__EFMigrationsHistory` = صف واحد، 51 جدولًا، 4 مشغّلات،
+  وقيدا `CK_HeadAlerts_Kind_NotEmpty` و`CK_Documents_FileNumberRequiresCircuit`.
+- [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
+  ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+
+> السطور التاريخية لهجرات ما قبل الـBaseline (PostgreSQL/SQLite) أُزيلت من هذه القائمة
+> لأنها لم تعد قابلة للتطبيق بعد إعادة الضبط؛ سجلها الكامل في Git والنسخة الاحتياطية.
+
+## 10) تذكير نشر سجل أرقام الأساس v2 (تاريخي — 2026-11-09)
+
+> **P0-02 (2026-11-14):** هذا القسم تاريخي. سُحق `BaseNumberRegistry` ضمن
+> `InitialPostgresBaseline`؛ لا تُشغّل `--context DocGeneratorDbContext` بعد الآن.
 >
-> **ADR-0001 (2026‑11‑14):** بعد إزالة مسار `SQLite` التشغيلي، سطور `SQLite` أدناه **تاريخية/اختبارية
-> فقط** ولم تعد شرط نشر. المرجع الوحيد للنشر هو `DocGeneratorPostgresDbContext`؛ وستُحذف هجرات
-> `SQLite` نهائيًا في `P0-02`، فلا تُشغِّل `--context DocGeneratorDbContext` على أي قاعدة تشغيل.
->
-> **حالة 2026‑10‑26:** اكتمل سياق `PostgreSQL` — الهجرات الأربع (`Expand`/`Outbox_Create`/`Backfill`/
-> `Contract`) مطبَّقة على `Supabase` (**63** هجرة)؛ سجلها في `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
-> و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`. كانت تبقى **4 هجرات** في `SQLite` آنذاك:
-> `Expand`/`Outbox_Create`/`Backfill` ثم `Contract` — وصارت **6** بعد هجرتي `ConflictRetries`
-> و`RemoveDocumentViewCount` أدناه. علامة `[ ]` على زوج الهجرتين تعني أن
-> **أحد السياقين** على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
->
-> **جديد 2026‑11‑03:** هجرتان (`SQLite` + `PostgreSQL`) لعمود `ConflictRetries` في
-> `HeadAlertOutboxMessages`. **`PostgreSQL` ✅ مطبَّقة حيًا** (2026‑11‑03 — **64** هجرة، صفر معلّقة،
-> `docs/audit/14-head-alerts-conflict-retries-live-apply-20261103.md`)، و**`SQLite` ⏳ معلّقة** (5).
-> مستقلتان **دلاليًا** عن هجرات التنبيهات الأربع، لكن `database update` يطبّق كل ما قبل الهدف ضمنًا:
-> على `SQLite` (رأسه `Expand`) ستسحب `Outbox_Create`/`Backfill`/`Contract` ⇒ **مرهونة بـ`G2`**.
->
-> **جديد 2026‑11‑05:** هجرتان (`SQLite` + `PostgreSQL`) لإزالة عدّاد المشاهدات نهائيًا
-> (`RemoveDocumentViewCount` / `RemoveDocumentViewCount_Pg`) — **معلّقتان** حتى التطبيق:
-> `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
-> في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
-
-> **تحديث 2026‑11‑07:** طُبِّقت هجرتا الملاحق على `PostgreSQL` حيًا (عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`)؛ `SQLite` ما زالت معلّقة.
->
-> **تحديث 2026‑11‑09:** طُبِّقت `BaseNumberRegistry_Pg` على `PostgreSQL` حيًا (70 هجرة) عبر
-> `Database__AutoMigrate=true` مؤقتًا، ثم أُعيد إلى `false` ونُشرت النسخة بنجاح (`AutoMigrate=false`،
-> `/healthz` = 200). صُحّحت أيضًا قيمة `ASPNETCORE_ENVIRONMENT` في Render من `Production???` إلى
-> `Production` (القيمة المشوّهة كانت تُبقي `IsDevelopment()` خاطئة فقط، لكنها كانت ستُفشل تحميل
-> `appsettings.Production.json` لو أُضيف لاحقًا).
-
-- [ ] **2026-11-12 — `AddDocumentInterventions` / `AddDocumentInterventions_Pg`** (متدخلو الملف — جدولان + عمود ربط الوقعة):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — عبر pooler من `Supabase`، و`__EFMigrationsHistory` بلا هجرات معلّقة، قبل دمج `52534ce`؛ خدمة `docgen-1` معلّقة من المستخدم فتعذّر فحص `/healthz`) · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2` كبقية الهجرات المعلّقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261112093527_AddDocumentInterventions.cs` — ينشئ `DocumentInterventions` و`DocumentInterventionHeirs`، ويضيف `DocumentOccurrences.DocumentInterventionId` (FK `SET NULL`/Cascade إلى المتدخل + فهرس) وفهارس الملف/السجل/الأب.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261112093636_AddDocumentInterventions_Pg.cs` — نفسه (`timestamp with time zone`، بلا `datetime2`).
-  - **لا Backfill:** ميزة جديدة لا صفوف سابقة؛ الصفوف القديمة بلا متدخلين تبقى كما هي.
-  - **إجراء النشر:** `PostgreSQL` ✅ طُبِّقت (2026‑11‑12)؛ يبقى `--context DocGeneratorDbContext` على `SQLite` (ضمن `G2`) قبل نشر نسخة `SQLite`.
-  - **الوثيقة المرجعية:** `docs/audit/15-document-interventions-20261112.md`.
-
-- [ ] **2026-11-11 — `AddStrikeOffReminders` / `AddStrikeOffReminders_Pg`** (بطاقة «تذكيرات الشطب» — عمودا التاريخ المحلول والإلغاء):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — عبر `dotnet ef database update` على `Supabase` باستخدام `DATABASE_URL` من خدمة `docgen-1`، ثم نشر النسخة `22efd40` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (ضمن سلسلة `G2`).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111193953_AddStrikeOffReminders.cs` — يضيف `ExecutionActions.ActionDateParsed` و`Documents.StrikeOffReminderDismissedAt` (`TEXT`, `NULL`).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261111194021_AddStrikeOffReminders_Pg.cs` — نفسه (`timestamp with time zone`, `NULL`).
-  - **لا Backfill ولا فهرسة (قرار المالك):** `ActionDateParsed = NULL` للصفوف القائمة ⇒ يُحسب آخر نشاط من `CreatedAt` لها (قد يتأخر ظهورها في البطاقة).
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة (حارس المخطط)، و`--context DocGeneratorDbContext` عند `G2`.
-  - **الوثيقة المرجعية:** `docs/STRIKE_OFF_REMINDERS_PLAN.md`.
-
-- [ ] **2026-11-11 — `SeparateReminderBaseDate` / `SeparateReminderBaseDate_Pg`** (فصل تاريخ أساس التذكير عن تاريخ الإجراء/الملاحظة — إصلاح عيب «نقل التذكير يغيّر تاريخ الإجراء»):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑12 — قبل نشر `5aec5b1`، و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261111173744_SeparateReminderBaseDate.cs` — يضيف `ReminderBaseDate` (`TEXT`, `NULL`) إلى `ExecutionActions` و`AppealActions`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261111173853_SeparateReminderBaseDate_Pg.cs` — نفسه (`timestamp with time zone`, `NULL`).
-  - **لا Backfill ولا فهرسة:** الصفوف القائمة `NULL` ⇒ يسقط الحساب ديناميكيًا إلى تاريخ الإجراء (سلوك اليوم حرفيًا) بلا أي انزياح في مواعيد التذكيرات.
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) بحارس المخطط؛ وعلى `SQLite` ضمن سلسلة `G2` ثم `--context DocGeneratorDbContext`.
-  - **الوثيقة المرجعية:** `docs/ACTION_REMINDER_DATE_SEPARATION_PLAN.md` (§3، §11).
-
-- [ ] **2026-11-10 — `AddAssetCaseNumberRightType` / `AddAssetCaseNumberRightType_Pg`** (رقم المحضر ونوع الحق على الأصول):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑10 — عبر `dotnet ef database update` على `Supabase`، ثم نشر النسخة `0d4d232` على `docgen-1` و`/healthz` = 200) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أعلاه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261110085853_AddAssetCaseNumberRightType.cs` — يضيف عمودين `nullable` إلى `Assets`: `CaseNumber` (`TEXT(100)`) و`RightType` (`TEXT(30)`).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261110085946_AddAssetCaseNumberRightType_Pg.cs` — نفسه (`character varying(100/30)`).
-  - **لا Backfill:** القيم الافتراضية تُطبَّق عند الحفظ/العرض للأصول الجديدة (العقار/المركبة = «حق رقبة»)؛ البيانات القائمة تجريبية ولا تحتاج تعبئة.
-  - **التطبيق:** تم تطبيق `PostgreSQL` حيًا في 2026‑11‑10. يبقى `SQLite` معلّقًا حتى استكمال سلسلة `G2`، ثم: `dotnet ef database update --context DocGeneratorDbContext`.
-
-- [ ] **2026-11-08 — `BaseNumberRegistry` / `BaseNumberRegistry_Pg`** (سجل أرقام الأساس v2 — جدول واحد + عمودا الإلغاء + فهرس فريد جزئي):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑09 — 70 هجرة، عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أدناه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261108202145_BaseNumberRegistry.cs`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261108202211_BaseNumberRegistry_Pg.cs`.
-  - **التعبئة داخل الهجرة:** تُوقف الهجرة صراحةً عند: صف بلا دائرة، أو صف أقدم من وقعة تبديل دائرة من التعديل (R3)، أو سنة/تكرار غير صالح — لا نسبة صامتة.
-  - **التطبيق:** `dotnet ef database update --context DocGeneratorDbContext` ثم `dotnet ef database update --context DocGeneratorPostgresDbContext` قبل نشر النسخة؛ وإلا رفض الإقلاع (`Database:AutoMigrate=false`).
-  - **تحقق مسبق (Supabase):** نفّذ تدقيق §8.1 على النسخة/قاعدة الإنتاج قبل التطبيق لأن الهجرة ترفض أي تكرار/صف بلا دائرة.
-
-- [ ] **2026-11-07 — `DocumentAnnexSequence_Unique` / `DocumentAnnexSequence_Unique_Pg`** (فرادة ترتيب الملحق داخل الملف — `DocumentAnnexes`):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (69 هجرة) · `SQLite` ⏳ **معلّقة** (10 مع التسع السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107090514_DocumentAnnexSequence_Unique.cs` — يسقط الفهرس `IX_DocumentAnnexes_DocumentId_Sequence` غير الفريد ويعيد إنشاءه `UNIQUE` على `(DocumentId, Sequence)`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261107090617_DocumentAnnexSequence_Unique_Pg.cs` — نفسه.
-  - **لا فقدان بيانات:** الفهرس الجديد يمنع تكرار `Sequence` داخل الملف نفسه فقط؛ ويسمح بتكراره بين ملفات مختلفة. لا علاقة له بتكرار اسم الممثل الشرعي (المخزَّن في `Heirs`/`ExecutedHeirs`) عبر الورثة أو الملفات.
-  - **فحص قبل التطبيق (يجب أن يعيد صفرًا):**
-    ```sql
-    SELECT "DocumentId", "Sequence", COUNT(*)
-    FROM "DocumentAnnexes"
-    GROUP BY "DocumentId", "Sequence"
-    HAVING COUNT(*) > 1;
-    ```
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط.
-  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
-
-- [ ] **2026-11-07 — `AddDocumentAnnexes` / `AddDocumentAnnexes_Pg`** (تعدد ملاحق السند التنفيذي — جدول `DocumentAnnexes`):
-  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (68 هجرة) · `SQLite` ⏳ **معلّقة** (9 مع الثماني السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107065601_AddDocumentAnnexes.cs` — ينشئ `DocumentAnnexes` (`Id`, `DocumentId`, `Sequence`, `AnnexType/Number/Date` بأطوال 100/100/50) + `FK` إلى `Documents` (`Cascade`) + فهرس `(DocumentId, Sequence)` + **Backfill** من الأعمدة المفردة القديمة (الصف الأول لكل ملف له ملحق).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261107065740_AddDocumentAnnexes_Pg.cs` — نفسه (`integer` + `character varying(100/100/50)`؛ التاريخ نص حر).
-  - **لا حذف للأعمدة القديمة:** `Documents.AnnexType/AnnexNumber/AnnexDate` تبقى **قراءة فقط**؛ الجدول الفرعي هو المصدر الجديد. لا فقدان بيانات (Backfill فقط).
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such table: DocumentAnnexes`).
-  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
-
-- [ ] **2026-11-06 — `DelegationLocalAdditionSummary` / `DelegationLocalAdditionSummary_Pg`** (سجل الإضافات المحلية على الملف المناب — `DocumentDelegations`):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (67 هجرة) · `SQLite` ⏳ **معلّقة** (8 مع السبع السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261106080801_DelegationLocalAdditionSummary.cs` — يضيف ثلاثة أعمدة إلى `DocumentDelegations`: `LocalAdditionCount` (`INTEGER NOT NULL DEFAULT 0`)، `LocalAdditionLastMessage` (`TEXT(1000)`)، `LocalAdditionLastAt` (`datetime2`, `NULL`).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261106081025_DelegationLocalAdditionSummary_Pg.cs` — نفسه (`integer NOT NULL DEFAULT 0` / `character varying(1000)` / `timestamp with time zone`).
-  - **لا Backfill:** الصفوف القائمة تبدأ `LocalAdditionCount = 0` (قرار المالك: بيانات تجريبية)؛ بطاقة «تشعبات الملف» تبدأ من أول إضافة محلية بعد النشر. لا تُفقد بيانات ملفات: الإضافات نفسها في `Heirs`/`ExecutedHeirs` كما هي.
-  - **أثر غير مخطط يفسّر صفوف تدقيق (يُقرأ بعد النشر):** قصّ التوقيع في `DocumentChangeTracker` صار يُلحق بصمة `SHA-256` (16 حرفًا سداسيًا)، فأي توقيع مقصوص **مخزَّن قبل النشر** (مستندات بتوقيع > 2000، مثل ~49 كفيلًا) يختلف عن التوقيع المحسوب بعد النشر ⇒ أول تعديل على ذلك المستند يُنتج صفّ تدقيق لـ`__Col_*` بلا تغيير حقيقي يراه المستخدم. لا إجراء مطلوب: الصفوف اللاحقة صحيحة، وهذه ملاحظة تفسيرية لسجل التدقيق فقط.
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such column: d.LocalAdditionCount`).
-  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
-
-- [ ] **2026-11-05 — `AddHeirLegalRepresentative` / `AddHeirLegalRepresentative_Pg`** (الممثل الشرعي لكل وريث — `Heirs` و`ExecutedHeirs`):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (66 هجرة) · `SQLite` ⏳ **معلّقة** (7 مع الست السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105201644_AddHeirLegalRepresentative.cs` — يضيف ستة أعمدة `nullable` إلى `Heirs` و`ExecutedHeirs`: `RepresentativeName/Father/Family` (100)، `RepresentativeCapacity` (30)، `RepresentativeAddressType` (50)، `RepresentativeAddress` (300).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261105201734_AddHeirLegalRepresentative_Pg.cs` — نفسه (`character varying`).
-  - **لا بيانات تُفقد:** أعمدة جديدة `NULL` للصفوف القائمة؛ لا Backfill ولا فهارس.
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such column: h.RepresentativeName`).
-  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
-
-- [ ] **2026-11-05 — `RemoveDocumentViewCount` / `RemoveDocumentViewCount_Pg`** (إزالة عدّاد المشاهدات نهائيًا — قرار المالك):
-  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (65 هجرة) · `SQLite` ⏳ **معلّقة** (6 مع الخمس السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105104202_RemoveDocumentViewCount.cs` — يسقط عمود `ViewCount` من `Documents`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261105104246_RemoveDocumentViewCount_Pg.cs` — نفسه.
-  - **حذف بيانات:** قيم `ViewCount` التاريخية تُفقد نهائيًا (العدّاد كان معطّلًا في الواجهة؛ لا مستهلك بعد الإزالة). `Down` يعيد العمود بقيمة `0`.
-  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط.
-  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
-
-- [ ] **2026-11-03 — `HeadAlertOutbox_ConflictRetries` / `HeadAlertOutbox_ConflictRetries_Pg`** (حالة سياسة «إعادة واحدة» لتعارض `DedupeKey`):
-  - **الحالة:** `PostgreSQL` ✅ مطبَّقة حيًا (`20261103172448`) — 64 هجرة، صفر معلّقة · `SQLite` ⏳ **معلّقة** (5 مع الأربع السابقة).
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261103172359_HeadAlertOutbox_ConflictRetries.cs` — يضيف `ConflictRetries` (`INTEGER NOT NULL DEFAULT 0`) + قيد `CK_HeadAlertOutbox_ConflictRetries`، **ويعبّئ** `ConflictRetries = 1` للصفوف التي `LastError = 'conflict_retry'` (كيلا تُمنح إعادة ثانية بعد النشر).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261103172448_HeadAlertOutbox_ConflictRetries_Pg.cs` — نفسه (`integer NOT NULL DEFAULT 0` + القيد + التعبئة).
-  - **إجراء `SQLite`:** لا تُطبَّق وحدها. إما استكمال السلسلة (`Contract` بعد `G2`) ثم تطبيقها، أو — على قاعدة عند `Contract` فعلًا — سكربت فرقي:
-    `dotnet ef migrations script 20261026151929_HeadAlertTaxonomy_Contract 20261103172359_HeadAlertOutbox_ConflictRetries --context DocGeneratorDbContext --project … --startup-project … -o conflict_retries.sql`
-  - **⚠️ إعادة بناء جدول (SQLite):** `AddCheckConstraint` يعيد بناء `HeadAlertOutboxMessages` (نسخ ← إسقاط ← إعادة تسمية) ⇒ **أوقف المشغّل/الكتابة قبل التطبيق**، وإلا فُقدت صفوف كُتبت بين النسخ والإسقاط.
-  - **حدّ التعبئة:** تُثبَّت `= 1` فقط للصفوف التي لا تزال علامتها في `LastError`؛ صفٌّ طُمس بخطأ عابر **قبل** النشر يبقى `0` (يُمنح إعادة واحدة إضافية — بلا ضرر بيانات).
-  - بدون التطبيق يفشل المشغّل عند الالتقاط/التحديث (`no such column: m.ConflictRetries` في `SQLite`، أو `column "ConflictRetries" does not exist` في `PostgreSQL`)، و`Database:AutoMigrate=false` في الإنتاج يمنع الإقلاع أصلًا.
-
-- [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260819124219_AddHeadAlertDelegationLink.cs` — يضيف عمود `DelegationId` إلى `HeadAlerts` (FK SetNull + فهرس).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260819124309_AddHeadAlertDelegationLink.cs` — نفسه.
-  - بدون التطبيق سيفشل ربط تنبيه المراجعة بالمندوبية برسالة `no such column: h.DelegationId`.
-- [ ] **2026-08-20 — `AddForcibleTransferAndSnapshotAdjusted`** (ميزة «تاريخ قرار الإحالة القطعية»/«اعتبار الملف منفذًا كاملًا بهذا البيع»):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260820180256_AddForcibleTransferAndSnapshotAdjusted.cs` — يضيف `ForcibleTransferDate` و`ForcibleTransferNoticeNumber` إلى `Documents` و`SnapshotAdjusted` إلى `DelegationAssets`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260820180319_AddForcibleTransferAndSnapshotAdjusted.cs` — نفسه.
-- [ ] **2026-08-20 — `RemoveSendBookColumns`** (حذف أعمدة كتاب الإرسال من المندوبية):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260820131251_RemoveSendBookColumns.cs` — يحذف `SendBookDate` و`SendBookNumber` من `DocumentDelegations`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260820131305_RemoveSendBookColumns.cs` — نفسه.
-- [ ] **2026-08-20 — `AlignPostgresTimestampTypes`** (تنسيق أنواع التوقيت في PostgreSQL فقط):
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260820211413_AlignPostgresTimestampTypes.cs` — يحوّل `ForcibleTransferDate` و`ExecutedExecutionDate` في `Documents` إلى `timestamp with time zone`.
-  - ⚠️ هذا للـ PostgreSQL فقط — لا يوجد SQLite مقابل.
-- [ ] **2026-08-22 — `AddAssetSeizureDate`** (تاريخ صك seizure على الأصول):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260822215648_AddAssetSeizureDate.cs` — يضيف عمود `SeizureDate` إلى `Assets`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260822215846_AddAssetSeizureDatePg.cs` — نفسه.
-  - بدون التطبيق سيفشل عرض/حفظ تاريخ صك seizures برسالة `no such column: a.SeizureDate`.
-- [ ] **2026-08-23 — `AddDocumentAppeals` / `AddDocumentAppealsPg`** (ميزة «الاستئنافات» — المرحلة 1):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260823110935_AddDocumentAppeals.cs` — ينشئ جداول `DocumentAppeals` و`AppealActions` و`AppealBaseNumbers` ويضيف عمود `AppealId` إلى `HeadAlerts`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260823110958_AddDocumentAppealsPg.cs` — نفسه.
-  - بدون التطبيق سيفشل الإتمام/الاعتبار فعليًا برسالة `no such column: …` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-08-24 — `AddReviewLetters`** (ميزة خطابات المراجعة — المرحلة 1):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824060821_AddReviewLetters.cs` — ينشئ جداول `ReviewLetters` و`ReviewLetterMessages` مع FKs وفهارس.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824064804_AddReviewLettersPg.cs` — نفسه.
-  - بدون التطبيق سيفشل فتح شاشة خطابات المراجعة برسالة `no such table: ReviewLetters`.
-- [ ] **2026-08-24 — `AddReviewLetterNotifications`** (إشعارات خطابات المراجعة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824073441_AddReviewLetterNotifications.cs` — يضيف `IsSeenByLawyer` إلى `ReviewLetterMessages` و`ReviewLetterId` إلى `HeadAlerts` (FK SetNull + فهرس).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824073458_AddReviewLetterNotificationsPg.cs` — نفسه.
-  - بدون التطبيق سيفشل إرسال إشعار خطاب مراجعة للمحامي برسالة `no such column: h.ReviewLetterId`.
-- [ ] **2026-08-24 — `AddDocumentFieldChanges`** (تغييرات حقول المستند في سجل التدقيق):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824104831_AddDocumentFieldChanges.cs` — ينشئ جدول `DocumentFieldChanges` مع FK إلى `AuditLogs` + فهارس مركبة.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824104844_AddDocumentFieldChangesPg.cs` — نفسه.
-  - بدون التطبيق سيفشل تسجيل تغييرات الحقول في سجل التدقيق برسالة `no such table: DocumentFieldChanges`.
-- [ ] **2026-08-24 — `AddEntityRegistry` / `AddEntityRegistryPg`** (ميزة «بوابة الجهات العامة» — المرحلة 1):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824173935_AddEntityRegistry.cs` — ينشئ جداول `PublicEntityGroups` و`PublicEntities` و`PublicEntityAliases` و`PublicEntityProposals` ويضيف عمود `Governorate` إلى `Branches`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824174004_AddEntityRegistryPg.cs` — نفسه.
-  - بدون التطبيق سيفشل فتح شاشة «سجل الجهات العامة» وأي عملية فيها برسالة `no such table: …`.
-- [ ] **2026-08-24 — `AddEntityRegistryLinks` / `AddEntityRegistryLinksPg`** (بوابة الجهات العامة — المرحلة 2):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824190803_AddEntityRegistryLinks.cs` — يضيف `RegistryId` إلى `ApplicantPublicEntities` و`ExecutedPublicEntities` (FK SetNull + فهارس) و`ApplicantRegistryId` إلى `Documents` (فهرس).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824190820_AddEntityRegistryLinksPg.cs` — نفسه.
-  - بدون التطبيق سيفشل حفظ أي ملف برسالة `no such column: r.RegistryId`.
-- [ ] **2026-08-24 — `AddEntityPortal` / `AddEntityPortalPg`** (بوابة الجهات العامة — المرحلة 3):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824202637_AddEntityPortal.cs` — يضيف `PortalGroupId` و`PortalEntryId` إلى `Users` (FK SetNull + فهارس) لنطاق حسابات المندوبين.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260824202706_AddEntityPortalPg.cs` — نفسه.
-  - بدون التطبيق سيفشل إنشاء/قراءة أي حساب مندوب برسالة `no such column: u.PortalGroupId`.
-- [ ] **2026-08-26 — `AddEntityRegistryReview` / `AddEntityRegistryReviewPg`** (بوابة الجهات — نموذج الحوكمة الجديد):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826010109_AddEntityRegistryReview.cs` — يضيف `NeedsReview/ReviewedAtUtc/ReviewedById` إلى `PublicEntities` (فهارس + FK SetNull) و**يُسقط جدول `PublicEntityProposals`**.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260826010122_AddEntityRegistryReviewPg.cs` — نفسه.
-  - ⚠️ يسقط بيانات الاقتراحات القديمة نهائيًا — تأكد قبل التطبيق، وبعدده فشل شاشة المراجعة (`no such column`).
-- [ ] **2026-08-26 — `AddCoverageLabel` / `AddCoverageLabelPg`** (تسمية التغطية + سجل تغييرات الهوية — المرحلة 1):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826152120_AddCoverageLabel.cs` — يضيف عمود `CoverageLabel` إلى `PublicEntities` (max 150) وينشئ جدول `PublicEntityChangeEvents` مع 3 FKs و5 فهارس.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260826152156_AddCoverageLabelPg.cs` — نفسه بأنواع Postgres (`character varying(150)` + `timestamp with time zone`).
-  - بدون التطبيق سيفشل إنشاء قيد جديد بتسمية تغطية وأي عملية نقل/طيّ برسالة `no such column: e.CoverageLabel` أو `no such table: PublicEntityChangeEvents`.
-- [ ] **2026-08-26 — `AddEntityEvents` / `AddEntityEventsPg`** (Snapshot فارغ — الجدول أُنشئ أعلاه):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826152236_AddEntityEvents.cs` — فارغ (لا إجراء).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260826152302_AddEntityEventsPg.cs` — نفسه.
-- [ ] **2026-08-26 — `AddIsActiveIndex` / `AddIsActiveIndexPg`** (فهرس `IsActive` على `PublicEntities`):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826181557_AddIsActiveIndex.cs` — ينشئ `IX_PublicEntities_IsActive`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260826181623_AddIsActiveIndexPg.cs` — نفسه.
-- [ ] **2026-08-27 — `AddDelegationSaleCoversFullDebt`** (ميزة «تغطية بدل المبيع لكامل المديونية» عند إتمام الإنابة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260827131401_AddDelegationSaleCoversFullDebt.cs` — يضيف عمود `SaleCoversFullDebt` (nullable `bool`) إلى `DocumentDelegations`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260827131448_AddDelegationSaleCoversFullDebt.cs` — نفسه (`boolean` nullable).
-  - بدون التطبيق سيفشل إتمام الإنابة برسالة `no such column: d.SaleCoversFullDebt` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-08-29 — `AddParentEntityFlag` (SQLite + Postgres)** (مفهوم «الجهة الأم» بدل «الفرع الرئيسي»):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260829094454_AddParentEntityFlag.cs` — يضيف عمود `IsParentEntity` (`bool`، افتراضي `false`) وفهرس `IX_PublicEntities_IsParentEntity` إلى `PublicEntities`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260829094517_AddParentEntityFlag.cs` — نفسه (`boolean`).
-  - بدون التطبيق سيفشل البحث/اختيار الجهة بـ`no such column: p.IsParentEntity` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-08-29 — `AddHeadAlertPublicEntityLink` / `AddHeadAlertPublicEntityLinkPg`** (ربط تنبيهات اقتراح التعديل بالجهة + إصلاح فهرس `ReviewedById` الفريد الخاطئ):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260829000221_AddHeadAlertPublicEntityLink.cs` — يضيف عمود `PublicEntityId` (nullable) وفهرسًا وFK (SetNull) إلى `HeadAlerts`، و**يحذف الفهرس الفريد `IX_PublicEntities_ReviewedById` ويُعيد إنشاءه غير فريد** (دمج لإصلاح `RemoveReviewedByIdUniqueIndex` التي أُزيلت). **مُطبَّق محليًا على `docgen.db`.**
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260829000252_AddHeadAlertPublicEntityLinkPg.cs` — نفسه (`integer` nullable).
-  - بدون التطبيق سيفشل استعلام تنبيهات الاقتراح/المراجعة بـ`no such column: a.PublicEntityId`، ويبقى خطأ الحفظ `UNIQUE constraint failed: PublicEntities.ReviewedById` عند اعتماد رئيس القسم قيدًا ثانيًا رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-02 — `AddExecutionApplicantRegistryId`** (ربط طالب التنفيذ الاعتباري بالجهة العامة — المرحلة ب):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260902160533_AddExecutionApplicantRegistryId.cs` — يضيف عمود `RegistryId` (nullable) وفهرسًا وFK (SetNull) إلى `ExecutionApplicants` لربط طالب التنفيذ الاعتباري (`legal`) بقيد الجهة العامة في `PublicEntities`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260902160613_AddExecutionApplicantRegistryId.cs` — نفسه (`integer` nullable).
-  - بدون التطبيق سيفشل فتح/حفظ ملفات «منفذ عليه» أو حلول/دمج/إعادة تسمية جهة عامة مربوطة بـ`no such column: a.RegistryId` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-14 — `AllowMultipleBaseNumbersPerYear` (SQLite + Postgres)** (المرحلة 2 من خطة هوية رقم الملف: توثيق الأرقام الكامل لنفس السنة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914161054_AllowMultipleBaseNumbersPerYear.cs` — يحذف القيد الفريد `IX_DocumentBaseNumbers_DocumentId_Year` و`IX_AppealBaseNumbers_AppealId_Year` ويُعيد إنشاءهما غير فريدين (كل تدوير/تجديد يُنشئ سجلًا جديدًا؛ الأحدث `CreatedAt` هو المعتبر).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914161205_AllowMultipleBaseNumbersPerYearPg.cs` — نفسه.
-  - بدون التطبيق سيفشل حفظ تدوير/تجديد ثانٍ لنفس السنة برسالة `UNIQUE constraint failed: DocumentBaseNumbers.DocumentId, DocumentBaseNumbers.Year` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-14 — `AddOccurrenceSource` (SQLite + Postgres)** (المرحلة 3 من خطة هوية رقم الملف: تقسية سجل الوقوعات):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914184446_AddOccurrenceSource.cs` — يضيف عمود `Source` (`text`, NOT NULL, default `manual`) ويوسم كل الوقوعات القائمة بـ`system` (`UPDATE DocumentOccurrences SET Source = 'system'`).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914184530_AddOccurrenceSourcePg.cs` — نفسه (`character varying(10)` + UPDATE).
-  - بدون التطبيق سيفشل تشغيل فعلي: محاولة إنقاذ قيد/إدخال وقعة تصطدم بـ`no such column: o.Source` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-19 — `BackfillMirrorLawyer` / `BackfillMirrorLawyerPg`** (تعبئة «المحامي المختص» للملفات المنابة القائمة — إصلاح ظهور الاسم في جدول الملفات لرئيس القسم/المدير/المشرف):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260919211650_BackfillMirrorLawyer.cs` — تعبئة `Lawyer` للصفوف ذات `SourceDelegationId IS NOT NULL` والاسم المفقود من اسم مالكها (الموكول) وإلا اسم الدخول؛ بلا تغيير مخطط.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260919211723_BackfillMirrorLawyerPg.cs` — نفسه.
-  - بدون التطبيق تبقى المنابة القائمة بلا اسم في عمود «المحامي المختص» وفلتره (الجديدة تُضبط عند الاعتماد تلقائيًا).
-- [ ] **2026-09-20 — `BackfillDelegationTargetCourt` / `BackfillDelegationTargetCourtPg`** (تعبئة دائرة الملفات المنابة القائمة بالدائرة المنابة — هوية المناب المستقلة: دائرته المسجَّل فيها لا دائرة المنيب):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920070522_BackfillDelegationTargetCourt.cs` — تعبئة `Court` للصفوف ذات `SourceDelegationId IS NOT NULL` من `DelegatedCourt` لإنابتها (غير الفارغة)؛ بلا تغيير مخطط.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920070620_BackfillDelegationTargetCourtPg.cs` — نفسه.
-  - بدون التطبيق تبقى المنابات القائمة ظاهرة بدائرة المنيب في الشريط والجداول والمستندات والتنبيهات (الجديدة تُضبط عند الاعتماد تلقائيًا).
-- [ ] **2026-09-20 — `AddDelegationAssetReservations` (SQLite + Postgres)** (جدول حجوزات الأصول الصريح للإنابات الحاجبة — نقطة التسلسل لسباق التسطير المتزامن، خطة المعالجة `v2`):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920121618_AddDelegationAssetReservations.cs` — ينشئ جدول `DelegationAssetReservations` (`Id` + `DelegationId` بFK تتالٍ إلى `DocumentDelegations` + `SourceDocumentId` + `AssetId`) مع قيد فريد `IX_DelegationAssetReservations_SourceDocumentId_AssetId` وفهرس `IX_DelegationAssetReservations_DelegationId`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920121644_AddDelegationAssetReservations.cs` — نفسه (`integer` + `IdentityByDefaultColumn`).
-  - بدون التطبيق يفشل أي تسطير/تعديل إنابة فعليًا برسالة `no such table: DelegationAssetReservations` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-22 — `AddReferredToStartStatus` (SQLite + Postgres)** (الحالة «محال الى البداية» — كتب المطالعة بعدم وجود الأموال والإحالة إلى قسم البداية):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260922184415_AddReferredToStartStatus.cs` — يضيف `NoFundsDemandNumber` (`TEXT` ≤100) و`NoFundsDemandDate` (`DateTime?`) و`StartReferralNumber` (`TEXT` ≤100) و`StartReferralDate` (`DateTime?`) إلى `Documents`. **مُطبَّق محليًا على `docgen.db` (MigrateAsync عند الإقلاع).**
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260922184420_AddReferredToStartStatus.cs` — نفسه (`character varying(100)` + `timestamp with time zone` nullable).
-  - بدون التطبيق يفشل الدخول/العودة إلى «محال الى البداية» فعليًا برسالة `no such column: NoFundsDemandNumber` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-09-24 — `AddCorrespondences` / `AddCorrespondencesPg`** (ميزة المراسلات: تواصل ثنائي مندوب↔محامٍ/رئيس برقم وتاريخ تلقائيين وأهمية وتوثيق مشاهدة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260924180352_AddCorrespondences.cs` — ينشئ جداول `Correspondences` (رقم فريد + `BranchId?` + `Governorate` + `TargetUserId` + `Importance` + `DocumentId?`) و`CorrespondenceMessages` (FK تتالٍ) و`CorrespondenceReceipts` (قيد فريد `CorrespondenceId+UserId`) مع الفهارس. **مُطبَّق محليًا على `docgen.db`.**
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260924180425_AddCorrespondencesPg.cs` — نفسه (`timestamp with time zone` للتواريخ).
-  - بدون التطبيق تفشل كل شاشات المراسلات فعليًا برسالة `no such table: Correspondences` رغم نجاح الاختبارات محليًا.
-- [ ] **2026-10-01 — `RequireBranchForBranchRoles` / `RequireBranchForBranchRolesPg`** (قيد «المحامي/الرئيس بلا فرع محرّم» — إغلاق تسريب إحصاءات كل الفروع على مستوى القاعدة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261001063551_RequireBranchForBranchRoles.cs` — يضيف قيد `CK_Users_BranchRequiredForBranchRoles` (`"BranchId" IS NOT NULL OR "Role" NOT IN ('Lawyer','Head')`). **طُبّق تجريبيًا على قاعدة مؤقتة نظيفة بنجاح (`database update` + فحص السلسلة كاملة).**
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261001063633_RequireBranchForBranchRolesPg.cs` — نفسه (نص SQL مولّد ومُراجع: `ALTER TABLE "Users" ADD CONSTRAINT … CHECK (…)`؛ لا خادم Postgres محليًا للتجربة الحية).
-  - ⚠️ القيد يتحقق من الصفوف القائمة لحظة التطبيق: أي صف `Lawyer`/`Head` بلا فرع في الإنتاج سيُسقط الهجرة — نفّذ أولًا استعلام التدقيق: `SELECT "Username", "Role" FROM "Users" WHERE "BranchId" IS NULL AND "Role" IN ('Lawyer','Head');` (يجب أن يكون فارغًا)، وإن وُجدت صفوف عالجها إداريًا (تعيين فرع أو تعطيل) قبل التطبيق.
-  - بدون التطبيق تبقى الحماية التطبيقية وحدها (البوابة + الحراس + الخدمة — كلها خضراء) لكن الكتابة المباشرة/الاستعادة تبقى قادرة على زرع الصف الشاذ.
-- [ ] **2026-10-02 — `RF009_NumberingUniqueIndex` / `RF009_NumberingUniqueIndexPg`** (`RF-009`: وحدانية رقم الأساس الفعّالة — قيد فريد جزئي يمنع ازدواج (الدائرة + الرقم + النوع + السنة) قضائيًا):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002003430_RF009_NumberingUniqueIndex.cs` — فهرس `IX_Documents_Court_FileNumber_FileType_FileYear` فريد جزئي (`NOT "IsDeleted" AND "FileNumber" IS NOT NULL`). نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF009_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002003604_RF009_NumberingUniqueIndexPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF009_postgres.sql`.
-  - القاعدة جديدة فارغة حاليًا (لا فحص تكرار لازم) — أول إقلاع يطبقها تلقائيًا مع البقية. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إدخال رقم مكرر — المتوقع `409` برسالة عربية.
-  - ⚠️ مستقبلًا (قاعدة فيها بيانات): أي تكرار فعّال قائم سيُسقط الهجرة — نفّذ أولًا: `SELECT Court, FileNumber, FileType, FileYear, COUNT(*) FROM Documents WHERE IsDeleted = 0 AND FileNumber IS NOT NULL GROUP BY 1,2,3,4 HAVING COUNT(*) > 1;` (يجب أن يكون فارغًا).
-- [ ] **2026-10-02 — `RF010_ConcurrencyVersion` / `RF010_ConcurrencyVersionPg`** (`RF-010`: عدّاد التزامن المتفائل — `409` بدل المحو الصامت عند التحرير/الحالة المتزامنين):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002133853_RF010_ConcurrencyVersion.cs` — عمود `Version` (`INTEGER NOT NULL DEFAULT 0`) على `Documents`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF010_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002134010_RF010_ConcurrencyVersionPg.cs` — نفسه (`bigint`). نص SQL في `docs/audit/migrations/RF010_postgres.sql`.
-  - عمود جديد بقيمة افتراضية — بلا تنظيف بيانات لازم؛ الصفوف القائمة تنال `0` تلقائيًا. محليًا يُطبَّق تلقائيًا عند أول إقلاع (`MigrateAsync`). بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب تحريرين متزامنين بنفس النسخة — المتوقع `409` للثاني برسالة عربية.
-- [ ] **2026-10-02 — `RF013_ReminderTimestamptzPg`** (`RF-013`: طوابع التذكيرات `timestamptz` — بلا إزاحة منطقة):
-  - `DocGeneratorPostgresDbContext` (PostgreSQL **فقط** — `SQLite` بلا هجرة لثبات نموذجها): `Persistence\MigrationsPostgres\20261002151805_RF013_ReminderTimestamptzPg.cs` — يحوّل `DueDate` و`RecurrenceEnd` في `PersonalReminders` إلى `timestamp with time zone`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF013_postgres.sql`.
-  - الجدول نفسه معلق التطبيق في الإنتاج ضمن دفعة `l-main-page` أعلاه — فالتحويل فارغ عمليًا؛ يُطبَّق مع الدفعة في نفس النافذة.
-- [ ] **2026-10-02 — `RF019_AuditAppendOnly` / `RF019_AuditAppendOnlyPg`** (`RF-019`: سجل التدقيق إلحاق-فقط قاعديًا — رفض أي تعديل/حذف):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002162056_RF019_AuditAppendOnly.cs` — 4 مشغّلات `RAISE(ABORT)` على `AuditLogs` و`DocumentFieldChanges`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF019_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002162231_RF019_AuditAppendOnlyPg.cs` — دالة `fn_prevent_audit_mutation()` + 4 مشغّلات. نص SQL في `docs/audit/migrations/RF019_postgres.sql`.
-  - مشغّلات بلا مساس بالصفوف — بلا تنظيف لازم. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب تعديل صف تدقيق مباشرةً — المتوقع فشل صريح. (إجراء تنقية القديم — سنتان بيد مشغّل النشر حصرًا — في `docs/audit/units/RF-019.md` § الإجراء.)
-- [ ] **2026-10-02 — `RF011_IdempotencyKeys` / `RF011_IdempotencyKeysPg`** (`RF-011`: مفاتيح عدم التكرار — النقرة المزدوجة لا تُكرر الأثر):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002171957_RF011_IdempotencyKeys.cs` — جدول `IdempotencyKeys` (قيد فريد مركب + فهرس انتهاء). نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF011_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002172031_RF011_IdempotencyKeysPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF011_postgres.sql`.
-  - جدول جديد فارغ — بلا تنظيف لازم. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إنشاء ملف مرتين بنفس ترويسة `X-Idempotency-Key` — المتوقع ملف واحد والثانية `200` بنفس الجسم.
-- [ ] **2026-10-04 — `PB001_Normalization` / `PB001_NormalizationPg`** (`PB-001`: التطبيع العربي الشامل — الهمزة المختلفة لا تصنع هوية):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261004061212_PB001_Normalization.cs` — أعمدة `CanonicalNameNorm` (فريد) و`CourtNorm` (مفهرس + فريد مركب للترقيم) و`DelegatedCourtNorm`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/PB001_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261004061229_PB001_NormalizationPg.cs` — نفسه. نص SQL في `docs/audit/migrations/PB001_postgres.sql`.
-  - القائم تجريبي بقرار المالك (تعبئة نسخ خام). ⚠️ على أي قاعدة فيها بيانات حقيقية: نفّذ أولًا استعلام الكشف في `docs/audit/units/PB-001.md` (يجب فارغًا) ونظّف بالدمج — وإلا أسقط الفريدُ الهجرة. بعد الإقلاع: تحقق من `__EFMigrationsHistory` ثم جرّب هوية بمتغير إملائي — المتوقع `400`.
-- [ ] **2026-10-04 — `PB002_StatusChecks` / `PB002_StatusChecksPg`** (`PB-002`: تجميد آلات الحالة — أي إملاء خاطئ مرفوض عند الكتابة):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261004070753_PB002_StatusChecks.cs` — 6 قيود `Check` من الكتالوجات. نص SQL مولّد ومُراجَع في `docs/audit/migrations/PB002_sqlite.sql`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261004070818_PB002_StatusChecksPg.cs` — نفسه. نص SQL في `docs/audit/migrations/PB002_postgres.sql`.
-  - ⚠️ على أي قاعدة فيها بيانات: نفّذ أولًا استعلامات الكشف في `docs/audit/units/PB-002.md` (كلها يجب فارغة) ونظّف الصفوف اليتيمة — وإلا أسقط القيدُ الهجرة. بعد الإقلاع: تحقق من `__EFMigrationsHistory`.
-- [ ] **2026-10-06 — `AddSubHeadSections` (SQLite + Postgres)** (المرحلة 1 من خطة رئيس الشعبة `docs/SUBHEAD_PLAN.md`: مخطط الشعب — بلا أي تغيير سلوكي):
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261006084513_AddSubHeadSections.cs` — جدولا `Sections` (فريد `BranchId+NameNorm`) و`HeadSuccessions`؛ أعمدة `Users.SectionId/CreatedById` و`ExecutionCircuits.SectionId` و`DocumentAppeals.ForwardState/ForwardedById/ForwardedAt/ForwardReason/Version` و`DocumentDelegations.RedirectedToSectionId/RejectReason/Version` و`RecipientSectionId` على `Correspondences/ReviewLetters`؛ توسيع قيد الفرع ليشمل `'SubHead'`؛ فهرسان فريدان جزئيان (رئيس قسم واحد مفعّل لكل فرع + رئيس شعبة مفعّل واحد لكل شعبة)؛ ترحيل الصفوف القائمة (`ForwardState='Owned'` + `Version=1`). نص SQL مولّد ومُراجَع في `docs/audit/migrations/SUBHEAD_sqlite.sql` (ملاحظة: تحذير `TableRebuildPendingWarning` على `Users` مفهوم ومقبول — `UPDATE` الترحيل يمس جدولين آخرين قبل إعادة بناء `Users`، والحالة النهائية مثبتة باختبار `SubHeadMigrationTests` صعودًا وهبوطًا).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261006084556_AddSubHeadSections.cs` — نفسه (`integer/bigint/character varying` + `timestamp with time zone` لـ`ForwardedAt/At`). نص SQL في `docs/audit/migrations/SUBHEAD_postgres.sql`.
-  - ⚠️ القيدان الجديدان يتحققان من الصفوف القائمة لحظة التطبيق — نفّذ أولًا استعلامي التدقيق (يجب أن يكونا فارغين، والصياغة تعمل على المزوّدين): `SELECT "BranchId", COUNT(*) FROM "Users" WHERE "IsActive" AND "Role" = 'Head' GROUP BY "BranchId" HAVING COUNT(*) > 1;` (رئيسا قسم مفعّلان في نفس الفرع — نظّف بالتعطيل قبل التطبيق، قرار §2.26)، واستعلام `RequireBranchForBranchRoles` السابق للصفوف بلا فرع. الصفوف المخالفة تُسقط الهجرة.
-  - بدون التطبيق تفشل أي كتابة/قراءة لحقول الشعب الجديدة فعليًا برسائل `no such column: u.SectionId` ونحوها رغم نجاح الاختبارات محليًا.
-- [ ] **2026-10-20 — `HeadAlertTaxonomy_Expand` / `HeadAlertTaxonomy_Expand_Pg`** (المرحلة 1 من خطة إعادة هيكلة التنبيهات `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` — «توسّع» بلا كسر للتوافق):
-  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261020202452_HeadAlertTaxonomy_Expand_Pg`) · `SQLite` ⏳ معلّقة.
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202259_HeadAlertTaxonomy_Expand.cs` — يضيف إلى `HeadAlerts` الأعمدة `Kind` (64، nullable)، `DedupeKey` (200، nullable)، `ExecutionCircuitId` (nullable)، `LastContentChangedAt` (nullable)، `ArchivedAt` (nullable)، و`IsArchived` (`NOT NULL DEFAULT 0`).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202452_HeadAlertTaxonomy_Expand_Pg.cs` — نفسه + توسيع `HeadAlerts.Message` من `character varying(2000)` إلى `text` (بلا فقد بيانات).
-  - **إضافة بحتة**: بلا_backfill وبلا قيد `Kind` وبلا فهرس فريد وبلا تعديل صفوف — الكود القديم يعمل معها، والصفوف القائمة تبقى كما هي (`Kind = NULL` و`LastContentChangedAt = NULL` حتى مرحلة الترحيل).
-  - ⚠️ في `PostgreSQL` الـ`Down` لا يُعيد `Message` إلى `character varying(2000)` (التضييق يفقد بيانات) — التراجع التطبيقي فقط.
-- [ ] **2026-10-20 — `HeadAlertOutbox_Create` / `HeadAlertOutbox_Create_Pg`** (صندوق الصادر لتسليم التنبيهات النظامية — المرحلة 1 من الخطة نفسها):
-  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261020202700_HeadAlertOutbox_Create_Pg`) · `SQLite` ⏳ معلّقة.
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202554_HeadAlertOutbox_Create.cs` — جدول `HeadAlertOutboxMessages` + 4 فهارس + 5 قيود `Check`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202700_HeadAlertOutbox_Create_Pg.cs` — نفسه (`bigint identity`).
-  - **يجب تطبيقه قبل أي كود يسجّل رسائل Outbox** (المرحلة 2 من الخطة) — وإلا فشل الإدراج بـ `no such table: HeadAlertOutboxMessages`.
-  - ⚠️ الـ`Down` **يرفض إسقاط الجدول** إن وُجدت رسائل `pending`/`processing`/`failed` غير محسومة (حارس صريح) — عالجها أو صدّرها أولًا.
-- [ ] **2026-10-21 — `HeadAlertTaxonomy_Backfill` / `HeadAlertTaxonomy_Backfill_Pg`** (M2: ترحيل التصنيفات القديمة وبناء المفاتيح — المرحلة 2 من الخطة):
-  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261021232825_HeadAlertTaxonomy_Backfill_Pg`) · `SQLite` ⏳ معلّقة.
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261021232824_HeadAlertTaxonomy_Backfill.cs` — تعبئة `legacy` فقط، تصنيف التدفقات المفتوحة، بناء `DedupeKey`، أرشفة المراجعة المتقاعدة، حل تصادم المفاتيح ودمج المستلمين، ثم FK `ExecutionCircuitId` + الفهارس + `UX_HeadAlerts_DedupeKey_Active`.
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261021232825_HeadAlertTaxonomy_Backfill_Pg.cs` — نفسه مع `BOOL_OR` و`CURRENT_TIMESTAMP` وفلتر `"IsArchived" = false`.
-  - **يجب تطبيقه قبل نشر كود `PR-2`** الذي يعتمد على `DedupeKey` والفهرس الفريد؛ وتعطيل `AutoMigrate` في الإنتاج يعني أن نسخ الكود لا تطبّقه تلقائيًا.
-  - ⚠️ الهجرة تعيد بناء جدول `HeadAlerts` على SQLite لإضافة الـFK (سلوك EF متوقع). خذ نسخة احتياطية واستعدها تجريبيًا قبل النافذة. **وهي أول إعادة بناء**، فتُعيد ضبط `sqlite_sequence` على أعلى `Id` موجود: سجّل `SELECT seq FROM sqlite_sequence WHERE name='HeadAlerts';` **قبل هذه الهجرة** (لا قبل `Contract` فقط)، وأعد رفعه بعد `Contract` — القياس والأثر في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
-  - الـ`Down` يزيل الـFK والفهارس فقط، **ولا يعكس بيانات الـbackfill** (المفاتيح/التصنيفات/الأرشفة تبقى).
-- [ ] **2026-10-26 — `HeadAlertTaxonomy_Contract` / `HeadAlertTaxonomy_Contract_Pg`** (M3: تشديد `Kind` و`LastContentChangedAt` — المرحلة 3 من خطة التنبيهات، PR‑3):
-  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على `Supabase` في 2026‑10‑26 (`20261026152238_HeadAlertTaxonomy_Contract_Pg` — **63** هجرة، `docs/audit/13-head-alerts-pr3-live-apply-20261026.md`) · `SQLite` ⏳ معلّقة.
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261026151929_HeadAlertTaxonomy_Contract.cs` — حارس صريح يرفض `NULL`/فراغ، ثم إعادة بناء الجدول بـ`Kind TEXT NOT NULL` و`LastContentChangedAt TEXT NOT NULL` **بلا Default دائم**، وقيد `CK_HeadAlerts_Kind_NotEmpty` (`TRIM("Kind") <> ''`)؛ يحافظ على الفهرس الفريد الجزئي `UX_HeadAlerts_DedupeKey_Active` وكل الـFK والفهارس. **⛔ أوقف الخدمة/الكتابة قبل التطبيق** (إعادة البناء تنسخ الصفوف ثم تُسقط الجدول القديم؛ أي كتابة بينهما تُفقد). ⚠️ الهجرة تُنفَّذ في **ثلاث معاملات منفصلة** (حارس+نسخ ← `DROP`/`RENAME` ← فهارس) وسجل الهجرة بعدها؛ انهيار بينها يترك حالة وسيطة — مسار الاستعادة في `docs/audit/11-head-alerts-pr3-20261026.md` §6.3.1. ⚠️ إعادة بناء SQLite تعيد ضبط `sqlite_sequence` على أعلى `Id` موجود — في `Up` و`Down` معًا، **وهي تبدأ فعليًا من `HeadAlertTaxonomy_Backfill` (M2) لا من `Contract`**: قِس `SELECT seq FROM sqlite_sequence WHERE name='HeadAlerts';` **قبل `Backfill`**، ثم أعد الرفع بعد `Contract` (وقبل `Down`/بعد أي إعادة `Up`) إن تراجع. تسجيلها قبل `Contract` فقط يسجّل القيمة المراجعة أصلًا فيضيع الفرق بصمت. القياس المثبت والتصحيح الكامل في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6 (والتفاصيل الأصلية في `docs/audit/11-head-alerts-pr3-20261026.md` §2.3 و§6.2–§6.3).
-  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261026152238_HeadAlertTaxonomy_Contract_Pg.cs` — حارس `DO $$ … RAISE EXCEPTION` ثم `SET NOT NULL` للعمودين وقيد `CK_HeadAlerts_Kind_NotEmpty`.
-  - نص SQL المولّد والمُراجَع (G1): `docs/audit/migrations/HEADALERT_PR3_sqlite.sql` و`docs/audit/migrations/HEADALERT_PR3_postgres.sql`.
-  - **⛔ بوابتا ما قبل التطبيق (إلزامي):** (1) **G2** — dry-run على نسخة إنتاجية مستعادة: تطبيق `Expand`/`Outbox_Create`/`Backfill`/`Contract` بالترتيب مع `PRAGMA integrity_check` و`foreign_key_check` وفحص الفهارس وأعداد الصفوف ثم إقلاع التطبيق وفحص الدخان؛ (2) تأكيد أن **كل النسخ** تعمل بكود `PR‑2` و**صفر** صفوف `NULL` في العمودين و**صفر** `Kind` فارغ/أبيض. الهجرة **ترفض** التطبيق برسالة صريحة عند أي مخالفة (لا `IFNULL`/`Default` صامت) — التفاصيل في `docs/audit/11-head-alerts-pr3-20261026.md`.
-  - فحص ما قبل النافذة (يجب أن يعيد `0 0 0`):
-    ```sql
-    -- SQLite (COALESCE: SUM على جدول فارغ يعيد NULL لا 0)
-    SELECT COALESCE(SUM("Kind" IS NULL), 0), COALESCE(SUM("LastContentChangedAt" IS NULL), 0),
-           COALESCE(SUM("Kind" IS NOT NULL AND TRIM("Kind") = ''), 0) FROM "HeadAlerts";
-    -- PostgreSQL
-    SELECT COUNT(*) FILTER (WHERE "Kind" IS NULL),
-           COUNT(*) FILTER (WHERE "LastContentChangedAt" IS NULL),
-           COUNT(*) FILTER (WHERE "Kind" IS NOT NULL AND TRIM("Kind") = '')
-    FROM "HeadAlerts";
-    ```
-  - **ترتيب النشر:** طبّق الهجرة أولًا ثم انشر كود `PR‑3`؛ الكيان يقرأ `LastContentChangedAt` كـ`DateTime` غير قابل للفراغ، وأي صف قديم بـ`NULL` يفشل عند القراءة. لا تنشر الكود قبل تطبيق `Contract` على القاعدة الحية.
-  - الـ`Down` تطبيقي فقط: يعيد العمودين nullable ويسقط القيد دون إعادة أي قيمة إلى `NULL` (الخطة §16.2).
-  - بدون التطبيق يبقى المخطط أوسع من النموذج: العمودان يقبلان `NULL` ولا قيد يمنع `Kind` الفارغ، فأي مسار كتابة غير محمي يستطيع إدخال نوع فارغ رغم أن كود `PR‑3` يفترض عدم nullable.
-  - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← `HeadAlertTaxonomy_Contract` (وكذلك أزواج `_Pg`، و`Contract` **أخيرًا دائمًا** وبعد G2 وكل النسخ على `PR‑2`).
-  - **حالة 2026‑10‑25:** تمّ تطبيق الهجرات الثلاث الأولى كاملة على `PostgreSQL` (Supabase) — 62 هجرة، صفر معلّقة منها (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`).
-  - **حالة 2026‑10‑26 (PR‑3):** `PostgreSQL` **مكتمل حيًا** — طُبِّقت `HeadAlertTaxonomy_Contract_Pg`
-    (`63` هجرة، صفر معلّقة) قبل نشر الكود، ثم نُشر `0acdfe3` على `Render` واجتاز الفحص الدخاني
-    (`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`). **المتبقّي: `SQLite` فقط** — تطبيق
-    `Expand`/`Outbox_Create`/`Backfill`/`Contract` بالترتيب بعد استيفاء G1/G2 على قاعدة `SQLite`
-    حقيقية، مع قيد `sqlite_sequence` (يبدأ التراجع من `Backfill` لا من `Contract`)
-    — راجع `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
-
-
-
----
-
-## 10) تذكير نشر سجل أرقام الأساس v2 (2026-11-09)
-
 > **النطاق:** `DocumentBaseNumbers` وهجرتا `BaseNumberRegistry` (SQLite) و`BaseNumberRegistry_Pg` (PostgreSQL).
 > **مهم:** الإنتاج على `PostgreSQL` جديدة؛ لا تعتمد على قواعد `SQLite`/`Supabase` التجريبية.
 
@@ -726,7 +425,6 @@ npm test
 
 ### تطبيق الهجرات (إلزامي قبل تشغيل النسخة)
 ```bash
-dotnet ef database update --context DocGeneratorDbContext
 dotnet ef database update --context DocGeneratorPostgresDbContext
 ```
 - `Database:AutoMigrate=false` في الإنتاج؛ **إن لم تُطبّق الهجرات سيرفض التطبيق الإقلاع**.

@@ -68,36 +68,21 @@
 
 # Deploy Reminder (Mandatory — apply to every change that touches EF migrations)
 
-هذا النظام يعمل بقاعدتي بيانات: SQLite (`DocGeneratorDbContext`، هجراته في `backend\src\DocGenerator.Infrastructure\Persistence\Migrations`) وPostgreSQL (`DocGeneratorPostgresDbContext`، هجراته في `backend\src\DocGenerator.Infrastructure\Persistence\MigrationsPostgres`). أي تغيير يضيف أو يعدّل هجرات EF **لا يُطبَّق على القواعد الموجودة عند النشر تلقائيًا**، فيجب:
+هذا النظام يعمل بقاعدة بيانات **PostgreSQL فقط** في التشغيل (`DocGeneratorPostgresDbContext`، هجراته في `backend\src\DocGenerator.Infrastructure\Persistence\MigrationsPostgres`). أُزيل مسار SQLite التشغيلي بعد `ADR-0001`، ولا هجرات SQLite بعد `P0-02`. أي تغيير يضيف أو يعدّل هجرات EF **لا يُطبَّق على القواعد الموجودة عند النشر تلقائيًا**، فيجب:
 
-- في تقرير الإنجاز النهائي لأي مهمة تتضمن هجرات جديدة، ذِكر الهجرات بأسمائها وعددها (واحدة لكل سياق عادةً: SQLite + Postgres).
-- كتابة تنبيه صريح للمستخدم بوجوب التطبيق في نافذة النشر: `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext`.
+- في تقرير الإنجاز النهائي لأي مهمة تتضمن هجرات جديدة، ذِكر الهجرات بأسمائها وعددها.
+- كتابة تنبيه صريح للمستخدم بوجوب التطبيق في نافذة النشر: `dotnet ef database update --context DocGeneratorPostgresDbContext` **فقط**. لا تُشغّل `--context DocGeneratorDbContext` (لا هجرات له).
 - عدم اعتبار المهمة «منجزة» قبل أن يُقرّ هذا التنبيه في التقرير، لأن نسيان التطبيق يؤدي لفشل تشغيل فعلي («no such column: …») رغم نجاح الاختبارات محليًا.
 - المرجع العملي للمستخدم: `RUN_GUIDE.md` §9 «تطبيق هجرات قاعدة البيانات عند النشر».
 
 ## ⚠️ تذكير الهجرات المعلّقة (Migration Watchlist — راجعه قبل كل نشر)
 
-**قائمة تراكمية في `RUN_GUIDE.md` §9 «هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)».**
-كل هجرة تُضاف إليها فور إنشاءها، وتُشطب بعلامة `[x]` فقط بعد `dotnet ef database update` ناجح في النشر.
+**P0-02 (2026-11-14):** سُحقت الهجرات إلى Baseline واحد. القائمة التراكمية في `RUN_GUIDE.md` §9؛ كل هجرة جديدة تُضاف إليها فور إنشائها، وتُشطب فقط بعد `dotnet ef database update` ناجح في النشر.
 
-- **قبل أي نشر**: افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
-- **عند إنشاء هجرة جديدة في هذه الجلسة**: أضِف سطرها إلى تلك القائمة **في نفس التغيير** (لا في تغيير لاحق).
-- **للإصدار الحالي (2026-10-26):** سياق `PostgreSQL` **مكتمل** — الهجرات الأربع (`Expand`/`Outbox_Create`/
-  `Backfill`) طُبِّقت على `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`)، ثم
-  `HeadAlertTaxonomy_Contract_Pg` (`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`) ⇒ **63 هجرة،
-  صفر معلّقة**. المتبقّي:
-  - SQLite: `HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`، `HeadAlertTaxonomy_Backfill`،
-    `HeadAlertTaxonomy_Contract` (**4 معلّقة**).
-  - **جديد 2026‑11‑03:** هجرتان لعمود `ConflictRetries` في `HeadAlertOutboxMessages`
-    (`HeadAlertOutbox_ConflictRetries` لـ`SQLite` و`HeadAlertOutbox_ConflictRetries_Pg`
-    لـ`PostgreSQL`). **`PostgreSQL` ✅ مطبَّقة حيًا** (64 هجرة، صفر معلّقة)، و**`SQLite` ⏳ معلّقة**.
-    على `SQLite` لا تُطبَّق وحدها: `database update` يسحب `Outbox_Create`/`Backfill`/
-    `Contract` ⇒ **مرهونة بـ`G2`** (الإجراء والسكربت الفرقي في `RUN_GUIDE.md` §9).
-  - **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract` (SQLite)** قبل G2 (dry-run على نسخة إنتاجية مستعادة)
-    وتأكيد أن **كل النسخ** على كود `PR‑2` وصفر قيم `NULL`/`Kind` فارغ — الهجرة ترفض التطبيق صراحةً
-    عند أي مخالفة (`docs/audit/11-head-alerts-pr3-20261026.md`).
-  - **الترتيب الإلزامي**: `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← `HeadAlertTaxonomy_Contract` (وكذلك أزواج `_Pg` — `Contract` **أخيرًا دائمًا**).
-  - **⚠️生产工艺**: `Database:AutoMigrate=false` في الإنتاج ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات غير مطبّقة. **طبّق قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
+- **الحالة الحالية:** `20261114101737_InitialPostgresBaseline` مطبّق على القاعدة التجريبية — `__EFMigrationsHistory` = صف واحد، 51 جدولًا، 4 مشغّلات، وقيدا `CK_HeadAlerts_Kind_NotEmpty` و`CK_Documents_FileNumberRequiresCircuit`.
+- **قبل أي نشر:** افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
+- **عند إنشاء هجرة جديدة:** أضِف سطرها إلى القائمة **في نفس التغيير**.
+- **⚠️生产工艺:** `Database:AutoMigrate=false` في الإنتاج ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات غير مطبّقة. **طبّق قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 
 
 # Branch Protection (Mandatory — applies to every session)

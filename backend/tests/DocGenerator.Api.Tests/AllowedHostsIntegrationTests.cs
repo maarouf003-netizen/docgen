@@ -68,7 +68,7 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
             // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري.
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-            builder.UseSetting("Database:AutoMigrate", "true");
+            builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Swagger:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "hostfilter-test-secret-0123456789-0123456789-0123456789");

@@ -8,9 +8,9 @@ using Xunit;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// حارس سلامة المخطط: يطبّق هجرات SQLite الفعلية (Database.Migrate) على قاعدة فورية ثم
-/// يقارن أعمدةَ كل جدولٍ بالحقول المعيّنة في النموذج؛ فأي حقل كيان يُضاف في الكود دون عمود
-/// في قاعدة البيانات يفشل هذا الاختبار فورًا.
+/// حارس سلامة المخطط: يبني مخطط SQLite من النموذج (<c>EnsureCreated</c>) بعد إزالة
+/// هجرات SQLite في P0-02، ثم يقارن أعمدةَ كل جدولٍ بالحقول المعيّنة في النموذج؛
+/// فأي حقل كيان يُضاف في الكود دون عمود في قاعدة البيانات يفشل هذا الاختبار فورًا.
 /// </summary>
 public class SchemaIntegrityTests
 {
@@ -22,7 +22,7 @@ public class SchemaIntegrityTests
             .UseSqlite(connection)
             .Options;
         var db = new DocGeneratorDbContext(options);
-        db.Database.Migrate();
+        db.Database.EnsureCreated();
         return db;
     }
 

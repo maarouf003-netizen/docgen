@@ -13,7 +13,8 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات المراجعة النقدية لخطة `docs/timezone-fix-plan.md` (§5 وحقول H1/H3/M2):
 /// المحوّل المركزي <c>UtcDateTimeConverter</c> — ذهاب/عودة الـ <c>Kind</c> على
 /// <c>DateTime</c> و <c>DateTime?</c>، تسلسل السلك بـ <c>Z</c>، إثبات «بلا هجرة»
-/// (<c>HasPendingModelChanges</c>) للسياقين، ومسار <c>DbLoginRateLimiter</c> الخام.
+/// (<c>HasPendingModelChanges</c>) لسياق PostgreSQL، ومسار <c>DbLoginRateLimiter</c> الخام.
+/// SQLite في الاختبارات يُبنى بـ<c>EnsureCreated</c> بلا هجرات بعد P0-02.
 /// </summary>
 public class UtcDateTimeConverterTests
 {
@@ -119,13 +120,6 @@ public class UtcDateTimeConverterTests
         var json = JsonSerializer.Serialize(reread.Timestamp);
 
         Assert.Equal("\"2026-09-26T12:34:56Z\"", json);
-    }
-
-    [Fact]
-    public void SqliteModel_HasNoPendingMigrations()
-    {
-        using var db = TestDb.Create();
-        Assert.False(db.Database.HasPendingModelChanges());
     }
 
     [Fact]

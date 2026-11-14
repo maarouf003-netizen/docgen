@@ -56,11 +56,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-        // الترحيل التلقائي مفعّل صراحةً: `appsettings.Development.json` مستبعد من Git
-        // (إعدادات محلية)، فلا وجود له في CI، وقيمة `appsettings.json` الأساسية
-        // `false` عمدًا للإنتاج. بدون هذا السطر تفشل كل اختبارات القاعدة في CI فقط
-        // (المضيف يرفض الإقلاع: مخطط غير مطابق + هجرات معلّقة).
-        builder.UseSetting("Database:AutoMigrate", "true");
+        // المخطط يُبنى في حيز الاختبار عبر EnsureCreated (TestDatabase +
+        // EnsureCreatedDatabaseInitializer). الترحيل التلقائي معطَّل عمدًا: لا هجرات
+        // SQLite بعد P0-02، وهجرة PostgreSQL Baseline للإنتاج فقط.
+        builder.UseSetting("Database:AutoMigrate", "false");
         // توليد المستندات معطَّل افتراضيًا في الإنتاج (`appsettings.json`)؛ اختبارات
         // التوليد تحتاج تفعيله صراحةً في المصنع الاختباري.
         builder.UseSetting("DocumentGeneration:Enabled", "true");
