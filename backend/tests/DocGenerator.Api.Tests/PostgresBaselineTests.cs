@@ -36,11 +36,12 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(4, migrations.Count);
+            Assert.Equal(5, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_07_SafeConstraints", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("P0_07b_AmountConstraints", StringComparison.Ordinal));
 
             // P0-06: عمود Version على الكيانات الاثني عشر القابلة للتحرير.
             var versionColumns = await db.Database
@@ -67,6 +68,17 @@ public sealed class PostgresBaselineTests
                     """)
                 .SingleAsync();
             Assert.Equal(16L, versionChecks);
+
+            // P0-07b: قيد عدم السلبية على الأعمدة الرقمية الخمسة عشر في Documents.
+            var amountChecks = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM pg_constraint
+                    WHERE contype = 'c' AND conname LIKE 'CK_Documents_%Amount%_NonNegative'
+                    """)
+                .SingleAsync();
+            Assert.Equal(15L, amountChecks);
 
             var statusColumn = await db.Database
                 .SqlQueryRaw<long>(

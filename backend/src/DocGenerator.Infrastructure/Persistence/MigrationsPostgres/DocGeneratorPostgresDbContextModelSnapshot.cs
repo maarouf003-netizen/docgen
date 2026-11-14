@@ -1181,13 +1181,43 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.ToTable("Documents", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Documents_Amount2Numeric_NonNegative", "\"Amount2Numeric\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_Amount3Numeric_NonNegative", "\"Amount3Numeric\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_AmountNumeric_NonNegative", "\"AmountNumeric\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_CollectedAmount2_NonNegative", "\"CollectedAmount2\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_CollectedAmount3_NonNegative", "\"CollectedAmount3\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_CollectedAmount_NonNegative", "\"CollectedAmount\" >= 0");
+
                             t.HasCheckConstraint("CK_Documents_ExecStatus", "\"ExecStatus\" IN ('', 'منفذ جبريا', 'منفذ بالتسوية', 'تريث', 'منفذ إنابة', 'مسترد', 'محال الى البداية', 'مشطوب')");
 
                             t.HasCheckConstraint("CK_Documents_ExecSubStatus", "\"ExecSubStatus\" IN ('منفذ جزئيا', 'منفذ كاملا')");
 
+                            t.HasCheckConstraint("CK_Documents_ExecutedPaidAmount2_NonNegative", "\"ExecutedPaidAmount2\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedPaidAmount3_NonNegative", "\"ExecutedPaidAmount3\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedPaidAmount_NonNegative", "\"ExecutedPaidAmount\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount2_NonNegative", "\"ExecutedRequiredAmount2\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount3_NonNegative", "\"ExecutedRequiredAmount3\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount_NonNegative", "\"ExecutedRequiredAmount\" >= 0");
+
                             t.HasCheckConstraint("CK_Documents_ExecutedStatus", "\"ExecutedStatus\" IN ('', 'منفذ', 'مشطوب')");
 
                             t.HasCheckConstraint("CK_Documents_GeneralEntitySide", "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')");
+
+                            t.HasCheckConstraint("CK_Documents_InclusionAmount2Numeric_NonNegative", "\"InclusionAmount2Numeric\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_InclusionAmount3Numeric_NonNegative", "\"InclusionAmount3Numeric\" >= 0");
+
+                            t.HasCheckConstraint("CK_Documents_InclusionAmountNumeric_NonNegative", "\"InclusionAmountNumeric\" >= 0");
 
                             t.HasCheckConstraint("CK_Documents_VersionNonNegative", "\"Version\" >= 0");
                         });

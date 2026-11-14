@@ -1,4 +1,5 @@
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -75,5 +76,65 @@ public class SafeConstraintTests : IDisposable
         command.Parameters.Add(parameter);
 
         await Assert.ThrowsAsync<SqliteException>(() => command.ExecuteNonQueryAsync());
+    }
+
+    private static readonly string[] AmountColumns =
+    [
+        "AmountNumeric", "Amount2Numeric", "Amount3Numeric",
+        "InclusionAmountNumeric", "InclusionAmount2Numeric", "InclusionAmount3Numeric",
+        "CollectedAmount", "CollectedAmount2", "CollectedAmount3",
+        "ExecutedRequiredAmount", "ExecutedRequiredAmount2", "ExecutedRequiredAmount3",
+        "ExecutedPaidAmount", "ExecutedPaidAmount2", "ExecutedPaidAmount3",
+    ];
+
+    [Fact]
+    public void Documents_HaveNonNegativeAmountChecks()
+    {
+        var model = _db.GetService<IDesignTimeModel>().Model;
+        var documents = model.FindEntityType(typeof(Document))!;
+        var names = documents.GetCheckConstraints().Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var column in AmountColumns)
+            Assert.Contains($"CK_Documents_{column}_NonNegative", names);
+    }
+
+    [Fact]
+    public async Task RawNegativeAmounts_AreRejectedByDatabase()
+    {
+        var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
+        _db.Branches.Add(branch);
+        await _db.SaveChangesAsync();
+
+        var user = new User
+        {
+            Username = "amount_guard",
+            FullName = "حارس المبالغ",
+            Role = UserRole.Lawyer,
+            BranchId = branch.Id,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        var document = new Document
+        {
+            CreatedById = user.Id,
+            BranchId = branch.Id,
+            DocumentType = "سند تنفيذ",
+        };
+        _db.Documents.Add(document);
+        await _db.SaveChangesAsync();
+
+        foreach (var column in AmountColumns)
+        {
+            await using var command = _db.Database.GetDbConnection().CreateCommand();
+            command.CommandText = $"UPDATE \"Documents\" SET \"{column}\" = -1 WHERE \"Id\" = $id";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "$id";
+            parameter.Value = document.Id;
+            command.Parameters.Add(parameter);
+
+            await Assert.ThrowsAsync<SqliteException>(() => command.ExecuteNonQueryAsync());
+        }
     }
 }
