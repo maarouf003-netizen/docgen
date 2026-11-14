@@ -21,6 +21,23 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
                 $"\"ExecutedStatus\" IN ({CheckConstraintLists.InList(ExecutedStatusCatalog.OrderedStatuses)})");
             table.HasCheckConstraint("CK_Documents_GeneralEntitySide",
                 $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.OrderedSides)})");
+            // P0-07b: المبالغ لا تكون سالبة (فُحصت القاعدة الإنتاجية: صفر قيم سالبة).
+            // NULL يجتاز الفحص تلقائيًا (PostgreSQL/SQLite) — القيود على القيمة لا على الحضور.
+            table.HasCheckConstraint("CK_Documents_AmountNumeric_NonNegative", "\"AmountNumeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_Amount2Numeric_NonNegative", "\"Amount2Numeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_Amount3Numeric_NonNegative", "\"Amount3Numeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_InclusionAmountNumeric_NonNegative", "\"InclusionAmountNumeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_InclusionAmount2Numeric_NonNegative", "\"InclusionAmount2Numeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_InclusionAmount3Numeric_NonNegative", "\"InclusionAmount3Numeric\" >= 0");
+            table.HasCheckConstraint("CK_Documents_CollectedAmount_NonNegative", "\"CollectedAmount\" >= 0");
+            table.HasCheckConstraint("CK_Documents_CollectedAmount2_NonNegative", "\"CollectedAmount2\" >= 0");
+            table.HasCheckConstraint("CK_Documents_CollectedAmount3_NonNegative", "\"CollectedAmount3\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount_NonNegative", "\"ExecutedRequiredAmount\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount2_NonNegative", "\"ExecutedRequiredAmount2\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedRequiredAmount3_NonNegative", "\"ExecutedRequiredAmount3\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedPaidAmount_NonNegative", "\"ExecutedPaidAmount\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedPaidAmount2_NonNegative", "\"ExecutedPaidAmount2\" >= 0");
+            table.HasCheckConstraint("CK_Documents_ExecutedPaidAmount3_NonNegative", "\"ExecutedPaidAmount3\" >= 0");
         });
         builder.HasKey(d => d.Id);
 
