@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -21,7 +22,10 @@ public class DocumentBaseNumberPolicyTests
         int year, string number, int? circuitId = 1, DateTime? created = null,
         DateTime? voided = null, string source = NumberSources.Registration) => new()
     {
-        Id = year * 10 + (number.GetHashCode() & 0xF),
+        // معرّف حتمي: `string.GetHashCode` عشوائي لكل عملية (وقد يتصادم عبر السنوات
+        // عند القص إلى 4 بت) فيسقط `Assert.Single(IsEffective)` عشوائيًا. الرقم نفسه
+        // فريد داخل السنة في كل استدعاءات هذا الملف.
+        Id = year * 1000 + int.Parse(number, CultureInfo.InvariantCulture),
         DocumentId = 1,
         ExecutionCircuitId = circuitId,
         CircuitName = circuitId == 1 ? "دائرة أ" : "دائرة ب",
