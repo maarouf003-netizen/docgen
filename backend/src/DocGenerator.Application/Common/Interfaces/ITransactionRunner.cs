@@ -23,4 +23,19 @@ public interface ITransactionRunner
 {
     Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct = default);
     Task RunAsync(Func<CancellationToken, Task> action, CancellationToken ct = default);
+
+    /// <summary>
+    /// يشغّل عملية كتابة في نطاق DI <b>جديد لكل محاولة</b> (P0-03b). عند
+    /// <paramref name="retryable"/> = <c>true</c> تُستخدم إستراتيجية السياق
+    /// (المعيدة عند تفعيل <c>Database:RetryMaxCount</c>)، وكل محاولة تحصل على
+    /// <see cref="IUnitOfWork"/> وسياق EF جديدين — فيجب على الـdelegate إعادة
+    /// تحميل الكيانات من الـuow الممرَّر، لا من نطاق الطلب.
+    ///
+    /// <para>الاستخدام الافتراضي الآمن يبقى <c>retryable=false</c>؛ لا تُفعّل
+    /// الإعادة لعملية غير idempotent أو تعتمد على كيانات محمّلة مسبقًا.</para>
+    /// </summary>
+    Task<T> RunAsync<T>(
+        Func<IUnitOfWork, CancellationToken, Task<T>> action,
+        bool retryable,
+        CancellationToken ct = default);
 }

@@ -155,6 +155,11 @@
 
 #### `P0-03` — إستراتيجية تنفيذ واعية بالمعاملة + نطاق جديد لكل محاولة
 
+- **الحالة (2026-11-14):** منفّذ — `ADR-0002` (`docs/adr/0002-transactions-retry.md`):
+  `TransactionAwareExecutionStrategyFactory` تختار غير المعيدة عند وجود
+  `CurrentTransaction`، و`IUnitOfWorkFactory` ينشئ نطاق DI/سياقًا جديدًا لكل محاولة.
+  `Database:RetryMaxCount` معطّل افتراضيًا (`0`)؛ التفعيل لاحقًا آمن للعمليات المعلنة
+  `retryable` فقط. المسار القديم يبقى at-most-once.
 - **المشكلة:** `TransactionRunner` يمنع إعادة الـdelegate، لكن `SaveChanges` الداخلي يستخدم إستراتيجية السياق العامة؛ `EnableRetryOnFailure` قد يعيد دفعة كتابة.
 - **العمل (على مرحلتين):**
   - `P0-03a`: `TransactionAwareExecutionStrategyFactory` في `Infrastructure` يختار `NonRetryingExecutionStrategy` عند وجود `CurrentTransaction`، والإستراتيجية المعيدة خارجه.
