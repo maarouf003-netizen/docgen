@@ -36,10 +36,11 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(3, migrations.Count);
+            Assert.Equal(4, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("P0_07_SafeConstraints", StringComparison.Ordinal));
 
             // P0-06: عمود Version على الكيانات الاثني عشر القابلة للتحرير.
             var versionColumns = await db.Database
@@ -55,6 +56,17 @@ public sealed class PostgresBaselineTests
                     """)
                 .SingleAsync();
             Assert.Equal(12L, versionColumns);
+
+            // P0-07: قيد Version >= 0 على الكيانات الستة عشر كافة.
+            var versionChecks = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM pg_constraint
+                    WHERE contype = 'c' AND conname LIKE 'CK_%_VersionNonNegative'
+                    """)
+                .SingleAsync();
+            Assert.Equal(16L, versionChecks);
 
             var statusColumn = await db.Database
                 .SqlQueryRaw<long>(

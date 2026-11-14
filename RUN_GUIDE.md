@@ -414,6 +414,12 @@ npm test
   PersonalReminders، ForumMessages، ExecutionActions، DocumentInterventions) لتفعيل التزامن
   المتفائل. إضافي وغير كاسر، لكنه **إلزامي قبل نشر نسخة `P0-06`** (وإلا رفض الإقلاع في الإنتاج):
   `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+- [ ] **2026-11-14 — `P0_07_SafeConstraints` (`P0-07`)** — قيود آمنة فقط: قيد
+  `[Version] >= 0` على 16 جدولًا يحمل عدّاد التزامن، وفهرس `(BranchId, SectionId)` على
+  `Users`. لا يمسّ بيانات قائمة (كل النسخ الحالية ≥ 0). **إلزامي قبل نشر نسخة `P0-07`**:
+  `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+  (القيود المؤجلة — وحدانية رقم الأساس والمبالغ والحالات — موثقة في
+  `docs/audit/20-p0-07-safe-constraints-20261114.md`.)
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 
