@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -233,6 +234,42 @@ public class SectionServiceTests : IDisposable
     public async Task Rename_Missing_ReturnsNull()
     {
         Assert.Null(await _service.RenameSectionAsync(999999, "اسم", "admin"));
+    }
+
+    [Fact]
+    public async Task Rename_StaleVersion_ThrowsConflict_WithoutPersisting()
+    {
+        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin", section.Version + 7));
+
+        Assert.Contains("الشعبة", ex.Message);
+        Assert.Equal("شعبة مصياف", (await _db.Sections.AsNoTracking().SingleAsync(s => s.Id == section.Id)).Name);
+        Assert.DoesNotContain("rename_section", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Rename_MatchingVersion_SucceedsAndIncrementsVersion()
+    {
+        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        Assert.Equal(0, section.Version);
+
+        var renamed = await _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin", section.Version);
+
+        Assert.NotNull(renamed);
+        Assert.Equal(1, renamed.Version);
+    }
+
+    [Fact]
+    public async Task SetActive_StaleVersion_ThrowsConflict()
+    {
+        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+
+        await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.SetActiveAsync(section.Id, false, "admin", section.Version + 1));
+
+        Assert.True((await _db.Sections.AsNoTracking().SingleAsync(s => s.Id == section.Id)).IsActive);
     }
 
     [Fact]

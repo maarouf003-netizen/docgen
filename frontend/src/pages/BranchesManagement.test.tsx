@@ -39,6 +39,7 @@ function branchItem(overrides: Partial<BranchDto> = {}): BranchDto {
     isActive: true,
     userCount: 2,
     documentCount: 5,
+    version: 4,
     ...overrides,
   };
 }
@@ -148,6 +149,7 @@ describe('BranchesManagement', () => {
         phone: null,
         governorate: 'دمشق',
         isActive: false,
+        version: 4,
       });
     });
   });
@@ -217,6 +219,36 @@ describe('BranchesManagement', () => {
     await user.click(screen.getByRole('button', { name: '+ إضافة شعبة' }));
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/sections', { branchId: 1, name: 'شعبة جديدة' });
+    });
+  });
+
+  it('الشعب: إعادة التسمية والتفعيل ترسِل نسخة الصف (P0-06)', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url.startsWith('/sections'))
+        return Promise.resolve({
+          data: [{ id: 3, branchId: 1, name: 'مصياف', isActive: true, circuitCount: 0, headName: null, version: 2 }],
+        });
+      if (url.startsWith('/execution-circuits/stats')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/head-succession')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [branchItem()] });
+    });
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.selectOptions(await screen.findByLabelText('الفرع الأب'), '1');
+    await user.click(await screen.findByRole('button', { name: 'إعادة تسمية مصياف' }));
+    await user.clear(screen.getByLabelText('الاسم الجديد لشعبة «مصياف»'));
+    await user.type(screen.getByLabelText('الاسم الجديد لشعبة «مصياف»'), 'مصياف الجديدة');
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/sections/3/rename', { name: 'مصياف الجديدة', version: 2 });
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'تعطيل مصياف' }));
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/sections/3/active', { isActive: false, version: 2 });
     });
   });
 

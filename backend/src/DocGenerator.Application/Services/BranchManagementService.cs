@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -95,6 +96,8 @@ public sealed class BranchManagementService : IBranchManagementService
         if (branch is null)
             return null;
 
+        OptimisticConcurrencyGuard.EnsureCurrent(branch, request.Version, "الفرع");
+
         var name = NormalizeRequired(request.Name, "اسم الفرع مطلوب");
         var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
         // المحافظة إجبارية حتى في التعديل — إن كانت فرعًا قديمًا بلا محافظة فالتعديل يفرض اختيارها
@@ -175,5 +178,6 @@ public sealed class BranchManagementService : IBranchManagementService
         branch.Governorate,
         branch.IsActive,
         userCount,
-        documentCount);
+        documentCount,
+        branch.Version);
 }

@@ -26,5 +26,8 @@ public class SectionConfiguration : IEntityTypeConfiguration<Section>
             .WithMany()
             .HasForeignKey(s => s.BranchId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(s => s.Version).IsConcurrencyToken();
     }
 }

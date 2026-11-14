@@ -15,4 +15,6 @@ public record UpdateBranchRequest(
     string? Address,
     string? Phone,
     bool IsActive,
-    string? Governorate = null);
+    string? Governorate = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);

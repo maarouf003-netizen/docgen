@@ -2,9 +2,13 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Domain.Entities;
 
-public class User
+public class User : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
+
     public string Username { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string PasswordHash { get; set; } = string.Empty;

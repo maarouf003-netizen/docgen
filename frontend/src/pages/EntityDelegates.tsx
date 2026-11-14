@@ -118,6 +118,7 @@ export default function EntityDelegates() {
         newPassword: editPassword || null,
         portalGroupId: editScope.mode === 'group' ? Number(editScope.groupId) : null,
         portalEntryId: editScope.mode === 'entry' ? Number(editScope.entryId) : null,
+        version: editing.version,
       });
       setEditing(null);
       await load();

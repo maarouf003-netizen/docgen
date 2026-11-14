@@ -89,6 +89,8 @@ export interface CorrespondenceDto {
   createdAt: string;
   /** الشعبة المجمدة للمستلم الرئيس (§10.2) — غائب لغيره. */
   recipientSectionId?: number | null;
+  /** عدّاد التزامن المتفائل (P0-06) — يُعاد من الخادم. */
+  version?: number;
 }
 
 export interface CreateCorrespondenceRequest {

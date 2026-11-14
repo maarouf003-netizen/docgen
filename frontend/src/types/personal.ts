@@ -10,6 +10,8 @@ recurrenceEnd?: string | null;
 isArchived: boolean;
 completedOccurrenceKeys: string[];
 createdAt: string;
+/** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل وتعليم التكرار. */
+version?: number;
 }
 
 export interface CreatePersonalReminderRequest {
@@ -29,6 +31,8 @@ color?: string | null;
 recurrence?: string | null;
 recurrenceEnd?: string | null;
 isArchived?: boolean | null;
+/** عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط. */
+version?: number | null;
 }
 
 /** قيم التكرار المغلقة — مطابقة `PersonalReminderCatalog` في الخلفية. */

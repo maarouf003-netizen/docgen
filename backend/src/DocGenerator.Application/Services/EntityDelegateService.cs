@@ -108,6 +108,8 @@ public sealed class EntityDelegateService : IEntityDelegateService
         if (user is null || user.Role != UserRole.EntityManager)
             return null;
 
+        OptimisticConcurrencyGuard.EnsureCurrent(user, request.Version, "حساب المندوب");
+
         // `BQ-002`: الرئيس لا يمس مندوبًا خارج محافظته — الحالي أولًا.
         await EnsureHeadGovernorateAsync(actor, user.PortalGroupId, user.PortalEntryId, ct);
 
@@ -231,7 +233,7 @@ public sealed class EntityDelegateService : IEntityDelegateService
             user.Id, user.Username, user.FullName, user.IsActive,
             user.PortalGroupId, groupName,
             user.PortalEntryId, entryLabel,
-            user.CreatedAt);
+            user.CreatedAt, user.Version);
     }
 
     private async Task<(int? GroupId, int? EntryId)> ResolveScopeAsync(int? groupId, int? entryId, CancellationToken ct)

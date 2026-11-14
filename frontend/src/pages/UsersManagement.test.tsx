@@ -38,6 +38,7 @@ function userItem(overrides: Partial<UserListItem> = {}): UserListItem {
     branchId: 1,
     branchName: 'دمشق',
     isActive: true,
+    version: 6,
     ...overrides,
   };
 }
@@ -124,6 +125,7 @@ describe('UsersManagement', () => {
         isActive: true,
         successorId: null,
         password: 'TestPass5678',
+        version: 6,
       });
     });
   });

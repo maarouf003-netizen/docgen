@@ -47,5 +47,8 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
             .WithMany()
             .HasForeignKey(e => e.ReviewedById)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(e => e.Version).IsConcurrencyToken();
     }
 }

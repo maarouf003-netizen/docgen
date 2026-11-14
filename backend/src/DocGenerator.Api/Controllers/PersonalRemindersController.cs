@@ -73,7 +73,7 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var reminder = await _reminders.SetOccurrenceAsync(id, request.OccurrenceDate, request.Done, User.GetUserId(), ct);
+        var reminder = await _reminders.SetOccurrenceAsync(id, request.OccurrenceDate, request.Done, User.GetUserId(), request.Version, ct);
         return reminder is null ? NotFound() : Ok(reminder);
     }
 

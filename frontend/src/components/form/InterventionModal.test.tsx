@@ -63,6 +63,7 @@ const saved: DocumentInterventionDto = {
   father: 'محمود',
   family: 'الحسن',
   heirs: [],
+  version: 3,
 };
 
 function setup(initial: DocumentInterventionDto | null = null) {
@@ -234,7 +235,7 @@ describe('InterventionModal', () => {
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     expect(api.put).toHaveBeenCalledWith(
       '/documents/1/interventions/5',
-      expect.objectContaining({ name: 'سامر', receiptDate: '2026-08-01' }),
+      expect.objectContaining({ name: 'سامر', receiptDate: '2026-08-01', version: 3 }),
     );
     expect(api.post).not.toHaveBeenCalled();
   });

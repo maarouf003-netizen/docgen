@@ -9,9 +9,13 @@ namespace DocGenerator.Domain.Entities;
 /// شخص طبيعي (هوية كاملة + عنوان/وكيل + ممثل شرعي + ورثة)، شخص اعتباري، أو
 /// جهة عامة مربوطة بالسجل المرجعي. تُحفظ التواريخ زمنيًا (`DateTime?` بـ`UTC`).
 /// </summary>
-public class DocumentIntervention
+public class DocumentIntervention : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
+
     public int DocumentId { get; set; }
 
     /// <summary>صفة المتدخل: natural / legal / public (PartyNatureCatalog).</summary>

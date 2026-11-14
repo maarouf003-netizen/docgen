@@ -1,8 +1,12 @@
 namespace DocGenerator.Domain.Entities;
 
-public class ExecutionAction
+public class ExecutionAction : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
+
     public int DocumentId { get; set; }
     public string Type { get; set; } = "action";
     public string Text { get; set; } = string.Empty;

@@ -51,5 +51,8 @@ public class ReviewLetterConfiguration : IEntityTypeConfiguration<ReviewLetter>
             .WithOne(m => m.ReviewLetter)
             .HasForeignKey(m => m.ReviewLetterId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(l => l.Version).IsConcurrencyToken();
     }
 }

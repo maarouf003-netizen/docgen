@@ -8,7 +8,8 @@ public record SectionDto(
     string Name,
     bool IsActive,
     int CircuitCount,
-    string? HeadName);
+    string? HeadName,
+    long Version = 0);
 
 /// <summary>إنشاء شعبة في فرع — مشرف/مدير (قرار §2.15).</summary>
 public record CreateSectionRequest(
@@ -17,8 +18,12 @@ public record CreateSectionRequest(
 
 /// <summary>إعادة تسمية شعبة — مشرف/مدير.</summary>
 public record RenameSectionRequest(
-    string? Name);
+    string? Name,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>تفعيل/تعطيل شعبة — مشرف/مدير (التعطيل ممنوع مع وجود دوائر).</summary>
 public record SetSectionActiveRequest(
-    bool IsActive);
+    bool IsActive,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);

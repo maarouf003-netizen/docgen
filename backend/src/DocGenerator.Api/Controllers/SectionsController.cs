@@ -65,7 +65,7 @@ public class SectionsController : ControllerBase
             return Forbid();
         try
         {
-            var section = await _sections.RenameSectionAsync(id, request.Name, ActorName, ct);
+            var section = await _sections.RenameSectionAsync(id, request.Name, ActorName, request.Version, ct);
             return section is null ? NotFound() : Ok(section);
         }
         catch (DocumentConflictException e)
@@ -80,7 +80,7 @@ public class SectionsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var section = await _sections.SetActiveAsync(id, request.IsActive, ActorName, ct);
+        var section = await _sections.SetActiveAsync(id, request.IsActive, ActorName, request.Version, ct);
         return section is null ? NotFound() : Ok(section);
     }
 

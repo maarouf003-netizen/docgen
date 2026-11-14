@@ -5,9 +5,12 @@ namespace DocGenerator.Domain.Entities;
 /// مديرية/إدارة عامة/إدارة فرعية/هيئة عامة/أمانة عامة/محافظة/مجلس مدينة/مجلس بلدة/وزارة)
 /// بالاسم المعتمد CanonicalName. تحتها قيود المستويين: المحافظة + الفرع.
 /// </summary>
-public class PublicEntityGroup
+public class PublicEntityGroup : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     /// <summary>الاسم المعتمد للجهة — فريد في السجل (max 200).</summary>
     public string CanonicalName { get; set; } = string.Empty;

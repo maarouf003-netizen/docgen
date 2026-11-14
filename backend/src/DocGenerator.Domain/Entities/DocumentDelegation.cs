@@ -8,7 +8,7 @@ namespace DocGenerator.Domain.Entities;
 /// للتنفيذ على الأموال موضوع الإنابة فقط، وينتهي ببيعها بالمزاد العلني وإعادة الملف إلى
 /// الدائرة المنيبة («منفذ إنابة»).
 /// </summary>
-public class DocumentDelegation
+public class DocumentDelegation : IVersionedEntity
 {
     public int Id { get; set; }
 

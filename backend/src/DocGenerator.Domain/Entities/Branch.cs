@@ -1,8 +1,12 @@
 namespace DocGenerator.Domain.Entities;
 
-public class Branch
+public class Branch : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string? Address { get; set; }

@@ -69,5 +69,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.BranchId)
             .HasFilter("\"Role\" = 'Head' AND \"IsActive\"")
             .IsUnique();
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(u => u.Version).IsConcurrencyToken();
     }
 }

@@ -18,6 +18,8 @@ export interface ForumMessageDto {
   editedAtUtc: string | null;
   /** عدد المطلعين — لرسائل الكاتب نفسه فقط (0 لغيرها). */
   readCount: number;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في تعديل الرسالة. */
+  version?: number;
 }
 
 /** صفحة تيار بمفتاح `Id`: تصاعدية، و`hasOlder` لزر «تحميل المزيد». */

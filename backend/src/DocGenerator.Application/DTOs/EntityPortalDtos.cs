@@ -97,7 +97,9 @@ public record UpdateDelegateRequest(
     bool? IsActive,
     string? NewPassword,
     int? PortalGroupId,
-    int? PortalEntryId);
+    int? PortalEntryId,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>حساب مندوب كما يظهر في شاشة الإدارة.</summary>
 public record DelegateDto(
@@ -109,7 +111,8 @@ public record DelegateDto(
     string? PortalGroupName,
     int? PortalEntryId,
     string? PortalEntryLabel,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    long Version = 0);
 
 /* ── إحصاءات الجهة (المرحلة 4) ── */
 

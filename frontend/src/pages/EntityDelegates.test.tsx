@@ -22,6 +22,7 @@ function delegate(overrides: Partial<DelegateDto> = {}): DelegateDto {
     portalEntryId: null,
     portalEntryLabel: null,
     createdAt: '2026-08-24',
+    version: 4,
     ...overrides,
   };
 }
@@ -110,6 +111,7 @@ describe('EntityDelegates', () => {
       expect(api.put).toHaveBeenCalledWith('/entity-portal/delegates/1', expect.objectContaining({
         fullName: 'الاسم بعد التعديل',
         portalGroupId: 5,
+        version: 4,
       }));
     });
   });

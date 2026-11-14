@@ -167,7 +167,11 @@ function PersonalDefinitionsSection({
     setActingKey(key);
     setError('');
     try {
-      await api.patch(`/personal-reminders/${p.id}/occurrences`, { occurrenceDate: next, done: true });
+      await api.patch(`/personal-reminders/${p.id}/occurrences`, {
+        occurrenceDate: next,
+        done: true,
+        version: p.version,
+      });
       onChanged();
     } catch (err) {
       setError(getApiErrorMessage(err));

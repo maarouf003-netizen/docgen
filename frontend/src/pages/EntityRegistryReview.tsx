@@ -151,6 +151,7 @@ export default function EntityRegistryReview() {
         entityType: editType,
         governorate: editGovernorate.trim(),
         branchName: editBranch.trim(),
+        version: editing.version,
       });
       const renamed = editName.trim() !== editing.canonicalName;
       setEditing(null);

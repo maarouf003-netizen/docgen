@@ -12,6 +12,8 @@ export interface BranchDto {
   isActive?: boolean;
   userCount?: number;
   documentCount?: number;
+  /** عدّاد التزامن المتفائل (P0-06) — يُعاد في التعديل لكشف السباق. */
+  version?: number;
 }
 
 export interface CreateBranchRequest {
@@ -29,6 +31,8 @@ export interface UpdateBranchRequest {
   phone?: string | null;
   isActive: boolean;
   governorate?: string | null;
+  /** عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط. */
+  version?: number | null;
 }
 
 /** شعبة داخل فرع — تطابق `SectionDto` الخلفي (§8). */
@@ -40,6 +44,8 @@ export interface SectionDto {
   isActive: boolean;
   circuitCount: number;
   headName?: string | null;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التسمية/التفعيل. */
+  version?: number;
 }
 
 export interface DashboardStatsDto {
@@ -180,6 +186,8 @@ export interface LawyerListItem {
   isActive: boolean;
   branchId: number | null;
   branchName?: string | null;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
+  version?: number;
 }
 
 export interface CreateLawyerRequest {
@@ -203,6 +211,8 @@ export interface UserListItem {
   isActive: boolean;
   sectionId?: number | null;
   sectionName?: string | null;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
+  version?: number;
 }
 
 export interface CreateUserRequest {
@@ -222,6 +232,8 @@ export interface UpdateUserRequest {
   password?: string | null;
   sectionId?: number | null;
   successorId?: number | null;
+  /** عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط. */
+  version?: number | null;
 }
 
 /** صف سجل تعاقب رئاسة — للمدير والمشرف فقط (قرار §2.17). */

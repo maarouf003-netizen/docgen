@@ -6,7 +6,7 @@ namespace DocGenerator.Domain.Entities;
 /// Governorate (بلا افتراض فرعٍ واحدٍ للمحافظة). التعطيل إخفاء من قوائم «اختيار»
 /// فقط (IsActive=false) بلا حذف ولا نقل؛ الحذف لا يُتاح إلا بصفر ملفات.
 /// </summary>
-public class ExecutionCircuit
+public class ExecutionCircuit : IVersionedEntity
 {
     public int Id { get; set; }
 

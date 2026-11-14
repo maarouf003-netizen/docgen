@@ -408,6 +408,12 @@ npm test
   `StatusCode`/`ContentType`/`ResponseLocation` إلى `IdempotencyKeys` (إضافي وغير كاسر).
   **لم يُطبّق على أي بيئة بعد**؛ طبّقه قبل نشر نسخة `P0-04`:
   `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+- [ ] **2026-11-14 — `P0_06_OptimisticConcurrency` (`P0-06`)** — يضيف عمود
+  `Version` (`bigint NOT NULL DEFAULT 0`) إلى 12 جدولًا قابلة للتعديل (Users، PublicEntities،
+  PublicEntityGroups، Correspondences، Sections، Branches، ReviewLetters، ReviewLetterMessages،
+  PersonalReminders، ForumMessages، ExecutionActions، DocumentInterventions) لتفعيل التزامن
+  المتفائل. إضافي وغير كاسر، لكنه **إلزامي قبل نشر نسخة `P0-06`** (وإلا رفض الإقلاع في الإنتاج):
+  `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 

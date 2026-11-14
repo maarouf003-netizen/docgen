@@ -65,6 +65,8 @@ export interface ReviewLetterDto {
   recipientSectionId?: number | null;
   /** اسم الشعبة المستلمة — للعرض فقط. */
   recipientSectionName?: string | null;
+  /** عدّاد التزامن المتفائل (P0-06) — يُعاد من الخادم. */
+  version?: number;
 }
 
 export interface CreateReviewLetterRequest {

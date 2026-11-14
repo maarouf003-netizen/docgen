@@ -4,7 +4,7 @@ namespace DocGenerator.Application.DTOs;
 public record PostForumMessageRequest(string Body, int? QuotedMessageId = null);
 
 /// <summary>تعديل رسالة منتدى (الكاتب فقط — يختم «عُدّل»).</summary>
-public record UpdateForumMessageRequest(string Body);
+public record UpdateForumMessageRequest(string Body, long? Version = null);
 
 /// <summary>تعليم القراءة حتى رسالة (عدّادي — `max` فقط بلا تراجع).</summary>
 public record MarkForumReadRequest(int UpToMessageId);
@@ -29,7 +29,8 @@ public record ForumMessageDto(
     DateTime CreatedAt,
     int? EditedById,
     DateTime? EditedAtUtc,
-    int ReadCount);
+    int ReadCount,
+    long Version = 0);
 
 /// <summary>صفحة تيار بمفتاح `Id`: الأحدث أولًا عند غياب المؤشر، و`HasOlder` لزر «تحميل المزيد».</summary>
 public record ForumMessagesPageDto(List<ForumMessageDto> Items, bool HasOlder);

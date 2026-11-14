@@ -360,6 +360,8 @@ public sealed partial class PublicEntityService
             return null;
         var group = entry.Group;
 
+        OptimisticConcurrencyGuard.EnsureCurrent(entry, request.Version, "قيد الجهة");
+
         string? newCanonical = null;
         if (!string.IsNullOrWhiteSpace(request.CanonicalName)
             && !string.Equals(request.CanonicalName.Trim(), group.CanonicalName, StringComparison.Ordinal))
@@ -622,5 +624,6 @@ public sealed partial class PublicEntityService
         entry.CreatedBy?.FullName,
         entry.NeedsReview,
         entry.CoverageLabel,
-        entry.IsParentEntity);
+        entry.IsParentEntity,
+        entry.Version);
 }

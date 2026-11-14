@@ -97,6 +97,8 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
         if (intervention is null)
             return null;
 
+        OptimisticConcurrencyGuard.EnsureCurrent(intervention, request.Version, "المتدخل");
+
         var normalized = DocumentInterventionText.Normalize(request);
         await ResolveRegistryAsync(normalized, intervention.RegistryId, ct);
 

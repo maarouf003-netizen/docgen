@@ -128,13 +128,13 @@ public class SchemaIntegrityTests
         {
             using var cmd = db.Database.GetDbConnection().CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Users (Id, Username, FullName, PasswordHash, Role, IsActive, TokenVersion, FailedLoginCount, CreatedAt, UpdatedAt)
-                VALUES (9001, 'reviewer9001', 'مُراجع', 'x', 4, 1, 1, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
-                INSERT INTO PublicEntityGroups (Id, CanonicalName, EntityType, IsActive, CreatedAt)
-                VALUES (9001, 'جهة اختبار', 'ministry', 1, '2026-01-01 00:00:00');
-                INSERT INTO PublicEntities (Id, GroupId, Governorate, BranchName, CitationFormula, Status, CreatedById, CreatedAt, NeedsReview, ReviewedById, IsActive, IsParentEntity)
-                VALUES (9001, 9001, 'دمشق', 'الفرع أ', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0),
-                       (9002, 9001, 'دمشق', 'الفرع ب', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0);
+                INSERT INTO Users (Id, Username, FullName, PasswordHash, Role, IsActive, TokenVersion, FailedLoginCount, CreatedAt, UpdatedAt, Version)
+                VALUES (9001, 'reviewer9001', 'مُراجع', 'x', 4, 1, 1, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 0);
+                INSERT INTO PublicEntityGroups (Id, CanonicalName, EntityType, IsActive, CreatedAt, Version)
+                VALUES (9001, 'جهة اختبار', 'ministry', 1, '2026-01-01 00:00:00', 0);
+                INSERT INTO PublicEntities (Id, GroupId, Governorate, BranchName, CitationFormula, Status, CreatedById, CreatedAt, NeedsReview, ReviewedById, IsActive, IsParentEntity, Version)
+                VALUES (9001, 9001, 'دمشق', 'الفرع أ', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0, 0),
+                       (9002, 9001, 'دمشق', 'الفرع ب', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0, 0);
             ";
             var inserted = cmd.ExecuteNonQuery();
 

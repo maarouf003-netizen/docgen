@@ -18,5 +18,8 @@ public class ReviewLetterMessageConfiguration : IEntityTypeConfiguration<ReviewL
         builder.Property(m => m.AuthorRole).HasMaxLength(20).IsRequired();
         builder.HasIndex(m => m.ReviewLetterId);
         builder.HasIndex(m => m.BodyPlainText);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(m => m.Version).IsConcurrencyToken();
     }
 }

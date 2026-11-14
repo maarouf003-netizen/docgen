@@ -30,5 +30,8 @@ public class ExecutionActionConfiguration : IEntityTypeConfiguration<ExecutionAc
             .WithMany()
             .HasForeignKey(a => a.CreatedById)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(a => a.Version).IsConcurrencyToken();
     }
 }

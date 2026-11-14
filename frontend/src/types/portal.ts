@@ -88,6 +88,8 @@ export interface UpdateDelegateRequest {
   newPassword?: string | null;
   portalGroupId?: number | null;
   portalEntryId?: number | null;
+  /** عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط. */
+  version?: number | null;
 }
 
 export interface DelegateDto {
@@ -100,6 +102,8 @@ export interface DelegateDto {
   portalEntryId?: number | null;
   portalEntryLabel?: string | null;
   createdAt: string;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
+  version?: number;
 }
 
 /* ── إحصاءات الجهة (المرحلة 4) ───────────────────────────────────────── */

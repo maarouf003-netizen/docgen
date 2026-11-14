@@ -7,9 +7,12 @@ namespace DocGenerator.Domain.Entities;
 /// الحذف صلب دائمًا (بلا حذف ناعم — قرار المالك)، والتنظيف التلقائي يحذف
 /// الأقدم من مدة الاحتفاظ عدا الرسالة المثبّتة.
 /// </summary>
-public class ForumMessage
+public class ForumMessage : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     /// <summary>نص الرسالة العادي (1..2000 حرفًا بعد القصّ — الفراغ مرفوض).</summary>
     public string Body { get; set; } = string.Empty;

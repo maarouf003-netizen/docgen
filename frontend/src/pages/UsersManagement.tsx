@@ -242,6 +242,7 @@ export default function UsersManagement() {
         isActive: editActive,
         successorId: editDeactivating ? editSuccessorId : null,
         password: editPassword || null,
+        version: editing.version,
       });
       closeEdit();
       load();

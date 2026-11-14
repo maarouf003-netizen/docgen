@@ -58,6 +58,7 @@ function mockApi() {
             isArchived: false,
             completedOccurrenceKeys: [],
             createdAt: '2026-08-01',
+            version: 5,
           },
         ],
       });
@@ -108,7 +109,11 @@ describe('CalendarPage', () => {
     await user.click(await screen.findByRole('button', { name: 'تم' }));
     expect(api.patch).toHaveBeenCalledWith(
       '/personal-reminders/7/occurrences',
-      expect.objectContaining({ occurrenceDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), done: true }),
+      expect.objectContaining({
+        occurrenceDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        done: true,
+        version: 5,
+      }),
     );
   });
 

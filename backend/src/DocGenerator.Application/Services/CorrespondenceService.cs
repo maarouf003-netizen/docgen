@@ -1007,7 +1007,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
             messages.Select(ToMessageDto).ToList(),
             receipts.Select(r => new CorrespondenceReceiptDto(r.UserId, r.UserName, r.SeenAt)).ToList(),
             letter.CreatedAt,
-            letter.RecipientSectionId);
+            letter.RecipientSectionId,
+            letter.Version);
     }
 
     private CorrespondenceListItemDto ToListItem(Correspondence letter, int viewerUserId)

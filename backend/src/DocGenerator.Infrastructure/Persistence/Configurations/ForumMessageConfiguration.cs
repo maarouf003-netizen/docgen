@@ -36,5 +36,8 @@ public class ForumMessageConfiguration : IEntityTypeConfiguration<ForumMessage>
             .WithMany()
             .HasForeignKey(m => m.QuotedMessageId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(m => m.Version).IsConcurrencyToken();
     }
 }
