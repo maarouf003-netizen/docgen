@@ -57,58 +57,46 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
     o.SerializerOptions.MaxDepth = 32);
 
+// ADR-0001: PostgreSQL هو مزوّد قاعدة البيانات الوحيد في التشغيل — لا مسار SQLite إنتاجي.
 // يدعم المضيفون السحابيون ربط قاعدة Postgres فيحقنون DATABASE_URL تلقائيًا بصيغة postgres://؛
 // وهو مصدر موثوق يغني عن اللصق اليدوي لسلسلة الاتصال.
-// H-01b: قيمة فارغة/بيضاء تُعامَل كغائبة — وإلا فازت "" على سلسلة الاتصال عبر ??
-// فسقط التطبيق على قاعدة SQLite شبح بلا ملف (ترحيل ينجح ثم كل استعلام يفشل).
+// قيمة فارغة/بيضاء تُعامَل كغائبة — وإلا فازت "" على سلسلة الاتصال عبر ??.
 var databaseUrl = builder.Configuration["DATABASE_URL"];
 if (string.IsNullOrWhiteSpace(databaseUrl))
     databaseUrl = null;
-var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres")
-    || !string.IsNullOrWhiteSpace(databaseUrl);
-
-// H-01 (جاهزية الإنتاج): لا وقوع صامت على SQLite خارج التطوير — الإنتاج يتطلب
-// Postgres صراحة، ما لم يُسمَح بـ SQLite عبر Database:AllowSqliteInProduction=true
-// (قرار نشر صريح لعقدة داخلية صغيرة). يمنع فقدان البيانات على قرص مؤقت عند نسيان الضبط.
-var allowSqliteInProduction = builder.Configuration.GetValue<bool>("Database:AllowSqliteInProduction");
-if (!usePostgres && !builder.Environment.IsDevelopment() && !allowSqliteInProduction)
-{
-    throw new InvalidOperationException(
-        "Refusing to start outside Development on SQLite (Database:UsePostgres=false and no DATABASE_URL). "
-        + "Production requires PostgreSQL: set Database__UsePostgres=true with a valid Postgres connection string "
-        + "(ConnectionStrings__DefaultConnection or DATABASE_URL). For an explicit small single-node SQLite "
-        + "deployment, set Database__AllowSqliteInProduction=true.");
-}
 
 var rawConn = databaseUrl
-    ?? builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Data Source=docgen.db";
-var conn = usePostgres ? PostgresConnectionString.Normalize(rawConn) : rawConn;
-
-if (usePostgres)
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(rawConn))
 {
-    // بعد التحويل يجب أن تكون القيمة بصيغة كلامية يقبلها Npgsql دائمًا؛ هذا الحارس يفضح أي تشوّه.
-    var parseable = false;
-    if (!string.IsNullOrWhiteSpace(conn))
-    {
-        try
-        {
-            _ = new NpgsqlConnectionStringBuilder(conn);
-            parseable = true;
-        }
-        catch (ArgumentException)
-        {
-        }
-    }
-    if (!parseable)
-    {
-        throw new InvalidOperationException(
-            "Database:UsePostgres=true requires a valid Postgres connection string "
-            + $"(e.g. Host=...;Port=...;Database=... or a postgres:// URL). "
-            + $"Raw value (masked): {DescribeRawValue(rawConn)}. "
-            + "Provide ConnectionStrings__DefaultConnection, or set the DATABASE_URL environment "
-            + "variable to a postgres:// URL (as injected by most hosting platforms), then redeploy.");
-    }
+    throw new InvalidOperationException(
+        "PostgreSQL connection string is required: set DATABASE_URL to a postgres:// URL "
+        + "(as injected by hosting platforms) or ConnectionStrings__DefaultConnection to a keyword-style "
+        + "Npgsql connection string. SQLite is not supported at runtime (ADR-0001).");
+}
+
+var conn = PostgresConnectionString.Normalize(rawConn);
+
+// بعد التحويل يجب أن تكون القيمة بصيغة كلامية يقبلها Npgsql دائمًا؛ هذا الحارس يفضح أي تشوّه
+// (ومنها سلسلة SQLite قديمة بقيت في إعداد منشور).
+var parseable = false;
+try
+{
+    _ = new NpgsqlConnectionStringBuilder(conn);
+    parseable = true;
+}
+catch (ArgumentException)
+{
+}
+if (!parseable)
+{
+    throw new InvalidOperationException(
+        "The configured connection string is not a valid PostgreSQL connection string "
+        + $"(e.g. Host=...;Port=...;Database=... or a postgres:// URL). "
+        + $"Raw value (masked): {DescribeRawValue(rawConn)}. "
+        + "Provide ConnectionStrings__DefaultConnection, or set the DATABASE_URL environment "
+        + "variable to a postgres:// URL (as injected by most hosting platforms), then redeploy. "
+        + "SQLite is not supported at runtime (ADR-0001).");
 }
 
 static string DescribeRawValue(string? raw)
@@ -181,7 +169,7 @@ builder.Services
         o.Templates = new Dictionary<string, string>(wordTemplates.Templates);
     })
     .AddApplication(builder.Configuration)
-    .AddInfrastructure(conn, usePostgres)
+    .AddInfrastructure(conn)
     .AddCors(o => o.AddPolicy("Vite", p => p
         .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
         .AllowAnyHeader().AllowAnyMethod().AllowCredentials()))
@@ -395,7 +383,7 @@ using (var scope = app.Services.CreateScope())
 var autoMigrate = builder.Configuration.GetValue("Database:AutoMigrate", builder.Environment.IsDevelopment());
 Log.Information(
     "Database provider active: {DbProvider} (auto-migrate at startup: {AutoMigrate})",
-    usePostgres ? "postgres" : "sqlite",
+    "postgres",
     autoMigrate);
 
 if (swaggerEnabled)

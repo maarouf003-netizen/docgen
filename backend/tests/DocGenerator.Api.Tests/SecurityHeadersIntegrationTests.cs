@@ -1,6 +1,8 @@
 using System.Net;
+using DocGenerator.Api.Tests.TestServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
@@ -92,7 +94,7 @@ public class SecurityHeadersIntegrationTests
     }
 
     /// <summary>
-    /// مضيف إنتاج معزول (قاعدة SQLite مؤقتة + بذر المدير عبر `Bootstrap:AdminPassword`)
+    /// مضيف إنتاج معزول (سياق SQLite اختباري + بذر المدير عبر `Bootstrap:AdminPassword`)
     /// للتحقق من سلوك الإنتاج (بلا `CORS`) دون مساس بمصنع التطوير المشترك.
     /// </summary>
     private sealed class ProductionFactory : WebApplicationFactory<Program>
@@ -105,19 +107,20 @@ public class SecurityHeadersIntegrationTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Production");
-            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
+            // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري فقط.
+            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-            builder.UseSetting("Database:UsePostgres", "false");
     // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
     // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
     builder.UseSetting("Database:AutoMigrate", "true");
-            // قرار صريح مقصود: هذا المضيف يتحقق من سلوك الإنتاج (بلا CORS) على عقدة SQLite مؤقتة.
-            builder.UseSetting("Database:AllowSqliteInProduction", "true");
+            builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Swagger:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "production-test-secret-0123456789-0123456789-0123456789");
             builder.UseSetting("Bootstrap:AdminPassword", "ProdTest123456!");
             builder.UseSetting("RateLimiting:MaxLoginAttempts", "5");
             builder.UseSetting("RateLimiting:WindowMinutes", "5");
+            builder.ConfigureTestServices(services =>
+                TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
         }
 
         protected override void Dispose(bool disposing)

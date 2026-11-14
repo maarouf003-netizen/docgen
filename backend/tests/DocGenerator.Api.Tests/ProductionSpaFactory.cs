@@ -1,5 +1,7 @@
+using DocGenerator.Api.Tests.TestServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 
 namespace DocGenerator.Api.Tests;
 
@@ -7,7 +9,8 @@ namespace DocGenerator.Api.Tests;
 /// مضيف إنتاجي معزول يخدم <c>index.html</c> من جذر ويب مؤقت — بروفة ما يراه المتصفح فعلًا
 /// عندما يخدم <c>Kestrel</c> مستند <c>SPA</c> المبني (لا <c>Vite</c>). مشترك بين بروفة
 /// <c>CSP</c> و<c>HSTS</c>؛ كل اختبار يضيف راياته عبر <c>WithWebHostBuilder</c>.
-/// قاعدة <c>SQLite</c> مؤقتة، والحارس <c>H-02</c> لا يعنيه لأن البيئة إنتاج.
+/// سياق اختبار <c>SQLite</c> مؤقت (ADR-0001: لا مسار إنتاجي)، والحارس <c>H-02</c> لا يعنيه
+/// لأن البيئة إنتاج.
 /// </summary>
 public class ProductionSpaFactory : WebApplicationFactory<Program>
 {
@@ -58,14 +61,16 @@ public class ProductionSpaFactory : WebApplicationFactory<Program>
         builder.UseWebRoot(_webRoot);
         builder.UseSetting("Security:CspReportOnly", "false");
         builder.UseSetting("Security:KnownProxies:0", "127.0.0.1");
-        builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
+        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-        builder.UseSetting("Database:UsePostgres", "false");
         builder.UseSetting("Database:AutoMigrate", "true");
-        builder.UseSetting("Database:AllowSqliteInProduction", "true");
+        // لا مشغّل صندوق صادر في الاختبار: لا اتصال حقيقي بقاعدة Postgres الشكلية.
+        builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "csp-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("Bootstrap:AdminPassword", "CspProbe123456!");
+        builder.ConfigureTestServices(services =>
+            TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
     }
 
     protected override void Dispose(bool disposing)

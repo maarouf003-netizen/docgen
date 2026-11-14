@@ -12,23 +12,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        string connectionString,
-        bool usePostgres = false)
+        string connectionString)
     {
-        if (usePostgres)
-        {
-            // عند Postgres يُسجَّل السياق المشتق كتنفيذ لنوع الخدمة، فتعمل كل التبعيات القائمة
-            // عليه دون تغيير، ويطبق MigrateAsync هجرات Postgres (المنفصلة عن هجرات SQLite).
-            services.AddDbContext<DocGeneratorDbContext, DocGeneratorPostgresDbContext>(options =>
-                options.UseNpgsql(connectionString, npg => npg
-                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
-        }
-        else
-        {
-            services.AddDbContext<DocGeneratorDbContext>(options =>
-                options.UseSqlite(connectionString, sqlite => sqlite
-                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
-        }
+        // ADR-0001: PostgreSQL هو المزوّد الوحيد في التشغيل. يُسجَّل السياق المشتق كتنفيذ
+        // لنوع الخدمة، فتعمل كل التبعيات القائمة عليه دون تغيير، ويطبق MigrateAsync هجرات
+        // Postgres. لا مسار SQLite هنا؛ اختبارات الوحدة/التكامل تستبدل السياق في نطاقها.
+        services.AddDbContext<DocGeneratorDbContext, DocGeneratorPostgresDbContext>(options =>
+            options.UseNpgsql(connectionString, npg => npg
+                .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<IDocumentBaseNumberRepository, DocumentBaseNumberRepository>();
@@ -61,7 +52,7 @@ public static class DependencyInjection
         // فيرى الحارس المعاملة النشطة فعلًا.
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
         services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
-        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, usePostgres, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
+        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, usePostgres: true, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
         services.AddScoped<ITokenService, TokenService>();
         return services;
     }

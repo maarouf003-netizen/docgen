@@ -4,15 +4,9 @@
 >
 > 1. **افتح §9 «تطبيق هجرات قاعدة البيانات عند النشر»** واقرأ **قائمة المهجرات المعلّقة**
 >    (قائمة تراكمية في نهاية §9) — كل سطر غير مشطوب **يجب** تطبيقه في نافذة النشر.
-> 2. **الهجرات المعلّقة حاليًا (2026-10-26):** سياق `PostgreSQL` = **صفر معلّقة** — طُبِّقت هجرات
->    التنبيهات الأربع (`HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم
->    `HeadAlertTaxonomy_Backfill_Pg` ثم `HeadAlertTaxonomy_Contract_Pg`) على `Supabase` حيًا،
->    وسجل `__EFMigrationsHistory` = **63** هجرة (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
->    و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`). أما **`SQLite`** فتبقى **4 هجرات**
->    معلّقة: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم
->    `HeadAlertTaxonomy_Backfill` ثم `HeadAlertTaxonomy_Contract`.
->    **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract` (SQLite) قبل استيفاء G1/G2 وتأكيد أن كل النسخ تعمل
->    بكود `PR‑2` وصفر قيم `NULL`** — راجع `docs/audit/11-head-alerts-pr3-20261026.md`.
+> 2. **الهجرات المعلّقة:** المرجع الوحيد للنشر هو `PostgreSQL`؛ راجع الحالة التفصيلية في
+>    القائمة التراكمية بنهاية §9. سطور `SQLite` في القائمة **تاريخية/اختبارية فقط** بعد ADR-0001
+>    ولم تعد شرط نشر (ستُحذف هجراتها في `P0-02`).
 > 3. **⚠️ `Database:AutoMigrate=false` في الإنتاج** ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات
 >    غير مطبّقة على القاعدة الحية. **طبّق الهجرات قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 > 4. **نسخة احتياطية + استعادة مجرَّبة قبل النافذة** — لا «نسخة لم تُجرَّب استعادتها ليست نسخة».
@@ -28,6 +22,8 @@
 3. بعد التجربة انقر `stop-app.bat` لإيقاف الخدمتين.
 
 > يتطلب `.NET SDK 10` و`Node.js 20+` في المسارات الافتراضية (`C:\Program Files\dotnet` و`C:\Program Files\nodejs`).
+> يتطلب التشغيل أيضاً قاعدة `PostgreSQL` (ADR-0001) وسلسلة اتصال في `DATABASE_URL` أو
+> `ConnectionStrings__DefaultConnection` قبل `start-app.bat`؛ بدونه يرفض الخادم الإقلاع عمدًا.
 > يمكنك إيقاف التشغيل يدوياً أيضاً بالطريقة اليدوية في القسم 8.
 
 ## 1) المتطلبات
@@ -36,6 +32,7 @@
 |--------|---------|--------|
 | .NET SDK | 10.x | مطلوب للخلفية |
 | Node.js | 20+ | مطلوب للواجهة |
+| PostgreSQL | 16+ | مطلوب للتشغيل (ADR-0001) والاختبارات المتكاملة |
 
 > ⚠️ في هذا الجهاز الأدوات ليست على `PATH`، لذا في كل نافذة PowerShell جديدة نفّذ أولاً:
 > ```powershell
@@ -49,7 +46,9 @@ cd "C:\Users\pc\Desktop\document_generator\working 3.8 32b\backend"
 dotnet run --project src/DocGenerator.Api --urls http://localhost:5199
 ```
 
-- عند أول تشغيل تُنشأ قاعدة SQLite `docgen.db` تلقائياً (migrations + بذر المستخدمين والفروع).
+- يتطلب التشغيل قاعدة `PostgreSQL` (ADR-0001): اضبط `DATABASE_URL` أو
+  `ConnectionStrings__DefaultConnection` قبل `dotnet run`؛ ثم تُطبَّق الهجرات (وفق
+  `Database:AutoMigrate`) ويُبذر المستخدمون/الفروع في بيئة التطوير.
 - يظهر نص مثل `Now listening on: http://localhost:5199` — اترك النافذة مفتوحة.
 
 ## 3) تشغيل الواجهة (Vite) — نافذة جديدة
@@ -105,7 +104,7 @@ cd "C:\Users\pc\Desktop\document_generator\working 3.8 32b\backend"
 dotnet test DocGenerator.sln
 ```
 
-النتيجة المتوقعة: ما يزيد على `2500` اختبار (نحو `1850` وحدة/خدمة + `650` تكامل عبر `WebApplicationFactory` بقاعدة مؤقتة معزولة — لن تلمس `docgen.db`). الأرقام تقريبية بتاريخ 2026-10-16 وتكبر مع كل ميزة.
+النتيجة المتوقعة: ما يزيد على `2500` اختبار (نحو `1850` وحدة/خدمة + `650` تكامل عبر `WebApplicationFactory` بقاعدة اختبار معزولة — لن تلمس قاعدة التشغيل). الأرقام تقريبية بتاريخ 2026-10-16 وتكبر مع كل ميزة.
 
 > بوابة التسلسل: اختبارات وسيط الإثراء (`EnricherMiddlewareTests`) موسومة
 > `Category=Sequential` لأنها تستبدل `Log.Logger` العام — عند أي فشل عابر فيها
@@ -139,9 +138,9 @@ npm test
 
 ## 9) ملاحظات الإنتاج
 
-- فعّل `Database:UsePostgres = true` واضبط `ConnectionStrings:DefaultConnection` على PostgreSQL.
-  خارج التطوير بلا `Postgres` (ولا `DATABASE_URL`) يرفض التطبيق الإقلاع عمدًا (لا وقوع صامت على `SQLite`) —
-  والاستثناء الوحيد عقدة داخلية صغيرة بقرار صريح: `Database:AllowSqliteInProduction = true`.
+- **PostgreSQL فقط (ADR-0001)**: اضبط `DATABASE_URL` (بصيغة `postgres://`) أو
+  `ConnectionStrings__DefaultConnection` (بصيغة Npgsql). لا راية `Database:UsePostgres` ولا
+  `Database:AllowSqliteInProduction` بعد الآن؛ بلا سلسلة صالحة يرفض التطبيق الإقلاع عمدًا.
   `DATABASE_URL` فارغة تُعامَل كغائبة.
 - عيّن `Jwt:Secret` قوياً (إلزامي خارج بيئة التطوير).
 - الإقلاع المتزامن لنسخ عدة على `Postgres` يعتمد قفل الهجرات المدمج في `EF Core` — يمنع التسابق على
@@ -161,13 +160,9 @@ npm test
   - **الترتيب الإلزامي في النافذة:** (1) نسخة احتياطية + استعادة مجرَّبة، (2) تطبيق الهجرات على القاعدة
     الحية، (3) التحقق من `__EFMigrationsHistory`، (4) **ثم** تشغيل النسخة الجديدة. تطبيق النسخة قبل
     الهجرات = رفض إقلاع مقصود (لا «no such column» عند أول طلب).
-  - في `SQLite` تُعطَّل المفاتيح الأجنبية قبل الترحيل وتُفحص بعده (`PRAGMA foreign_keys=OFF` قبل
-    `BEGIN`، ثم `foreign_key_check` و`integrity_check`) — يتولاها `DatabaseInitializer` تلقائيًا في
-    التطوير/الاختبار؛ وفي الإنتاج يُطبَّق السكربت الصريح:
-    ```powershell
-    dotnet ef migrations script --context DocGeneratorDbContext --idempotent
-    ```
-    مع `PRAGMA foreign_keys=OFF` قبل `BEGIN` صراحةً.
+  - هجرات `SQLite` (`Persistence\Migrations\`) **للاختبارات فقط** بعد ADR-0001، وستُحذف نهائيًا
+    في `P0-02`؛ لا تُطبَّق على أي قاعدة تشغيل. المرجع الوحيد للإنتاج هو سياق
+    `DocGeneratorPostgresDbContext`.
 
 ### اقتران نشر `PR-4` + `PR-5` (تنبيهات — إلزامي)
 
@@ -319,21 +314,22 @@ npm test
 
 ### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
 
-- أي تغيير في الكود يضيف/يعدّل هجرات EF (`Persistence\Migrations\` لـ SQLite و`Persistence\MigrationsPostgres\` لـ PostgreSQL) **لا يصل إلى قواعد البيانات الموجودة تلقائيًا** — الكود الجديد وحده لا يكفي.
+- أي تغيير في الكود يضيف/يعدّل هجرات EF (`Persistence\MigrationsPostgres\` لـ PostgreSQL) **لا يصل إلى قواعد البيانات الموجودة تلقائيًا** — الكود الجديد وحده لا يكفي.
 - أثناء نافذة نشر خاضعة للتحكم نفّذ على الخادم (من مجلد `backend\`):
   ```powershell
-  dotnet ef database update --context DocGeneratorDbContext          # قاعدة SQLite المحلية
   dotnet ef database update --context DocGeneratorPostgresDbContext   # قاعدة PostgreSQL في الإنتاج
   ```
-- تتصل الأوامر بسلسلة الاتصال الموجودة في `appsettings.json` لبيئة الخادم (مع `Database:UsePostgres = true` لقاعدة الإنتاج). إن لم يكن `dotnet-ef` مثبتًا عالميًا: `dotnet tool install --global dotnet-ef`.
-- **سياسة «صفر تحذيرات» تسري على هذين الأمرين** (وهما يبنيان الخلفية وقت التصميم): أي تحذير مترجم/محلل/NuGet
-  أو من محرك MSBuild في مرحلة البناء يُفشِلهما برسالة `Build failed. Use dotnet build to see the errors.` —
+- تتصل أوامر التصميم بسلسلة `PostgreSQL` من `POSTGRES_CONNECTION` (يقرأها
+  `PostgresDbContextFactory` حصرًا)؛ أما التشغيل فيقرأ `DATABASE_URL` أو
+  `ConnectionStrings__DefaultConnection`. إن لم يكن `dotnet-ef` مثبتًا عالميًا:
+  `dotnet tool install --global dotnet-ef`.
+- **سياسة «صفر تحذيرات» تسري على هذا الأمر** (يبني الخلفية وقت التصميم): أي تحذير مترجم/محلل/NuGet
+  أو من محرك MSBuild في مرحلة البناء يُفشِله برسالة `Build failed. Use dotnet build to see the errors.` —
   أصلح التحذير أو وثّق `NoWarn` مضيقة في الـ`PR` (المصدر: `backend/Directory.Build.props`؛ وتُغطّى تحذيرات
   تقييم المشروع المبكرة في بوابة CI بمفتاح `-warnaserror`).
-- **هجرات معلّقة من دفعة `l-main-page` (2026-09-28) — طبّقها في النشر القادم ثم احذف هذا البند:**
-  - SQLite (`Persistence\Migrations\`): `20260928082242_AddPersonalReminders` (جدول `PersonalReminders`)، `20260928085246_AddAppSuggestions` (جدول `AppSuggestions`).
-  - PostgreSQL (`Persistence\MigrationsPostgres\`): `20260928082313_AddPersonalRemindersPg`، `20260928085307_AddAppSuggestionsPg`.
-  - الأمران أعلاه يطبّقانها معًا؛ إهمالها = فشل تشغيل فعلي (`no such column`) رغم نجاح كل الاختبارات محليًا.
+- **ملاحظة (ADR-0001):** أي بند في هذا القسم أو في القائمة التراكمية يذكر `--context DocGeneratorDbContext`
+  أو هجرات `SQLite` هو **تاريخي/اختباري فقط** ولا يُطبَّق على قاعدة تشغيل. المرجع الوحيد هو
+  `DocGeneratorPostgresDbContext`.
 - **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.
 
 ### سلامة التراجع `Down` (تحذيرات — `RF-001`/`INT-013`)
@@ -358,7 +354,7 @@ npm test
 ### فحص Postgres قبل النشر (إلزامي عند تغيّر المخطط)
 
 - الاختبارات اليومية تعمل على SQLite المتسامح (`datetime2` كنص، بلا فرض `Utc`، بلا فرض دقة عشرية) ولا تُغني عن فحص Postgres الصارم (`timestamptz` يرفض أي `DateTime` بلا `Kind=Utc`) — «أخضر محليًا ≠ أخضر إنتاجًا».
-- قبل أي نشر يمسّ المخطط: ارفع Postgres مؤقتًا (حاوية `Docker` تُحذف بعد الفحص، أو ثنائي محمول، أو قاعدة مرحلية على الاستضافة — لا شيء دائم على جهازك ولا مساس بـ `docgen.db`)، طبّق هجرات Postgres، ثم شغّل:
+- قبل أي نشر يمسّ المخطط: ارفع Postgres مؤقتًا (حاوية `Docker` تُحذف بعد الفحص، أو ثنائي محمول، أو قاعدة مرحلية على الاستضافة — لا شيء دائم على جهازك ولا مساس بقاعدة التشغيل)، طبّق هجرات Postgres، ثم شغّل:
   ```powershell
   $env:DOCGEN_TEST_POSTGRES="Host=...;Port=5432;Database=...;Username=...;Password=..."
   dotnet test backend/tests/DocGenerator.Api.Tests --filter "FullyQualifiedName~DatabaseInitializerTests"
@@ -376,7 +372,7 @@ npm test
   خطوة يدوية **قبل** تشغيل الحزمة الجديدة (انظر «تطبيق هجرات قاعدة البيانات عند النشر» أعلاه).
 - اختبر الاستعادة دوريًا (على قاعدة مرحلية، لا على الإنتاج): `pg_restore` أو زر الاستعادة في اللوحة — نسخة لم تُجرَّب استعادتها ليست نسخة.
 - لا تُخزَّن النسخ في المستودع أبدًا، وحصر الوصول إليها بمشغّل النشر فقط (تحوي بيانات قانونية حقيقية).
-- قاعدة التطوير المحلية (`docgen.db`) لا تحتاج نسخًا — بيانات تجريبية قابلة لإعادة البذر.
+- قاعدة التطوير المحلية (`PostgreSQL` تجريبية) لا تحتاج نسخًا — بيانات تجريبية قابلة لإعادة البذر.
 
 > **قبل النقل إلى المخدّم الحكومي (البيئة النهائية):** راجع الملحق
 > `docs/audit/production-readiness/GOV-SERVER-LAUNCH-DELTA-20261103.md` — يغطي ما لا تُجرّبه استضافة
@@ -394,6 +390,10 @@ npm test
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
+>
+> **ADR-0001 (2026‑11‑14):** بعد إزالة مسار `SQLite` التشغيلي، سطور `SQLite` أدناه **تاريخية/اختبارية
+> فقط** ولم تعد شرط نشر. المرجع الوحيد للنشر هو `DocGeneratorPostgresDbContext`؛ وستُحذف هجرات
+> `SQLite` نهائيًا في `P0-02`، فلا تُشغِّل `--context DocGeneratorDbContext` على أي قاعدة تشغيل.
 >
 > **حالة 2026‑10‑26:** اكتمل سياق `PostgreSQL` — الهجرات الأربع (`Expand`/`Outbox_Create`/`Backfill`/
 > `Contract`) مطبَّقة على `Supabase` (**63** هجرة)؛ سجلها في `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
