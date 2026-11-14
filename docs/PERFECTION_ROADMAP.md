@@ -191,6 +191,11 @@
 
 #### `P0-05` — Outbox عام لكل أثر جانبي
 
+- **الحالة (2026-11-14):** مغلق بقرار `ADR-0004` (`docs/adr/0004-outbox-scope.md`):
+  `HeadAlertOutbox` القائم هو الـOutbox المعتمد (enqueue داخل المعاملة، lease،
+  retries/NextAttemptAt/LastError، مشغّل خلفي، صحة واختبارات). لا جدول عام جديد
+  حتى يظهر منتج ثانٍ مستقل؛ أي أثر جديد يمرّ عبره أو عبر `adapter`، وربط lag
+  بـ`/readyz` ضمن `P5-03`.
 - **المشكلة:** `HeadAlertOutbox` خاص بالتنبيهات فقط؛ بعض الآثار الجانبية داخل الخدمات.
 - **العمل:**
   - `OutboxMessage` عام (`Type`, `Payload`, `Status`, `Attempts`, `NextAttemptAt`, `LockedUntil`, `LastError`).
