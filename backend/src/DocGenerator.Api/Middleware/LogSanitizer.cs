@@ -4,8 +4,9 @@ namespace DocGenerator.Api.Middleware;
 
 /// <summary>
 /// سياسة قصّ/تجريد موحدة لقناتي السجلات (`ClientErrorsController` + `GlobalExceptionHandler` —
-/// `SEC-012`): أي نص حر قبل التسجيل أو الرد يُسطَّح (ضد تزوير السطور)، تُجرَّد منه الأسرار
-/// (بريد/اعتمادات بصيغة مفتاح=قيمة/توكنات `Bearer`)، ثم يُقصّ لسقفه.
+/// `SEC-012` و`P0-08`): أي نص حر قبل التسجيل أو الرد يُسطَّح (ضد تزوير السطور)، تُجرَّد منه الأسرار
+/// (بريد/اعتمادات بصيغة مفتاح=قيمة/توكنات `Bearer`) و**البيانات الشخصية الموسومة** (الرقم الوطني/
+/// الهاتف/العنوان بصيغة مفتاح=قيمة)، ثم يُقصّ لسقفه.
 /// يقتصر التجريد على الأنماط غير الملتبسة قصدًا: لا تُمسّ الأرقام المجرّدة (المبالغ والأرقام
 /// القضائية تُشخَّص بها الأعطال) ولا الأسماء (تظهر في رسائل `4xx` العربية قصدًا).
 /// </summary>
@@ -16,6 +17,7 @@ public static partial class LogSanitizer
 
     private const string RedactedEmail = "[بريد محجوب]";
     private const string RedactedSecret = "$1=[محجوب]";
+    private const string RedactedPii = "$1=[محجوب]";
 
     // بريد بصيغة مبسطة بلا ارتداد كارثي: مستخدم@نطاق.لاحقة.
     [GeneratedRegex(@"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", RegexOptions.CultureInvariant)]
@@ -30,6 +32,21 @@ public static partial class LogSanitizer
     // توكن `Bearer` في ترويسة مسرّبة بنص خطأ.
     [GeneratedRegex(@"(?i)Bearer\s+[A-Za-z0-9\-._~+/=]+", RegexOptions.CultureInvariant)]
     private static partial Regex BearerRegex();
+
+    // بيانات شخصية موسومة فقط (P0-08): قيمة بعد مفتاح صريح — لا مطاردة أرقام مجرّدة
+    // لأن المبالغ والأرقام القضائية تشخيصية.
+    [GeneratedRegex(
+        @"(?i)(الرقم\s+الوطني|national[_\s-]?id)\s*[:=]\s*[0-9٠-٩][0-9٠-٩\s-]{4,}",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex NationalIdRegex();
+
+    [GeneratedRegex(
+        @"(?i)(الهاتف|هاتف|phone|mobile)\s*[:=]\s*\+?[0-9٠-٩][0-9٠-٩\s-]{5,}",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex PhoneRegex();
+
+    [GeneratedRegex(@"(?i)(العنوان|address)\s*[:=]\s*[^\r\n,;]+", RegexOptions.CultureInvariant)]
+    private static partial Regex AddressRegex();
 
     // ذيل .NET الحديث الذي يضيفه الإطار إلى `ArgumentException.Message` عند تمرير اسم معامل.
     [GeneratedRegex(@"\s*\(Parameter\s+'[^']*'\)", RegexOptions.CultureInvariant)]
@@ -63,7 +80,7 @@ public static partial class LogSanitizer
                 string.Empty)
             .TrimEnd();
 
-    /// <summary>تجريد الأسرار غير الملتبسة (بريد/اعتمادات/`Bearer`) — النص بلا أسرار يُعاد كما هو.</summary>
+    /// <summary>تجريد الأسرار والبيانات الشخصية الموسومة (بريد/اعتمادات/`Bearer`/هوية/هاتف/عنوان) — النص الخالي منها يُعاد كما هو.</summary>
     public static string Redact(string value)
     {
         // `Bearer` أولًا: وإلا ابتلعته قاعدة مفتاح=قيمة (`Authorization: Bearer` ← القيمة `Bearer`)
@@ -71,6 +88,9 @@ public static partial class LogSanitizer
         value = BearerRegex().Replace(value, "Bearer [محجوب]");
         value = EmailRegex().Replace(value, RedactedEmail);
         value = CredentialRegex().Replace(value, RedactedSecret);
+        value = NationalIdRegex().Replace(value, RedactedPii);
+        value = PhoneRegex().Replace(value, RedactedPii);
+        value = AddressRegex().Replace(value, RedactedPii);
         return value;
     }
 
