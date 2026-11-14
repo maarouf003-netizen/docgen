@@ -5,9 +5,12 @@ namespace DocGenerator.Domain.Entities;
 /// يُولَّد رقمه تلقائيًا بصيغة {رمز الفرع}-{السنة}-{عشوائي} عند الحفظ، ويؤخذ تاريخه من لحظة الإرسال.
 /// الكتاب المرسل وثيقة رسمية: لا يُعدَّل نصه ولا يُحذف، ويُستكمل بلاحقٍ أو ردود فقط.
 /// </summary>
-public class ReviewLetter
+public class ReviewLetter : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     public int BranchId { get; set; }
 

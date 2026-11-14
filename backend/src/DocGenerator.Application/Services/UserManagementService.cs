@@ -171,7 +171,7 @@ public sealed class UserManagementService : IUserManagementService
             await _audit.LogAsync(actorName, "create_user", details: $"أنشأ محامياً: {user.FullName} ({user.Username}) في فرع {branch.Name}", ct: token);
         }, ct);
 
-        return new LawyerListItemDto(user.Id, user.Username, user.FullName, user.IsActive, user.BranchId, branch.Name);
+        return new LawyerListItemDto(user.Id, user.Username, user.FullName, user.IsActive, user.BranchId, branch.Name, null, user.Version);
     }
 
     public async Task<LawyerListItemDto?> UpdateLawyerAsync(int userId, UpdateLawyerRequest request, int? scopeBranchId, string? actorName, CancellationToken ct = default)
@@ -183,6 +183,8 @@ public sealed class UserManagementService : IUserManagementService
         // رئيس القسم يعدّل محامي فرعه فقط.
         if (scopeBranchId.HasValue && user.BranchId != scopeBranchId)
             return null;
+
+        OptimisticConcurrencyGuard.EnsureCurrent(user, request.Version, "حساب المحامي");
 
         if (string.IsNullOrWhiteSpace(request.FullName) && string.IsNullOrWhiteSpace(request.Password))
             throw new ArgumentException("لا يوجد تغيير لإجرائه — حدّد اسماً جديداً أو كلمة مرور جديدة");
@@ -321,6 +323,8 @@ public sealed class UserManagementService : IUserManagementService
         var user = await _users.GetByIdAsync(userId, ct);
         if (user is null)
             return null;
+
+        OptimisticConcurrencyGuard.EnsureCurrent(user, request.Version, "حساب المستخدم");
 
         var role = request.Role is null ? user.Role : ParseRole(request.Role);
         await GuardManagerAdminBoundaryAsync(actorUserId, requestedIsAdmin: role == UserRole.Admin, targetIsAdmin: user.Role == UserRole.Admin, ct);
@@ -667,7 +671,8 @@ public sealed class UserManagementService : IUserManagementService
         user.IsActive,
         user.BranchId,
         user.Branch?.Name,
-        user.CreatedById);
+        user.CreatedById,
+        user.Version);
 
     private static UserListItemDto ToUserDto(User user) => new(
         user.Id,
@@ -678,7 +683,8 @@ public sealed class UserManagementService : IUserManagementService
         user.Branch?.Name,
         user.IsActive,
         user.SectionId,
-        user.Section?.Name);
+        user.Section?.Name,
+        user.Version);
 
     /// <summary>
     /// نسخة التحرير (إنشاء/تحديث): الكيان المتتبَّع بلا `Include` للشعبة —
@@ -698,6 +704,7 @@ public sealed class UserManagementService : IUserManagementService
             user.Branch?.Name,
             user.IsActive,
             user.SectionId,
-            sectionName);
+            sectionName,
+            user.Version);
     }
 }

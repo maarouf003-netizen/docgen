@@ -187,6 +187,7 @@ export function DayRemindersModal({
       await api.patch(`/personal-reminders/${personal.id}/occurrences`, {
         occurrenceDate: dayKey,
         done,
+        version: personal.version,
       });
       onChanged();
     } catch (err) {
@@ -579,6 +580,7 @@ export function PersonalForm({
           recurrence,
           // `__clear__` تُرسل سلسلة فارغة فتمسحها الخلفية؛ `undefined` تُبقي الحالية.
           recurrenceEnd: endDays === '__clear__' ? '' : endDays ? endDateFrom(dayKey, endDays) : undefined,
+          version: initial.version,
         });
       } else {
         await api.post('/personal-reminders', {

@@ -67,6 +67,7 @@ function personalOccurrence(done = false): CalendarOccurrence {
     isArchived: false,
     completedOccurrenceKeys: done ? [DAY] : [],
     createdAt: '2026-08-01',
+    version: 9,
   };
   return { dayKey: DAY, kind: 'personal', personal, ...(done ? { done: true as const } : {}) };
 }
@@ -176,7 +177,7 @@ describe('DayRemindersModal', () => {
 
     expect(api.put).toHaveBeenCalledWith(
       '/personal-reminders/7',
-      expect.objectContaining({ recurrenceEnd: '' }),
+      expect.objectContaining({ recurrenceEnd: '', version: 9 }),
     );
   });
 
@@ -330,7 +331,7 @@ describe('DayRemindersModal', () => {
     await user.click(screen.getByRole('button', { name: 'تم' }));
     expect(api.patch).toHaveBeenCalledWith(
       '/personal-reminders/7/occurrences',
-      expect.objectContaining({ occurrenceDate: DAY, done: true }),
+      expect.objectContaining({ occurrenceDate: DAY, done: true, version: 9 }),
     );
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
@@ -344,7 +345,7 @@ describe('DayRemindersModal', () => {
     await user.click(screen.getByRole('button', { name: 'إعادة التكرار' }));
     expect(api.patch).toHaveBeenCalledWith(
       '/personal-reminders/7/occurrences',
-      expect.objectContaining({ occurrenceDate: DAY, done: false }),
+      expect.objectContaining({ occurrenceDate: DAY, done: false, version: 9 }),
     );
     expect(onChanged).toHaveBeenCalledTimes(1);
   });

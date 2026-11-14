@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -11,7 +12,7 @@ public interface IPersonalReminderService
     Task<PersonalReminderDto?> GetByIdAsync(int id, int userId, CancellationToken ct = default);
     Task<PersonalReminderDto> CreateAsync(CreatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
     Task<PersonalReminderDto?> UpdateAsync(int id, UpdatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<PersonalReminderDto?> SetOccurrenceAsync(int id, string occurrenceDate, bool done, int userId, CancellationToken ct = default);
+    Task<PersonalReminderDto?> SetOccurrenceAsync(int id, string occurrenceDate, bool done, int userId, long? version = null, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, int userId, string? actorName, CancellationToken ct = default);
 }
 
@@ -105,6 +106,8 @@ public sealed class PersonalReminderService : IPersonalReminderService
         if (reminder is null || reminder.LawyerId != userId)
             return null;
 
+        OptimisticConcurrencyGuard.EnsureCurrent(reminder, request.Version, "التذكير الشخصي");
+
         var changed = new List<string>();
         if (request.Title is not null)
         {
@@ -162,11 +165,12 @@ public sealed class PersonalReminderService : IPersonalReminderService
     }
 
     public async Task<PersonalReminderDto?> SetOccurrenceAsync(
-        int id, string occurrenceDate, bool done, int userId, CancellationToken ct = default)
+        int id, string occurrenceDate, bool done, int userId, long? version = null, CancellationToken ct = default)
     {
         var reminder = await _reminders.GetByIdAsync(id, ct);
         if (reminder is null || reminder.LawyerId != userId)
             return null;
+        OptimisticConcurrencyGuard.EnsureCurrent(reminder, version, "التذكير الشخصي");
         if (reminder.IsArchived)
             throw new ArgumentException("التذكير مؤرشف — أعد تفعيله أولًا");
 
@@ -262,5 +266,6 @@ public sealed class PersonalReminderService : IPersonalReminderService
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(k => k.Length > 0)
             .ToList(),
-        r.CreatedAt);
+        r.CreatedAt,
+        r.Version);
 }

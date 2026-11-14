@@ -447,7 +447,7 @@ public class DocumentResponse : IDocumentSheetFields
         ExecutionActions = d.ExecutionActions
             .OrderByDescending(a => a.CreatedAt)
             .Select(a => new ExecutionActionDto(a.Id, a.Type, a.Text, a.ActionDate,
-                a.ReminderDuration, a.ReminderColor, a.CreatedBy?.FullName, a.CreatedAt))
+                a.ReminderDuration, a.ReminderColor, a.CreatedBy?.FullName, a.CreatedAt, a.Version))
             .ToList(),
         ExecutionApplicants = d.ExecutionApplicants
             .Select(a => new ExecutionApplicantDto(a.Id, a.Name, a.Father, a.Family,

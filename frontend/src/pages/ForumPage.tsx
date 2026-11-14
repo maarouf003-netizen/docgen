@@ -338,7 +338,10 @@ export default function ForumPage() {
     setFormError('');
     try {
       if (editing) {
-        const r = await api.put<ForumMessageDto>(`/forum/messages/${editing.id}`, { body: text });
+        const r = await api.put<ForumMessageDto>(`/forum/messages/${editing.id}`, {
+          body: text,
+          version: editing.version,
+        });
         setItems((prev) => prev.map((m) => (m.id === editing.id ? r.data : m)));
         setEditing(null);
         restorePreEditDraft();

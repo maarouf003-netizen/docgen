@@ -2,7 +2,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Domain.Entities;
 
-public class Document : IDocumentExecutionState
+public class Document : IDocumentExecutionState, IVersionedEntity
 {
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -30,6 +30,9 @@ public class AddExecutionActionRequest
 
 public class UpdateExecutionActionRequest
 {
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    public long? Version { get; set; }
+
     public string Type { get; set; } = "action";
     public string Text { get; set; } = string.Empty;
     public string? ActionDate { get; set; }
@@ -43,6 +46,9 @@ public class UpdateExecutionActionRequest
 /// </summary>
 public class SetActionReminderRequest
 {
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    public long? Version { get; set; }
+
     public string? ReminderDuration { get; set; }
     public string? ReminderColor { get; set; }
 }
@@ -54,6 +60,9 @@ public class SetActionReminderRequest
 /// </summary>
 public class RescheduleActionReminderRequest
 {
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    public long? Version { get; set; }
+
     public string? NewDueDate { get; set; }
 }
 

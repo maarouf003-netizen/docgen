@@ -186,6 +186,8 @@ export function InterventionModal({
 
     const payload: DocumentInterventionUpsertRequest = {
       nature: form.nature,
+      // النسخة تُفحص في التعديل فقط؛ الإنشاء يتجاهلها الخادم.
+      version: initial?.version,
       receiptNumber: normalizeArabicDigits(form.receiptNumber ?? '').trim(),
       receiptDate: normalizeArabicDigits(form.receiptDate ?? '').trim(),
       acceptanceDate: normalizeArabicDigits(form.acceptanceDate ?? '').trim(),

@@ -7,9 +7,12 @@ namespace DocGenerator.Domain.Entities;
 /// Status = Final يظهر لبوات المندوبين، وPending لا يظهر إلا لمالكه المحامي
 /// على ملفه حتى الاعتماد (د4). CitationFormula صيغة مناداة ممثلها القانوني (د8).
 /// </summary>
-public class PublicEntity
+public class PublicEntity : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     public int GroupId { get; set; }
 

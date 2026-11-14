@@ -98,6 +98,8 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (action is null || action.DocumentId != documentId)
             throw new KeyNotFoundException();
 
+        OptimisticConcurrencyGuard.EnsureCurrent(action, request.Version, "الإجراء");
+
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             throw new KeyNotFoundException();
@@ -184,6 +186,8 @@ public sealed class ExecutionActionService : IExecutionActionService
         if (action is null || action.DocumentId != documentId)
             throw new KeyNotFoundException();
 
+        OptimisticConcurrencyGuard.EnsureCurrent(action, request.Version, "الإجراء");
+
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             throw new KeyNotFoundException();
@@ -219,11 +223,13 @@ public sealed class ExecutionActionService : IExecutionActionService
     /// مع بقاء المدة وبقية الحقول دون مساس. **تاريخ الإجراء لا يُكتب ولا يُعاد تنسيقه** —
     /// واقعة قانونية (I1) — وكل حسابات التذكير على `DateTime` لا على نص (I7).
     /// </summary>
-    public async Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default)
+    public async Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, long? version = null, CancellationToken ct = default)
     {
         var action = await _actions.GetByIdAsync(actionId, ct);
         if (action is null || action.DocumentId != documentId)
             throw new KeyNotFoundException();
+
+        OptimisticConcurrencyGuard.EnsureCurrent(action, version, "الإجراء");
 
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -365,7 +371,7 @@ public sealed class ExecutionActionService : IExecutionActionService
     /// </summary>
     private static ExecutionActionDto ToDto(ExecutionAction action, string? createdByName)
         => new(action.Id, action.Type, action.Text, action.ActionDate,
-            action.ReminderDuration, action.ReminderColor, createdByName, action.CreatedAt);
+            action.ReminderDuration, action.ReminderColor, createdByName, action.CreatedAt, action.Version);
 
     private static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)
     {

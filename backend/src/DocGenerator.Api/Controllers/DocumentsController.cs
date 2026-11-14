@@ -855,7 +855,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
+        var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, request?.Version, ct);
         return Ok(action);
     }
 

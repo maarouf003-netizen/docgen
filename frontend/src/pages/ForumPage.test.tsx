@@ -47,6 +47,7 @@ function message(overrides: Partial<ForumMessageDto> = {}): ForumMessageDto {
     editedById: null,
     editedAtUtc: null,
     readCount: 0,
+    version: 2,
     ...overrides,
   };
 }
@@ -220,7 +221,7 @@ describe('ForumPage', () => {
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 
     await waitFor(() => {
-      expect(apiPut).toHaveBeenCalledWith('/forum/messages/1', { body: 'بعد التعديل' });
+      expect(apiPut).toHaveBeenCalledWith('/forum/messages/1', { body: 'بعد التعديل', version: 2 });
     });
     expect(await screen.findByText('بعد التعديل')).toBeInTheDocument();
     expect(screen.getByText(/عُدّل/)).toBeInTheDocument();

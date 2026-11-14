@@ -67,5 +67,8 @@ public class CorrespondenceConfiguration : IEntityTypeConfiguration<Corresponden
             .WithOne(r => r.Correspondence)
             .HasForeignKey(r => r.CorrespondenceId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(c => c.Version).IsConcurrencyToken();
     }
 }

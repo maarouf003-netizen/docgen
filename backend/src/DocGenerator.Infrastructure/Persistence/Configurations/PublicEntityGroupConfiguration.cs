@@ -22,5 +22,8 @@ public class PublicEntityGroupConfiguration : IEntityTypeConfiguration<PublicEnt
         builder.HasIndex(g => g.CanonicalNameNorm).IsUnique();
         builder.Property(g => g.EntityType).HasMaxLength(30).IsRequired();
         builder.HasIndex(g => g.EntityType);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(g => g.Version).IsConcurrencyToken();
     }
 }

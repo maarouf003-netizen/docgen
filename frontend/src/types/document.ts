@@ -97,6 +97,8 @@ export interface ExecutionActionDto {
   reminderColor?: string;
   createdByName?: string;
   createdAt: string;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل وإدارة التذكير. */
+  version?: number;
 }
 
 /** صفة الملف الثابتة (تُثبَّت عند الإنشاء ولا تتغير أثناء التعديل). */
@@ -233,11 +235,15 @@ export interface DocumentInterventionDto {
   /** معرّف قيد الجهة في السجل المرجعي (للجهة العامة). */
   registryId?: number | null;
   heirs?: HeirDto[];
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
+  version?: number;
 }
 
 /** طلب إضافة/تعديل متدخل — التواريخ نصوص حرة تُفسَّر خادميًا. */
 export interface DocumentInterventionUpsertRequest {
   nature: InterventionNature;
+  /** عدّاد التزامن المتفائل (P0-06) — يُفحص في التعديل فقط. */
+  version?: number | null;
   receiptNumber?: string;
   receiptDate?: string;
   acceptanceDate?: string;

@@ -4,7 +4,7 @@ namespace DocGenerator.Domain.Entities;
 /// رسالة ضمن كتاب المطالعة: الأصل (letter) أو اللاحق (addendum) من المحامي،
 /// أو الرد (reply) من رئيس القسم. كل رسالة برقم وتاريخ مولّدين تلقائيًا عند الحفظ.
 /// </summary>
-public class ReviewLetterMessage
+public class ReviewLetterMessage : IVersionedEntity
 {
     /// <summary>الكتاب الأصلي المسطَّر من المحامي.</summary>
     public const string KindLetter = "letter";
@@ -14,6 +14,9 @@ public class ReviewLetterMessage
     public const string KindReply = "reply";
 
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     public int ReviewLetterId { get; set; }
 

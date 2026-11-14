@@ -13,7 +13,8 @@ public record BranchDto(
     string? Governorate,
     bool IsActive,
     int UserCount,
-    int DocumentCount);
+    int DocumentCount,
+    long Version = 0);
 
 /// <summary>
 /// إحصاء اللوحة القديم (`GET /api/dashboard` — غير مستهلك من الواجهة الحالية التي تستخدم

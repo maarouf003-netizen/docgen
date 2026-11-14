@@ -689,7 +689,8 @@ public sealed class ReviewLetterService : IReviewLetterService
             messages.Select(ToMessageDto).ToList(),
             letter.CreatedAt,
             letter.RecipientSectionId,
-            letter.RecipientSection?.Name);
+            letter.RecipientSection?.Name,
+            letter.Version);
     }
 
     private ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen)

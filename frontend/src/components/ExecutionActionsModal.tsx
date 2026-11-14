@@ -45,6 +45,9 @@ export default function ExecutionActionsModal({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
+  // عدّاد التزامن المتفائل (P0-06) للصف قيد التعديل — يُرسَل في تعديل الإجراء،
+  // ثم تُستخدم النسخة المعادة منه لطلب التذكير التالي (لا نسخة قديمة بعد الحفظ).
+  const [editingVersion, setEditingVersion] = useState<number | undefined>(undefined);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
   // حالة التذكير المحمّلة عند بدء التعديل — لتحديد إن كان المستخدم غيّرها فعلًا،
@@ -75,6 +78,7 @@ export default function ExecutionActionsModal({
     setReminderColor('');
     setShowForm(false);
     setEditingId(null);
+    setEditingVersion(undefined);
     setLoadedReminder(null);
     setSaveError('');
     setFormSession((s) => s + 1);
@@ -102,7 +106,12 @@ export default function ExecutionActionsModal({
       };
       if (editingId !== null) {
         // تعديل الإجراء (نص/تاريخ) لا يمسّ التذكير — العقد لا يحمل حقول تذكير.
-        await api.put(`/documents/${documentId}/actions/${editingId}`, actionBody);
+        const updated = await api.put<ExecutionActionDto>(
+          `/documents/${documentId}/actions/${editingId}`,
+          { ...actionBody, version: editingVersion },
+        );
+        // النسخة بعد حفظ الإجراء — يستهلكها طلب التذكير التالي إن وُجد.
+        const currentVersion = updated.data?.version ?? editingVersion;
         // التذكير يُدار من مساره المستقل، وفقط إن غيّره المستخدم فعلًا.
         const reminderDirty = isReminderDirty(remind, reminderDuration, reminderColor, loadedReminder);
         if (reminderDirty) {
@@ -111,6 +120,7 @@ export default function ExecutionActionsModal({
               await api.put(`/documents/${documentId}/actions/${editingId}/reminder`, {
                 reminderDuration: reminderDuration || null,
                 reminderColor: reminderColor || null,
+                version: currentVersion,
               });
             } else {
               await api.delete(`/documents/${documentId}/actions/${editingId}/reminder`);
@@ -142,6 +152,7 @@ export default function ExecutionActionsModal({
 
   const startEdit = (a: ExecutionActionDto) => {
     setEditingId(a.id);
+    setEditingVersion(a.version);
     setType(isNote(a) ? 'note' : 'action');
     setText(a.text);
     setActionDate(a.actionDate ?? '');

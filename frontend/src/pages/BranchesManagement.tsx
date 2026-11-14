@@ -157,7 +157,7 @@ export default function BranchesManagement() {
     }
     setSectionBusy(true);
     try {
-      await api.put(`/sections/${renaming.id}/rename`, { name: nm });
+      await api.put(`/sections/${renaming.id}/rename`, { name: nm, version: renaming.version });
       setRenaming(null);
       if (subBranchId !== '') await loadSections(subBranchId);
     } catch (err) {
@@ -170,7 +170,7 @@ export default function BranchesManagement() {
   const setSectionActive = async (s: SectionDto, active: boolean) => {
     setSectionBusy(true);
     try {
-      await api.put(`/sections/${s.id}/active`, { isActive: active });
+      await api.put(`/sections/${s.id}/active`, { isActive: active, version: s.version });
       if (subBranchId !== '') await loadSections(subBranchId);
     } catch (err) {
       setSectionsError(getApiErrorMessage(err));
@@ -308,6 +308,7 @@ export default function BranchesManagement() {
         phone: editPhone.trim() || null,
         governorate: editGovernorate.trim(),
         isActive: editActive,
+        version: editing.version,
       });
       closeEdit();
       load();

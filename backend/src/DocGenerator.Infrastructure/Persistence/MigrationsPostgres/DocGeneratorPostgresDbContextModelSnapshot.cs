@@ -386,6 +386,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .IsConcurrencyToken();
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
@@ -440,6 +444,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -1785,6 +1793,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedById");
@@ -2215,6 +2227,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
@@ -2439,6 +2455,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<int?>("QuotedMessageId")
                         .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -3142,6 +3162,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IsArchived");
@@ -3208,6 +3232,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -3341,6 +3369,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CanonicalName")
@@ -3390,6 +3422,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -3462,6 +3498,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int>("ReviewLetterId")
                         .HasColumnType("integer");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BodyPlainText");
@@ -3502,6 +3542,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -3582,6 +3626,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 

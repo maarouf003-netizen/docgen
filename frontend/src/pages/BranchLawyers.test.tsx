@@ -37,6 +37,7 @@ function lawyer(overrides: Partial<LawyerListItem> = {}): LawyerListItem {
     isActive: true,
     branchId: 1,
     branchName: 'دمشق',
+    version: 8,
     ...overrides,
   };
 }
@@ -145,6 +146,7 @@ describe('BranchLawyers', () => {
       expect(api.put).toHaveBeenCalledWith('/users/lawyers/1', {
         fullName: 'محامي معدل',
         password: null,
+        version: 8,
       });
     });
     expect(api.get).toHaveBeenCalled();
@@ -162,6 +164,7 @@ describe('BranchLawyers', () => {
       expect(api.put).toHaveBeenCalledWith('/users/lawyers/1', {
         fullName: 'محامي دمشق',
         password: 'TestPass5678',
+        version: 8,
       });
     });
   });

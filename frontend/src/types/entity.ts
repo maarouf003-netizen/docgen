@@ -40,6 +40,8 @@ export interface PublicEntityEntryDto {
   coverageLabel?: string | null;
   /** قيد «الجهة الأم» (بلا فرع): يغطي كل المحافظات ويظهر مرة واحدة — وفروعه تحته. */
   isParentEntity?: boolean;
+  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
+  version?: number;
 }
 
 /** نتيجة قائمة/بحث السجل المصدّرة. */
@@ -77,6 +79,8 @@ export interface UpdatePublicEntityRequest {
   decreeNumber?: string | null;
   decreeDate?: string | null;
   isParentEntity?: boolean | null;
+  /** عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط. */
+  version?: number | null;
 }
 
 export interface AddPublicEntityAliasRequest {

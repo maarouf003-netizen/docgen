@@ -17,5 +17,6 @@ public class BranchConfiguration : IEntityTypeConfiguration<Branch>
         builder.Property(b => b.Address).HasMaxLength(300);
         builder.Property(b => b.Phone).HasMaxLength(30);
         builder.Property(b => b.Governorate).HasMaxLength(100);
+        builder.Property(b => b.Version).IsConcurrencyToken();
     }
 }

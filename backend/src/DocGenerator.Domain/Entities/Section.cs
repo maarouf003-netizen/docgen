@@ -5,9 +5,12 @@ namespace DocGenerator.Domain.Entities;
 /// (`ExecutionCircuit.SectionId`) والمستخدمون (`User.SectionId`) يتبعونها؛
 /// `null` في أي منهما يعني ملك القسم مباشرة.
 /// </summary>
-public class Section
+public class Section : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     /// <summary>فرع الإدارة الأب (إلزامي، لا يتغير أبدًا — النقل داخل الفرع نفسه).</summary>
     public int BranchId { get; set; }

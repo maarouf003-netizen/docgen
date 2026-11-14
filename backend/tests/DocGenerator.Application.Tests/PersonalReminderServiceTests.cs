@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -235,6 +236,51 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Equal("2026-09-01", updated.DueDate);
         Assert.True(updated.IsArchived);
         Assert.Contains("personal-reminder.update", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Update_StaleVersion_ThrowsConflict_WithoutChanges()
+    {
+        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.UpdateAsync(
+                dto.Id,
+                new UpdatePersonalReminderRequest("لا يُحفظ", null, null, null, null, null, null, dto.Version + 3),
+                _lawyer1.Id,
+                "lawyer1"));
+
+        Assert.Contains("التذكير الشخصي", ex.Message);
+        Assert.Equal("مراجعة الملف", (await _service.GetByIdAsync(dto.Id, _lawyer1.Id))!.Title);
+        Assert.DoesNotContain("personal-reminder.update", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Update_MatchingVersion_IncrementsVersion()
+    {
+        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        Assert.Equal(0, dto.Version);
+
+        var updated = await _service.UpdateAsync(
+            dto.Id,
+            new UpdatePersonalReminderRequest("معدل", null, null, null, null, null, null, dto.Version),
+            _lawyer1.Id,
+            "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal(1, updated.Version);
+    }
+
+    [Fact]
+    public async Task SetOccurrence_StaleVersion_ThrowsConflict()
+    {
+        var dto = await _service.CreateAsync(
+            ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
+
+        await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.SetOccurrenceAsync(dto.Id, "2026-08-09", true, _lawyer1.Id, dto.Version + 1));
+
+        Assert.Empty((await _service.GetByIdAsync(dto.Id, _lawyer1.Id))!.CompletedOccurrenceKeys);
     }
 
     [Fact]

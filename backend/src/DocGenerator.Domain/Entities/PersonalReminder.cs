@@ -5,9 +5,13 @@ namespace DocGenerator.Domain.Entities;
 /// التكرار يُوسَّع عرضيًا فقط في الواجهة؛ الإنجاز أرشفة (`IsArchived`) أو تعليم
 /// تكرارات منجزة (`CompletedOccurrenceKeys`) — لا حذف صامت للسلسلة.
 /// </summary>
-public class PersonalReminder
+public class PersonalReminder : IVersionedEntity
 {
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
+
     public int LawyerId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Notes { get; set; }

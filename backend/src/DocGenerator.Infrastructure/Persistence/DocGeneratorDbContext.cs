@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,6 +76,46 @@ public class DocGeneratorDbContext : DbContext
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    }
+
+    /// <summary>
+    /// ضمان مركزي لعدّاد التزامن المتفائل (P0-06): كل كيان <see cref="IVersionedEntity"/>
+    /// حالته <c>Modified</c> تُزاد نسخته مرة واحدة قبل الحفظ إن لم يغيّرها الكاتب صراحةً.
+    /// بذلك لا تعتمد الحماية على تذكّر كل مسار كتابة لزيادة يدوية.
+    /// </summary>
+    /// <remarks>
+    /// كُتبت التجاوزات على التحميلين المنطقيين فقط (<c>bool acceptAllChangesOnSuccess</c>)،
+    /// لأن بقية التحميلات العامة تمرّ عبرهما؛ تجاوزها جميعًا كان سيضاعف الزيادة.
+    /// مسارات <c>ExecuteUpdateAsync</c> تتجاوز التتبّع وتزيد النسخة صراحةً في استعلامها.
+    /// </remarks>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        BumpConcurrencyVersions();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    /// <inheritdoc />
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        BumpConcurrencyVersions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void BumpConcurrencyVersions()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Modified || entry.Entity is not IVersionedEntity)
+                continue;
+
+            var version = entry.Property(nameof(IVersionedEntity.Version));
+            var original = Convert.ToInt64(version.OriginalValue, CultureInfo.InvariantCulture);
+            var current = Convert.ToInt64(version.CurrentValue, CultureInfo.InvariantCulture);
+            if (current == original)
+                version.CurrentValue = original + 1;
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

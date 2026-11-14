@@ -11,8 +11,8 @@ public interface ISectionService
     Task<List<SectionDto>> ListSectionsAsync(int branchId, CancellationToken ct = default);
     Task<SectionDto?> GetSectionAsync(int sectionId, CancellationToken ct = default);
     Task<SectionDto> CreateSectionAsync(int branchId, string? name, string? actorName, CancellationToken ct = default);
-    Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, CancellationToken ct = default);
-    Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, CancellationToken ct = default);
+    Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, long? version = null, CancellationToken ct = default);
+    Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, long? version = null, CancellationToken ct = default);
     Task<bool> DeleteSectionAsync(int sectionId, string? actorName, CancellationToken ct = default);
 }
 
@@ -86,7 +86,8 @@ public sealed class SectionService : ISectionService
             s.Name,
             s.IsActive,
             circuitCounts.GetValueOrDefault(s.Id),
-            headNames.GetValueOrDefault(s.Id))).ToList();
+            headNames.GetValueOrDefault(s.Id),
+            s.Version)).ToList();
     }
 
     public async Task<SectionDto?> GetSectionAsync(int sectionId, CancellationToken ct = default)
@@ -130,14 +131,15 @@ public sealed class SectionService : ISectionService
         {
             throw new DocumentConflictException($"الشعبة «{trimmed}» موجودة مسبقًا في فرعك", ex);
         }
-        return new SectionDto(section.Id, section.BranchId, branch.Name, section.Name, section.IsActive, 0, null);
+        return new SectionDto(section.Id, section.BranchId, branch.Name, section.Name, section.IsActive, 0, null, section.Version);
     }
 
-    public async Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, CancellationToken ct = default)
+    public async Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, long? version = null, CancellationToken ct = default)
     {
         var section = await _sections.GetByIdAsync(sectionId, ct);
         if (section is null)
             return null;
+        OptimisticConcurrencyGuard.EnsureCurrent(section, version, "الشعبة");
         var trimmed = NormalizeName(name);
         if (section.Name == trimmed)
             return await ToDtoAsync(section, ct);
@@ -191,11 +193,12 @@ public sealed class SectionService : ISectionService
         return result;
     }
 
-    public async Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, CancellationToken ct = default)
+    public async Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, long? version = null, CancellationToken ct = default)
     {
         var section = await _sections.GetByIdAsync(sectionId, ct);
         if (section is null)
             return null;
+        OptimisticConcurrencyGuard.EnsureCurrent(section, version, "الشعبة");
         if (!isActive)
         {
             var circuitCount = (await _circuits.ListAsync(ct)).Count(c => c.SectionId == section.Id);
@@ -271,6 +274,7 @@ public sealed class SectionService : ISectionService
             section.Name,
             section.IsActive,
             circuits.Count(c => c.SectionId == section.Id),
-            head?.FullName);
+            head?.FullName,
+            section.Version);
     }
 }

@@ -6,7 +6,7 @@ namespace DocGenerator.Domain.Entities;
 /// عند الحفظ، ويؤخذ تاريخها من لحظة الإرسال. المراسلة المرسلة وثيقة رسمية: لا يُعدَّل نصها
 /// ولا تُحذف، وتُستكمل بلاحقٍ (من المنشئ) أو ردٍّ (من الطرف المستلم) فقط.
 /// </summary>
-public class Correspondence
+public class Correspondence : IVersionedEntity
 {
     /// <summary>أهمية عادية.</summary>
     public const string ImportanceNormal = "normal";
@@ -24,6 +24,9 @@ public class Correspondence
     public const string ViewStatusPending = "pending";
 
     public int Id { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُزاد عند كل كتابة ويُفحص في `WHERE`.</summary>
+    public long Version { get; set; }
 
     /// <summary>
     /// فرع المراسلة؛ null للمراسلة العامة المسطَّرة من مندوب جهة (بلا فرع) —

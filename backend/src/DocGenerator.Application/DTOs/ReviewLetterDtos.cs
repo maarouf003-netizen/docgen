@@ -50,7 +50,9 @@ public record ReviewLetterDto(
     /// <summary>الشعبة المستلمة (لبلا ملف — `null` تعني رئيس القسم؛ مع ملف مشتقة من دائرته).</summary>
     int? RecipientSectionId = null,
     /// <summary>اسم الشعبة المستلمة — للعرض فقط.</summary>
-    string? RecipientSectionName = null);
+    string? RecipientSectionName = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُعاد للعميل.</summary>
+    long Version = 0);
 
 /// <summary>
 /// سطر كتاب في القائمة: للكتاب المربوط بالملف تُملأ FileContext،

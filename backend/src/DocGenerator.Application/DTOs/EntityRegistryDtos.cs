@@ -29,7 +29,9 @@ public record UpdatePublicEntityRequest(
     string? DecreeKind = null,
     string? DecreeNumber = null,
     string? DecreeDate = null,
-    bool? IsParentEntity = null);
+    bool? IsParentEntity = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>إضافة اسم كتابي بديل لقيد.</summary>
 public record AddPublicEntityAliasRequest(string AliasText);
@@ -63,7 +65,9 @@ public record PublicEntityEntryDto(
     /// <summary>تسمية التغطية الجغرافية (تظهر بدل المحافظة في البطاقات والبحث).</summary>
     string? CoverageLabel = null,
     /// <summary>قيد «الجهة الأم» (بلا فرع): يغطي كل المحافظات ويظهر مرة واحدة — وفروعه تحته.</summary>
-    bool IsParentEntity = false);
+    bool IsParentEntity = false,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُعاد للعميل ليُرسله في التعديل.</summary>
+    long Version = 0);
 
 /// <summary>كتابة متمايزة واحدة لنص جهة مع عدّاد ملفاتها وجهتها في الاستيراد.</summary>
 public record ImportVariantDto(

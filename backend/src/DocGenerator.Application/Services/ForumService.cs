@@ -182,6 +182,8 @@ public sealed class ForumService : IForumService
         if (message.AuthorId != actorUserId)
             throw new UnauthorizedAccessException("تعديل الرسالة متاح لكاتبها فقط");
 
+        OptimisticConcurrencyGuard.EnsureCurrent(message, request.Version, "رسالة المنتدى");
+
         var now = _clock.GetUtcNow().UtcDateTime;
         await _tx.RunAsync(async token =>
         {
@@ -407,7 +409,8 @@ public sealed class ForumService : IForumService
         m.CreatedAt,
         m.EditedById,
         m.EditedAtUtc,
-        readCount);
+        readCount,
+        m.Version);
 }
 
 /// <summary>

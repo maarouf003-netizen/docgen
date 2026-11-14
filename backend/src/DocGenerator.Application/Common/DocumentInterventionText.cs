@@ -147,7 +147,8 @@ public static class DocumentInterventionText
         intervention.Heirs
             .OrderBy(h => h.Id)
             .Select(ToHeirDto)
-            .ToList());
+            .ToList(),
+        intervention.Version);
 
     /// <summary>وقعة «طلب تدخل» جديدة مرتبطة بالمتدخل (تاريخ الوقعة = تاريخ الورود).</summary>
     public static DocumentOccurrence BuildOccurrence(

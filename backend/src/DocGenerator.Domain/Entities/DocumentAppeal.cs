@@ -11,7 +11,7 @@ namespace DocGenerator.Domain.Entities;
 /// تتأثر بأي تعديل لاحق لأطراف الملف الأساس.
 /// يمكن أن يقع أكثر من استئناف على ذات الملف، وبشكل مستقل تمامًا بين الملف المنيب والمناب.
 /// </summary>
-public class DocumentAppeal
+public class DocumentAppeal : IVersionedEntity
 {
     public int Id { get; set; }
 

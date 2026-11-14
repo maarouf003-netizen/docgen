@@ -147,6 +147,7 @@ export default function BranchLawyers() {
       await api.put(`/users/lawyers/${editing.id}`, {
         fullName: editFullName.trim(),
         password: editPassword || null,
+        version: editing.version,
       });
       closeEdit();
       load(branchId);

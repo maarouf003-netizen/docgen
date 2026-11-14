@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -149,6 +150,36 @@ public class BranchManagementServiceTests : IDisposable
             999, new UpdateBranchRequest("غير موجود", "XXX", null, null, true), "admin");
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task Update_StaleVersion_ThrowsConflict_WithoutPersistingOrAuditing()
+    {
+        // P0-06: النسخة القادمة من العميل لا تطابق المحمّلة — رفض مبكر 409.
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.UpdateBranchAsync(
+                DamascusId,
+                new UpdateBranchRequest("اسم مبتذل", "DAM", null, null, true, "دمشق", 99),
+                "admin"));
+
+        Assert.Contains("الفرع", ex.Message);
+        Assert.Equal("دمشق", (await _db.Branches.AsNoTracking().SingleAsync(b => b.Id == DamascusId)).Name);
+        Assert.DoesNotContain("update_branch", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Update_MatchingVersion_SucceedsAndReportsIncrementedVersion()
+    {
+        var stored = await _db.Branches.AsNoTracking().SingleAsync(b => b.Id == DamascusId);
+        Assert.Equal(0, stored.Version);
+
+        var updated = await _service.UpdateBranchAsync(
+            DamascusId,
+            new UpdateBranchRequest("دمشق الجديدة", "DAM", null, null, true, "دمشق", stored.Version),
+            "admin");
+
+        Assert.NotNull(updated);
+        Assert.Equal(1, updated.Version);
     }
 
     [Fact]

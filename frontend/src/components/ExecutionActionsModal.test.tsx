@@ -179,6 +179,7 @@ describe('ExecutionActionsModal', () => {
         reminderDuration: '3 أيام',
         reminderColor: 'أحمر',
         createdAt: '2026-11-10',
+        version: 3,
       }],
     });
     (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
@@ -197,10 +198,12 @@ describe('ExecutionActionsModal', () => {
         type: 'action',
         text: 'إجراء بتذكير',
         actionDate: '10-11-2026',
+        version: 3,
       });
       expect(api.put).toHaveBeenCalledWith('/documents/7/actions/1/reminder', {
         reminderDuration: 'أسبوع',
         reminderColor: 'أحمر',
+        version: 3,
       });
     });
     expect(api.delete).not.toHaveBeenCalled();
@@ -217,6 +220,7 @@ describe('ExecutionActionsModal', () => {
         reminderDuration: '3 أيام',
         reminderColor: 'أحمر',
         createdAt: '2026-11-10',
+        version: 3,
       }],
     });
     (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
@@ -245,6 +249,7 @@ describe('ExecutionActionsModal', () => {
         reminderDuration: '3 أيام',
         reminderColor: 'أحمر',
         createdAt: '2026-11-10',
+        version: 3,
       }],
     });
     (api.put as unknown as ReturnType<typeof vi.fn>)

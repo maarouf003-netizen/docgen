@@ -39,7 +39,7 @@ public class CorrespondenceContractTests
         "AdministrativeBranchName", "CreatorId", "CreatorName", "CreatorRole",
         "TargetUserId", "TargetName", "TargetRole", "ViewStatus",
         "CanMarkSeen", "CanReply", "Messages", "Receipts", "CreatedAt",
-        "RecipientSectionId",
+        "RecipientSectionId", "Version",
     ];
 
     [Fact]

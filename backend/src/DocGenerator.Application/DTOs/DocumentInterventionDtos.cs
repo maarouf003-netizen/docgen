@@ -8,6 +8,9 @@ namespace DocGenerator.Application.DTOs;
 /// </summary>
 public class DocumentInterventionUpsertRequest
 {
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُفحص في التعديل فقط؛ غيابه = فحص القاعدة.</summary>
+    public long? Version { get; set; }
+
     public string? Nature { get; set; } = PartyNatureCatalog.Natural;
 
     /// <summary>رقم ورود طلب التدخل (اختياري).</summary>
@@ -92,4 +95,6 @@ public record DocumentInterventionDto(
     string? RepresentedBy,
     string? Governorate,
     int? RegistryId,
-    List<HeirDto> Heirs);
+    List<HeirDto> Heirs,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُعاد للعميل ليُرسله في التعديل.</summary>
+    long Version = 0);

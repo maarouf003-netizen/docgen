@@ -63,5 +63,8 @@ public class DocumentInterventionConfiguration : IEntityTypeConfiguration<Docume
             .WithMany()
             .HasForeignKey(i => i.CreatedById)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(i => i.Version).IsConcurrencyToken();
     }
 }

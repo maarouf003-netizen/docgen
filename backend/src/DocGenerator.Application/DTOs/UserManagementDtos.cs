@@ -8,7 +8,8 @@ public record LawyerListItemDto(
     bool IsActive,
     int? BranchId,
     string? BranchName,
-    int? CreatedById = null);
+    int? CreatedById = null,
+    long Version = 0);
 
 /// <summary>إضافة محامٍ إلى فرع — رئيس القسم لمحامي فرعه، والمشرف لأي فرع (يحدد BranchId).</summary>
 public record CreateLawyerRequest(
@@ -21,7 +22,9 @@ public record CreateLawyerRequest(
 /// الاسم اختياري (يحدّث اسم الدخول تلقائياً)، وكلمة المرور اختيارية تُترك فارغة للإبقاء.</summary>
 public record UpdateLawyerRequest(
     string? FullName,
-    string? Password = null);
+    string? Password = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>تفعيل/إيقاف حساب (تُستخدم لإيقاف/إعادة تفعيل المحامي أو أي مستخدم).</summary>
 public record SetUserActiveRequest(bool IsActive);
@@ -36,7 +39,8 @@ public record UserListItemDto(
     string? BranchName,
     bool IsActive,
     int? SectionId = null,
-    string? SectionName = null);
+    string? SectionName = null,
+    long Version = 0);
 
 /// <summary>إنشاء مستخدم — مشرف (أي دور) ومدير (عدا دور المشرف — `BQ-001د`). `SectionId` إلزامي لرئيس الشعبة فقط.</summary>
 public record CreateUserRequest(
@@ -55,7 +59,9 @@ public record UpdateUserRequest(
     bool IsActive,
     string? Password,
     int? SectionId = null,
-    int? SuccessorId = null);
+    int? SuccessorId = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>صف سجل تعاقب رئاسة — للمدير والمشرف فقط (قرار §2.17).</summary>
 public record HeadSuccessionDto(

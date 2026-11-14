@@ -34,5 +34,8 @@ public class PersonalReminderConfiguration : IEntityTypeConfiguration<PersonalRe
             .WithMany()
             .HasForeignKey(r => r.LawyerId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // P0-06: عدّاد التزامن المتفائل — يُزاد مركزيًا في `SaveChanges` ويُفحص في `WHERE`.
+        builder.Property(r => r.Version).IsConcurrencyToken();
     }
 }

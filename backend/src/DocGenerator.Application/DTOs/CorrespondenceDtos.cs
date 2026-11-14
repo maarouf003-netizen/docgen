@@ -84,7 +84,9 @@ public record CorrespondenceDto(
     IReadOnlyList<CorrespondenceReceiptDto> Receipts,
     DateTime CreatedAt,
     /// <summary>الشعبة المجمدة للمستلم الرئيس (§10.2 + قرار 24) — `null` لغيره.</summary>
-    int? RecipientSectionId = null);
+    int? RecipientSectionId = null,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — يُعاد للعميل.</summary>
+    long Version = 0);
 
 /// <summary>
 /// سطر مراسلة في القائمة: للمرتبطة بالملف تُملأ FileContext، وللعامة تبقى null.

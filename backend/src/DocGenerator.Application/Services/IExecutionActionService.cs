@@ -34,7 +34,7 @@ public interface IExecutionActionService
     /// وبقية الحقول دون مساس — تاريخ الإجراء لا يُكتب أبدًا. يرفض غياب التذكير
     /// والمدد الملتبسة برسائل ودية.
     /// </summary>
-    Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default);
+    Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, long? version = null, CancellationToken ct = default);
 
     /// <summary>
     /// زرع إجراءات/ملاحظات «الإدخال المبدئي» (`InitialActions`) ذرّيًا ضمن معاملة

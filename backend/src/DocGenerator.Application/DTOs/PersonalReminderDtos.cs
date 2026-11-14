@@ -17,7 +17,8 @@ public record PersonalReminderDto(
     string? RecurrenceEnd,
     bool IsArchived,
     IReadOnlyList<string> CompletedOccurrenceKeys,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    long Version = 0);
 
 /// <summary>إنشاء تذكير شخصي — العنوان والتاريخ والتكرار إلزامية، والبقية اختيارية.</summary>
 public record CreatePersonalReminderRequest(
@@ -36,12 +37,16 @@ public record UpdatePersonalReminderRequest(
     string? Color,
     string? Recurrence,
     string? RecurrenceEnd,
-    bool? IsArchived);
+    bool? IsArchived,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>تعليم تكرارٍ ما منجزًا أو إعادته — التاريخ مفتاح `yyyy-MM-dd` صارم.</summary>
 public record SetOccurrenceRequest(
     string OccurrenceDate,
-    bool Done);
+    bool Done,
+    /// <summary>عدّاد التزامن المتفائل (P0-06) — غيابه = فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 public static class PersonalReminderDates
 {

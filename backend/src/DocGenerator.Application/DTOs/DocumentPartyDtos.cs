@@ -98,7 +98,8 @@ public record ExecutionActionDto(
     string? ReminderDuration,
     string? ReminderColor,
     string? CreatedByName,
-    DateTime CreatedAt) : IExportAction;
+    DateTime CreatedAt,
+    long Version = 0) : IExportAction;
 
 /// <summary>
 /// وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). القيمة الفارغة في الحقلين

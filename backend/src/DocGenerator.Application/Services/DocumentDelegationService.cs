@@ -579,7 +579,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     occurredAt: DateTime.UtcNow,
                     ct: token);
 
-                _delegations.Update(delegation);
                 await _uow.SaveChangesAsync(token);
 
                 await _documents.AddAssignmentAsync(target.Id, AssignmentKindCatalog.Create,
