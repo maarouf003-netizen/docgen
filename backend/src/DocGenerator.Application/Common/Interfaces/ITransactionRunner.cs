@@ -12,6 +12,12 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// آثارًا جانبية خارج القاعدة لا تتراجع. كل مستدعٍ يجب أن يكون قادرًا على النجاح
 /// في محاولة واحدة بعد قراءة حالته من القاعدة داخل الـdelegate؛ وإعادة المحاولة
 /// تكون بطلب/نطاق جديد. (تفصيل القرار في <c>TransactionRunner</c>.)</para>
+///
+/// <para><b>حدود العقد:</b> هذا يخص إعادة تنفيذ الـdelegate كاملًا. قد يعيد EF محاولة
+/// <c>SaveChangesAsync</c> الداخلي عبر الإستراتيجية العامة للسياق إن كانت معيدة، لأن
+/// <c>StateManager</c> يستخدم إستراتيجية السياق لا إستراتيجية المُنفِّذ المحلية. لذلك
+/// لا تُفعّل <c>EnableRetryOnFailure</c> قبل استراتيجية واعية بالمعاملة (تعطّل
+/// المحاولة عند وجود <c>CurrentTransaction</c>) أو idempotency لكل عملية كتابة.</para>
 /// </summary>
 public interface ITransactionRunner
 {

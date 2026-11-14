@@ -214,9 +214,13 @@
 > `HeadAlertOutboxStore.ExecuteInTransactionAsync` (المعاملة التفاعلية المباشرة
 > الوحيدة خارج `TransactionRunner`) بالإستراتيجية نفسها. `EnableRetryOnFailure`
 > غير مفعّل حاليًا في `DependencyInjection`، فالإصلاح حارس استباقي لا تغيير سلوك
-> قائم. الاختبارات: `TransactionRunnerRetryTests` (فشل عابر محقون بعد التنفيذ
-> وقبله، نجاح عادي، ومسار صندوق الصادر) و`TransactionRunnerTests` القائمة.
-> لا هجرة.
+> قائم. **حدود العقد:** الحماية تشمل الـdelegate كاملًا؛ أما `SaveChangesAsync`
+> الداخلي فيستخدم إستراتيجية السياق العامة (`StateManager`)، فقد يعيد EF محاولته
+> إن فُعّل `EnableRetryOnFailure`. لذلك التفعيل يبقى مشروطًا باستراتيجية واعية
+> بالمعاملة (تعطّل المحاولة عند وجود `CurrentTransaction`) أو idempotency لكل
+> عملية كتابة، مع اختبارات حقن فشل على PostgreSQL. الاختبارات:
+> `TransactionRunnerRetryTests` (فشل عابر محقون بعد التنفيذ وقبله، نجاح عادي،
+> ومسار صندوق الصادر) و`TransactionRunnerTests` القائمة. لا هجرة.
 
 ---
 
