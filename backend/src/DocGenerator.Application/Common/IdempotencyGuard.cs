@@ -11,11 +11,15 @@ namespace DocGenerator.Application.Common;
 public sealed class IdempotentReplayException : Exception
 {
     public string ResponseBody { get; }
+    public int StatusCode { get; }
+    public string? ContentType { get; }
 
-    public IdempotentReplayException(string responseBody)
+    public IdempotentReplayException(string responseBody, int statusCode = 200, string? contentType = null)
         : base("طلب مكرر — أُعيدت النتيجة المخزنة")
     {
         ResponseBody = responseBody;
+        StatusCode = statusCode;
+        ContentType = contentType;
     }
 }
 
@@ -62,6 +66,13 @@ public static class IdempotencyGuard
     public static string Fingerprint<T>(T request)
         => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions)));
 
+    /// <summary>
+    /// بصمة جسم HTTP الخام (`SHA256` hex) — تستخدمها المرشِّحات العامة قبل الربط
+    /// النموذجي، فتبقى البصمة مستقلة عن ترتيب الخصائص أو تنسيق الـJSON.
+    /// </summary>
+    public static string FingerprintRaw(ReadOnlySpan<byte> body)
+        => Convert.ToHexString(SHA256.HashData(body));
+
     /// <summary>تسلسل لقطة الاستجابة المخزنة (يُعاد حرفيًا عند التكرار).</summary>
     public static string Snapshot<T>(T response)
         => JsonSerializer.Serialize(response, JsonOptions);
@@ -96,7 +107,8 @@ public static class IdempotencyGuard
         }
 
         if (begin.ReplayBody is not null)
-            throw new IdempotentReplayException(begin.ReplayBody);
+            throw new IdempotentReplayException(
+                begin.ReplayBody, begin.ReplayStatusCode, begin.ReplayContentType);
         if (begin.Busy)
             throw new DocumentConflictException("الطلب قيد المعالجة — أعد المحاولة بعد لحظات");
         return begin.Ticket;
@@ -107,13 +119,17 @@ public static class IdempotencyGuard
         IIdempotencyStore? store,
         IdempotencyTicket? ticket,
         string responseBody,
+        int statusCode = 200,
+        string? contentType = null,
+        string? responseLocation = null,
         CancellationToken ct = default)
     {
         if (store is null || ticket is null)
             return;
         try
         {
-            await store.CompleteAsync(ticket, responseBody, ct);
+            await store.CompleteAsync(
+                ticket, responseBody, statusCode, contentType, responseLocation, ct);
         }
         catch (Exception)
         {

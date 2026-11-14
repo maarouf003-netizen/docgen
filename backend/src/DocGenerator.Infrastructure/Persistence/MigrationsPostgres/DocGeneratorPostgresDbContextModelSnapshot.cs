@@ -2949,6 +2949,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2972,6 +2976,15 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<string>("ResponseBody")
                         .HasColumnType("text");
+
+                    b.Property<string>("ResponseLocation")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("StatusCode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(200);
 
                     b.Property<int>("UserId")
                         .HasColumnType("integer");

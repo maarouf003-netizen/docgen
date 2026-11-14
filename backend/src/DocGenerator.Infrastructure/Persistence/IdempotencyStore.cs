@@ -38,7 +38,9 @@ public class IdempotencyStore : IIdempotencyStore
                 // مكتمل بنفس البصمة = تكرار يُعاد؛ ببصمة مختلفة = نية جديدة
                 // تُنفَّذ طازجة (يُستبدَل الصف أدناه).
                 if (string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
-                    return new IdempotencyBegin(null, existing.ResponseBody, false);
+                    return new IdempotencyBegin(
+                        null, existing.ResponseBody, false,
+                        existing.StatusCode, existing.ContentType, existing.ResponseLocation);
             }
             else if (string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
             {
@@ -51,6 +53,9 @@ public class IdempotencyStore : IIdempotencyStore
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(k => k.Fingerprint, fingerprint)
                     .SetProperty(k => k.ResponseBody, (string?)null)
+                    .SetProperty(k => k.StatusCode, 200)
+                    .SetProperty(k => k.ContentType, (string?)null)
+                    .SetProperty(k => k.ResponseLocation, (string?)null)
                     .SetProperty(k => k.CreatedAt, now)
                     .SetProperty(k => k.ExpiresAt, expiresAt), ct);
             await CleanupExpiredAsync(now, ct);
@@ -94,7 +99,9 @@ public class IdempotencyStore : IIdempotencyStore
             if (winner is not null && winner.ExpiresAt > now)
             {
                 if (winner.ResponseBody is not null)
-                    return new IdempotencyBegin(null, winner.ResponseBody, false);
+                    return new IdempotencyBegin(
+                        null, winner.ResponseBody, false,
+                        winner.StatusCode, winner.ContentType, winner.ResponseLocation);
                 return new IdempotencyBegin(null, null, true);
             }
             // لا يُتصوَّر عمليًا (الفائز التزم للتو) — يُعامَل كانشغال آمن.
@@ -105,11 +112,21 @@ public class IdempotencyStore : IIdempotencyStore
         return new IdempotencyBegin(new IdempotencyTicket(key, operation, userId), null, false);
     }
 
-    public async Task CompleteAsync(IdempotencyTicket ticket, string responseBody, CancellationToken ct = default)
+    public async Task CompleteAsync(
+        IdempotencyTicket ticket,
+        string responseBody,
+        int statusCode = 200,
+        string? contentType = null,
+        string? responseLocation = null,
+        CancellationToken ct = default)
     {
         await _db.IdempotencyKeys
             .Where(k => k.Key == ticket.Key && k.Operation == ticket.Operation && k.UserId == ticket.UserId)
-            .ExecuteUpdateAsync(s => s.SetProperty(k => k.ResponseBody, responseBody), ct);
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(k => k.ResponseBody, responseBody)
+                .SetProperty(k => k.StatusCode, statusCode)
+                .SetProperty(k => k.ContentType, contentType)
+                .SetProperty(k => k.ResponseLocation, responseLocation), ct);
     }
 
     public async Task ReleaseAsync(IdempotencyTicket ticket, CancellationToken ct = default)

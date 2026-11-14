@@ -34,7 +34,7 @@ public sealed partial class PublicEntityService
             throw;
         }
 
-        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct: ct);
         return result;
     }
 

@@ -16,6 +16,9 @@ public class IdempotencyKeyConfiguration : IEntityTypeConfiguration<IdempotencyK
         builder.Property(k => k.UserId).IsRequired();
         builder.Property(k => k.Fingerprint).HasMaxLength(64).IsRequired();
         builder.Property(k => k.ResponseBody).HasColumnType("text");
+        builder.Property(k => k.StatusCode).HasDefaultValue(200).IsRequired();
+        builder.Property(k => k.ContentType).HasMaxLength(200);
+        builder.Property(k => k.ResponseLocation).HasMaxLength(2048);
         builder.Property(k => k.CreatedAt).HasColumnType("datetime2");
         builder.Property(k => k.ExpiresAt).HasColumnType("datetime2");
 

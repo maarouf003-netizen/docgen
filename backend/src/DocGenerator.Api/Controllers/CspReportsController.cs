@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -35,6 +36,7 @@ public sealed class CspReportsController : ControllerBase
     public CspReportsController(ILogger<CspReportsController> logger) => _logger = logger;
 
     [HttpPost]
+    [SkipIdempotency]
     [AllowAnonymous]
     [Consumes("application/csp-report", "application/reports+json", "application/json")]
     [EnableRateLimiting(RateLimitingSetup.CspReportPolicy)]

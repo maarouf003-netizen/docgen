@@ -5,15 +5,16 @@ using Microsoft.EntityFrameworkCore;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// حراسة Baseline PostgreSQL الواحد بعد P0-02: يطبّقه على قاعدة فارغة معزولة،
-/// ويتحقق من سجل الهجرة الواحد ومن بقاء القيود/الفهارس الحرجة، ومن نظافة النموذج.
+/// حراسة سلسلة هجرات PostgreSQL بعد P0-02: تطبّق Baseline ثم الهجرات التراكمية
+/// على قاعدة فارغة معزولة، وتتحقق من السجل ومن بقاء القيود/الفهارس الحرجة
+/// ومن نظافة النموذج.
 /// يعمل فقط عند تعريف <c>DOCGEN_TEST_POSTGRES</c> (وفي CI مع
 /// <c>DOCGEN_REQUIRE_POSTGRES=1</c> يفشل صراحةً عند غيابه).
 /// </summary>
 public sealed class PostgresBaselineTests
 {
     [Fact]
-    public async Task InitialBaseline_AppliesToEmptyDatabase_AndCreatesFinalSchema()
+    public async Task Migrations_ApplyToEmptyDatabase_AndCreateFinalSchema()
     {
         var baseConnectionString = PostgresTestEnvironment.RequireOrSkip();
         if (baseConnectionString is null)
@@ -35,8 +36,20 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            var migration = Assert.Single(migrations);
-            Assert.Contains("InitialPostgresBaseline", migration, StringComparison.Ordinal);
+            Assert.Equal(2, migrations.Count);
+            Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
+
+            var statusColumn = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'IdempotencyKeys'
+                      AND column_name = 'StatusCode'
+                    """)
+                .SingleAsync();
+            Assert.Equal(1L, statusColumn);
 
             foreach (var table in new[] { "Users", "Documents", "HeadAlerts", "DocumentInterventions" })
             {

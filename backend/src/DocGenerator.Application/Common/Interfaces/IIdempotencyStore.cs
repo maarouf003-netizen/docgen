@@ -7,10 +7,16 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// <param name="Ticket">الحجز المحتفظ به لإتمامه/تحريره لاحقًا — null عند الرد المخزن أو الانشغال.</param>
 /// <param name="ReplayBody">لقطة الاستجابة المخزنة — تُعاد حرفيًا عند التكرار.</param>
 /// <param name="Busy">صحيح عندما يوجد حجز قيد المعالجة بنفس البصمة.</param>
+/// <param name="ReplayStatusCode">رمز الحالة الأصلي المخزن (200 افتراضيًا للصفوف القديمة).</param>
+/// <param name="ReplayContentType">نوع محتوى الاستجابة الأصلية إن خُزّن.</param>
+/// <param name="ReplayLocation">ترويسة `Location` الأصلية لاستجابات الإنشاء إن خُزّنت.</param>
 public sealed record IdempotencyBegin(
     IdempotencyTicket? Ticket,
     string? ReplayBody,
-    bool Busy);
+    bool Busy,
+    int ReplayStatusCode = 200,
+    string? ReplayContentType = null,
+    string? ReplayLocation = null);
 
 /// <summary>حجز مفتاح محتفظ به — يُتمَّم بالنتيجة أو يُحرَّر عند الفشل.</summary>
 public sealed record IdempotencyTicket(string Key, string Operation, int UserId);
@@ -31,7 +37,13 @@ public interface IIdempotencyStore
         CancellationToken ct = default);
 
     /// <summary>إتمام الحجز بلقطة الاستجابة (تُعاد حرفيًا عند التكرار).</summary>
-    Task CompleteAsync(IdempotencyTicket ticket, string responseBody, CancellationToken ct = default);
+    Task CompleteAsync(
+        IdempotencyTicket ticket,
+        string responseBody,
+        int statusCode = 200,
+        string? contentType = null,
+        string? responseLocation = null,
+        CancellationToken ct = default);
 
     /// <summary>تحرير الحجز عند فشل العملية (لتُعاد المحاولة طازجة) — متسامح.</summary>
     Task ReleaseAsync(IdempotencyTicket ticket, CancellationToken ct = default);

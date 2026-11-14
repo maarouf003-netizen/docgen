@@ -178,7 +178,7 @@ public sealed class DocumentService : IDocumentService
             throw;
         }
 
-        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct: ct);
         return result;
     }
 
@@ -517,7 +517,7 @@ public sealed class DocumentService : IDocumentService
 
         // اللقطة بشكل الاستجابة نفسه (`{"transferredCount":N}`) ليُعاد حرفيًا عند التكرار.
         await IdempotencyGuard.CompleteAsync(_idempotency, ticket,
-            IdempotencyGuard.Snapshot(new { transferredCount = transferred }), ct);
+            IdempotencyGuard.Snapshot(new { transferredCount = transferred }), ct: ct);
         return transferred;
     }
 

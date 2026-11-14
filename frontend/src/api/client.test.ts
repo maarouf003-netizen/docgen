@@ -149,6 +149,56 @@ describe('api CSRF interceptor', () => {
   });
 });
 
+describe('api idempotency interceptor (P0-04)', () => {
+  afterEach(() => {
+    delete api.defaults.adapter;
+  });
+
+  const readHeader = (headers: Record<string, unknown>, name: string) =>
+    headers[name] ?? (headers as { get?: (k: string) => unknown }).get?.(name);
+
+  it('يضيف مفتاحًا لكل طلب كتابة ولا يضيفه للقراءة', async () => {
+    const captured: { method?: string; headers: Record<string, unknown> }[] = [];
+    api.defaults.adapter = async (config) => {
+      captured.push({ method: config.method, headers: config.headers as unknown as Record<string, unknown> });
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    await api.post('/documents/1/restore');
+    await api.get('/documents/1');
+
+    const postKey = readHeader(captured[0].headers, 'X-Idempotency-Key');
+    expect(postKey).toMatch(/^[0-9a-f-]{36}$/);
+    expect(readHeader(captured[1].headers, 'X-Idempotency-Key')).toBeUndefined();
+  });
+
+  it('يحترم مفتاح المستدعي الصريح ولا يستبدله', async () => {
+    let captured: Record<string, unknown> = {};
+    api.defaults.adapter = async (config) => {
+      captured = config.headers as unknown as Record<string, unknown>;
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    await api.post('/documents', {}, { headers: { 'X-Idempotency-Key': 'explicit-key' } });
+
+    expect(readHeader(captured, 'X-Idempotency-Key')).toBe('explicit-key');
+  });
+
+  it('يستثني الدخول والخروج من المفتاح التلقائي', async () => {
+    const captured: Record<string, unknown>[] = [];
+    api.defaults.adapter = async (config) => {
+      captured.push(config.headers as unknown as Record<string, unknown>);
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    await api.post('/auth/logout');
+    await api.post('/auth/login', {});
+
+    expect(readHeader(captured[0], 'X-Idempotency-Key')).toBeUndefined();
+    expect(readHeader(captured[1], 'X-Idempotency-Key')).toBeUndefined();
+  });
+});
+
 describe('api 429 retry', () => {
   afterEach(() => {
     vi.useRealTimers();
