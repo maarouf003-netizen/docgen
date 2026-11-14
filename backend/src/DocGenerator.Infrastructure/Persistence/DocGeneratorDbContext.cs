@@ -98,6 +98,8 @@ public class DocGeneratorDbContext : DbContext
     /// فروق مزوّد قاعدة البيانات لعقد التنبيهات (الخطة §6.2): الفهرس الفريد الجزئي
     /// على <c>DedupeKey</c> يحتاج صياغة منطقية مختلفة بين SQLite وPostgreSQL.
     /// يُستدعى من <see cref="OnModelCreating"/> بعد التكوينات المشتركة حصرًا.
+    /// ملاحظة ADR-0001: مسار التشغيل صار PostgreSQL فقط؛ يبقى هذا الفرع مؤقتًا
+    /// لاختبارات SQLite حتى تُحذف هجراتها ويُوحّد النموذج في P0-02.
     /// </summary>
     private void ConfigureHeadAlertProviderSpecific(ModelBuilder modelBuilder)
     {

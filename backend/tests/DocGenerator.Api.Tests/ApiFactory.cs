@@ -8,6 +8,7 @@ using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
@@ -50,10 +51,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // الحارس H-02 (Program.cs) يشترط راية صريحة لبيئة Development. المصنع تطويري مقصود
         // (قاعدة SQLite مؤقتة + بذر اختباري)، فتُعلَن الراية هنا بدل تعطيل الحارس.
         builder.UseSetting("Security:AllowDevelopmentEnvironment", "true");
-        builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath};Default Timeout=30");
+        // ADR-0001: لا مسار SQLite إنتاجي؛ سلسلة Postgres شكلية لتجاوز حارس الإقلاع،
+        // ثم يُستبدل السياق بـSQLite داخل ConfigureTestServices (حيز اختبار فقط).
+        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-        builder.UseSetting("Database:UsePostgres", "false");
         // الترحيل التلقائي مفعّل صراحةً: `appsettings.Development.json` مستبعد من Git
         // (إعدادات محلية)، فلا وجود له في CI، وقيمة `appsettings.json` الأساسية
         // `false` عمدًا للإنتاج. بدون هذا السطر تفشل كل اختبارات القاعدة في CI فقط
@@ -100,6 +102,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                 services.Remove(registryOptions);
             services.AddSingleton(new NumberRegistryOptions { AllowCircuitlessLegacy = true });
         });
+
+        // ADR-0001: السياق الفعلي للاختبار SQLite مؤقت — بعد تسجيل Npgsql في Program.
+        builder.ConfigureTestServices(services =>
+            TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30"));
     }
 
     protected override void Dispose(bool disposing)

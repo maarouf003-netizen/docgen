@@ -1,6 +1,8 @@
 using System.Net;
+using DocGenerator.Api.Tests.TestServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 
 namespace DocGenerator.Api.Tests;
 
@@ -47,11 +49,14 @@ public class DevelopmentEnvironmentGuardTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
-            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
+            // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري.
+            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-            builder.UseSetting("Database:UsePostgres", "false");
             builder.UseSetting("Database:AutoMigrate", "true");
+            builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "devguard-test-secret-0123456789-0123456789-0123456789");
+            builder.ConfigureTestServices(services =>
+                TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
         }
 
         protected override void Dispose(bool disposing)

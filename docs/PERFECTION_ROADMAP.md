@@ -2,7 +2,7 @@
 
 > **الحالة:** خطة تنفيذية معتمدة للتنفيذ في محادثة جديدة.
 > **التاريخ:** 2026-11-14.
-> **الأساس:** `master` عند `de652ff` + الـPRs `#135`–`#138` (غير مدموجة بعد).
+> **الأساس:** `master` عند `457d4ec` (بعد دمج `#135`–`#139`).
 > **قاعدة البيانات الفعلية:** `PostgreSQL` فقط (نسخة تجريبية على Render/Supabase، بلا بيانات حقيقية).
 > **قاعدة `SQLite`:** موجودة في الكود والاختبارات لكنها **غير مستخدمة في التشغيل**؛ الخطة تعالج إزالتها تدريجيًا.
 >
@@ -120,6 +120,10 @@
 
 #### `P0-01` — `PostgreSQL` فقط في التشغيل
 
+- **الحالة (2026-11-14):** منفّذ — `ADR-0001` (`docs/adr/0001-postgres-only.md`)، وإزالة تسجيل
+  `UseSqlite` و`AllowSqliteInProduction` و`Database:UsePostgres` من التشغيل. حذف هجرات
+  `SQLite` وتوحيد النموذج على صياغة `PostgreSQL` مؤجّلان إلى `P0-02` لتلازمهما مع سحق الهجرات
+  وإعادة ضبط القاعدة.
 - **المشكلة:** مسار `SQLite` الإنتاجي و`Database:AllowSqliteInProduction` وهجرات مزدوجة.
 - **العمل:**
   - حذف فرع `UseSqlite` من `DependencyInjection` و`Program.cs` و`DatabaseInitializer`.
@@ -128,7 +132,7 @@
   - إبقاء `SQLite` مؤقتًا في مشروع اختبارات الوحدات فقط، ثم إزالته (`P1-08`).
 - **الملفات:** `Program.cs`، `DependencyInjection.cs`، `DocGeneratorDbContext.cs`، `DatabaseInitializer.cs`، `appsettings.json`، `render.yaml`، `RUN_GUIDE.md`.
 - **الاختبارات:** إقلاع Production بلا Postgres → يفشل؛ اختبارات الوحدات لا تتأثر.
-- **DoD:** لا ذكر لـ`UseSqlite` في `src`؛ لا هجرات SQLite؛ بناء/اختبارات خضراء.
+- **DoD:** لا ذكر لـ`UseSqlite` في `src`؛ لا هجرات SQLite (تُنجز في `P0-02` مع سحق الهجرات)؛ بناء/اختبارات خضراء.
 - **الاعتمادية:** `P0-02`.
 
 #### `P0-02` — سحق الهجرات إلى Baseline واحد
@@ -490,6 +494,13 @@
 
 - **العمل:** Renovate/Dependabot أسبوعيًا؛ lock files؛ مراجعة أمنية؛ حد للإصدارات.
 - **DoD:** لا اعتماديات قديمة حرجة.
+
+#### `P7-05` — صيانة CI (تحذيرات Node 20 وUbuntu 26)
+
+- **العمل:** ترقية `actions/checkout@v4` و`actions/setup-dotnet@v4` و`actions/setup-node@v4`
+  إلى إصدارات لا تعتمد Node 20 (Node 24)؛ وتثبيت صورة `runs-on` صريحة بدل `ubuntu-latest`
+  قبل تحولها إلى Ubuntu 26؛ ومراجعة صورة `postgres` في `backend-postgres`.
+- **DoD:** لا تحذيرات إهمال في سجلات CI، وبيئة تشغيل/صورة مثبتة الإصدار.
 
 ---
 

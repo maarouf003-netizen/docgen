@@ -23,8 +23,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
-      - key: Database__UsePostgres
-        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: Jwt__Secret

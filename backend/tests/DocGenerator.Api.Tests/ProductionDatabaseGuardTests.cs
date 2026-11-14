@@ -1,12 +1,14 @@
 using System.Net;
+using DocGenerator.Api.Tests.TestServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// اختبارات حارس قاعدة الإنتاج (H-01 — قرار الجاهزية):
-/// لا إقلاع خارج التطوير على SQLite إلا بسماح صريح، ونقاط البنية
+/// اختبارات حارس قاعدة الإنتاج (ADR-0001 — PostgreSQL فقط):
+/// لا إقلاع بلا سلسلة Postgres صالحة، ولا وقوع صامت على SQLite، ونقاط البنية
 /// (healthz/السنة/احتياطي SPA) تبقى مجهولة الهوية رغم التفويض الافتراضي (M-01).
 /// </summary>
 public sealed class ProductionDatabaseGuardTests : IDisposable
@@ -35,22 +37,41 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
     }
 
     [Fact]
-    public void Production_OnSqlite_WithoutOptOut_RefusesToStart()
+    public void Production_WithoutPostgresConnection_RefusesToStart()
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
-            builder.UseSetting("Database:UsePostgres", "false");
+            // لا DATABASE_URL ولا سلسلة اتصال: يجب أن يرفض الإقلاع بدل SQLite افتراضي.
+            builder.UseSetting("DATABASE_URL", "");
+            builder.UseSetting("ConnectionStrings:DefaultConnection", "");
             builder.UseSetting("Jwt:Secret", ApiFactory.TestJwtSecret);
         });
         _factories.Add(factory);
 
         var ex = Assert.ThrowsAny<Exception>(() => factory.Services);
-        Assert.Contains("SQLite", ex.ToString(), StringComparison.Ordinal);
+        Assert.Contains("PostgreSQL connection string is required", ex.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Production_WithSqliteOptOut_Boots_InfraEndpointsStayAnonymous()
+    public void Production_OnSqliteConnectionString_RefusesToStart()
+    {
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.UseSetting("DATABASE_URL", "");
+            builder.UseSetting("ConnectionStrings:DefaultConnection", "Data Source=docgen.db");
+            builder.UseSetting("Jwt:Secret", ApiFactory.TestJwtSecret);
+        });
+        _factories.Add(factory);
+
+        var ex = Assert.ThrowsAny<Exception>(() => factory.Services);
+        Assert.Contains("not a valid PostgreSQL connection string", ex.ToString(), StringComparison.Ordinal);
+        Assert.Contains("SQLite is not supported", ex.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Production_InfraEndpointsStayAnonymous()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"docgen_guard_{Guid.NewGuid():N}.db");
         _tempDbPaths.Add(dbPath);
@@ -60,16 +81,18 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
-            builder.UseSetting("Database:UsePostgres", "false");
-            builder.UseSetting("Database:AllowSqliteInProduction", "true");
+            // ADR-0001: سلسلة Postgres شكلية للحارس، والسياق الفعلي SQLite اختباري فقط.
+            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
             // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
             builder.UseSetting("Database:AutoMigrate", "true");
-            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={dbPath}");
+            builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Bootstrap:AdminPassword", "GuardAdminPass123");
             builder.UseSetting("Jwt:Secret", ApiFactory.TestJwtSecret);
             builder.UseSetting("Logging:File:Path", Path.Combine(logDir, "logs-.txt"));
             builder.UseSetting("Swagger:Enabled", "false");
+            builder.ConfigureTestServices(services =>
+                TestDatabase.UseSqlite(services, $"Data Source={dbPath}"));
         });
         _factories.Add(factory);
 
