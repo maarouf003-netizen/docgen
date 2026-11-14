@@ -387,15 +387,18 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasColumnType("character varying(30)");
 
                     b.Property<long>("Version")
-                        .HasColumnType("bigint")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Branches", (string)null);
+                    b.ToTable("Branches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Branches_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Correspondence", b =>
@@ -470,7 +473,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("UpdatedAt");
 
-                    b.ToTable("Correspondences", (string)null);
+                    b.ToTable("Correspondences", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Correspondences_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.CorrespondenceMessage", b =>
@@ -1182,6 +1188,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                             t.HasCheckConstraint("CK_Documents_ExecutedStatus", "\"ExecutedStatus\" IN ('', 'منفذ', 'مشطوب')");
 
                             t.HasCheckConstraint("CK_Documents_GeneralEntitySide", "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')");
+
+                            t.HasCheckConstraint("CK_Documents_VersionNonNegative", "\"Version\" >= 0");
                         });
                 });
 
@@ -1392,6 +1400,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                             t.HasCheckConstraint("CK_DocumentAppeals_ForwardState", "\"ForwardState\" IN ('Owned', 'ForwardedToHead')");
 
                             t.HasCheckConstraint("CK_DocumentAppeals_Status", "\"Status\" IN ('pending', 'decided', 'struck-off')");
+
+                            t.HasCheckConstraint("CK_DocumentAppeals_VersionNonNegative", "\"Version\" >= 0");
                         });
                 });
 
@@ -1621,6 +1631,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("DocumentDelegations", null, t =>
                         {
                             t.HasCheckConstraint("CK_DocumentDelegations_Status", "\"Status\" IN ('بانتظار رئيس القسم', 'محالة', 'مسجلة أصولًا', 'منفذ إنابة')");
+
+                            t.HasCheckConstraint("CK_DocumentDelegations_VersionNonNegative", "\"Version\" >= 0");
                         });
                 });
 
@@ -1805,7 +1817,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("RegistryId");
 
-                    b.ToTable("DocumentInterventions", (string)null);
+                    b.ToTable("DocumentInterventions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DocumentInterventions_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentInterventionHeir", b =>
@@ -2239,7 +2254,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("ExecutionActions", (string)null);
+                    b.ToTable("ExecutionActions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ExecutionActions_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionApplicant", b =>
@@ -2395,7 +2413,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("BranchId", "NameNorm")
                         .IsUnique();
 
-                    b.ToTable("ExecutionCircuits", (string)null);
+                    b.ToTable("ExecutionCircuits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ExecutionCircuits_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessage", b =>
@@ -2472,7 +2493,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("QuotedMessageId");
 
-                    b.ToTable("ForumMessages", (string)null);
+                    b.ToTable("ForumMessages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ForumMessages_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessageRead", b =>
@@ -3174,7 +3198,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("LawyerId", "DueDate");
 
-                    b.ToTable("PersonalReminders", (string)null);
+                    b.ToTable("PersonalReminders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PersonalReminders_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>
@@ -3258,7 +3285,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("GroupId", "Governorate", "BranchName")
                         .IsUnique();
 
-                    b.ToTable("PublicEntities", (string)null);
+                    b.ToTable("PublicEntities", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PublicEntities_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityAlias", b =>
@@ -3383,7 +3413,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("EntityType");
 
-                    b.ToTable("PublicEntityGroups", (string)null);
+                    b.ToTable("PublicEntityGroups", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PublicEntityGroups_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
@@ -3444,7 +3477,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("UpdatedAt");
 
-                    b.ToTable("ReviewLetters", (string)null);
+                    b.ToTable("ReviewLetters", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReviewLetters_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
@@ -3508,7 +3544,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("ReviewLetterId");
 
-                    b.ToTable("ReviewLetterMessages", (string)null);
+                    b.ToTable("ReviewLetterMessages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReviewLetterMessages_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
@@ -3556,7 +3595,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("BranchId", "NameNorm")
                         .IsUnique();
 
-                    b.ToTable("Sections", (string)null);
+                    b.ToTable("Sections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Sections_VersionNonNegative", "\"Version\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
@@ -3651,12 +3693,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsUnique()
                         .HasFilter("\"BranchId\" IS NULL");
 
+                    b.HasIndex("BranchId", "SectionId");
+
                     b.HasIndex("Username", "BranchId")
                         .IsUnique();
 
                     b.ToTable("Users", null, t =>
                         {
                             t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head', 'SubHead')");
+
+                            t.HasCheckConstraint("CK_Users_VersionNonNegative", "\"Version\" >= 0");
                         });
                 });
 

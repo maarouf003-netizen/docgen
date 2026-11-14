@@ -51,6 +51,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         // ملاحظة: لا فهرس عادي على `SectionId` — الفريد الجزئي أدناه يغني عنه
         // في البحث (الفهرس الفريد يخدم الاستعلامات غير الفريدة أيضًا).
         builder.HasIndex(u => u.CreatedById);
+        // P0-07: فهرس مركّب لتصفية حسابات الفرع/الشعبة (قوائم رئيس القسم والمدير).
+        builder.HasIndex(u => new { u.BranchId, u.SectionId });
         builder.HasOne(u => u.Section)
             .WithMany(s => s.Users)
             .HasForeignKey(u => u.SectionId)

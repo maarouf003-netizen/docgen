@@ -139,5 +139,20 @@ public class DocGeneratorDbContext : DbContext
             .HasDatabaseName("UX_HeadAlerts_DedupeKey_Active")
             .IsUnique()
             .HasFilter("\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = false");
+
+        // P0-07: ضابط بنيوي آمن لكل كيان يحمل عدّاد التزامن — النسخة لا تكون سالبة
+        // (حماية من كتابة خام/استعادة جزئية تُفسد دلالة الرمز). يُطبَّق مركزيًا هنا
+        // حتى يشمل أي كيان `IVersionedEntity` جديد تلقائيًا.
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (!typeof(IVersionedEntity).IsAssignableFrom(entityType.ClrType))
+                continue;
+
+            var table = entityType.GetTableName();
+            if (string.IsNullOrEmpty(table))
+                continue;
+
+            entityType.AddCheckConstraint($"CK_{table}_VersionNonNegative", "\"Version\" >= 0");
+        }
     }
 }
