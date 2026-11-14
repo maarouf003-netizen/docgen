@@ -90,6 +90,7 @@ public class DocGeneratorDbContext : DbContext
     /// </remarks>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        EnsureAppendOnlyTablesNotMutated();
         BumpConcurrencyVersions();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
@@ -99,8 +100,27 @@ public class DocGeneratorDbContext : DbContext
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
+        EnsureAppendOnlyTablesNotMutated();
         BumpConcurrencyVersions();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// P0-08: سجلات التدقيق جداول **إلحاق فقط** — تُرفض أي محاولة تعديل/حذف من التطبيق
+    /// قبل الوصول لقاعدة البيانات (رسالة موحدة على `SQLite` و`PostgreSQL`)، وتبقى مشغّلات
+    /// القاعدة (`trg_auditlogs_no_update`/`trg_documentfieldchanges_no_delete`) طبقة ثانية
+    /// تمنع أي مسار يتجاوز `EF`.
+    /// </summary>
+    private void EnsureAppendOnlyTablesNotMutated()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is not (EntityState.Modified or EntityState.Deleted))
+                continue;
+            if (entry.Entity is AuditLog or DocumentFieldChange)
+                throw new DbUpdateException(
+                    "سجلات التدقيق جدول إلحاق فقط — لا يُسمح بتعديلها أو حذفها");
+        }
     }
 
     private void BumpConcurrencyVersions()

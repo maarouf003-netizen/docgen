@@ -24,6 +24,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     /// </summary>
     private const int ClientClosedRequestStatusCode = 499;
 
+    /// <summary>سقف نص الاستثناء المسجّل (Stack + Message) بعد التجريد — يمنع سجلات ضخمة.</summary>
+    private const int ExceptionLogLimit = 8000;
+
     private readonly ILogger<GlobalExceptionHandler> _logger;
     private readonly IHostEnvironment _environment;
     private readonly IDbExceptionClassifier _dbErrors;
@@ -96,23 +99,25 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 httpContext.TraceIdentifier,
                 userId);
         else if (exception is UnauthorizedAccessException)
-            _logger.LogWarning(exception,
-                "رفض نطاق ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+            _logger.LogWarning(
+                "رفض نطاق ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}] | {Exception}",
                 exception.GetType().Name,
                 httpContext.Request.Method,
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
-                userId);
+                userId,
+                LogSanitizer.SanitizeForLog(exception.ToString(), ExceptionLogLimit));
         else if (isUniqueViolation)
             // سباق على قيد فريد متوقع تشغيليًا (المستخدم/الطلب الصحيح أعاد المحاولة) —
             // Warning مع التفاصيل الكاملة في السجل، لا Error.
-            _logger.LogWarning(exception,
-                "تعارض قيد فريد ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+            _logger.LogWarning(
+                "تعارض قيد فريد ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}] | {Exception}",
                 exception.GetType().Name,
                 httpContext.Request.Method,
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
-                userId);
+                userId,
+                LogSanitizer.SanitizeForLog(exception.ToString(), ExceptionLogLimit));
         else if (statusCode is >= StatusCodes.Status400BadRequest and <= 499)
             // بقية الردود 4xx متوقعة (تحقّق مدخلات/غياب مرجع/تعارض عمل) لا أعطال خادم —
             // Information لا Error كي لا تلوّث لوحات المراقبة. 499 و403 وتعارض القيد
@@ -125,13 +130,14 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 httpContext.TraceIdentifier,
                 userId);
         else
-            _logger.LogError(exception,
-                "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+            _logger.LogError(
+                "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}] | {Exception}",
                 exception.GetType().Name,
                 httpContext.Request.Method,
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
-                userId);
+                userId,
+                LogSanitizer.SanitizeForLog(exception.ToString(), ExceptionLogLimit));
 
         if (statusCode == ClientClosedRequestStatusCode)
         {

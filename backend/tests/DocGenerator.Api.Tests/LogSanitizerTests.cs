@@ -62,6 +62,20 @@ public sealed class LogSanitizerTests
         Assert.Equal(text, LogSanitizer.Redact(text));
     }
 
+    [Theory]
+    [InlineData("الرقم الوطني: 01234567890", "01234567890")]
+    [InlineData("national_id=123456789", "123456789")]
+    [InlineData("هاتف: +963 999 123 456", "999")]
+    [InlineData("phone=0955555555", "0955555555")]
+    [InlineData("العنوان: شارع الثورة بناء 5", "شارع الثورة")]
+    public void Redact_MasksLabeledPersonalData(string input, string secret)
+    {
+        var redacted = LogSanitizer.Redact($"بيانات الطرف {input} نهاية");
+
+        Assert.DoesNotContain(secret, redacted);
+        Assert.Contains("[محجوب]", redacted);
+    }
+
     [Fact]
     public void Clip_TruncatesBeyondMax_PreservesWithinMax()
     {
