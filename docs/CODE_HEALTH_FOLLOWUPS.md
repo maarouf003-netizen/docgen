@@ -134,6 +134,12 @@
 
 ## F-02 — حالة `DbContext` المتتبَّعة عند إعادة محاولة `TransactionRunner`
 
+> **الحالة (2026-11-14):** مُغلق في `P0-03` — `ADR-0002`
+> (`docs/adr/0002-transactions-retry.md`): إستراتيجية واعية بالمعاملة تمنع إعادة
+> `SaveChanges` داخل معاملة، و`IUnitOfWorkFactory` ينشئ نطاق DI/سياقًا جديدًا لكل
+> محاولة. المسار القديم يبقى at-most-once، والتفعيل عبر `Database:RetryMaxCount`
+> معطّل افتراضيًا.
+
 ### الموقع الحالي
 
 - `backend/src/DocGenerator.Infrastructure/Persistence/TransactionRunner.cs`

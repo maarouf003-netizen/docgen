@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Infrastructure.Persistence;
 using DocGenerator.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -12,14 +13,23 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        string connectionString)
+        string connectionString,
+        int retryMaxCount = 0,
+        int retryMaxDelaySeconds = 30)
     {
+        // P0-03a: الإستراتيجية الواعية بالمعاملة تُستبدل في مزوّد EF الداخلي، فيرى
+        // SaveChanges وجود CurrentTransaction ويعود غير معيد للمحاولة داخل المعاملة.
+        DatabaseRetrySettings.Configure(retryMaxCount, retryMaxDelaySeconds);
+
         // ADR-0001: PostgreSQL هو المزوّد الوحيد في التشغيل. يُسجَّل السياق المشتق كتنفيذ
         // لنوع الخدمة، فتعمل كل التبعيات القائمة عليه دون تغيير، ويطبق MigrateAsync هجرات
         // Postgres. لا مسار SQLite هنا؛ اختبارات الوحدة/التكامل تستبدل السياق في نطاقها.
         services.AddDbContext<DocGeneratorDbContext, DocGeneratorPostgresDbContext>(options =>
+        {
             options.UseNpgsql(connectionString, npg => npg
-                .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+                .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
+            options.ReplaceService<IExecutionStrategyFactory, TransactionAwareExecutionStrategyFactory>();
+        });
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<IDocumentBaseNumberRepository, DocumentBaseNumberRepository>();
@@ -45,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddScoped<ILoginRateLimiter, DbLoginRateLimiter>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IUnitOfWorkFactory, UnitOfWorkFactory>();
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddScoped<ITransactionRunner, TransactionRunner>();
         services.AddSingleton<INumberWarningTokenService, DocGenerator.Infrastructure.Security.NumberWarningTokenService>();

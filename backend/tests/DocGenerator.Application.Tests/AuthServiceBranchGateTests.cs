@@ -69,6 +69,11 @@ public class AuthServiceBranchGateTests
             => action(ct);
         public Task RunAsync(Func<CancellationToken, Task> action, CancellationToken ct = default)
             => action(ct);
+        public Task<T> RunAsync<T>(
+            Func<IUnitOfWork, CancellationToken, Task<T>> action,
+            bool retryable,
+            CancellationToken ct = default)
+            => throw new NotSupportedException("FakeTransactionRunner لا يدعم مسار النطاق الجديد.");
     }
 
     private readonly PasswordHasher _hasher = new();

@@ -160,9 +160,12 @@ npm test
   - **الترتيب الإلزامي في النافذة:** (1) نسخة احتياطية + استعادة مجرَّبة، (2) تطبيق الهجرات على القاعدة
     الحية، (3) التحقق من `__EFMigrationsHistory`، (4) **ثم** تشغيل النسخة الجديدة. تطبيق النسخة قبل
     الهجرات = رفض إقلاع مقصود (لا «no such column» عند أول طلب).
-  - هجرات `SQLite` (`Persistence\Migrations\`) **للاختبارات فقط** بعد ADR-0001، وستُحذف نهائيًا
-    في `P0-02`؛ لا تُطبَّق على أي قاعدة تشغيل. المرجع الوحيد للإنتاج هو سياق
-    `DocGeneratorPostgresDbContext`.
+  - هجرات `SQLite` أُزيلت نهائيًا في `P0-02`؛ لا تُطبَّق على أي قاعدة تشغيل. المرجع الوحيد
+    للإنتاج هو سياق `DocGeneratorPostgresDbContext` + `InitialPostgresBaseline`.
+- `Database:RetryMaxCount` / `RetryMaxDelaySeconds` — **معطّلة افتراضيًا** (`0`). بعد `P0-03`
+  لا تُفعّل الإعادة إلا للعمليات التي تستخدم
+  `ITransactionRunner.RunAsync(..., retryable: true)` ومعها `IUnitOfWorkFactory`
+  (نطاق DI جديد لكل محاولة). `SaveChanges` داخل معاملة نشطة **لا يُعاد** حتى مع التفعيل.
 
 ### اقتران نشر `PR-4` + `PR-5` (تنبيهات — إلزامي)
 

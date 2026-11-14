@@ -11,10 +11,15 @@ namespace DocGenerator.Infrastructure.Persistence;
 public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
 {
     private readonly DocGeneratorDbContext _db;
+    private readonly IUnitOfWorkFactory? _unitOfWorkFactory;
 
-    public TransactionRunner(DocGeneratorDbContext db) => _db = db;
+    public TransactionRunner(DocGeneratorDbContext db, IUnitOfWorkFactory? unitOfWorkFactory = null)
+    {
+        _db = db;
+        _unitOfWorkFactory = unitOfWorkFactory;
+    }
 
-    /// <summary>هلThere معاملة نشطة على هذا النطاق؟</summary>
+    /// <summary>هل هناك معاملة نشطة على هذا النطاق؟</summary>
     public bool HasActiveTransaction => _db.Database.CurrentTransaction is not null;
 
     /// <summary>معرّف المعاملة النشطة (إن وُجدت) — للتشخيص فقط.</summary>
@@ -58,6 +63,18 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
             await action(token);
             return true;
         });
+
+    /// <inheritdoc />
+    public Task<T> RunAsync<T>(
+        Func<IUnitOfWork, CancellationToken, Task<T>> action,
+        bool retryable,
+        CancellationToken ct = default)
+    {
+        var factory = _unitOfWorkFactory
+            ?? throw new InvalidOperationException(
+                "IUnitOfWorkFactory غير متاح في هذا النطاق؛ لا يمكن تشغيل العملية القابلة لإعادة المحاولة.");
+        return factory.ExecuteAsync(action, retryable, ct);
+    }
 
     /// <summary>
     /// يشغّل الإجراء ضمن معاملة واحدة. أي حفظ داخلي (بما فيه حفظ سجل التدقيق) يلتحم

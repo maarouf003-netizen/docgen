@@ -152,6 +152,13 @@ serilogConfig.WriteTo.File(
     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
 builder.Services.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
 
+// P0-03a: إعدادات إعادة المحاولة تُقرأ مرة واحدة وتُمرَّر لمزوّد EF. الافتراضي 0
+// (معطّل)؛ التفعيل يصبح آمنًا مع الإستراتيجية الواعية بالمعاملة والنطاق لكل محاولة.
+var databaseOptions = builder.Configuration
+    .GetSection(DatabaseOptions.SectionName)
+    .Get<DatabaseOptions>() ?? new DatabaseOptions();
+databaseOptions.Validate();
+
 builder.Services
     .AddSingleton(jwt)
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
@@ -169,7 +176,7 @@ builder.Services
         o.Templates = new Dictionary<string, string>(wordTemplates.Templates);
     })
     .AddApplication(builder.Configuration)
-    .AddInfrastructure(conn)
+    .AddInfrastructure(conn, databaseOptions.RetryMaxCount, databaseOptions.RetryMaxDelaySeconds)
     .AddCors(o => o.AddPolicy("Vite", p => p
         .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
         .AllowAnyHeader().AllowAnyMethod().AllowCredentials()))
