@@ -262,18 +262,18 @@
 
 #### `P2-03` — افتراضات أمنية آمنة في الإنتاج
 
-- **العمل:** `HstsEnabled=true`، `HstsPreload` بقرار، `CspReportOnly=false` بعد مراجعة التقارير، `HttpsRedirectionEnabled=true`، `AllowedHosts` صريح، `KnownProxies` مضبوط؛ رفض الإقلاع عند نقص أي منها في Production.
-- **DoD:** فحص رؤوس الاستجابة في staging.
+- **العمل:** `HstsEnabled=true`، `HstsPreload` بقرار، `CspReportOnly=false` بعد مراجعة التقارير، `HttpsRedirectionEnabled=true`، `AllowedHosts` صريح، `KnownProxies` مضبوط، CORS إنتاجي صريح (لا localhost)، ومراجعة `CsrfMiddleware`/`SameSite`/`Secure`/`HttpOnly`؛ رفض الإقلاع عند نقص أي منها في Production.
+- **DoD:** فحص رؤوس الاستجابة/Cookies/CORS في staging.
 
 #### `P2-04` — تقوية الجلسات والهوية
 
-- **العمل:** JWT قصير (15–30 دقيقة) + refresh token rotation + إبطال؛ MFA TOTP للمدير/المشرف؛ سجل جلسات؛ إبطال عند تغيير الدور/الفرع.
-- **DoD:** لا رمز طويل العمر؛ إبطال فوري؛ اختبارات.
+- **العمل:** JWT قصير (15–30 دقيقة) + refresh token rotation + إبطال؛ MFA TOTP للمدير/المشرف؛ سجل جلسات؛ إبطال عند تغيير الدور/الفرع؛ تدوير مفتاح التوقيع (`Jwt:Secret`) بفترة سماح.
+- **DoD:** لا رمز طويل العمر؛ إبطال فوري؛ تدوير مفتاح موثّق؛ اختبارات.
 
 #### `P2-05` — إدارة الأسرار وتدويرها
 
-- **العمل:** أسرار Render/Supabase في متغيرات بيئة فقط؛ `gitleaks` في CI/pre-commit؛ فحص سجل Git؛ تدوير أي سر كُشف؛ `.gitignore` لملفات `.env` و`001.txt`.
-- **DoD:** لا سر في المستودع/السجلات؛ آخر تدوير موثّق.
+- **العمل:** أسرار Render/Supabase في متغيرات بيئة فقط؛ `gitleaks` في CI/pre-commit؛ فحص سجل Git؛ تدوير أي سر كُشف؛ `.gitignore` لملفات `.env` و`001.txt`؛ مراجعة `Bootstrap__AdminPassword`/`DbSeeder` (كلمة مرور لمرة واحدة، لا طباعة في الإنتاج، وإجبار التغيير).
+- **DoD:** لا سر في المستودع/السجلات؛ آخر تدوير موثّق؛ لا كلمة مرور افتراضية صالحة.
 
 #### `P2-06` — SAST/DAST/SBOM
 
@@ -340,6 +340,11 @@
 - **العمل:** `DbCommandInterceptor` في الاختبارات يعدّ الاستعلامات لكل طلب؛ سقف لكل نقطة؛ `AsSplitQuery` عند الحاجة.
 - **DoD:** لا انحدار استعلامات.
 
+#### `P3-09` — ضبط الاتصال والـPool
+
+- **العمل:** مراجعة `Npgsql` (`MaxPoolSize`، `Timeout`، `CommandTimeout`، `KeepAlive`، `Maximum Pool Size` مع حدود Render/Supabase)؛ health check بمهلة؛ منع استنزاف الـpool أثناء التقارير/التصدير.
+- **DoD:** لا `Timeout` عشوائي تحت الحمل؛ قياس pool utilization.
+
 ---
 
 ### P4 — المعمارية والصيانة
@@ -363,8 +368,8 @@
 
 #### `P4-04` — OpenAPI + عميل TS مولّد
 
-- **العمل:** تفعيل OpenAPI في staging/prod محمي؛ `openapi-typescript`/NSwag لتوليد `frontend/src/api/generated.ts`؛ حذف `types/document.ts` اليدوي تدريجيًا؛ contract tests.
-- **DoD:** تغيير API يكسر التوليد/الاختبارات، لا الواجهة بصمت.
+- **العمل:** تفعيل OpenAPI في staging/prod محمي؛ `openapi-typescript`/NSwag لتوليد `frontend/src/api/generated.ts`؛ حذف `types/document.ts` اليدوي تدريجيًا؛ contract tests؛ **إصدار API** (`/api/v1` أو `Accept-Version` + سياسة إهمال).
+- **DoD:** تغيير API يكسر التوليد/الاختبارات، لا الواجهة بصمت؛ لا كسر بلا إصدار.
 - **الاعتمادية:** `P4-03` (شكل أخطاء/عقود) و`P6-06`.
 
 #### `P4-05` — حدود Modular Monolith
@@ -414,8 +419,8 @@
 
 #### `P5-06` — نسخ احتياطي وDR
 
-- **العمل:** نسخ يومي + PITR (Supabase)؛ استعادة شهرية إلى staging؛ قياس `RTO/RPO`؛ توثيق.
-- **DoD:** استعادة ناجحة موثّقة خلال آخر 30 يومًا.
+- **العمل:** نسخ يومي + PITR (Supabase)؛ تشفير النسخ؛ استعادة شهرية إلى staging؛ قياس `RTO/RPO`؛ توثيق؛ اختبار استعادة جزئية (جدول واحد) واستعادة كاملة.
+- **DoD:** استعادة ناجحة موثّقة خلال آخر 30 يومًا، وRTO/RPO معلنان.
 
 #### `P5-07` — Runbooks/Postmortems
 
