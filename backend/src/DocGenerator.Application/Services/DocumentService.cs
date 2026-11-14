@@ -10,6 +10,10 @@ namespace DocGenerator.Application.Services;
 public interface IDocumentService
 {
     Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default);
+    /// <summary>
+    /// إسقاط خفيف (F-01) لفحص الوصول في نقاط المتدخلين: لا يحمّل شجرة المستند الكاملة.
+    /// </summary>
+    Task<DocumentAccessInfo?> GetAccessInfoAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null);
     Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default);
@@ -109,6 +113,9 @@ public sealed class DocumentService : IDocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         return doc is null ? null : DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
     }
+
+    public Task<DocumentAccessInfo?> GetAccessInfoAsync(int documentId, CancellationToken ct = default)
+        => _documents.GetAccessInfoAsync(documentId, ct);
 
     public async Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default)
     {

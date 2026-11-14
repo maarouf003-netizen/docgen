@@ -120,6 +120,16 @@
 
 لا هجرة. لا تغيير قاعدة بيانات.
 
+> **حالة F-01 — ✅ منفّذة (2026-11-13):** أُضيف `DocumentAccessInfo` و
+> `IDocumentRepository.GetAccessInfoAsync` (إسقاط `AsNoTracking` لخمسة أعمدة) و
+> `IDocumentService.GetAccessInfoAsync`؛ وحُوِّلت نقاط `AddIntervention`/
+> `UpdateIntervention`/`DeleteIntervention` فقط إليه. منطق الصلاحيات بقي في مكان
+> واحد: `CanAccessAsync(DocumentResponse)` صار يحوّل إلى
+> `CanAccessAsync(DocumentAccessInfo)` بدل النسخ. الاختبارات:
+> `DocumentAccessInfoTests` (الخمسة حقول + الحذف المنطقي + بلا دائرة) و
+> `DocumentAccessProjectionTests` (يثبت أن `GetAsync` لا يُستدعى، و404/403/200)،
+> و`DocumentInterventionIntegrationTests` القائمة. لا تغيير عقد API ولا هجرة.
+
 ---
 
 ## F-02 — حالة `DbContext` المتتبَّعة عند إعادة محاولة `TransactionRunner`

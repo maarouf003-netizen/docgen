@@ -127,8 +127,15 @@ public class DocumentsController : ControllerBase
     /// وصول القراءة بالنطاق (§5 + الاستثناء القرائي 22′): مدير/مشرف (الكل)؛
     /// محامٍ (ملفاته)؛ رئيس قسم (ملفات دوائر القسم + بلا دائرة + المحال له حتى
     /// الحسم)؛ رئيس شعبة (ملفات دوائر شعبته).
+    ///
+    /// <para>المنطق معرَّف مرة واحدة على الإسقاط الخفيف <see cref="DocumentAccessInfo"/>؛
+    /// حمل <see cref="DocumentResponse"/> الثقيل يُحوَّل إليه ولا تنسخ القاعدة (F-01).</para>
     /// </summary>
-    private async Task<bool> CanAccessAsync(DocumentResponse doc)
+    private Task<bool> CanAccessAsync(DocumentResponse doc)
+        => CanAccessAsync(new DocumentAccessInfo(
+            doc.Id, doc.CreatedById, doc.BranchId, doc.ExecutionCircuitId, doc.SectionId));
+
+    private async Task<bool> CanAccessAsync(DocumentAccessInfo doc)
     {
         if (HasFullAccess) return true;
         if (Role == UserRole.Lawyer)
@@ -474,9 +481,11 @@ public class DocumentsController : ControllerBase
     {
         if (!CanEdit) return Forbid();
 
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        // F-01: فحص الوصول من إسقاط خفيف — التحميل الكامل الوحيد في هذا المسار
+        // هو القراءة الطازجة تحت القفل داخل خدمة المتدخلين.
+        var access = await _documents.GetAccessInfoAsync(id, ct);
+        if (access is null) return NotFound();
+        if (!await CanAccessAsync(access)) return Forbid();
 
         var created = await _interventions.AddAsync(id, request, User.GetUserId(), ActorName, ct);
         return Ok(created);
@@ -489,9 +498,10 @@ public class DocumentsController : ControllerBase
     {
         if (!CanEdit) return Forbid();
 
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        // F-01: نفس إسقاط الوصول الخفيف — الخدمة تحمّل المستند مرة واحدة للتعديل.
+        var access = await _documents.GetAccessInfoAsync(id, ct);
+        if (access is null) return NotFound();
+        if (!await CanAccessAsync(access)) return Forbid();
 
         var updated = await _interventions.UpdateAsync(
             id, interventionId, request, User.GetUserId(), ActorName, ct);
@@ -505,9 +515,10 @@ public class DocumentsController : ControllerBase
     {
         if (!CanEdit) return Forbid();
 
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        // F-01: نفس إسقاط الوصول الخفيف — الخدمة تحمّل المستند مرة واحدة للحذف.
+        var access = await _documents.GetAccessInfoAsync(id, ct);
+        if (access is null) return NotFound();
+        if (!await CanAccessAsync(access)) return Forbid();
 
         return await _interventions.DeleteAsync(id, interventionId, ActorName, ct)
             ? NoContent()
