@@ -36,9 +36,25 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(2, migrations.Count);
+            Assert.Equal(3, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
+
+            // P0-06: عمود Version على الكيانات الاثني عشر القابلة للتحرير.
+            var versionColumns = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND column_name = 'Version'
+                      AND table_name IN (
+                        'Users', 'PublicEntityGroups', 'PublicEntities', 'Correspondences',
+                        'Sections', 'Branches', 'ReviewLetters', 'ReviewLetterMessages',
+                        'PersonalReminders', 'ForumMessages', 'ExecutionActions', 'DocumentInterventions')
+                    """)
+                .SingleAsync();
+            Assert.Equal(12L, versionColumns);
 
             var statusColumn = await db.Database
                 .SqlQueryRaw<long>(
