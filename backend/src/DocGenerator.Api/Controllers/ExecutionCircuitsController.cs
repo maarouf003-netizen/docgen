@@ -1,3 +1,4 @@
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
@@ -179,6 +180,7 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpPost("{id:int}/refer-files")]
+    [SkipIdempotency]
     [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> ReferFiles(int id, [FromBody] ReferCircuitFilesRequest request, CancellationToken ct)
     {

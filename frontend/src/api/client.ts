@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig } from 'axios';
+import { newIdempotencyKey } from '../utils/idempotency';
 import { reportClientError } from '../utils/errorReporting';
 import { ContractError } from './contractError';
 
@@ -104,6 +105,15 @@ api.interceptors.request.use((config) => {
   if (method !== 'get' && method !== 'head' && method !== 'options') {
     const csrf = getCsrfToken();
     if (csrf) config.headers[CSRF_HEADER] = csrf;
+
+    // P0-04: مفتاح عدم تكرار لكل طلب كتابة — يُولَّد هنا إن لم يمرره المستدعي
+    // صراحةً (نماذج critical تمرر مفتاحًا ثابتًا عبر `idempotencyHeaders`).
+    // الدخول/الخروج وتليمترية الأخطاء مستثناة (لا نية كتابة قابلة للتكرار).
+    const url = config.url ?? '';
+    const excluded = url.startsWith('/auth/login') || url.startsWith('/auth/logout') || url.startsWith('/client-errors');
+    if (!excluded && !config.headers['X-Idempotency-Key']) {
+      config.headers['X-Idempotency-Key'] = newIdempotencyKey();
+    }
   }
   return config;
 });

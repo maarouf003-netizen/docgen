@@ -172,6 +172,13 @@
 
 #### `P0-04` — idempotency لكل عملية كتابة
 
+- **الحالة (2026-11-14):** منفّذ — `IdempotencyMiddleware` عامة تغطي كل
+  `POST/PUT/PATCH/DELETE` مصادَق يحمل `X-Idempotency-Key`، وتعيد الحالة والجسم
+  و`Location` الأصليين عند التكرار (`ADR-0003`). الإجراءات ذات الحجز الخدمي
+  القائم (`documents.create`, `transfer-all`, `circuits.refer-files`,
+  `registry.import-commit/unify/merge-commit`) معلّمة `[SkipIdempotency]`
+  حفاظًا على عقدها (إعادة `200` للإنشاء)، والدخول/الخروج/التليمترية مستثناة.
+  الواجهة تضيف المفتاح تلقائيًا لكل طلب كتابة.
 - **المشكلة:** 3 متحكمات فقط تستخدم `Idempotency-Key`.
 - **العمل:**
   - `IdempotencyFilter`/middleware لكل `POST/PUT/PATCH/DELETE` (عدا `login`/`logout` إن لزم).

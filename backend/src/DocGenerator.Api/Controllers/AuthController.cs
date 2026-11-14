@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Api.Auth;
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -43,6 +44,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [SkipIdempotency]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitingSetup.LoginIpPolicy)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
@@ -100,6 +102,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("logout")]
+    [SkipIdempotency]
     [AllowAnonymous]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {

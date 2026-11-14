@@ -1,3 +1,4 @@
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -156,6 +157,7 @@ public class EntityRegistryController : ControllerBase
 
     /// <summary>اعتماد الربط الجماعي: إنشاء هويات وقيود نهائية Final مباشرة مع الأسماء البديلة.</summary>
     [HttpPost("import-commit")]
+    [SkipIdempotency]
     public async Task<IActionResult> ImportCommit([FromBody] ImportCommitRequest request, CancellationToken ct)
     {
         if (!RolePermissions.HasFullAccess(Role))
@@ -248,6 +250,7 @@ public class EntityRegistryController : ControllerBase
 
     /// <summary>تنفيذ توحيد التسمية N←1 (المدير/المشرف — ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات).</summary>
     [HttpPost("groups/unify")]
+    [SkipIdempotency]
     public async Task<IActionResult> Unify([FromBody] UnifyNamesRequest request, CancellationToken ct)
     {
         if (!RolePermissions.HasFullAccess(Role))
@@ -277,6 +280,7 @@ public class EntityRegistryController : ControllerBase
 
     /// <summary>تنفيذ اعتماد الدمج (د5 §4).</summary>
     [HttpPost("merge-commit")]
+    [SkipIdempotency]
     public async Task<IActionResult> MergeCommit([FromBody] MergeCommitRequest request, CancellationToken ct)
     {
         if (!RolePermissions.CanMergeEntities(Role))

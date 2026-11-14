@@ -697,7 +697,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 result.SkippedCount,
                 result.RemainingCount,
                 reminder = EmptyingReminderBanner,
-            }), ct);
+            }), ct: ct);
         return result;
     }
 

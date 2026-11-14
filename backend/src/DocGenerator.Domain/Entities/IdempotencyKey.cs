@@ -24,6 +24,15 @@ public class IdempotencyKey
     /// <summary>لقطة الاستجابة المخزنة — `null` تعني قيد المعالجة.</summary>
     public string? ResponseBody { get; set; }
 
+    /// <summary>رمز حالة HTTP الأصلي (201/204/200…) — يُعاد كما هو عند التكرار.</summary>
+    public int StatusCode { get; set; } = 200;
+
+    /// <summary>نوع محتوى الاستجابة الأصلي (JSON عادةً) — يُعاد عند التكرار.</summary>
+    public string? ContentType { get; set; }
+
+    /// <summary>ترويسة `Location` للاستجابات 201 إن وُجدت — تُعاد مع التكرار.</summary>
+    public string? ResponseLocation { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>انتهاء المفتاح (72 ساعة افتراضيًا) — بعده يُعامَل كمفتاح جديد.</summary>

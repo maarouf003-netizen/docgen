@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common.Options;
 using Microsoft.AspNetCore.Authorization;
@@ -35,6 +36,7 @@ public class ClientErrorsController : ControllerBase
     }
 
     [HttpPost]
+    [SkipIdempotency]
     [Authorize(Roles = "lawyer,head,subhead,manager,admin,entitymanager")]
     [Consumes("application/json")]
     [ResponseCache(NoStore = true)]

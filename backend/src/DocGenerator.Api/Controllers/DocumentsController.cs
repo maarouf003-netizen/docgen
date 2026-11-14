@@ -1,3 +1,4 @@
+using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
@@ -438,6 +439,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPost]
+    [SkipIdempotency]
     public async Task<IActionResult> Create([FromBody] DocumentUpsertRequest request, CancellationToken ct)
     {
         // إدخال الملفات محصور بالمحامي: لا إدخال للرؤساء، وقراءة مطلقة للمدير/المشرف.
@@ -731,6 +733,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPost("transfer-all")]
+    [SkipIdempotency]
     public async Task<IActionResult> TransferAll([FromBody] TransferAllRequest request, CancellationToken ct)
     {
         // نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم والشعبة

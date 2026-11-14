@@ -79,4 +79,37 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.False(replay.Busy);
         Assert.Equal("{\"ok\":true}", replay.ReplayBody);
     }
+
+    [Fact]
+    public async Task BeginAsync_CompletedKey_ReplaysStatusContentTypeAndLocation()
+    {
+        var expires = _clock.GetUtcNow().UtcDateTime.AddMinutes(5);
+        var first = await _store.BeginAsync("k1", "op", 7, "fp", expires);
+
+        Assert.NotNull(first.Ticket);
+        await _store.CompleteAsync(
+            first.Ticket!, "{\"id\":1}", 201, "application/json; charset=utf-8", "/api/things/1");
+
+        var replay = await _store.BeginAsync("k1", "op", 7, "fp", expires);
+
+        Assert.Equal(201, replay.ReplayStatusCode);
+        Assert.Equal("application/json; charset=utf-8", replay.ReplayContentType);
+        Assert.Equal("/api/things/1", replay.ReplayLocation);
+    }
+
+    [Fact]
+    public async Task BeginAsync_DifferentFingerprint_ResetsStoredMetadata()
+    {
+        var expires = _clock.GetUtcNow().UtcDateTime.AddMinutes(5);
+        var first = await _store.BeginAsync("k1", "op", 7, "fp-1", expires);
+        await _store.CompleteAsync(first.Ticket!, "{}", 201, "application/json", "/api/things/1");
+
+        var second = await _store.BeginAsync("k1", "op", 7, "fp-2", expires);
+
+        Assert.NotNull(second.Ticket);
+        Assert.Null(second.ReplayBody);
+        Assert.Equal(200, second.ReplayStatusCode);
+        Assert.Null(second.ReplayContentType);
+        Assert.Null(second.ReplayLocation);
+    }
 }
