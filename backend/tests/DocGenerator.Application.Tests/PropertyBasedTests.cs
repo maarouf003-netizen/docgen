@@ -57,9 +57,11 @@ public class PropertyBasedTests
         {
             var once = ArabicNameNormalizer.Normalize(value);
             var twice = ArabicNameNormalizer.Normalize(once);
+            var hasRealLetter = value.Any(c => char.IsLetter(c) && c != 'ـ');
             return once == twice
                 && once == once.Trim()
-                && !once.Contains("  ", StringComparison.Ordinal);
+                && !once.Contains("  ", StringComparison.Ordinal)
+                && (!hasRealLetter || once.Length > 0);
         }));
     }
 
@@ -177,15 +179,12 @@ public class PropertyBasedTests
             var document = new Document
             {
                 BorrowerName = value,
-                BorrowerFamily = value,
-                Applicant = value,
-                Court = value,
-                FileNumber = value,
-                ContractNumber = value,
             };
 
             var text = DocumentSearchTextBuilder.Build(document);
-            return text.Length <= DocumentSearchTextBuilder.MaxLength
+            var expected = DocumentSearchTextBuilder.Truncate(ArabicNameNormalizer.Normalize(value));
+            return text == expected
+                && text.Length <= DocumentSearchTextBuilder.MaxLength
                 && !HasUnpairedSurrogate(text)
                 && ArabicNameNormalizer.Normalize(text) == text;
         }));
@@ -205,8 +204,14 @@ public class PropertyBasedTests
                 },
             ]);
 
-            return text.Length <= ApplicantTextBuilder.MaxLength
-                && !HasUnpairedSurrogate(text);
+            var name = value.Trim();
+            if (name.Length == 0)
+                return text.Length == 0;
+
+            var expected = $"{name} - محافظة دمشق";
+            return expected.Length <= ApplicantTextBuilder.MaxLength
+                ? text == expected
+                : text.Length == ApplicantTextBuilder.MaxLength && text.EndsWith('…');
         }));
     }
 
