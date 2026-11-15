@@ -269,8 +269,8 @@
 
 #### `P1-06` — Architecture tests
 
-- **الحالة (2026-11-15):** منفّذ — PR
-  [`#158`](https://github.com/maarouf003-netizen/docgen/pull/158): مشروع مستقل
+- **الحالة (2026-11-15):** مغلق — PR
+  [`#158`](https://github.com/maarouf003-netizen/docgen/pull/158) (squash `af766f7`): مشروع مستقل
   `backend/tests/DocGenerator.Architecture.Tests`
   على `NetArchTest.Rules 1.3.2`، مضاف إلى `DocGenerator.sln` وإلى وظيفة `backend` في `CI`
   (خطوة حاجبة بعد البناء)، و**11 اختبارًا**:
