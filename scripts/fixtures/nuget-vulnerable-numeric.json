@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "path": "backend/src/DocGenerator.Api/DocGenerator.Api.csproj",
+      "frameworks": [
+        {
+          "framework": "net10.0",
+          "topLevelPackages": [
+            {
+              "id": "Fixture.Package.NumericSeverity",
+              "requestedVersion": "3.0.0",
+              "resolvedVersion": "3.0.0",
+              "vulnerabilities": [
+                {
+                  "severity": 3,
+                  "advisoryUrl": "https://example.test/advisories/numeric"
+                }
+              ]
+            }
+          ],
+          "transitivePackages": []
+        }
+      ]
+    }
+  ]
+}

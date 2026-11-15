@@ -113,14 +113,40 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: dotnet vulnerable packages
-        run: dotnet list backend/DocGenerator.sln package --vulnerable
+      # P2-06: `dotnet list package --vulnerable` وحده يُرجع رمز خروج 0 حتى مع الثغرات،
+      # فالسكربت يقرأ JSON ويُفشل عند High/Critical (fail-closed لشدّة غير معروفة).
+      - name: Self-test dependency gate parser
+        run: node scripts/dependency-audit.mjs --self-test
+      - name: Dependency gate (High/Critical)
+        run: node scripts/dependency-audit.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - name: npm audit (high+)
         working-directory: frontend
         run: npm audit --audit-level=high
+      # P2-06: SBOM (CycloneDX) لكل من الخلفية والواجهة، يُرفع كأثر للمراجعة
+      # (لا بوابة عتبة؛ الهدف توفّر جرد اعتماديات لكل إصدار).
+      - name: SBOM (.NET, CycloneDX)
+        run: |
+          mkdir -p artifacts/sbom
+          dotnet tool install --global CycloneDX --version 6.3.1
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet CycloneDX backend/DocGenerator.sln -o artifacts/sbom -fn backend-bom.json -F Json -t
+      # cyclonedx-npm يبني الشجرة عبر `npm ls`، فالمطلوب تثبيت مطابق للقفل أولًا
+      # (`npm ci`) — وهو بذاته تحقق من أن القفل قابل لإعادة الإنتاج.
+      - name: Install frontend dependencies (for SBOM)
+        working-directory: frontend
+        run: npm ci
+      - name: SBOM (frontend, CycloneDX)
+        working-directory: frontend
+        run: npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --output-file ../artifacts/sbom/frontend-bom.json --output-format JSON
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: artifacts/sbom
+          retention-days: 30
 
   # حارس سكربت هجرات Postgres (FR-001/FR-002): توليد غير متصل + منع أنواع SQL-Server
   # (`datetime2` وأخواتها) في DDL قبل أن تصل أي قاعدة. لا يتصل بأي قاعدة —

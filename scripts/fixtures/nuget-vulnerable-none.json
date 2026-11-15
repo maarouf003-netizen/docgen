@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "path": "backend/src/DocGenerator.Domain/DocGenerator.Domain.csproj"
+    }
+  ]
+}
