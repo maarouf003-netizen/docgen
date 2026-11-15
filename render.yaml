@@ -19,7 +19,7 @@ services:
     region: frankfurt
     branch: master
     autoDeploy: true
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
