@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocGenerator.Application.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocGenerator.Api.Tests", "tests\DocGenerator.Api.Tests\DocGenerator.Api.Tests.csproj", "{CE13CDCF-9E2E-4440-9F1D-C77A3BBA6C15}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocGenerator.Architecture.Tests", "tests\DocGenerator.Architecture.Tests\DocGenerator.Architecture.Tests.csproj", "{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,10 @@ Global
 		{CE13CDCF-9E2E-4440-9F1D-C77A3BBA6C15}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CE13CDCF-9E2E-4440-9F1D-C77A3BBA6C15}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CE13CDCF-9E2E-4440-9F1D-C77A3BBA6C15}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{759C61B8-116C-429E-8AE0-D650812D57B6} = {E97A350F-A7A4-4A2C-9F77-85B6E7724CEE}
@@ -60,5 +66,6 @@ Global
 		{1788CD04-D167-49BC-AA7F-391C53007F39} = {E97A350F-A7A4-4A2C-9F77-85B6E7724CEE}
 		{9DF9912D-96FD-4FD2-933B-1C82C1EBCA6E} = {F4257CA2-09F4-471F-B74B-E4FCD8D36552}
 		{CE13CDCF-9E2E-4440-9F1D-C77A3BBA6C15} = {F4257CA2-09F4-471F-B74B-E4FCD8D36552}
+		{EA4DF0DA-E0F3-4ED6-BE38-C6E1EB0DD76A} = {F4257CA2-09F4-471F-B74B-E4FCD8D36552}
 	EndGlobalSection
 EndGlobal

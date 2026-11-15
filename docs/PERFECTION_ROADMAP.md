@@ -41,7 +41,7 @@
 | 12 | لا staging/canary/rollback/DR drills؛ Render مجاني ونسخة واحدة | تعطّل كامل بلا مسار تعافٍ مُختبَر | `P5` |
 | 13 | لا SAST/DAST/SBOM؛ `.snyk` غير مفعّل في CI | ثغرات اعتماديات/كود لا تُحجب | `P2` |
 | 14 | لا OpenAPI مُفعّل ولا عميل TS مولّد؛ `types/document.ts` يدوي 797 سطرًا | انحراف عقد بين الواجهة والخلفية | `P4/P6` |
-| 15 | لا `.editorconfig`/CPM/lock files/architecture tests | انحراف تنسيق/إصدارات/حدود طبقات | `P4` |
+| 15 | لا `.editorconfig`/CPM/lock files (اختبارات المعمارية أُغلقت في `P1-06`) | انحراف تنسيق/إصدارات | `P4` |
 
 ### 1.2 القرارات المعمارية الكبرى (تحتاج موافقة المالك)
 
@@ -269,6 +269,23 @@
 
 #### `P1-06` — Architecture tests
 
+- **الحالة (2026-11-15):** منفّذ — PR
+  [`#158`](https://github.com/maarouf003-netizen/docgen/pull/158): مشروع مستقل
+  `backend/tests/DocGenerator.Architecture.Tests`
+  على `NetArchTest.Rules 1.3.2`، مضاف إلى `DocGenerator.sln` وإلى وظيفة `backend` في `CI`
+  (خطوة حاجبة بعد البناء)، و**11 اختبارًا**:
+  - `Application` لا يعتمد على `Infrastructure`/`Api`، ولا على `Microsoft.EntityFrameworkCore`.
+  - `Domain` بلا EF Core وبلا `Application`/`Infrastructure`/`Api`.
+  - `Infrastructure` لا يعتمد على `Api`.
+  - المتحكمات (كل من يرث `ControllerBase` بلا حصر بمساحة أسماء، لأن ملفات المتحكمات قد
+    تحمل أكثر من متحكم) لا تعتمد على EF Core ولا على `Infrastructure`؛ واختبار يطابق
+    المجموعة المكتشفة بجميع أبناء `ControllerBase` كي لا يصير الاختيار ناقصًا بصمت.
+  - لا `raw SQL` (`FromSql*`/`ExecuteSql*`) في مصادر `Application`: فحص نصي يتجاهل
+    التعليقات، مع اختبار مضاد يثبت أن المنقّح يميّز الكود من التوثيق.
+  - تحكم إيجابي دائم (`ArchitectureRuleEngineTests`) يثبت أن المحرك يرصد اعتمادًا موجودًا
+    في جسم دالة فقط وليس في التوقيع — فلا تكون خضرة بقية القواعد كاذبة.
+  - **تحقق سلبي يدوي موثّق:** إدخال `ExecuteSql` في `Application` و`DbContext` في متحكم
+    أفشل الحارسين وأظهر اسم النوع المخالف، ثم حُذف الملفان وعادت النتيجة خضراء (11/11).
 - **العمل:** `NetArchTest.Rules`: `Application` لا يعتمد على `Infrastructure/Api`؛ `Domain` بلا EF؛ المتحكمات بلا `DbContext`؛ لا `raw SQL` في Application.
 - **DoD:** بوابة CI تفشل عند كسر الحدود.
 
@@ -646,6 +663,7 @@
 
 ```powershell
 dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
+dotnet test backend/tests/DocGenerator.Architecture.Tests/DocGenerator.Architecture.Tests.csproj --nologo -v q
 dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q
 dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --filter "Category!=Sequential"
 dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --filter "Category=Sequential"

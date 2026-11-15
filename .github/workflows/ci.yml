@@ -19,6 +19,10 @@ jobs:
       # وهذا المفتاح يرقّيها على مستوى المحرك (مُدحَض أيضًا: warning ← error).
       - name: Build (backend)
         run: dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
+      # P1-06: بوابة حدود المعمارية — تفشل عند أي اعتماد بين الطبقات ممنوع،
+      # أو استخدام DbContext في متحكم، أو raw SQL في Application.
+      - name: Test (architecture boundaries)
+        run: dotnet test backend/tests/DocGenerator.Architecture.Tests/DocGenerator.Architecture.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal"
       # `-v q` يخص MSBuild فقط ويكتم تفاصيل فشل الاختبارات (رسالة/تتبّع)؛
       # `--logger console;verbosity=normal` يعيدها مع إبقاء البناء صامتًا.
       - name: Test (application)
