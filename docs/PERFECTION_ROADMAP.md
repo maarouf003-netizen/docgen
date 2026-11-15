@@ -475,21 +475,26 @@
 
 #### `P4-05` — حدود Modular Monolith
 
+- **الحالة (2026-11-16):** **مؤجل** — كما كُتب يتطلب إعادة هيكلة مساحات أسماء إلى وحدات
+  (`Documents`/`Interventions`/… ) عبر مئات الملفات، وهو تغيير أكبر من جولة آمنة واحدة
+  ولا يمكن اختباره بحدود مفيدة قبل الانتهاء. الخطة: فرع `refactor/modules-*` مستقل بعد
+  تثبيت `P4-02` (تفكيك الخدمات) وبوابة المعمارية الحالية (`P1-06`) كشبكة أمان.
 - **العمل:** مساحات أسماء `Documents`, `Interventions`, `Delegations`, `Appeals`, `Entities`, `Alerts`, `Identity`, `Portal`؛ منع cross-module `DbSet`؛ architecture tests.
 - **DoD:** حدود واضحة قابلة للفصل مستقبلًا.
 
 #### `P4-06` — أدوات الجودة
 
-- **الحالة (2026-11-15):** جزئيًا — PR
-  [`#169`](https://github.com/maarouf003-netizen/docgen/pull/169): منفّذ:
+- **الحالة (2026-11-16):** جزئيًا — منفّذ:
   - `backend/Directory.Packages.props` (CPM): 24 حزمة بإصدار مركزي، وأُزيل `Version` من
     35 مرجعًا في 6 مشاريع؛ CPM يفرض نفسه (`NU1008` عند إصدار محلي).
   - `global.json`: SDK `10.0.100` مع `rollForward: latestFeature`.
   - `.editorconfig`: تنسيق موحّد (إرشادي، بلا بوابة `dotnet format` في هذه الجولة).
-  **مؤجَّل بقرار موثّق:** `packages.lock.json` مع `--locked-mode` (يحتاج اتفاقية عمل
-  وإلا تحوّل كل ترقية إلى فشل بناء غامض)، وبوابة `dotnet format` (ديون تنسيق قائمة ⇒
-  تجنّب PR إعادة تنسيق ضخم)، وRoslynator/StyleCop (تقييم ضجيج أولًا).
-  التفاصيل: `docs/audit/29-p4-06-tooling-20261115.md`.
+  - **`P4-06b` (2026-11-16):** `packages.lock.json` لسبعة مشاريع + `--locked-mode` في
+    وظائف `backend`/`backend-postgres`/`migration-guard`/`audit`/`flake-sentinel`؛ أي
+    انحراف يفشل بـ`NU1004` (تحقق سلبي موثّق). التفاصيل:
+    `docs/audit/30-p4-06b-lockfiles-20261116.md`.
+  **متبقٍ:** بوابة `dotnet format --verify-no-changes` (ديون تنسيق قائمة ⇒ تجنّب PR
+  إعادة تنسيق ضخم)، وRoslynator/StyleCop (تقييم ضجيج أولًا).
 - **العمل:** `Directory.Packages.props` (CPM)، `packages.lock.json`، `global.json`، `.editorconfig`، `dotnet format --verify-no-changes`، Roslynator/StyleCop (بعد تقييم الضجيج).
 - **DoD:** إصدارات موحدة ونمط تنسيق حاجب.
 

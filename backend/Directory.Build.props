@@ -10,6 +10,13 @@
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <!--
+      P4-06b: قفل اعتماديات لكل مشروع (packages.lock.json) حتى يكون الحلّ التابع
+      قابلًا لإعادة الإنتاج بالضبط. القفل يُولَّد بـ`dotnet restore` العادي ويُلتزم
+      في Git؛ و`CI` يتحقق بوضع القفل الصارم (locked-mode) فيفشل عند أي انحراف بين
+      المشروع والملفات. أي ترقية حزمة = تعديل مقصود يحدّث القفل في نفس التغيير.
+    -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
 </Project>
