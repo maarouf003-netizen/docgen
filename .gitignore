@@ -39,6 +39,9 @@ logs/
 # Security audit outputs (تقارير مولَّدة محليًا — لا تُرفع)
 snyk-audit/
 
+# SBOM/artifacts المولّدة محليًا (P2-06)
+artifacts/
+
 # P2-05: أسرار ومنافذ تسريب شائعة (الحارس: scripts/secrets-guard.mjs)
 .env.*
 !.env.example

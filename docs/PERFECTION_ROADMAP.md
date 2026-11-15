@@ -353,6 +353,16 @@
 
 #### `P2-06` — SAST/DAST/SBOM
 
+- **الحالة (2026-11-15):** جزئيًا — بوابة الاعتماديات وSBOM منفّذتان:
+  - `scripts/dependency-audit.mjs` يحوّل `dotnet list package --vulnerable` (كان يُرجع
+    `0` دائمًا) إلى بوابة فعلية: `High`/`Critical` ⇒ فشل، وشدّة مجهولة ⇒ fail-closed،
+    مع اختبار ذاتي على 5 عيّنات ثابتة.
+  - `npm audit --audit-level=high` باقٍ (بوابة حقيقية أصلًا).
+  - SBOM (CycloneDX 6.3.1 للخلفية، `@cyclonedx/cyclonedx-npm` للواجهة) يُرفع كأثر
+    `sbom` في وظيفة `audit` (30 يومًا).
+  **المتبقي (البند الكامل):** CodeQL/Semgrep (SAST)، DAST، Trivy للصورة، وبوابة
+  `Snyk`/OSS Index إن رغب المالك بتوفير `SNYK_TOKEN`. التفاصيل:
+  `docs/audit/28-p2-06-dependency-gate-20261115.md`.
 - **العمل:** CodeQL/Semgrep، Snyk/OSS Index، `dotnet list package --vulnerable`، `npm audit`، Trivy للصورة، CycloneDX SBOM؛ بوابات حاجبة للحرج.
 - **DoD:** كل PR يفحص الكود والاعتماديات والصورة.
 

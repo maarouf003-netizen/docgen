@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "path": "backend/src/DocGenerator.Application/DocGenerator.Application.csproj",
+      "frameworks": [
+        {
+          "framework": "net10.0",
+          "topLevelPackages": [
+            {
+              "id": "Fixture.Package.Moderate",
+              "requestedVersion": "1.2.3",
+              "resolvedVersion": "1.2.3",
+              "vulnerabilities": [
+                {
+                  "severity": "Moderate",
+                  "advisoryUrl": "https://example.test/advisories/moderate"
+                }
+              ]
+            }
+          ],
+          "transitivePackages": []
+        }
+      ]
+    }
+  ]
+}
