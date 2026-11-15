@@ -12,6 +12,7 @@ using DocGenerator.Infrastructure;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -197,8 +198,14 @@ builder.Services.AddHostedService<DocGenerator.Api.Background.ForumRetentionHost
 // خدمة واحدة نشطة (قفل «نسخة واحدة»)، وصف واحد لكل دورة.
 builder.Services.AddHostedService<DocGenerator.Infrastructure.Outbox.HeadAlertOutboxDispatcher>();
 // RF-016: فحص صحة القاعدة — خارج /api فلا مصادقة ولا حارس بوابة؛ بلا حزم جديدة.
+builder.Services.Configure<OutboxHealthOptions>(
+    builder.Configuration.GetSection("HeadAlerts:Outbox:Health"));
+// P5-03: وسوم الفحوص تفصل liveness عن readiness:
+// - "ready": القاعدة + صندوق الصادر (لتوجيه الحركة).
+// - "outbox": صندوق الصادر وحده (مراقبة تشغيلية).
 builder.Services.AddHealthChecks()
-    .AddCheck<DocGenerator.Api.Health.DatabaseHealthCheck>("database");
+    .AddCheck<DocGenerator.Api.Health.DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<DocGenerator.Api.Health.HeadAlertOutboxHealthCheck>("outbox", tags: ["ready", "outbox"]);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -433,7 +440,19 @@ app.MapControllers().RequireAuthorization();
 
 // RF-016: نقطة الصحة قبل احتياطي SPA — لا تُبتلَع بواسطة index.html في الإنتاج.
 // نقطة بنية عامة عمدًا (المنسّق/الموازن غير مصادقين) — نُثبّت [AllowAnonymous] صراحةً.
-app.MapHealthChecks("/healthz").AllowAnonymous();
+// P5-03: فصل liveness عن readiness (كانا نقطة واحدة تفحص القاعدة):
+// - /healthz        : حياة العملية فقط بلا قاعدة — انقطاع القاعدة لا يقتل حاوية سليمة.
+// - /readyz         : القاعدة + صندوق الصادر — هذا ما يُضبط في فحص Render وموازن الحمل.
+// - /healthz/outbox : صندوق الصادر وحده للمراقبة التشغيلية.
+app.MapHealthChecks("/healthz", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/readyz", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+}).AllowAnonymous();
+app.MapHealthChecks("/healthz/outbox", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("outbox"),
+}).AllowAnonymous();
 
 // كل مسارات SPA غير المعروفة تعود إلى index.html (تُستخدم مع خدمة الملفات الثابتة أعلاه).
 // مسار عميل مجهول عمدًا (صفحة الدخول) — نُثبّت [AllowAnonymous] صراحةً.

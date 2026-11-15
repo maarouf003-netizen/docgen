@@ -483,6 +483,19 @@
 
 #### `P5-03` — Health checks
 
+- **الحالة (2026-11-15):** منفّذ — PR
+  [`#165`](https://github.com/maarouf003-netizen/docgen/pull/165)، والتفاصيل في
+  [`docs/audit/26-p5-03-health-checks-20261115.md`](audit/26-p5-03-health-checks-20261115.md):
+  فصل liveness/readiness:
+  - `GET /healthz` → حياة العملية فقط (`Predicate = _ => false`، بلا قاعدة).
+  - `GET /readyz` → القاعدة + صندوق الصادر (وسم `ready`)؛ `503` عند تأخر أقدم رسالة
+    معلّقة فوق `HeadAlerts:Outbox:Health:LagThresholdMinutes` (افتراضي 15).
+  - `GET /healthz/outbox` → صندوق الصادر وحده (وسمان `ready`+`outbox`؛ `Degraded` عند
+    رسائل فاشلة، بلا إسقاط الجهوزية).
+  - سياسة التقييم في `OutboxHealthPolicy` (نقية، 7 اختبارات وحدوية)، والمهايئ في
+    `HeadAlertOutboxHealthCheck`؛ والردّ النصّي الافتراضي لا يكشف تفاصيل استثناء.
+  - `render.yaml`: `healthCheckPath: /readyz` (كان `/healthz`)، ومزامنة `RUN_GUIDE.md §9`
+    مع تنبيه أن `⁦/healthz⁩` ليس فحص جهوزية.
 - **العمل:** `/healthz` liveness بلا DB؛ `/readyz` DB + outbox lag؛ `/healthz/outbox`؛ فشل readiness عند lag > عتبة.
 - **DoD:** Render health check يستخدم `/readyz`.
 

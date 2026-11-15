@@ -17,4 +17,28 @@ public class RF016HealthTests
         Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Healthy", await response.Content.ReadAsStringAsync());
     }
+
+    [Fact]
+    public async Task Readyz_WithReachableDatabaseAndEmptyOutbox_ReturnsHealthy()
+    {
+        using var factory = new ApiFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/readyz");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Healthy", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task OutboxHealthz_WithEmptyOutbox_ReturnsHealthy()
+    {
+        using var factory = new ApiFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/healthz/outbox");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Healthy", await response.Content.ReadAsStringAsync());
+    }
 }
