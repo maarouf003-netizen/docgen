@@ -83,6 +83,7 @@ public sealed class ReviewLetterService : IReviewLetterService
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IEntropySource _entropy;
 
     public ReviewLetterService(
         IReviewLetterRepository letters,
@@ -99,7 +100,8 @@ public sealed class ReviewLetterService : IReviewLetterService
         TimeZoneInfo timeZone,
         IUserRepository users,
         IRepository<Section> sections,
-        IRepository<ExecutionCircuit> circuits)
+        IRepository<ExecutionCircuit> circuits,
+        IEntropySource? entropy = null)
     {
         _letters = letters;
         _documents = documents;
@@ -116,6 +118,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
+        _entropy = entropy ?? SystemEntropySource.Instance;
     }
 
     public async Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
@@ -613,7 +616,7 @@ public sealed class ReviewLetterService : IReviewLetterService
 
         for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
-            var random = Random.Shared.NextInt64(0, 10_000)
+            var random = _entropy.NextInt64(0, 10_000)
                 .ToString(System.Globalization.CultureInfo.InvariantCulture)
                 .PadLeft(NumberRandomDigits, '0');
             var candidate = $"{prefix}-{year}-{random}";

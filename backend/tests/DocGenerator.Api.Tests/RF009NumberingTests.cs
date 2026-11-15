@@ -29,12 +29,14 @@ public class RF009NumberingTests
         fileRegistrationDate = "1/8/2026",
     };
 
+    private static int s_numberSeq;
+
     [Fact]
     public async Task DuplicateNumber_SecondCreate_Conflict()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var number = $"7{Random.Shared.Next(100000, 999999)}";
+        var number = $"7{System.Threading.Interlocked.Increment(ref s_numberSeq):D6}";
 
         var first = await client.PostAsJsonAsync("/api/documents", NumberedPayload("أول فريد", number));
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -49,7 +51,7 @@ public class RF009NumberingTests
         // v2: الاستعادة تُفرِّغ الرقم وتعيد الملف إلى «بانتظار إعادة القيد» بلا فحص تفرد.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var number = $"6{Random.Shared.Next(100000, 999999)}";
+        var number = $"6{System.Threading.Interlocked.Increment(ref s_numberSeq):D6}";
 
         var createA = await client.PostAsJsonAsync("/api/documents", NumberedPayload("سيُحذف", number));
         using var bodyA = await createA.Content.ReadFromJsonAsync<JsonDocument>();

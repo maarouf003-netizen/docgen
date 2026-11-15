@@ -82,7 +82,8 @@ public class CorrespondenceServiceTests : IDisposable
     private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));
 
     private CorrespondenceService BuildService(
-        IUnitOfWork uow, ICorrespondenceRepository? letters = null, TimeProvider? clock = null)
+        IUnitOfWork uow, ICorrespondenceRepository? letters = null, TimeProvider? clock = null,
+        DocGenerator.Application.Common.IEntropySource? entropy = null)
     {
         return new CorrespondenceService(
             letters ?? new CorrespondenceRepository(_db),
@@ -98,7 +99,8 @@ public class CorrespondenceServiceTests : IDisposable
             new DbExceptionClassifier(),
             clock ?? TimeProvider.System, TestClock.TimeZone,
             new Repository<Section>(_db),
-            new Repository<ExecutionCircuit>(_db));
+            new Repository<ExecutionCircuit>(_db),
+            entropy);
     }
 
 
@@ -165,6 +167,19 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal("letter", letter.Messages[0].Kind);
         Assert.Equal(Correspondence.ViewStatusPending, letter.ViewStatus);
         Assert.Empty(letter.Receipts);
+    }
+
+    [Fact]
+    public async Task Create_NumberGeneration_UsesInjectedEntropy()
+    {
+        // P1-02: العشوائية عبر المصدر المحقون — بلا Random.Shared.
+        var service = BuildService(new UnitOfWork(_db), entropy: new DeterministicEntropy(12345));
+
+        var letter = await service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, Correspondence.ImportanceNormal, "<p>نص</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        Assert.Matches(@"^DAM-\d{4}-12345$", letter.CorrespondenceNumber);
     }
 
     [Fact]

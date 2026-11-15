@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "note": "P1-02 ratchet — run --update only after fixing occurrences",
+  "entries": {
+    "backend/tests/DocGenerator.Api.Tests/DocumentsIntegrationTests.cs::dateTimeToday": 4,
+    "backend/tests/DocGenerator.Api.Tests/ManagerStatsIntegrationTests.cs::dateTimeToday": 1,
+    "backend/tests/DocGenerator.Application.Tests/DocumentAppealServiceTests.cs::dateTimeToday": 29,
+    "backend/tests/DocGenerator.Application.Tests/DocumentContextBuilderTests.cs::dateTimeToday": 3,
+    "backend/tests/DocGenerator.Application.Tests/DocumentDelegationServiceTests.cs::dateTimeToday": 9,
+    "backend/tests/DocGenerator.Application.Tests/OccurrenceTests.cs::dateTimeToday": 2,
+    "backend/tests/DocGenerator.Application.Tests/ReviewLetterServiceTests.cs::dateTimeToday": 1,
+    "backend/tests/DocGenerator.Application.Tests/ServiceTests.cs::dateTimeToday": 16,
+    "backend/tests/DocGenerator.Application.Tests/StatisticsTests.cs::dateTimeToday": 27
+  }
+}

@@ -73,6 +73,10 @@ jobs:
           node-version: 24
       - name: SubHead regression guards
         run: node scripts/subhead-guards.mjs
+      # P1-02: ratchet يمنع إدخال DateTime.Now/Today أو Random غير محقون،
+      # ويُفشل خط الأساس القديم حتى يُقلَّص بعد الإصلاح.
+      - name: Determinism guard
+        run: node scripts/determinism-guard.mjs
 
   # فحص الاعتماديات حاجب للدمج (RF-002 — شُدِّد بعد تثبيت خط الأساس الأخضر في RF-001).
   # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا (مهمة المالك).
