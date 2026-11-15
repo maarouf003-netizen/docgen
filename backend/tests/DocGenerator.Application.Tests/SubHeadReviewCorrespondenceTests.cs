@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -57,7 +57,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             uow,
             tx,
             _audit,
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             new UserRepository(_db),
             new Repository<Section>(_db),
@@ -74,7 +74,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             tx,
             _audit,
             new DbExceptionClassifier(),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db));
@@ -226,7 +226,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             uow,
             tx,
             _audit,
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             new UserRepository(_db),
             new Repository<Section>(_db),

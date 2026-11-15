@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -46,7 +46,7 @@ public class SubHeadStatsTests : IDisposable
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         _tx = tx;
-        _stats = new StatisticsRepository(_db, TimeProvider.System, TestClock.TimeZone);
+        _stats = new StatisticsRepository(_db, TestClock.Provider, TestClock.TimeZone);
         _circuits = new ExecutionCircuitService(
             new Repository<ExecutionCircuit>(_db),
             new Repository<Branch>(_db),
@@ -64,7 +64,7 @@ public class SubHeadStatsTests : IDisposable
             _audit,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new DbExceptionClassifier(),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
         _alerts = new HeadAlertService(
             new HeadAlertRepository(_db),

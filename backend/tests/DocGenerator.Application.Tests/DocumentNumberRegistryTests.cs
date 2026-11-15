@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -70,9 +70,9 @@ public class DocumentNumberRegistryTests : IDisposable
             _audit,
             new NumberWarningTokenService(),
             new NumberRegistryOptions { AllowCircuitlessLegacy = true },
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
-        _currentYear = ServerClock.CurrentYear(TimeProvider.System, TestClock.TimeZone);
+        _currentYear = ServerClock.CurrentYear(TestClock.Provider, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();
@@ -291,7 +291,7 @@ public class DocumentNumberRegistryTests : IDisposable
             new FakeAuditLogger(),
             new NumberWarningTokenService(),
             new NumberRegistryOptions { AllowCircuitlessLegacy = allowCircuitlessLegacy },
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
     }
 

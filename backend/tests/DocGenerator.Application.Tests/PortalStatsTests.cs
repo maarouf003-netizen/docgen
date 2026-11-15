@@ -154,7 +154,7 @@ public class PortalStatsTests : IDisposable
     [Fact]
     public async Task Stats_MonthlySeries_IsTwelveConnectedBuckets_IncludingZeroMonths_AndCountsThisMonth()
     {
-        var thisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 15, 0, 0, 0, DateTimeKind.Utc);
+        var thisMonth = new DateTime(TestClock.CurrentYear, TestClock.Today.Month, 15, 0, 0, 0, DateTimeKind.Utc);
         var elevenMonthsAgo = thisMonth.AddMonths(-11).AddDays(3);
         await SeedApplicantDocAsync("هذا الشهر", null, false, thisMonth, registryId: _entryAId);
         await SeedApplicantDocAsync("قبل أحد عشر شهرًا", null, false, elevenMonthsAgo, registryId: _entryAId);

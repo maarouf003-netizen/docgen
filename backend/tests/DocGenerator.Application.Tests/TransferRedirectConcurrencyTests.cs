@@ -66,7 +66,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
             new FakeAuditLogger(),
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             new DbExceptionClassifier(),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
     }
 
@@ -213,7 +213,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
             audit,
             headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             new Repository<ExecutionCircuit>(db),
             new Repository<Section>(db));

@@ -81,7 +81,7 @@ public class SubHeadDelegationTests : IDisposable
             _audit,
             _headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             circuits: new Repository<ExecutionCircuit>(_db),
             sections: new Repository<Section>(_db));

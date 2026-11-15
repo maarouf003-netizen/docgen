@@ -63,7 +63,7 @@ public class ReviewLetterServiceTests : IDisposable
             letters, documents, branches, appeals, delegations,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             new DbExceptionClassifier(), uow, _tx, _audit,
-            TimeProvider.System, TestClock.TimeZone,
+            TestClock.Provider, TestClock.TimeZone,
             users,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db),
@@ -106,7 +106,7 @@ public class ReviewLetterServiceTests : IDisposable
             _lawyer1.Id, "المحامي الأول", _branchId);
 
         Assert.StartsWith("DAM-", letter.LetterNumber);
-        Assert.Matches($"^DAM-{DateTime.UtcNow.Year}-\\d{{4}}$", letter.LetterNumber);
+        Assert.Matches($"^DAM-{TestClock.CurrentYear}-\\d{{4}}$", letter.LetterNumber);
         Assert.Null(letter.DocumentId);
         Assert.False(letter.IsAnswered);
 
@@ -161,7 +161,7 @@ public class ReviewLetterServiceTests : IDisposable
         // ملف مدوَّر لسنة سابقة: سياق المطالعة (إنشاءً وقراءةً) يعرض الرقم الفعّال
         // لا الرقم الأصلي — يتطلب جلب BaseNumbers في مساري التفاصيل والبحث.
         var doc = await AddDocumentAsync(_lawyer1);
-        var rotatedYear = DateTime.Today.Year - 1;
+        var rotatedYear = TestClock.Today.Year - 1;
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,

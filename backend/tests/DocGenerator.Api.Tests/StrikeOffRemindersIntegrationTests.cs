@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using DocGenerator.Application.Common;
@@ -28,6 +29,9 @@ public class StrikeOffRemindersIntegrationTests
         return (_factory.ClientWithToken(login!.Token!), login.Token!);
     }
 
+    private static string MonthsAgo(int months) =>
+        ApiTestClock.Today.AddMonths(-months).ToString("d/M/yyyy", CultureInfo.InvariantCulture);
+
     private static async Task<int> AddActionAsync(
         HttpClient client, int documentId, string actionDate, string type = "action")
     {
@@ -57,13 +61,13 @@ public class StrikeOffRemindersIntegrationTests
     {
         var (client, token) = await LawyerAsync();
         var id = await _factory.CreateDocumentAsync(token, "مقاربة الشطب", registered: true);
-        await AddActionAsync(client, id, "1/5/2026");
+        await AddActionAsync(client, id, MonthsAgo(7));
 
         var due = await ListAsync(client);
         Assert.Contains(due.Items, d => d.Id == id);
 
         // إجراء حديث يرفع آخر نشاط ⇒ يخرج من القائمة فورًا (بلا كتابة حالة).
-        await AddActionAsync(client, id, "1/11/2026");
+        await AddActionAsync(client, id, MonthsAgo(1));
         var after = await ListAsync(client);
         Assert.DoesNotContain(after.Items, d => d.Id == id);
     }
@@ -85,7 +89,7 @@ public class StrikeOffRemindersIntegrationTests
     {
         var (client, token) = await LawyerAsync();
         var id = await _factory.CreateDocumentAsync(token, "ملف يُلغى تذكيره", registered: true);
-        await AddActionAsync(client, id, "1/5/2026");
+        await AddActionAsync(client, id, MonthsAgo(7));
 
         var before = await ListAsync(client);
         Assert.Contains(before.Items, d => d.Id == id);
@@ -146,8 +150,8 @@ public class StrikeOffRemindersIntegrationTests
         var (client, token) = await LawyerAsync();
         var older = await _factory.CreateDocumentAsync(token, "الأقدم ركودًا", registered: true);
         var newer = await _factory.CreateDocumentAsync(token, "الأحدث ركودًا", registered: true);
-        await AddActionAsync(client, newer, "1/6/2026");
-        await AddActionAsync(client, older, "1/3/2026");
+        await AddActionAsync(client, newer, MonthsAgo(6));
+        await AddActionAsync(client, older, MonthsAgo(9));
 
         var due = await ListAsync(client);
         var olderIndex = due.Items.FindIndex(d => d.Id == older);
@@ -161,7 +165,7 @@ public class StrikeOffRemindersIntegrationTests
     {
         var (client, token) = await LawyerAsync();
         var id = await _factory.CreateDocumentAsync(token, "ملف محمي", registered: true);
-        await AddActionAsync(client, id, "1/5/2026");
+        await AddActionAsync(client, id, MonthsAgo(7));
 
         foreach (var username in new[] { "head1", "manager" })
         {

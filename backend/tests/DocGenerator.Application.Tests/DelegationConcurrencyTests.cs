@@ -71,7 +71,7 @@ public class DelegationConcurrencyTests : IDisposable
             audit,
             headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
     }
 
@@ -222,7 +222,7 @@ public class DelegationConcurrencyTests : IDisposable
             audit,
             alerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
         var bundle = DocumentServiceFactory.Create(
             db, audit, documents: documents, users: users, registrationDates: registrationDates,

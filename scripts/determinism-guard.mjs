@@ -23,6 +23,18 @@ const PATTERNS = [
   { id: 'randomShared', regex: /\bRandom\.Shared\b/, label: 'Random.Shared' },
   { id: 'unseededRandom', regex: /\bnew\s+Random\s*\(\s*\)/, label: 'new Random()' },
   { id: 'getHashCode', regex: /\.GetHashCode\s*\(\s*\)/, label: 'GetHashCode()' },
+  {
+    id: 'timeProviderSystem',
+    regex: /\bTimeProvider\.System\b/,
+    label: 'TimeProvider.System (test)',
+    testsOnly: true,
+  },
+  {
+    id: 'utcNowParts',
+    regex: /\bDateTime\.UtcNow\.(Year|Month|Day|Date)\b/,
+    label: 'DateTime.UtcNow date parts (test)',
+    testsOnly: true,
+  },
 ];
 
 // الاستثناء الدائم الوحيد: تطبيق `IEntropySource` نفسه هو الموضع المسموح لاستخدام
@@ -64,6 +76,7 @@ function scan() {
       for (const line of lines) {
         if (isComment(line)) continue;
         for (const pattern of PATTERNS) {
+          if (pattern.testsOnly && !rel.startsWith('backend/tests/')) continue;
           const matches = line.match(new RegExp(pattern.regex.source, 'g'));
           if (!matches) continue;
           const key = `${rel}::${pattern.id}`;

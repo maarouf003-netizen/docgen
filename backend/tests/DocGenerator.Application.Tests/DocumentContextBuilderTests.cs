@@ -13,7 +13,7 @@ public class DocumentContextBuilderTests : IDisposable
     public DocumentContextBuilderTests()
     {
         _db = TestDb.Create();
-        _builder = new DocumentContextBuilder(new DocumentRepository(_db), TimeProvider.System, TestClock.TimeZone);
+        _builder = new DocumentContextBuilder(new DocumentRepository(_db), TestClock.Provider, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();
@@ -284,7 +284,7 @@ public class DocumentContextBuilderTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,
@@ -303,7 +303,7 @@ public class DocumentContextBuilderTests : IDisposable
     {
         // القاعدة الجديدة «الأحدث هو المعتبر»: رقمُ سنةٍ سابقة (أصغر من أو يساوي سنة قيد الملف)
         // يحل محل رقم الملف — فخلافًا للقاعدة القديمة (سنة الحالية فقط) تُعتبر أرقام السنوات السابقة.
-        var previousYear = DateTime.Today.Year - 1;
+        var previousYear = TestClock.Today.Year - 1;
         var id = await AddAsync(new Document
         {
             Court = "دمشق",
@@ -347,7 +347,7 @@ public class DocumentContextBuilderTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = id,
-            Year = DateTime.Today.Year + 1,
+            Year = TestClock.Today.Year + 1,
             BaseNumber = "900",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,

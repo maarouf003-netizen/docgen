@@ -75,7 +75,7 @@ public class DelegationDraftCircuitScopeTests : IDisposable
             _audit,
             headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone,
             circuits: new Repository<ExecutionCircuit>(_db));
     }

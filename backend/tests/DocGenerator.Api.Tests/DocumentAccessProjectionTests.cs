@@ -113,7 +113,7 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
-            TimeProvider.System,
+            ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {
             ControllerContext = new ControllerContext

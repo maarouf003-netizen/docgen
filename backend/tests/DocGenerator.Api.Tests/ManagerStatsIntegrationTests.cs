@@ -125,7 +125,7 @@ public class ManagerStatsIntegrationTests
     [Fact]
     public async Task ManagerStats_CountsRegisteredDocumentsInCurrentMonth()
     {
-        var today = DateTime.Today;
+        var today = ApiTestClock.Today;
         var regDate = $"{today.Day}/{today.Month}/{today.Year}";
 
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

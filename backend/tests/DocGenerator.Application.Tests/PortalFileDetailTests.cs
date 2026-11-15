@@ -65,7 +65,7 @@ public class PortalFileDetailTests : IDisposable
         _appealService = new DocumentAppealService(
             new AppealRepository(_db), documents, users, uow, tx, _audit, headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TimeProvider.System, TestClock.TimeZone);
+            TestClock.Provider, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

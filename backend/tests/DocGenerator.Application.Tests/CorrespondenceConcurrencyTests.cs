@@ -53,7 +53,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
             new TransactionRunner(db),
             audit,
             new DbExceptionClassifier(),
-            TimeProvider.System, TestClock.TimeZone,
+            TestClock.Provider, TestClock.TimeZone,
             new Repository<Section>(db),
             new Repository<ExecutionCircuit>(db));
 

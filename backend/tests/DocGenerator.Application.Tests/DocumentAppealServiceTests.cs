@@ -64,7 +64,7 @@ public class DocumentAppealServiceTests : IDisposable
             _audit,
             _alertService,
             _outbox,
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
     }
 
@@ -464,7 +464,7 @@ public class DocumentAppealServiceTests : IDisposable
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // القيد قبل التدوير: رقم أساس لسنة سابقة.
-        var previousYear = (DateTime.Today.Year - 1).ToString();
+        var previousYear = (TestClock.Today.Year - 1).ToString();
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
@@ -478,13 +478,13 @@ public class DocumentAppealServiceTests : IDisposable
         await _service.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
             {
-                new(DateTime.Today.Year.ToString()),
+                new(TestClock.Today.Year.ToString()),
             }), _lawyer2.Id, "lawyer2");
 
         var after = await _service.GetAsync(created.Id);
         Assert.NotNull(after);
         Assert.False(after!.NeedsRotation);
-        Assert.Equal(DateTime.Today.Year.ToString(), after.CurrentBaseNumber);
+        Assert.Equal(TestClock.Today.Year.ToString(), after.CurrentBaseNumber);
         var history = await _service.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, h => h.BaseNumber == "900");
@@ -499,14 +499,14 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("لا حاجة لتدوير", ex.Message);
 
         // تصحيح رقم السنة الحالية يعدّله في مكانه بلا إلحاق سجل جديد.
-        await _service.CorrectBaseNumberAsync(created.Id, DateTime.Today.Year,
+        await _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
             new CorrectAppealBaseNumberRequest("1450"), _lawyer2.Id, "lawyer2");
 
         var after2 = await _service.GetAsync(created.Id);
         Assert.NotNull(after2);
         Assert.False(after2!.NeedsRotation);
         Assert.Equal("1450", after2.CurrentBaseNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), after2.CurrentBaseYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), after2.CurrentBaseYear);
         var history2 = await _service.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history2.Count);
         // ترتيب تصاعدي بالسنوات: القيد السابق ثم رقم السنة الحالية المصحّح.
@@ -528,7 +528,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = (DateTime.Today.Year - 1).ToString();
+        var previousYear = (TestClock.Today.Year - 1).ToString();
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
@@ -539,7 +539,7 @@ public class DocumentAppealServiceTests : IDisposable
         // تعديل القيد يعدّل رقم السنة الحالية في مكانه، ويُبقي رقم السنة السابقة في السجل.
         var updated = await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", "محكمة استئناف دمشق", "1450",
-                DateTime.Today.Year.ToString(), null),
+                TestClock.Today.Year.ToString(), null),
             _lawyer2.Id, "lawyer2");
 
         Assert.NotNull(updated);
@@ -568,7 +568,7 @@ public class DocumentAppealServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "500",
-                    (DateTime.Today.Year + 1).ToString(), null),
+                    (TestClock.Today.Year + 1).ToString(), null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("سنة مستقبلية", ex.Message);
     }
@@ -584,7 +584,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = (DateTime.Today.Year - 1).ToString();
+        var previousYear = (TestClock.Today.Year - 1).ToString();
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
@@ -602,7 +602,7 @@ public class DocumentAppealServiceTests : IDisposable
         var dto = await _service.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("1000", dto!.CurrentBaseNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), dto.CurrentBaseYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
     }
 
     [Fact]
@@ -616,7 +616,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = DateTime.Today.Year - 1;
+        var previousYear = TestClock.Today.Year - 1;
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
@@ -625,7 +625,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer2.Id, "lawyer2");
 
         // سنة صف التدوير مُولَّدة من الخادم: تحريفها إلى سنة بلا هوية يطمس سنة مؤرشفة.
-        var unusedYear = (DateTime.Today.Year - 3).ToString();
+        var unusedYear = (TestClock.Today.Year - 3).ToString();
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "1450", unusedYear, null),
@@ -634,11 +634,11 @@ public class DocumentAppealServiceTests : IDisposable
 
         var dto = await _service.GetAsync(created.Id);
         Assert.Equal("1000", dto!.CurrentBaseNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), dto.CurrentBaseYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
         var history = await _service.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, h => h.Year == previousYear && h.BaseNumber == "900");
-        Assert.Contains(history, h => h.Year == DateTime.Today.Year && h.BaseNumber == "1000");
+        Assert.Contains(history, h => h.Year == TestClock.Today.Year && h.BaseNumber == "1000");
     }
 
     [Fact]
@@ -652,7 +652,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = (DateTime.Today.Year - 1).ToString();
+        var previousYear = (TestClock.Today.Year - 1).ToString();
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
@@ -726,7 +726,7 @@ public class DocumentAppealServiceTests : IDisposable
                     new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
                 {
                     AppealBaseNumber = "500",
-                    AppealYear = (DateTime.Today.Year + 1).ToString(),
+                    AppealYear = (TestClock.Today.Year + 1).ToString(),
                 },
                 _lawyer1.Id, "lawyer1"));
 
@@ -744,7 +744,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
             {
                 AppealBaseNumber = null,
-                AppealYear = DateTime.Today.Year.ToString(),
+                AppealYear = TestClock.Today.Year.ToString(),
             },
             _lawyer1.Id, "lawyer1");
 
@@ -765,7 +765,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var currentYear = DateTime.Today.Year;
+        var currentYear = TestClock.Today.Year;
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CorrectBaseNumberAsync(created.Id, currentYear + 1,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer2.Id, "lawyer2"));
@@ -789,7 +789,7 @@ public class DocumentAppealServiceTests : IDisposable
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CorrectBaseNumberAsync(created.Id, DateTime.Today.Year,
+            _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer1.Id, "lawyer1"));
     }
 
@@ -804,7 +804,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = DateTime.Today.Year - 1;
+        var previousYear = TestClock.Today.Year - 1;
         await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
@@ -858,20 +858,20 @@ public class DocumentAppealServiceTests : IDisposable
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
             AppealId = created.Id,
-            Year = DateTime.Today.Year - 1,
+            Year = TestClock.Today.Year - 1,
             BaseNumber = "900",
             CreatedById = _lawyer2.Id,
         });
         // هوية قيد أحدث سنة (بيانات مسجَّلة مسبقًا) تغلب صف السنة الأقدم في العرض.
         var entity = await _db.DocumentAppeals.SingleAsync(a => a.Id == created.Id);
         entity.AppealBaseNumber = "500";
-        entity.AppealYear = DateTime.Today.Year.ToString();
+        entity.AppealYear = TestClock.Today.Year.ToString();
         await _db.SaveChangesAsync();
 
         var dto = await _service.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("500", dto!.CurrentBaseNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), dto.CurrentBaseYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
         Assert.False(dto.NeedsRotation);
     }
 
@@ -886,7 +886,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var previousYear = DateTime.Today.Year - 1;
+        var previousYear = TestClock.Today.Year - 1;
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
             AppealId = created.Id,
@@ -922,7 +922,7 @@ public class DocumentAppealServiceTests : IDisposable
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
             AppealId = created.Id,
-            Year = DateTime.Today.Year - 1,
+            Year = TestClock.Today.Year - 1,
             BaseNumber = "777",
             CreatedById = _lawyer2.Id,
         });
@@ -936,7 +936,7 @@ public class DocumentAppealServiceTests : IDisposable
         await _service.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
             {
-                new(DateTime.Today.Year.ToString()),
+                new(TestClock.Today.Year.ToString()),
             }), _lawyer2.Id, "lawyer2");
 
         var after = await _service.GetAsync(created.Id);
@@ -1428,7 +1428,7 @@ public class DocumentAppealServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = _lawyer1.Id,
         });
@@ -1436,7 +1436,7 @@ public class DocumentAppealServiceTests : IDisposable
 
         var rotated = await _service.GetAsync(dto.Id);
         Assert.Equal("1500", rotated!.DocumentEffectiveNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), rotated.DocumentEffectiveYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), rotated.DocumentEffectiveYear);
     }
 
     [Fact]
@@ -1454,7 +1454,7 @@ public class DocumentAppealServiceTests : IDisposable
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
             AppealId = dto.Id,
-            Year = DateTime.Today.Year + 1,
+            Year = TestClock.Today.Year + 1,
             BaseNumber = "9999",
             CreatedById = _lawyer1.Id,
         });

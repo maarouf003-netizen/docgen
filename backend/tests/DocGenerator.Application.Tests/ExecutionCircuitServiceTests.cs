@@ -63,7 +63,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
             new AppealRepository(_db),
             occurrences, baseNumbers, new Repository<HeadSuccession>(_db), alertsRepo, users,
-            uow, _tx, _audit, outbox, classifier, TimeProvider.System, TestClock.TimeZone,
+            uow, _tx, _audit, outbox, classifier, TestClock.Provider, TestClock.TimeZone,
             baseNumberRepository: new DocumentBaseNumberRepository(_db));
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
@@ -1434,7 +1434,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             new Repository<DocumentOccurrence>(_db), new Repository<DocumentBaseNumber>(_db),
             new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            classifier, TimeProvider.System, TestClock.TimeZone,
+            classifier, TestClock.Provider, TestClock.TimeZone,
             new IdempotencyStore(_db),
             baseNumberRepository: new DocumentBaseNumberRepository(_db));
     }

@@ -2833,9 +2833,9 @@ public class DocumentServiceTests : IDisposable
             userId: 1, actorName: "lawyer1");
 
         Assert.Equal("note", note.Type);
-        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // توقيت دمشق الجداري حصرًا (لا TestClock.Today الخادمي): بين 21:00 و00:00 UTC
         // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
-        Assert.Equal(ServerClock.TodayString(TimeProvider.System, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
+        Assert.Equal(ServerClock.TodayString(TestClock.Provider, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
     }
 
     [Fact]
@@ -2996,9 +2996,9 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1/8/2026", action.ActionDate);
         var note = list.Single(a => a.Type == "note");
         Assert.Equal("ملاحظة افتتاحية", note.Text);
-        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // توقيت دمشق الجداري حصرًا (لا TestClock.Today الخادمي): بين 21:00 و00:00 UTC
         // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
-        Assert.Equal(ServerClock.TodayString(TimeProvider.System, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
+        Assert.Equal(ServerClock.TodayString(TestClock.Provider, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
         Assert.Contains("action", _audit.Actions);
     }
 
@@ -3124,7 +3124,7 @@ public class DocumentServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = documentId,
-            Year = DateTime.Today.Year - 1,
+            Year = TestClock.Today.Year - 1,
             BaseNumber = baseNumber,
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,
@@ -3165,7 +3165,7 @@ public class DocumentServiceTests : IDisposable
     [Fact]
     public async Task GetRotationList_ExcludesFilesWithCurrentYearBaseNumber()
     {
-        var current = DateTime.Today.Year;
+        var current = TestClock.Today.Year;
 
         // دوّر للسنة الحالية فقط → مخفي.
         var rotated = await CreateDocForRotation(1);
@@ -3292,7 +3292,7 @@ public class DocumentServiceTests : IDisposable
     public async Task GetBaseNumberHistory_ReturnsAllYearsDescending()
     {
         var doc = await CreateDocForRotation(1);
-        var current = DateTime.Today.Year;
+        var current = TestClock.Today.Year;
         _db.BaseNumbers.AddRange(
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 2, BaseNumber = "300", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -3313,7 +3313,7 @@ public class DocumentServiceTests : IDisposable
     {
         // السجلات المتعددة لنفس السنة تُعرض كلها، مرتبة بالأحدث CreatedAt أولًا (المعتبر هو الأحدث).
         var doc = await CreateDocForRotation(1);
-        var current = DateTime.Today.Year;
+        var current = TestClock.Today.Year;
         _db.BaseNumbers.AddRange(
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1500", CreatedById = 1, CreatedAt = new DateTime(2026, 1, 5), UpdatedAt = DateTime.UtcNow },
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1501", CreatedById = 1, CreatedAt = new DateTime(2026, 1, 10), UpdatedAt = DateTime.UtcNow },
@@ -3406,7 +3406,7 @@ public class DocumentServiceTests : IDisposable
     public async Task SaveBaseNumbers_SecondSaveSameYearAppendsAndNewestWins()
     {
         var doc = await CreateDocForRotation(1);
-        var year = DateTime.Today.Year;
+        var year = TestClock.Today.Year;
 
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, " 1500 ") }, "lawyer1");
         var first = await _db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
@@ -3431,7 +3431,7 @@ public class DocumentServiceTests : IDisposable
     public async Task SaveBaseNumbers_EmptyEntryIsNoChange_PreservingAllRows()
     {
         var doc = await CreateDocForRotation(1);
-        var year = DateTime.Today.Year;
+        var year = TestClock.Today.Year;
         _db.BaseNumbers.AddRange(
             new DocumentBaseNumber { DocumentId = doc.Id, Year = year - 1, BaseNumber = "999", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
             new DocumentBaseNumber { DocumentId = doc.Id, Year = year, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
@@ -3503,7 +3503,7 @@ public class DocumentServiceTests : IDisposable
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
-            .Single(b => b.DocumentId == resp.Id && b.Year == DateTime.Today.Year);
+            .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
         Assert.Equal("1500", row.BaseNumber);
     }
 
@@ -3516,7 +3516,7 @@ public class DocumentServiceTests : IDisposable
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
-            .Single(b => b.DocumentId == resp.Id && b.Year == DateTime.Today.Year);
+            .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
         Assert.Equal("1500", row.BaseNumber);
     }
 
@@ -3567,7 +3567,7 @@ public class DocumentServiceTests : IDisposable
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
-            .Single(b => b.DocumentId == resp.Id && b.Year == DateTime.Today.Year);
+            .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
         Assert.Equal("1500", row.BaseNumber);
     }
 
@@ -3587,7 +3587,7 @@ public class DocumentServiceTests : IDisposable
         // قاعدة القيد: رقم الملف الأصلي هو نفسه رقم أساس سنة قيده، فالملف المقيد في السنة
         // الحالية يملك رقم أساس لها بالفعل فلا يُدوَّر.
         var doc = await CreateDocForRotation(1);
-        doc.FileYear = DateTime.Today.Year.ToString();
+        doc.FileYear = TestClock.Today.Year.ToString();
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -3642,7 +3642,7 @@ public class DocumentServiceTests : IDisposable
         var doc1 = await CreateDocForRotation(1);
         var doc2 = await CreateDocForRotation(1);
         var doc3 = await CreateDocForRotation(1);
-        var year = DateTime.Today.Year;
+        var year = TestClock.Today.Year;
 
         _audit.Actions.Clear();
 
@@ -3668,7 +3668,7 @@ public class DocumentServiceTests : IDisposable
     [Fact]
     public async Task NeedsRotation_ReflectsRedRule()
     {
-        var current = DateTime.Today.Year;
+        var current = TestClock.Today.Year;
 
         // 1) مقيد غير منفَّذ برقم أساس لسنة سابقة فقط → يحتاج تدوير (أحمر).
         var doc1 = await CreateDocForRotation(1);
@@ -3715,7 +3715,7 @@ public class DocumentServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = rotatedCurrent.Id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,
@@ -4273,7 +4273,7 @@ public class DocumentServiceTests : IDisposable
         await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _status.RestoreStruckOffAsync(doc.Id,
-            new RenewalRequest { RenewalFileNumber = "2026/55", RenewalYear = DateTime.Today.Year - 1 }, "lawyer1"));
+            new RenewalRequest { RenewalFileNumber = "2026/55", RenewalYear = TestClock.Today.Year - 1 }, "lawyer1"));
         Assert.Contains("سنة اليوم", ex.Message);
     }
 
@@ -4292,14 +4292,14 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("2026/55", restored.RenewalFileNumber);
         // سنة الإعادة تُخزَّن كرقم أساس للعام الحالي (لا حقلاً على المستند ذاته).
         Assert.Contains(_db.BaseNumbers, b => b.DocumentId == doc.Id
-            && b.Year == DateTime.Today.Year && b.BaseNumber == "2026/55");
+            && b.Year == TestClock.Today.Year && b.BaseNumber == "2026/55");
     }
 
     [Fact]
     public async Task RestoreStruckOff_TwiceSameYear_AppendsTwoRecordsAndLatestWins()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        var year = DateTime.Today.Year;
+        var year = TestClock.Today.Year;
 
         // شطب ثم إعادة → سجل رقم أساس أول.
         await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");

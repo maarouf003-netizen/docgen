@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Tests.TestHelpers;
@@ -97,7 +97,7 @@ public class CorrespondenceServiceTests : IDisposable
             new TransactionRunner(_db),
             _audit,
             new DbExceptionClassifier(),
-            clock ?? TimeProvider.System, TestClock.TimeZone,
+            clock ?? TestClock.Provider, TestClock.TimeZone,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db),
             entropy);

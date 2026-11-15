@@ -375,7 +375,7 @@ public class PortalRestructureTests : IDisposable
         // N1: انحراف موثّق — الأحدث دائمًا حتى بسنة مستقبلية (بخلاف قوائم المحامين).
         var id = await SeedDocAsync("مستقبلي", null, null, _entryDamascusId, null, false,
             "ليرة سورية", 100, fileNumber: "99", fileYear: "2026");
-        var futureYear = DateTime.UtcNow.Year + 2;
+        var futureYear = TestClock.CurrentYear + 2;
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = id, Year = futureYear, BaseNumber = "7777", CreatedById = 1,
