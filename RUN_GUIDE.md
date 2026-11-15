@@ -409,6 +409,10 @@ npm test
 
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
+> **حارس آلي (P7-02a):** `CI` (وظيفة `guards`) يشغّل `node scripts/migration-watchlist-guard.mjs`
+> ويفشل إذا وُجدت هجرة في `MigrationsPostgres` غير مسجّلة هنا وفي `AGENTS.md`
+> (أو إذا اختفى أحد القسمين). لا تُدمج هجرة بلا تسجيلها في الموضعين.
+
 > **P0-02 (2026-11-14):** سُحقت الهجرات إلى Baseline واحد. لا هجرات SQLite في التشغيل،
 > ولا تُشغَّل `--context DocGeneratorDbContext` على أي قاعدة. المرجع الوحيد:
 > `DocGeneratorPostgresDbContext` + `20261114101737_InitialPostgresBaseline`.
