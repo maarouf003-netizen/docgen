@@ -26,10 +26,10 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore backend/DocGenerator.sln
+        run: dotnet restore backend/DocGenerator.sln --locked-mode
 
       - name: Build
-        run: dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
+        run: dotnet build backend/DocGenerator.sln --no-restore --nologo -v q -warnaserror
 
       - name: Repeat application + api suites
         env:
