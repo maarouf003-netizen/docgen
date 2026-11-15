@@ -15,6 +15,8 @@ public static class DependencyInjection
         // ساعة النظام المحقونة في كل خدمات الطلبات: قرارات السنة والطوابع الزمنية الموحدة
         // تأخذ منها. TimeProvider.System آمن للمشاركة بين النطاقات (قراءات سلاسل فقط).
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        // P1-02b: مصدر العشوائية المحقون — يمكن استبداله كليًا في الاختبارات/البيئات.
+        services.AddSingleton<IEntropySource>(SystemEntropySource.Instance);
         // منطقة زمن النظام من الإعدادات (TimeZone:Id — IANA أو Windows) — قرار السنة يعتمدها.
         var timeZoneId = configuration?["TimeZone:Id"];
         services.AddSingleton(ServerClock.ResolveTimeZone(timeZoneId));

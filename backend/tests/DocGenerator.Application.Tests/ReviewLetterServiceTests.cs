@@ -46,7 +46,7 @@ public class ReviewLetterServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private ReviewLetterService BuildService()
+    private ReviewLetterService BuildService(IEntropySource? entropy = null)
     {
         var letters = new ReviewLetterRepository(_db);
         var documents = new DocumentRepository(_db);
@@ -66,7 +66,8 @@ public class ReviewLetterServiceTests : IDisposable
             TimeProvider.System, TestClock.TimeZone,
             users,
             new Repository<Section>(_db),
-            new Repository<ExecutionCircuit>(_db));
+            new Repository<ExecutionCircuit>(_db),
+            entropy);
     }
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
@@ -116,6 +117,19 @@ public class ReviewLetterServiceTests : IDisposable
 
         // النص يُحفظ معقّمًا (HTML مسموح فقط) ويُستخلص منه نص عادي للبحث
         Assert.Contains("نطلب التوجيه في الأمر", letter.Messages.Single().BodyHtml);
+    }
+
+    [Fact]
+    public async Task Create_NumberGeneration_UsesInjectedEntropy()
+    {
+        // P1-02b: نفس عقد الحقن في كتاب المطالعة — بلا Random.Shared.
+        var service = BuildService(new DeterministicEntropy(4321));
+
+        var letter = await service.CreateAsync(
+            new CreateReviewLetterRequest(null, "<p>نص</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+
+        Assert.Matches(@"^DAM-\d{4}-4321$", letter.LetterNumber);
     }
 
     [Fact]
