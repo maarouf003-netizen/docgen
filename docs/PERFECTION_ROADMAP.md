@@ -269,7 +269,9 @@
 
 #### `P1-06` — Architecture tests
 
-- **الحالة (2026-11-15):** مغلق — مشروع مستقل `backend/tests/DocGenerator.Architecture.Tests`
+- **الحالة (2026-11-15):** منفّذ — PR
+  [`#158`](https://github.com/maarouf003-netizen/docgen/pull/158): مشروع مستقل
+  `backend/tests/DocGenerator.Architecture.Tests`
   على `NetArchTest.Rules 1.3.2`، مضاف إلى `DocGenerator.sln` وإلى وظيفة `backend` في `CI`
   (خطوة حاجبة بعد البناء)، و**11 اختبارًا**:
   - `Application` لا يعتمد على `Infrastructure`/`Api`، ولا على `Microsoft.EntityFrameworkCore`.
