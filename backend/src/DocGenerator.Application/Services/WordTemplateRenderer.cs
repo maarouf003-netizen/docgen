@@ -76,9 +76,27 @@ public class WordTemplateRenderer : IDocumentRenderer
         if (!_options.Templates.TryGetValue(templateCode, out var fileName))
             throw new ArgumentException($"قالب غير معروف: {templateCode}");
 
-        var path = Path.IsPathRooted(_options.Path)
-            ? Path.Combine(_options.Path, fileName)
-            : Path.Combine(AppContext.BaseDirectory, _options.Path, fileName);
+        var basePath = Path.IsPathRooted(_options.Path)
+            ? _options.Path
+            : Path.Combine(AppContext.BaseDirectory, _options.Path);
+
+        // P2-09 (SEC): اسم القالب يأتي من قاموس مغلق، لكن إعدادًا خاطئًا (أو مسارًا
+        // مطلقًا) قد يقرأ ملفًا خارج مجلد القوالب. التحقق بالاحتواء على المسار الكامل
+        // قبل أي فتح ملف، لا بالاعتماد على `Path.Combine` وحده.
+        if (Path.IsPathRooted(fileName))
+            throw new ArgumentException($"مسار قالب مطلق غير مسموح: {templateCode}");
+
+        var fullBase = Path.GetFullPath(basePath);
+        var path = Path.GetFullPath(Path.Combine(fullBase, fileName));
+        var baseWithSeparator = fullBase.EndsWith(Path.DirectorySeparatorChar)
+            ? fullBase
+            : fullBase + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (!path.StartsWith(baseWithSeparator, comparison))
+            throw new ArgumentException($"مسار قالب خارج مجلد القوالب: {templateCode}");
 
         if (!File.Exists(path))
             throw new FileNotFoundException($"القالب غير موجود: {fileName}", path);

@@ -333,4 +333,27 @@ public class WordTemplateRendererTests : IDisposable
         await Assert.ThrowsAsync<FileNotFoundException>(() =>
             renderer.RenderAsync(new Dictionary<string, object>(), "missing"));
     }
+
+    [Fact]
+    public async Task Render_TemplateNameEscapingDirectory_ThrowsArgumentException()
+    {
+        // P2-09 (SEC): إعداد يحتوي `..` يجب ألا يقرأ ملفًا خارج مجلد القوالب.
+        var options = new WordTemplatesOptions { Path = _templateDir };
+        options.Templates["escape"] = Path.Combine("..", "outside.docx");
+        var renderer = new WordTemplateRenderer(Options.Create(options));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            renderer.RenderAsync(new Dictionary<string, object>(), "escape"));
+    }
+
+    [Fact]
+    public async Task Render_RootedTemplateName_ThrowsArgumentException()
+    {
+        var options = new WordTemplatesOptions { Path = _templateDir };
+        options.Templates["rooted"] = Path.Combine(Path.GetTempPath(), "outside.docx");
+        var renderer = new WordTemplateRenderer(Options.Create(options));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            renderer.RenderAsync(new Dictionary<string, object>(), "rooted"));
+    }
 }
