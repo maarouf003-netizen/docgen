@@ -252,6 +252,12 @@
 
 #### `P1-04` — Property-based tests
 
+- **الحالة (2026-11-15):** مغلق — `FsCheck 3.6` مع **1000 حالة لكل خاصية** للدوال السبع:
+  `ArabicNameNormalizer` (idempotent/مسافات)، `ActionDateParser`/`FreeDateParser`
+  (round-trip والصيغ العربية وعدم الرمي غير المتوقع)، `NumberToWords` (بما فيها
+  `long.MinValue` — كشف تكرارًا لا نهائيًا وأُصلح)، `DocumentSearchTextBuilder`
+  (الحدود و`surrogate pairs`)، `DocumentInterventionText.Normalize`، و`ApplicantTextBuilder`.
+  الاختبارات في `PropertyBasedTests.cs`.
 - **العمل:** `FsCheck` لـ`ArabicNameNormalizer`، `ActionDateParser`/`FreeDateParser`، `NumberToWords`، `DocumentSearchTextBuilder`، `DocumentInterventionText`، `ApplicantTextBuilder`.
 - **الـinvariants:** تطبيع idempotent، تواريخ round-trip، لا استثناء على مدخلات عشوائية، احترام الحدود.
 - **DoD:** 1000 حالة لكل دالة حرجة.
