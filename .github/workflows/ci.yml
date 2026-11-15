@@ -99,6 +99,10 @@ jobs:
       # وAGENTS.md؛ النسيان يعني رفض إقلاع في الإنتاج (AutoMigrate=false).
       - name: Migration watchlist guard
         run: node scripts/migration-watchlist-guard.mjs
+      # P2-05: يمنع دخول أسرار (مفاتيح/رموز/سلاسل اتصال بكلمات مرور) إلى الملفات
+      # المتتبَّعة؛ خط الأساس يسمح بقيم الاختبار الموثّقة فقط، ولا تُطبع القيم أبدًا.
+      - name: Secrets guard
+        run: node scripts/secrets-guard.mjs
 
   # فحص الاعتماديات حاجب للدمج (RF-002 — شُدِّد بعد تثبيت خط الأساس الأخضر في RF-001).
   # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا (مهمة المالك).
