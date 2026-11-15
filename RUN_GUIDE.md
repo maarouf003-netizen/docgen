@@ -422,8 +422,9 @@ npm test
   `docs/audit/20-p0-07-safe-constraints-20261114.md`.)
 - [ ] **2026-11-14 — `P0_07b_AmountConstraints` (`P0-07b`)** — قيد
   `CHECK ([<AmountColumn>] >= 0)` على 15 عمودًا رقميًا في `Documents` (المبلغ، الإدراج،
-  المحصل، المطلوب والمدفوع المنفذ). فُحصت القاعدة الإنتاجية: **صفر قيم سالبة**. إلزامي
-  قبل نشر نسخة `P0-07b`:
+  المحصل، المطلوب والمدفوع المنفذ). **تعتمد على البيانات**: شغّل
+  `scripts/p0-07b-preflight.sql` على **مشروع الإنتاج الفعلي** قبل التطبيق؛ أي قيمة سالبة
+  تُفشل الهجرة. الهجرة إلزامية قبل نشر نسخة `P0-07b`:
   `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
