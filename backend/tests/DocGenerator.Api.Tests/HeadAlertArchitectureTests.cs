@@ -14,6 +14,7 @@ namespace DocGenerator.Api.Tests;
 /// للتجميعات المترجمة — لا النص المصدري — حتى لا يفلت مسار غير مباشر (مثل حالة
 /// <c>async</c> داخل آلة حالة). التجميعات الاختبارية مستثناة عمدًا.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertArchitectureTests
 {
     private static readonly HashSet<string> AllowedOwners = new(StringComparer.Ordinal)

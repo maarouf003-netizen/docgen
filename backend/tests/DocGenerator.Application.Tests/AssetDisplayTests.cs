@@ -9,6 +9,7 @@ namespace DocGenerator.Application.Tests;
 /// التقليم قبل الفحص والإخراج معًا في كل الفروع، فاللقطة المخزنة والحارس
 /// والمرآة الأمامية يتفقون حرفيًا حتى مع قيم مدخلة بمسافات محيطة.
 /// </summary>
+[Trait("Category", "Unit")]
 public class AssetDisplayTests
 {
     [Fact]

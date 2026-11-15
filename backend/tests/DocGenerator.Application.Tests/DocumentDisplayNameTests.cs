@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// اسم العرض الموحّد: يغطي عائلة «طالبة تنفيذ» (المقترض) وعائلة «منفذ عليها/عرض وايداع»
 /// (المنفذ عليه/طالب التنفيذ) فلا يسقط التذكير إلى نوع المستند أو حالته.
 /// </summary>
+[Trait("Category", "Unit")]
 public class DocumentDisplayNameTests
 {
     [Fact]

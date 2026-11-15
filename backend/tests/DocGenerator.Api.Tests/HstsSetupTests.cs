@@ -8,6 +8,7 @@ namespace DocGenerator.Api.Tests;
 /// <b>النسخ والتحقق</b> لا على وجود إعدادات صحيحة فقط: ترويسة <c>preload</c> التزام شبه دائم
 /// في قوائم المتصفحات، فلا يجوز أن تُفعَّل ضمنيًا لأن مالكًا فعّل <c>HSTS</c>.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HstsSetupTests
 {
     private static HstsOptions Configured(SecurityOptions security)

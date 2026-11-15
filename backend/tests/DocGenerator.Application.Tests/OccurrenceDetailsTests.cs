@@ -5,6 +5,7 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// فكّ «تفاصيل الوقعة» إلى شكليه: قاموس JSON منضّم (يدوي) أو سرد نصي حر (آلي كنوع «تغيير جهة»).
 /// </summary>
+[Trait("Category", "Unit")]
 public class OccurrenceDetailsTests
 {
     [Fact]

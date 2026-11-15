@@ -55,6 +55,7 @@ public static class TestClock
     }
 }
 
+[Trait("Category", "Unit")]
 public class PasswordHasherTests
 {
     [Fact]
@@ -87,6 +88,7 @@ public class PasswordHasherTests
     }
 }
 
+[Trait("Category", "Unit")]
 public class NumberToWordsTests
 {
     [Theory]

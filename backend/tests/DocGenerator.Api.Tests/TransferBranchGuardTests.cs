@@ -14,6 +14,7 @@ namespace DocGenerator.Api.Tests;
 /// خدمات المتحكم الثلاث عشرة غير مستخدمة في هذين المسارين (الحارس يسبقها) فتُمرَّر
 /// `null!` صراحة مع هذا التوثيق.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class TransferBranchGuardTests
 {
     private static DocumentsController BranchlessHeadController()

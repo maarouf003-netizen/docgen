@@ -19,6 +19,7 @@ namespace DocGenerator.Application.Tests;
 [CollectionDefinition("Sequential", DisableParallelization = true)]
 public sealed class SequentialCollection { }
 
+[Trait("Category", "Unit")]
 public class TokenServiceTests
 {
     [Theory]
@@ -109,6 +110,7 @@ public class TokenServiceTests
     }
 }
 
+[Trait("Category", "Unit")]
 public class PasswordHasherV1Tests
 {
     private const string V1Prefix = "$docgen$v1$";
@@ -165,6 +167,8 @@ public class PasswordHasherV1Tests
         Assert.True(hasher.NeedsUpgrade(legacy));
     }
 }
+
+[Trait("Category", "Unit")]
 public class PasswordHasherLegacyTests
 {
     [Fact]
@@ -315,6 +319,7 @@ public class LoginRateLimiterTests : IDisposable
     }
 }
 
+[Trait("Category", "Unit")]
 public class HtmlInputSanitizerTests
 {
     [Fact]

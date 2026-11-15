@@ -14,6 +14,7 @@ namespace DocGenerator.Api.Tests;
 /// 2. **حارس مصدري:** لا متحكم يضع <c>e.Message</c> مباشرة في جسم الاستجابة،
 ///    فلا يُعاد التسريب من موضع جديد.
 /// </summary>
+[Trait("Category", "Unit")]
 public class ApiErrorMessagesTests
 {
     [Fact]

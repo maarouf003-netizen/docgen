@@ -14,6 +14,7 @@ namespace DocGenerator.Api.Tests;
 /// الافتراض القديم: `loopback` موثوق تلقائيًا ⇒ عملية محلية تزوّر <c>X-Forwarded-For</c> فتتجاوز
 /// مفتاح خنق الدخول (<c>IP:user</c>). هذه الاختبارات تفشل لو عادت الافتراضيات يومًا.
 /// </summary>
+[Trait("Category", "Unit")]
 public class ForwardedHeadersMiddlewareTests
 {
     private static ForwardedHeadersOptions Configured(params string[] known)

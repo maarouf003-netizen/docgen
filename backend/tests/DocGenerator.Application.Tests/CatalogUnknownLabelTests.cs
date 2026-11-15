@@ -7,6 +7,7 @@ namespace DocGenerator.Application.Tests;
 /// (لا تسمية صالحة مخترعة)، والغائب يتبع قاعدة الغياب المصممة لكل كتالوج.
 /// آلة الحالات (`Classify`/`AllowedStatusChanges`) خارج النطاق عمدًا — مثبتة بعقودها.
 /// </summary>
+[Trait("Category", "Unit")]
 public class CatalogUnknownLabelTests
 {
     [Theory]

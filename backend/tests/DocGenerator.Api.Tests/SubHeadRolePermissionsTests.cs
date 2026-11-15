@@ -7,6 +7,7 @@ namespace DocGenerator.Api.Tests;
 /// مصفوفة صلاحيات رئيس الشعبة (المرحلة 1ج — قرار §2.1/§2.21): يرث الخمس عشرة
 /// الخاصة برئيس القسم، ولا يرث المجموعة السلبية أبدًا.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class SubHeadRolePermissionsTests
 {
     [Theory]

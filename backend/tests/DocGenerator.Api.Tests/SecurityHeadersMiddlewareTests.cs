@@ -14,6 +14,7 @@ namespace DocGenerator.Api.Tests;
 /// W0-CSP: السياسة لا تحمل `upgrade-insecure-requests` (تُبيّض التطبيق على خادم `HTTP`)،
 /// وتُثبَّت هنا مباشرةً حتى لا تعود عبر نسخ/لصق مستقبلي.
 /// </summary>
+[Trait("Category", "Unit")]
 public class SecurityHeadersMiddlewareTests
 {
     private static async Task<IHeaderDictionary> InvokeAsync(SecurityOptions options, string path = "/")

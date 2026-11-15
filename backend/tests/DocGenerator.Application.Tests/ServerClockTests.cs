@@ -7,6 +7,7 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات مصدر الزمن المركزي: حدود السنة (آخر لحظة في سنة وأول لحظة في التالية وفق
 /// منطقة النظام المقررة، هنا ثابتة +03)، صيغة TodayString، وتحويل منطقة الزمن.
 /// </summary>
+[Trait("Category", "Unit")]
 public class ServerClockTests
 {
     [Fact]

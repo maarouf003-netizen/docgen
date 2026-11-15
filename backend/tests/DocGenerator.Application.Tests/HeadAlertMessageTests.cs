@@ -7,6 +7,7 @@ namespace DocGenerator.Application.Tests;
 /// حراسة مركز نصوص التنبيهات (الخطة §7.1/§7.2 و§14.1): القوالب الحرفية،
 /// والبادئة حسب الدور، وغياب القصّ، وتصحيحات الهمزات.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertMessageTests
 {
     [Fact]

@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات RF-014 (`ARC-004`): قبول حتمي — الصيغ الخمس فقط، بلا بديل مرن
 /// ولا سنة برقمين. تفشل قبل الإصلاح (قبول عرضي) وتخضر بعده.
 /// </summary>
+[Trait("Category", "Unit")]
 public class RF014DateAcceptanceTests
 {
     [Theory]

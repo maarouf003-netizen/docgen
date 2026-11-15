@@ -3,6 +3,7 @@ using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class EffectiveFileIdentityTests
 {
     private static Document NumberDoc(string fileNumber, string fileYear)

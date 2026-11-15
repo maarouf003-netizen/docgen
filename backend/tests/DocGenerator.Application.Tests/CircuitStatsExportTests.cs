@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// لمدير يرى الكل (`CircuitId = 0` بلا اسم فرع) تُكتب «كل الفروع» بدل الخلية
 /// الفارغة المضللة — ولرئيس القسم اسم فرعه كما كان، والصفوف العادية بلا تغيير.
 /// </summary>
+[Trait("Category", "Unit")]
 public class CircuitStatsExportTests
 {
     private static List<CircuitStatsDto> Rows() => new()

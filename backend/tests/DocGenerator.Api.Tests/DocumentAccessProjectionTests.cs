@@ -16,6 +16,7 @@ namespace DocGenerator.Api.Tests;
 /// <see cref="DocumentAccessInfo"/> ولا تستدعي التحميل الكامل للمستند في المتحكم.
 /// يثبت الاختبار أن <c>GetAsync</c> لا يُستدعى أبدًا، وأن الحالات 404/403/200 محفوظة.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class DocumentAccessProjectionTests
 {
     private const int UserId = 7;

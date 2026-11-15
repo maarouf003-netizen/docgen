@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// «مستند محذوف» (مرجع بلا صف مرئي) و«مستند قائم بلا حقول عرض» (يُعرض برقمه)،
 /// وحالة التنبيه بلا مرجع ملف (عنوان فارغ).
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertTitleTests
 {
     [Fact]

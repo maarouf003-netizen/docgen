@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// قواعد الممثل الشرعي للورثة: التطبيع المشترك وحارس «لا يجتمع الممثل مع الورثة».
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeirRepresentativeTests
 {
     [Fact]

@@ -10,6 +10,7 @@ namespace DocGenerator.Api.Tests;
 /// مفتاح تعطيل توليد Word: عند `Enabled=false` يرفض المتحكم الطلب قبل لمس أي خدمة
 /// (503 + رسالة مفهومة)، فلا يمكن تجاوز التعطيل من الواجهة أو الـAPI.
 /// </summary>
+[Trait("Category", "Unit")]
 public class DocumentGenerationDisabledTests
 {
     private static DocumentsController ControllerWithGeneration(bool enabled) =>

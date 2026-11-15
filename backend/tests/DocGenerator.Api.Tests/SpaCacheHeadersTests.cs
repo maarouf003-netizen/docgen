@@ -9,6 +9,7 @@ namespace DocGenerator.Api.Tests;
 /// ترويسات الكاش لملفات الواجهة: قشرة SPA تُعيد التحقق دائمًا (وإلا بقي المتصفح
 /// على حزمة قديمة بعد النشر)، والأصول المُبصَّمة تُخزَّن immutable، وغيرها بلا تغيير.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class SpaCacheHeadersTests
 {
     [Fact]

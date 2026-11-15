@@ -7,6 +7,7 @@ namespace DocGenerator.Api.Tests;
 /// غير الملتبسة (بريد/اعتمادات/`Bearer`)، وقصّ للسقف — مع بقاء الأرقام والأسماء
 /// (تشخيص المبالغ والرسائل العربية لا يُمسّ).
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class LogSanitizerTests
 {
     [Fact]

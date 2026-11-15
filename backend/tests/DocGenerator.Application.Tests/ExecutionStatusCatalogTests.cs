@@ -2,6 +2,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class ExecutionStatusCatalogTests
 {
     [Theory]

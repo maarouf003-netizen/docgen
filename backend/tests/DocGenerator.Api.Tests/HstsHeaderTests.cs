@@ -12,6 +12,7 @@ namespace DocGenerator.Api.Tests;
 /// ولا يحاكي إنهاء <c>TLS</c> عند الوكيل — وهو النمط نفسه المعتمد في
 /// <see cref="ForwardedHeadersMiddlewareTests"/>.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HstsHeaderTests
 {
     private static HstsOptions Configured(SecurityOptions security)

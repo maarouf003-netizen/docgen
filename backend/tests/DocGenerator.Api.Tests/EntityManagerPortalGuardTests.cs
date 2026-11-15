@@ -9,6 +9,7 @@ namespace DocGenerator.Api.Tests;
 /// العزل البنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا مسارات بوابته
 /// المسموحة و«من أنا/تسجيل الخروج» — بغضّ النظر عن أي متحكم قائم أو لاحق.
 /// </summary>
+[Trait("Category", "Unit")]
 public class EntityManagerPortalGuardTests
 {
     private static HttpContext BuildContext(string path, bool authenticated, string? role = null)
