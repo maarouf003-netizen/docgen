@@ -27,6 +27,11 @@ public static class TestDatabase
     /// </summary>
     public static void UseSqlite(IServiceCollection services, string connectionString)
     {
+        // P3-08: عدّاد أوامر واحد لكل حاوية اختبار، يُحقن في خيارات DbContext لقياس
+        // عدد الاستعلامات لكل طلب (حارس N+1). Singleton لأنه يُقرأ من الاختبار بعد الطلب.
+        var queryCounter = new QueryCounter();
+        services.AddSingleton(queryCounter);
+
         for (var i = services.Count - 1; i >= 0; i--)
         {
             var serviceType = services[i].ServiceType;
@@ -46,6 +51,7 @@ public static class TestDatabase
             var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
                 .UseSqlite(connectionString, sqlite =>
                     sqlite.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+                .AddInterceptors(queryCounter)
                 .Options;
             return new DocGeneratorDbContext(options);
         });
