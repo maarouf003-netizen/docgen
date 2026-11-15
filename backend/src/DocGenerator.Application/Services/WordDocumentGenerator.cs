@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Security;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Services;
@@ -59,16 +60,11 @@ public class WordDocumentGenerator : IWordDocumentGenerator
                 $"ولّد مستندًا بالقالب {templateCode} للمستلم {recipient}{scope}", token);
         }, ct);
 
-        var name = string.IsNullOrWhiteSpace(document.BorrowerName)
-            ? "مستند"
-            : SanitizeFileName(document.BorrowerName);
+        // P2-09 (SEC): اسم الملف يصل إلى ترويسة `Content-Disposition`؛ التنقية تمر عبر
+        // مساعد مشترك لا يعتمد على قائمة المحارف غير الصالحة الخاصة بالمنصة (Linux
+        // يقبل `"` وCR/LF)، فيُمنع حقن الترويسة أو تمويه الامتداد بـbidi على أي منصة.
+        var name = ExportFileName.Sanitize(document.BorrowerName, "مستند");
 
         return new WordGenerationResult(bytes, $"{name}_{templateCode}.docx");
-    }
-
-    private static string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        return new string(name.Where(c => !invalid.Contains(c)).ToArray());
     }
 }
