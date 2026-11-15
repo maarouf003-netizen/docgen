@@ -480,6 +480,15 @@
 
 #### `P4-06` — أدوات الجودة
 
+- **الحالة (2026-11-15):** جزئيًا — منفّذ:
+  - `backend/Directory.Packages.props` (CPM): 24 حزمة بإصدار مركزي، وأُزيل `Version` من
+    35 مرجعًا في 6 مشاريع؛ CPM يفرض نفسه (`NU1008` عند إصدار محلي).
+  - `global.json`: SDK `10.0.100` مع `rollForward: latestFeature`.
+  - `.editorconfig`: تنسيق موحّد (إرشادي، بلا بوابة `dotnet format` في هذه الجولة).
+  **مؤجَّل بقرار موثّق:** `packages.lock.json` مع `--locked-mode` (يحتاج اتفاقية عمل
+  وإلا تحوّل كل ترقية إلى فشل بناء غامض)، وبوابة `dotnet format` (ديون تنسيق قائمة ⇒
+  تجنّب PR إعادة تنسيق ضخم)، وRoslynator/StyleCop (تقييم ضجيج أولًا).
+  التفاصيل: `docs/audit/29-p4-06-tooling-20261115.md`.
 - **العمل:** `Directory.Packages.props` (CPM)، `packages.lock.json`، `global.json`، `.editorconfig`، `dotnet format --verify-no-changes`، Roslynator/StyleCop (بعد تقييم الضجيج).
 - **DoD:** إصدارات موحدة ونمط تنسيق حاجب.
 
