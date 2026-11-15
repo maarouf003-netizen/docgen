@@ -39,6 +39,16 @@ logs/
 # Security audit outputs (تقارير مولَّدة محليًا — لا تُرفع)
 snyk-audit/
 
+# P2-05: أسرار ومنافذ تسريب شائعة (الحارس: scripts/secrets-guard.mjs)
+.env.*
+!.env.example
+001.txt
+*.publishsettings
+*.keystore
+*.mobileprovision
+id_rsa*
+.npmrc
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
