@@ -44,7 +44,7 @@ public static class PortalServiceFactory
             audit,
             headAlerts,
             headAlertsOutbox,
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
 
         var delegations = new DocumentDelegationService(
@@ -61,7 +61,7 @@ public static class PortalServiceFactory
             audit,
             headAlerts,
             headAlertsOutbox,
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
 
         return new PortalService(
@@ -73,7 +73,7 @@ public static class PortalServiceFactory
             new ExcelExportService(),
             audit,
             Options.Create(new ExportOptions { MaxRows = maxRows }),
-            clock ?? TimeProvider.System,
+            clock ?? TestClock.Provider,
             TestClock.TimeZone);
     }
 }

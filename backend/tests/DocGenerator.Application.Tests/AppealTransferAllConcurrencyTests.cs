@@ -61,7 +61,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             new UserRepository(db),
             uow, tx, audit, alerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TimeProvider.System, TestClock.TimeZone);
+            TestClock.Provider, TestClock.TimeZone);
     }
 
     private async Task<(int BranchId, int SourceId, int TargetId)> SeedAsync()

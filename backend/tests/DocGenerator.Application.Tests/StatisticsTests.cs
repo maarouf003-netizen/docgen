@@ -30,7 +30,7 @@ public class StatisticsRepositoryTests : IDisposable
             new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "سامر", BorrowerFamily = "حسن", AmountNumeric = 700, ExecStatus = "تريث", CreatedAt = LegacyDate },
             new Document { BranchId = null, CreatedById = 1, IsDraft = false, BorrowerName = "بلا فرع", BorrowerFamily = "س", AmountNumeric = 100, ExecStatus = "منفذ جبريا", CollectedAmount = 100, CreatedAt = LegacyDate });
         _db.SaveChanges();
-        _stats = new StatisticsRepository(_db, TimeProvider.System, TestClock.TimeZone);
+        _stats = new StatisticsRepository(_db, TestClock.Provider, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();
@@ -140,7 +140,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // الملفات المشطوبة (وضع «منفذ عليه») مستثناة من عدادات اللوحة مثل القوائم والتصدير:
         // سجلها الوحيد هو صفحة «الملفات المشطوبة».
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(new Document
         {
             BranchId = 1,
@@ -180,7 +180,7 @@ public class StatisticsRepositoryTests : IDisposable
             new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "ج", BorrowerFamily = "ج", AmountNumeric = 0.3m, ExecStatus = string.Empty, CollectedAmount = 0.3m });
         db.SaveChanges();
 
-        var s = await new StatisticsRepository(db, TimeProvider.System, TestClock.TimeZone).GetDashboardStatsAsync(branch.Id);
+        var s = await new StatisticsRepository(db, TestClock.Provider, TestClock.TimeZone).GetDashboardStatsAsync(branch.Id);
 
         Assert.Equal(0.6m, s.TotalAmount);
         Assert.Equal(0.6m, s.TotalCollectedAmount);
@@ -212,7 +212,7 @@ public class StatisticsRepositoryTests : IDisposable
             });
         db.SaveChanges();
 
-        var repo = new StatisticsRepository(db, TimeProvider.System, TestClock.TimeZone);
+        var repo = new StatisticsRepository(db, TestClock.Provider, TestClock.TimeZone);
         var dashboard = await repo.GetDashboardStatsAsync(branch.Id);
         var branches = await repo.GetBranchesSummaryAsync();
 
@@ -360,7 +360,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_Monthly_CountsRegisteredFilesInCurrentMonth()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var first = new DateTime(today.Year, today.Month, 1);
         var outside = first.AddMonths(-1);
 
@@ -372,7 +372,7 @@ public class StatisticsRepositoryTests : IDisposable
             RegisteredDoc(1, false, "منفذ جبريا", D(today.Year, today.Month, 5), execSubStatus: "منفذ جزئيا"),
             RegisteredDoc(1, true, null, D(today.Year, today.Month, 6)),
             RegisteredDoc(1, false, "منفذ بالتسوية", D(outside.Year, outside.Month, outside.Day), collected: 500),
-            new Document { BranchId = 1, CreatedById = 1, IsDraft = true, ExecStatus = string.Empty });
+            new Document { BranchId = 1, CreatedById = 1, IsDraft = true, ExecStatus = string.Empty, CreatedAt = TestClock.UtcNow.UtcDateTime });
         _db.SaveChanges();
 
         var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
@@ -398,7 +398,7 @@ public class StatisticsRepositoryTests : IDisposable
         // مجموع بدل المبيع لإنابات المنيب المنفذة («منفذ إنابة») يُضاف إلى سلة «منفذ جبريا»
         // (ليرة سورية) عند اعتبار المنيب منفذًا جبريًا؛ والإنابات غير المنفذة (لم تُبع بعد)
         // وأصولها بلا بدل مبيع لا تُحتسب في المبلغ.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var mineeb = RegisteredDoc(1, false, "منفذ جبريا", D(today.Year, today.Month, 4), collected: 700);
         _db.Documents.Add(mineeb);
         _db.SaveChanges();
@@ -443,7 +443,7 @@ public class StatisticsRepositoryTests : IDisposable
         // الملف المناب عند إتمام إنابته («منفذ إنابة») منفَّذ فعليًا: يُحتسب ضمن بطاقة
         // «منفذ بالتسوية» عددًا فقط — بلا مبالغ بيع الأموال (تُحسب في بطاقة المنيب عند
         // اعتباره منفذًا جبريًا)، ولا يبقى ضائعًا بين الفئات.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
 
         _db.Documents.Add(RegisteredDoc(1, false, ExecutionStatusCatalog.DelegationExecuted,
             D(today.Year, today.Month, 3)));
@@ -460,7 +460,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_WithBranchFilter_LimitsToBranch()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var other = new Branch { Name = "حلب", Code = "ALP" };
         _db.Branches.Add(other);
         _db.SaveChanges();
@@ -483,7 +483,7 @@ public class StatisticsRepositoryTests : IDisposable
         // ملفات وضع «الجهة العامة منفذ عليها» تُحتسب في بطاقتي «متداول للضد»/«منفذ للضد»
         // حسب حالة الوضع، معزولة تمامًا عن عدادتي «منفذ بالتسوية»/«منفذ جبريا» الخاصتين
         // بنظام «طالبة تنفيذ»، والمشطوب مستبعد من البطاقتين.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             RegisteredDoc(1, false, null, D(today.Year, today.Month, 2)),
             new Document
@@ -538,7 +538,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة»، فمبلغ
         // «منفذ للضد» يجمع خاناته الثلاث جميعًا ولا يكتفي بأولاها.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(
             new Document
             {
@@ -565,7 +565,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // فترة ملف «منفذ عليها» من تاريخ ورود الاخطار لا من تاريخ قيده (المقيد من الخصم)،
         // فملف ورد في شهر مضى لا يُحتسب في نافذة الشهر الحالي مهما كان تاريخ إدخاله.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var lastMonth = today.AddMonths(-1);
         _db.Documents.AddRange(
             new Document
@@ -603,7 +603,7 @@ public class StatisticsRepositoryTests : IDisposable
         // ملفات «عرض وايداع» تُحتسب «للصالح» كأسطر فرعية داخل بطاقتي متداول/منفذ:
         // المتداول بعدده فقط، والمنفذ بعدده ومجموع المبالغ المودعة، والمشطوب مستبعد،
         // ولا تماس لها ببطاقتي «منفذ للصالح» (بالتسوية/جبريا) ولا بطاقتي «للضد».
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             new Document
             {
@@ -656,7 +656,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // «عرض وايداع» عاد من «منفذ» إلى متداول بكتاب السير بالملف: العلامة الدائمة «سبق تنفيذه»
         // تُبقيه محسوبًا «منفذًا» عددًا ومبلغًا في الإحصاءات، ولا ينتقل عدديًا إلى المتداول.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             new Document
             {
@@ -693,7 +693,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // فترة ملف «عرض وايداع» من تاريخ ورود الاخطار لا من تاريخ قيده (مثل وضع منفذ عليها)،
         // فملف ورد في شهر مضى لا يُحتسب في نافذة الشهر الحالي.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var lastMonth = today.AddMonths(-1);
         _db.Documents.AddRange(
             new Document
@@ -729,7 +729,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_Quarterly_CountsCurrentQuarterOnly()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var quarterStart = new DateTime(today.Year, ((today.Month - 1) / 3) * 3 + 1, 1);
         var inQuarter = quarterStart.AddMonths(1);
         var prevQuarter = quarterStart.AddMonths(-1);
@@ -753,7 +753,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_Yearly_CountsCurrentYearOnly()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var inYear = today.Month == 1 ? today : new DateTime(today.Year, 1, 1);
         var prevYear = new DateTime(today.Year - 1, 12, 1);
         var nextYear = new DateTime(today.Year + 1, 1, 1);
@@ -776,7 +776,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_TotalExcludesExecuted()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
 
         _db.Documents.AddRange(
             RegisteredDoc(1, false, null, D(today.Year, today.Month, 5)),
@@ -798,7 +798,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_AmountsPerStatus_SumAmountNumeric()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
 
         _db.Documents.AddRange(
             RegisteredDoc(1, false, null, D(today.Year, today.Month, 5), amount: 100, amount2: 3000),
@@ -838,7 +838,7 @@ public class StatisticsRepositoryTests : IDisposable
         // ب6 (خطة RTS): ملف «محال الى البداية» — ومنه من دخل من «منفذ جزئيا» (ExecSubStatus
         // محفوظ) — يُعدّ في الفرع الجديد بعدّه ومبالغه، ولا يبقى في «المتداول» ولا في
         // «منفذ جبريا»، ويدخل في TotalFiles (متداول + تحت رفع + تريث + محال).
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             RegisteredDoc(1, false, "محال الى البداية", D(today.Year, today.Month, 5),
                 execSubStatus: "منفذ جزئيا", amount: 200, amount2: 2000),
@@ -864,7 +864,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // مبالغ «متداول للصالح» و«التريث» تُفصَّل مصرفي/عادي ويُجمَّع كل مبلغ في سلة عملته الفعلية
         // (ليرة سورية/دولار أمريكي/يورو) بدل تسميات ل.س/دولار الثابتة.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             new Document
             {
@@ -931,7 +931,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // المبالغ المطلوبة الثلاثة في «متداول للضد» تُعرض كلٌّ بعملتها الفعلية،
         // ويُجمع كل مبلغ في سلة عملته دون دمجه مع عملة أخرى.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             new Document
             {
@@ -975,7 +975,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // المبالغ الثلاثة للملف العادي (المتضمن) تُجمع كلٌّ في سلة عملتها الفعلية ضمن سلة
         // المبالغ العادية، على غرار المبالغ الثلاثة للمصرفي وللضد.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(
             new Document
             {
@@ -1049,7 +1049,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerLawyerStats_ListsBranchLawyersWithMonthlyPoints()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var branch = await _db.Branches.FirstAsync();
         var lawyer2 = new User { Username = "u2", FullName = "مستخدم 2", Role = UserRole.Lawyer, BranchId = branch.Id };
         _db.Users.Add(lawyer2);
@@ -1277,6 +1277,8 @@ public class StatisticsRepositoryTests : IDisposable
             Currency = "ليرة سورية",
             ExecStatus = execStatus ?? string.Empty,
             SourceDelegationId = delegation.Id,
+            // ساعة الاختبار الثابتة: تاريخ الإدخال لا يتغيّر مع يوم التشغيل.
+            CreatedAt = TestClock.UtcNow.UtcDateTime,
             RegistrationDate = registerDate != null
                 ? new DocumentRegistrationDate { Date = registerDate, DateParsed = ActionDateParser.TryParse(registerDate) }
                 : null,
@@ -1357,7 +1359,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_DelegationTarget_CountsAsActiveWithoutAmounts()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var source = RegisteredDoc(1, false, null, D(today.Year, today.Month, 5), amount: 100);
         _db.Documents.Add(source);
         _db.SaveChanges();
@@ -1376,7 +1378,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_RecoveredFoldsIntoSettledCount_AsCountOnly()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var source = RegisteredDoc(1, false, "منفذ بالتسوية", D(today.Year, today.Month, 3), collected: 150);
         _db.Documents.Add(source);
         _db.SaveChanges();
@@ -1395,7 +1397,7 @@ public class StatisticsRepositoryTests : IDisposable
     [Fact]
     public async Task ManagerStats_SettledTargetCollectedAmountsExcluded()
     {
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         var source = RegisteredDoc(1, false, "منفذ بالتسوية", D(today.Year, today.Month, 3), collected: 150);
         _db.Documents.Add(source);
         _db.SaveChanges();
@@ -1504,7 +1506,7 @@ public class StatisticsRepositoryTests : IDisposable
     {
         // `BQ-029`: مدفوعات «منفذ للضد» بعملات مختلفة تُفصل لكل عملة كالبقية،
         // وحقل الليرة توافقٌ فقط (لا مجموعًا مختلطًا).
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(
             new Document
             {
@@ -1537,7 +1539,7 @@ public class StatisticsRepositoryTests : IDisposable
     public async Task ManagerStats_DepositExecuted_SplitsPerCurrency_NoMixedSum()
     {
         // `BQ-029`: مبالغ «عرض وايداع» المنفذة تُفصل لكل عملة، وحقل الليرة توافقٌ فقط.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(
             new Document
             {
@@ -1567,7 +1569,7 @@ public class StatisticsRepositoryTests : IDisposable
     public async Task ManagerStats_UnknownCurrency_BucketsAsOther_NotDropped()
     {
         // `BQ-030`: العملات خارج الثلاث لا تُسقَط بصمت بل تُجمَّع في سلة «أخرى» للمراجعة.
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.AddRange(
             new Document
             {
@@ -1604,7 +1606,7 @@ public class StatisticsRepositoryTests : IDisposable
     public async Task ManagerLawyerStats_MarksPointsCountedFromCreatedAt()
     {
         var branch = await _db.Branches.FirstAsync();
-        var today = DateTime.Today;
+        var today = TestClock.Today;
         _db.Documents.Add(new Document
         {
             BranchId = branch.Id,

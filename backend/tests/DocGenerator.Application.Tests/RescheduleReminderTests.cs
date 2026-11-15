@@ -282,7 +282,7 @@ public class RescheduleAppealReminderTests : IDisposable
             new UserRepository(_db),
             uow, tx, _audit, alerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
     }
 

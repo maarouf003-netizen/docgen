@@ -37,7 +37,7 @@ public class MetaControllerTests : IClassFixture<ApiFactory>
         var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var currentYear = doc.RootElement.GetProperty("currentYear").GetInt32();
         var expected = Application.Common.ServerClock.CurrentYear(
-            TimeProvider.System, Application.Common.ServerClock.ResolveTimeZone("Asia/Damascus"));
+            ApiTestClock.Provider, Application.Common.ServerClock.ResolveTimeZone("Asia/Damascus"));
         Assert.Equal(expected, currentYear);
     }
 

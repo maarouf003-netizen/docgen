@@ -149,7 +149,7 @@ public class OccurrenceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,
-            Year = DateTime.Today.Year - 1,
+            Year = TestClock.Today.Year - 1,
             BaseNumber = "900",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,
@@ -182,7 +182,7 @@ public class OccurrenceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,
-            Year = DateTime.Today.Year - 1,
+            Year = TestClock.Today.Year - 1,
             BaseNumber = "900",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,

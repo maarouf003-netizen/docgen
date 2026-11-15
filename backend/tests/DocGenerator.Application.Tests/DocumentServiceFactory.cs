@@ -38,7 +38,7 @@ public static class DocumentServiceFactory
         IRepository<Branch>? branches = null,
         IIdempotencyStore? idempotency = null)
     {
-        var clockValue = clock ?? TimeProvider.System;
+        var clockValue = clock ?? TestClock.Provider;
         var timeZoneValue = timeZone ?? TestClock.TimeZone;
         var exportOptionsValue = exportOptions ?? new ExportOptions();
         var dbErrorsValue = dbErrors ?? new DbExceptionClassifier();

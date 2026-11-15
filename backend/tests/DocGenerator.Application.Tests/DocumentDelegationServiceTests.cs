@@ -81,7 +81,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _audit,
             _headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
-            TimeProvider.System,
+            TestClock.Provider,
             TestClock.TimeZone);
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
@@ -186,7 +186,7 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = source.Id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = _lawyer1.Id,
         });
@@ -195,7 +195,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.Equal("1500", dto.SourceFileNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), dto.SourceFileYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
     }
 
     [Fact]
@@ -1249,7 +1249,7 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = targetId,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = _lawyer2.Id,
         });
@@ -1259,7 +1259,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var assigned = Assert.Single(listed);
         Assert.Equal("1500", assigned.TargetFileNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), assigned.TargetFileYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), assigned.TargetFileYear);
     }
 
     [Fact]
@@ -1294,7 +1294,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _head1.Id, _branch.Id, "head1");
 
         var targetId = dto!.TargetDocumentId!.Value;
-        var rotatedYear = DateTime.Today.Year - 1;
+        var rotatedYear = TestClock.Today.Year - 1;
         var target = await _db.Documents.FirstAsync(d => d.Id == targetId);
         target.FileNumber = "300";
         target.FileYear = "2025";
@@ -2544,7 +2544,7 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = source.Id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = _lawyer1.Id,
         });
@@ -2554,7 +2554,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.Equal("1500", dto.SourceFileNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), dto.SourceFileYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
     }
 
     [Fact]
@@ -2570,7 +2570,7 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = source.Id,
-            Year = DateTime.Today.Year,
+            Year = TestClock.Today.Year,
             BaseNumber = "1500",
             CreatedById = _lawyer1.Id,
         });
@@ -2578,7 +2578,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var listed2 = await _service.ListForDocumentAsync(source.Id);
         Assert.Equal("1500", Assert.Single(listed2).SourceFileNumber);
-        Assert.Equal(DateTime.Today.Year.ToString(), Assert.Single(listed2).SourceFileYear);
+        Assert.Equal(TestClock.Today.Year.ToString(), Assert.Single(listed2).SourceFileYear);
     }
 
     // ── حزمة §10: حارس المرآة (B1-B7) + قواعد النظافة (T1-T4) ────────────────

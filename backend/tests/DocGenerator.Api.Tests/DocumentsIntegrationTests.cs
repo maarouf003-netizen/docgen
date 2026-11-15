@@ -1033,9 +1033,9 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var action = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.Equal("note", action!.RootElement.GetProperty("type").GetString());
-        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // توقيت دمشق الجداري حصرًا (لا ApiTestClock.Today الخادمي): بين 21:00 و00:00 UTC
         // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
-        var damascusToday = ServerClock.TodayString(TimeProvider.System, ServerClock.ResolveTimeZone("Asia/Damascus"), "yyyy-MM-dd");
+        var damascusToday = ServerClock.TodayString(ApiTestClock.Provider, ServerClock.ResolveTimeZone("Asia/Damascus"), "yyyy-MM-dd");
         Assert.Equal(damascusToday, action.RootElement.GetProperty("actionDate").GetString());
     }
 
@@ -1735,7 +1735,7 @@ public class DocumentsIntegrationTests
 
         // قيد الملف (رقم + سنة + تاريخ قيد) في سنة سابقة حتى يخرج من «تحت رفع» ويصبح مؤهلًا
         // للتدوير في السنة الحالية (الملف المقيد في السنة الحالية لا يُدوَّر لأن رقمه هو رقم أساسه).
-        var previousYear = DateTime.Today.Year - 1;
+        var previousYear = ApiTestClock.Today.Year - 1;
         var update = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {
             documentType = "بيان دعوى",
@@ -1760,7 +1760,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
         var history = await historyResponse.Content.ReadFromJsonAsync<List<BaseNumberYearDto>>();
         var entry = Assert.Single(history!);
-        Assert.Equal(DateTime.Today.Year, entry.Year);
+        Assert.Equal(ApiTestClock.Today.Year, entry.Year);
         Assert.Equal("1500", entry.BaseNumber);
 
         // الرقم الفعّال في العرض التفصيلي يحل محل رقم الملف، والأصلي يبقى للتاريخ.
@@ -1795,7 +1795,7 @@ public class DocumentsIntegrationTests
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var currentYear = DateTime.Today.Year;
+        var currentYear = ApiTestClock.Today.Year;
 
         // ملف مقيد في السنة الحالية → لا يظهر في جدول التدوير (رقمه الأصلي هو رقم أساس سنته).
         var currentRegistered = await _factory.CreateDocumentAsync(token);
@@ -1839,7 +1839,7 @@ public class DocumentsIntegrationTests
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var currentYear = DateTime.Today.Year;
+        var currentYear = ApiTestClock.Today.Year;
 
         // قيد ملف في السنة الحالية ثم محاولة تدويره → تُرفض.
         var id = await _factory.CreateDocumentAsync(token);

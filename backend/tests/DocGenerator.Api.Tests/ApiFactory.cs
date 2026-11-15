@@ -7,6 +7,7 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -100,11 +101,37 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             if (registryOptions is not null)
                 services.Remove(registryOptions);
             services.AddSingleton(new NumberRegistryOptions { AllowCircuitlessLegacy = true });
+
+            // P1-02b: ساعة اختبار ثابتة — لا تعتمد النتائج على تاريخ تشغيل الـCI.
+            var clock = services.SingleOrDefault(d => d.ServiceType == typeof(TimeProvider));
+            if (clock is not null)
+                services.Remove(clock);
+            services.AddSingleton<TimeProvider>(ApiTestClock.Provider);
         });
 
         // ADR-0001: السياق الفعلي للاختبار SQLite مؤقت — بعد تسجيل Npgsql في Program.
         builder.ConfigureTestServices(services =>
-            TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30"));
+        {
+            TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30");
+
+            // P1-02b: التحقق من عمر التوكن يستخدم الساعة الثابتة نفسها التي يسكّ بها
+            // `TokenService` التوكن؛ وإلا صار التوكن منتهيًا فور إقلاع المصنع.
+            services.PostConfigure<JwtBearerOptions>(
+                JwtBearerDefaults.AuthenticationScheme,
+                options =>
+                {
+                    options.TimeProvider = ApiTestClock.Provider;
+                    // مكتبة التحقق لا تقرأ TimeProvider في مسار العمر دائمًا؛ نثبّت
+                    // الفحص على ساعة المصنع نفسها التي سكّت التوكن.
+                    options.TokenValidationParameters.LifetimeValidator =
+                        (notBefore, expires, _, _) =>
+                        {
+                            var now = ApiTestClock.UtcNow.UtcDateTime;
+                            return (notBefore is null || notBefore <= now)
+                                && (expires is null || now <= expires);
+                        };
+                });
+        });
     }
 
     protected override void Dispose(bool disposing)
