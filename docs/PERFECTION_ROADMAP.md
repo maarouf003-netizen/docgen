@@ -358,8 +358,8 @@
 
 #### `P2-09` — أمان التصدير/Word/Excel
 
-- **الحالة (2026-11-15):** منفّذ — PR
-  [`#162`](https://github.com/maarouf003-netizen/docgen/pull/162)، والتفاصيل في
+- **الحالة (2026-11-15):** مغلق — PR
+  [`#162`](https://github.com/maarouf003-netizen/docgen/pull/162) (squash `af7ef43`)، والتفاصيل في
   [`docs/audit/24-p2-09-export-security-20261115.md`](audit/24-p2-09-export-security-20261115.md):
   - **Excel (Formula Injection):** كل الخلايا `inlineString` بلا أي `<f>`؛ أُضيف حارس
     اختباري بخمس حِمول خبيثة يمنع الانحدار إلى خلية صيغة. **لم تُضف بادئة `'`** لأنها
