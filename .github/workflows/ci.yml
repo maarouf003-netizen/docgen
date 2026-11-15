@@ -133,6 +133,11 @@ jobs:
           dotnet tool install --global CycloneDX --version 6.3.1
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet CycloneDX backend/DocGenerator.sln -o artifacts/sbom -fn backend-bom.json -F Json -t
+      # cyclonedx-npm يبني الشجرة عبر `npm ls`، فالمطلوب تثبيت مطابق للقفل أولًا
+      # (`npm ci`) — وهو بذاته تحقق من أن القفل قابل لإعادة الإنتاج.
+      - name: Install frontend dependencies (for SBOM)
+        working-directory: frontend
+        run: npm ci
       - name: SBOM (frontend, CycloneDX)
         working-directory: frontend
         run: npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --output-file ../artifacts/sbom/frontend-bom.json --output-format JSON
