@@ -483,8 +483,8 @@
 
 #### `P5-03` — Health checks
 
-- **الحالة (2026-11-15):** منفّذ — PR
-  [`#165`](https://github.com/maarouf003-netizen/docgen/pull/165)، والتفاصيل في
+- **الحالة (2026-11-15):** مغلق — PR
+  [`#165`](https://github.com/maarouf003-netizen/docgen/pull/165) (squash `6e70795`)، والتفاصيل في
   [`docs/audit/26-p5-03-health-checks-20261115.md`](audit/26-p5-03-health-checks-20261115.md):
   فصل liveness/readiness:
   - `GET /healthz` → حياة العملية فقط (`Predicate = _ => false`، بلا قاعدة).
@@ -572,7 +572,7 @@
 #### `P7-02` — أتمتة قائمة الهجرات
 
 - **الحالة (2026-11-15):** جزئيًا — PR
-  [`#164`](https://github.com/maarouf003-netizen/docgen/pull/164): الجزء **الثابت** منفّذ:
+  [`#164`](https://github.com/maarouf003-netizen/docgen/pull/164) (squash `cf93c6e`): الجزء **الثابت** منفّذ:
   `scripts/migration-watchlist-guard.mjs` يُشغَّل في بوابة `guards`، ويفشل إذا وُجدت
   هجرة في `MigrationsPostgres` غير مذكورة بالاسم في `RUN_GUIDE.md` §9 («هجرات بانتظار
   التطبيق») **و**`AGENTS.md` («تذكير الهجرات المعلّقة») — ويفشل أيضًا إذا اختفى أحد
