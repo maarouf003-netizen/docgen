@@ -7,6 +7,7 @@ namespace DocGenerator.Api.Tests;
 /// <c>/api/csp-report</c>، وأي قيمة أخرى تمنع الإقلاع برسالة تسمّي المفتاح والمثال بدل
 /// التجاهل الصامت أو توجيه التقارير إلى مسار غير جامع. الفارغ = الجمع معطّل بلا خطأ.
 /// </summary>
+[Trait("Category", "Unit")]
 public class CspSetupTests
 {
     [Theory]

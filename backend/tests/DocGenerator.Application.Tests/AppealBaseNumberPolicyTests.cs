@@ -7,6 +7,7 @@ namespace DocGenerator.Application.Tests;
 /// سياسة رقم الأساس الاستئنافي كوحدة مستقلة: انتخاب الهوية الحالية، وبناء الأرشيف،
 /// وحدود السنة. تغطي هذه الفئة القواعد التي كانت موزّعة على الخدمة قبل توحيدها.
 /// </summary>
+[Trait("Category", "Unit")]
 public class AppealBaseNumberPolicyTests
 {
     private static AppealBaseNumber Row(int year, string number, DateTime createdAt)

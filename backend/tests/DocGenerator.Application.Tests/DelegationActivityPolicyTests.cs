@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات وحدة لسياسة «سارية/حاجبة/نهائية» (D2): التعريف الواسع لـ S1 مقابل
 /// الضيق لـ C، مع تثبيت الثوابت حرفيًا (لا لفظ «منفذ إنابة» الملتبس).
 /// </summary>
+[Trait("Category", "Unit")]
 public class DelegationActivityPolicyTests
 {
     private static DocumentDelegation Delegation(string status, Document? target = null) => new()

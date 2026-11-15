@@ -104,7 +104,9 @@ cd "C:\Users\pc\Desktop\document_generator\working 3.8 32b\backend"
 dotnet test DocGenerator.sln
 ```
 
-النتيجة المتوقعة: ما يزيد على `2500` اختبار (نحو `1850` وحدة/خدمة + `650` تكامل عبر `WebApplicationFactory` بقاعدة اختبار معزولة — لن تلمس قاعدة التشغيل). الأرقام تقريبية بتاريخ 2026-10-16 وتكبر مع كل ميزة.
+النتيجة المتوقعة: ما يزيد على `3300` اختبار (نحو `930` وحدويًا سريعًا + الباقي تكاملي
+عبر `TestDb`/`ApiFactory` بقاعدة اختبار معزولة — لن تلمس قاعدة التشغيل). الأرقام
+تقريبية بتاريخ 2026-11-15 وتكبر مع كل ميزة.
 
 > بوابة التسلسل: اختبارات وسيط الإثراء (`EnricherMiddlewareTests`) موسومة
 > `Category=Sequential` لأنها تستبدل `Log.Logger` العام — عند أي فشل عابر فيها
@@ -114,6 +116,17 @@ dotnet test DocGenerator.sln
 > dotnet test backend/DocGenerator.sln --filter "Category!=Sequential"
 > dotnet test backend/tests/DocGenerator.Api.Tests --filter "Category=Sequential"
 > ```
+
+حلقة سريعة (وحدات فقط — ≈30 ثانية):
+
+```powershell
+dotnet test backend/tests/DocGenerator.Application.Tests --filter "Category=Unit"
+dotnet test backend/tests/DocGenerator.Api.Tests --filter "Category=Unit"
+```
+
+> الاتفاقية (P1-07): الأصناف التي لا تلمس قاعدة/مضيف تحمل `Category=Unit`، وما عداها
+> تكاملي ضمنيًا. `CI` لا يستخدم مرشّح فئات ويشغّل الكل، فلا تُستخدم هذه الحلقة بديلًا
+> عن التحقق الكامل قبل `PR`. التفاصيل: `docs/audit/23-p1-07-fast-slow-20261115.md`.
 
 الواجهة:
 

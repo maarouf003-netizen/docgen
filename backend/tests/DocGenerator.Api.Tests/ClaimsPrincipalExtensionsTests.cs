@@ -3,6 +3,7 @@ using DocGenerator.Api;
 
 namespace DocGenerator.Api.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class ClaimsPrincipalExtensionsTests
 {
     [Fact]

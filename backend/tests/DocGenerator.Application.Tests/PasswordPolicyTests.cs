@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات سياسة كلمة المرور الموحدة (M-02 — قرار المالك 2026-10-16):
 /// حد 10 أحرف + رفض الشائعة والمتجانسة والمساوية لاسم الدخول.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class PasswordPolicyTests
 {
     [Theory]

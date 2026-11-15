@@ -11,6 +11,7 @@ namespace DocGenerator.Api.Tests;
 /// <c>X-Forwarded-For</c> فتجاوز مفتاح خنق الدخول (<c>IP:user</c>). والمدخلات الصالحة
 /// (عنوان <c>IP</c> أو نطاق <c>CIDR</c> ضمن طول البادئة) تُضاف، والفاسدة تُتجاهَل بصمت.
 /// </summary>
+[Trait("Category", "Unit")]
 public class ForwardedHeadersOptionsTests
 {
     private static ForwardedHeadersOptions Configure(params string[]? known)

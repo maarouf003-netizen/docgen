@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// قاعدة عامة: سنة الملف لا تكون مستقبلية في أي مدخل (إنشاء/تعديل/تسجيل أصولًا/
 /// إعادة قيد/سنة إعادة) — الحد الأقصى السنة الجارية.
 /// </summary>
+[Trait("Category", "Unit")]
 public class FileYearGuardTests
 {
     [Fact]

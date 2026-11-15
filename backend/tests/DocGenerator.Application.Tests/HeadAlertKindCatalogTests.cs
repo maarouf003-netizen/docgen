@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// حراسة كتالوج أنواع التنبيهات (الخطة §5 و§14.1): 40 رمزًا + الرمز المحجوز،
 /// ومصفوفة الجمهور لكل رمز نظامي، ومجموعات العائلات، والرموز المتقاعدة.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertKindCatalogTests
 {
     [Fact]

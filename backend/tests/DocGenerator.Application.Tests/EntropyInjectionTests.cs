@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// P1-02b — تسجيل عقد العشوائية في الحاوية: مفرد واحد مشترك، والتنفيذ التشغيلي
 /// <see cref="SystemEntropySource"/> ما لم يُستبدل صراحةً في بيئة الاختبار/التشغيل.
 /// </summary>
+[Trait("Category", "Unit")]
 public class EntropyInjectionTests
 {
     [Fact]

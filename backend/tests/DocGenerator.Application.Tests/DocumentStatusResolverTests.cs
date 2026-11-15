@@ -10,6 +10,7 @@ namespace DocGenerator.Application.Tests;
 /// مصفوفة اشتقاق حالة العرض الموحدة — المصدر الوحيد للقواعد بعد توحيدها
  /// (كانت مكررة بين ExcelExportService ومنطق الواجهة).
 /// </summary>
+[Trait("Category", "Unit")]
 public class DocumentStatusResolverTests
 {
     private static DocumentResponse Doc(

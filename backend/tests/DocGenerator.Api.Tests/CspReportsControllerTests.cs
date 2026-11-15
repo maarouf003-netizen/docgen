@@ -11,6 +11,7 @@ namespace DocGenerator.Api.Tests;
 /// W1 follow-up: جامع تقارير <c>CSP</c> يجب أن يسجّل **سطرًا ملخصًا واحدًا لكل طلب**
 /// (لا سطرًا لكل تقرير)، وأن يجرّد الاستعلام/المقطع من العيّنة الأولى قبل التسجيل.
 /// </summary>
+[Trait("Category", "Unit")]
 public class CspReportsControllerTests
 {
     [Fact]

@@ -16,6 +16,7 @@ namespace DocGenerator.Application.Tests;
 /// البيان **مكتوب من الخطة** لا مولَّد من الـDTOs — فلا يكون الاختبار دائريًا.
 /// أي حقل جديد أو محذوف أو مُعاد تسميته في أي طرف يُفشل هذا الحارس عمدًا.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertContractTests
 {
     private const string ManifestRelativePath = "frontend/src/test/contracts/head-alert-contracts.json";

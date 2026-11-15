@@ -2,6 +2,7 @@ using DocGenerator.Application.Services;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class EntityChangeMessagesTests
 {
     // ── ترويسة المرجع (DecreeSuffix) ──

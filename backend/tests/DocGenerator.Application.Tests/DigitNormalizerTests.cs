@@ -2,6 +2,7 @@ using DocGenerator.Application.Common;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class DigitNormalizerTests
 {
     [Theory]

@@ -13,6 +13,7 @@ namespace DocGenerator.Application.Tests;
 /// تطبيع الأسماء idempotent، تواريخ round-trip، عدم رمي استثناءات غير متوقعة،
 /// واحترام حدود الأطوال مع سلامة surrogate pairs.
 /// </summary>
+[Trait("Category", "Unit")]
 public class PropertyBasedTests
 {
     private static void Check(Property property) =>

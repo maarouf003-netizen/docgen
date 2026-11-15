@@ -3,6 +3,7 @@ using DocGenerator.Infrastructure.Security;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class NumberWarningTokenServiceTests
 {
     private static NumberWarningTokenService Create() =>

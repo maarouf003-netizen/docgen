@@ -6,6 +6,7 @@ namespace DocGenerator.Application.Tests;
 /// قواعد «تذكيرات الشطب»: العتبة خمسة أشهر، وحدّها منتصف ليل اليوم بتوقيت النظام ناقص
 /// خمسة أشهر كـUTC، والاستحقاق عند بلوغ الحد ضمنًا.
 /// </summary>
+[Trait("Category", "Unit")]
 public class StrikeOffReminderCalculatorTests
 {
     [Fact]

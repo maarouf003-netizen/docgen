@@ -10,6 +10,7 @@ namespace DocGenerator.Application.Tests;
 /// مصنع EF دون اتصال بقاعدة. اختبار المعاملة الحيّة على PostgreSQL في
 /// <c>TransactionAwareExecutionStrategyPostgresTests</c> (CI).
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class TransactionAwareExecutionStrategyFactoryTests
 {
     [Fact]

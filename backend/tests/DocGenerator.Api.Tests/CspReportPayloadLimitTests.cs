@@ -12,6 +12,7 @@ namespace DocGenerator.Api.Tests;
 /// W1 follow-up: `RequestSizeLimit(16KB)` على جامع `CSP` لا يُفرَض في `TestServer`،
 /// فيُقاس على `Kestrel` حقيقي بمنفذ ديناميكي — الحمولة الأكبر تُرد `413` قبل التحليل.
 /// </summary>
+[Trait("Category", "Unit")]
 public class CspReportPayloadLimitTests
 {
     [Fact]

@@ -6,6 +6,7 @@ namespace DocGenerator.Api.Tests;
 /// حارس التصدير المتزامن: دخول واحد لكل مفتاح، وتحرير آمن التكرار،
 /// وصيغة مفتاح ثابتة يتعاقد عليها الفلتر والاختبارات.
 /// </summary>
+[Trait("Category", "Unit")]
 public sealed class ExportConcurrencyGuardTests
 {
     [Fact]

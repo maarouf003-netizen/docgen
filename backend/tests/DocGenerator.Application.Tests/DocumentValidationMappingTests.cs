@@ -4,6 +4,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class DocumentValidatorTests
 {
     private static DocumentUpsertRequest NewRequest(string side = "") => new()
@@ -246,6 +247,7 @@ public class DocumentValidatorTests
     }
 }
 
+[Trait("Category", "Unit")]
 public class AssetMapperTests
 {
     [Fact]

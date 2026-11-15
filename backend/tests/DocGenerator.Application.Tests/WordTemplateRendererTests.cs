@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class WordTemplateRendererTests : IDisposable
 {
     private readonly string _templateDir;

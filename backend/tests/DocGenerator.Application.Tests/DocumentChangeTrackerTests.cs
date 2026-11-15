@@ -9,6 +9,7 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات محرك تتبع تغيّرات الحقول: الالتقاط والمقارنة والتنسيق والتسميات
 /// وتوقيعات المجموعات — أداة المراجعة المؤسسية على مستوى الحقل.
 /// </summary>
+[Trait("Category", "Unit")]
 public class DocumentChangeTrackerTests
 {
     private static Document NewDocument() => new()

@@ -10,6 +10,7 @@ namespace DocGenerator.Application.Tests;
 /// يُفشل الحارس عمدًا — فالعقد سلكي مشترك مع الواجهة (`types/index.ts`)
 /// وبيان `contracts/subhead-contracts.json`، لا يُغيَّر بصمت.
 /// </summary>
+[Trait("Category", "Unit")]
 public class SubHeadContractTests
 {
     private static IReadOnlyList<string> Names(Type type) =>

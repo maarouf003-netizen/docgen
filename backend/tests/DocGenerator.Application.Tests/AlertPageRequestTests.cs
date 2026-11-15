@@ -9,6 +9,7 @@ namespace DocGenerator.Application.Tests;
 /// ليس سببًا للرفض حين تبقى الإزاحة داخل حدود `int` (صفحة بعيدة بصفحة واحدة =
 /// `200` بعناصر فارغة، لا `400`).
 /// </summary>
+[Trait("Category", "Unit")]
 public class AlertPageRequestTests
 {
     private const string PageStartsAtOneMessage = "رقم الصفحة يبدأ من 1";

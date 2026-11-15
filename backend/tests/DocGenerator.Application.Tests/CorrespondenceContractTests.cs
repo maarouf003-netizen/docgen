@@ -11,6 +11,7 @@ namespace DocGenerator.Application.Tests;
 /// وحقّا التوثيق والرد قرارا خادم على العقدين، وتوثيق الأسماء في التفاصيل
 /// وحدها (القائمة بلا أي عضو توثيق).
 /// </summary>
+[Trait("Category", "Unit")]
 public class CorrespondenceContractTests
 {
     private static IReadOnlyList<PropertyInfo> Properties(Type type) =>

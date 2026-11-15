@@ -5,6 +5,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Tests;
 
+[Trait("Category", "Unit")]
 public class DocumentBaseNumberPolicyTests
 {
     private static Document Doc(int? circuitId = 1, string? fileNumber = "500", string? fileYear = "2024") => new()

@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// (الأحدث أولًا، سقف العمود، دلالة كل علامة قص) بعيدًا عن مسار HTTP، لأن هذا العمود
 /// يُحفظ على `varchar(1000)` في PostgreSQL وسقوطُ الحد يعني رفض حفظ فعلي.
 /// </summary>
+[Trait("Category", "Unit")]
 public class LocalAdditionSummaryTests
 {
     private static string Part(char filler, int length) => new(filler, length);

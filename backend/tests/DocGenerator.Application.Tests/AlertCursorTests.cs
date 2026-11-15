@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// <c>{ISO-8601-UTC}|{id}</c> تُبنى من حقلي الصف وتُحلَّل بصرامة، والوقت غير المحدد/المحلي
 /// يُرفض (فالمقارنة في القاعدة على UTC — انظر <c>UtcDateTimeConverter</c>).
 /// </summary>
+[Trait("Category", "Unit")]
 public class AlertCursorTests
 {
     private static readonly DateTime Stamp =

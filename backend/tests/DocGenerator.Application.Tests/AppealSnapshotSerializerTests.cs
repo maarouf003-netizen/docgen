@@ -8,6 +8,7 @@ namespace DocGenerator.Application.Tests;
 /// فكّ/إعادة تسلسل، وتحديث صور الجهات العامة بواسطة (Kind, PartyId) مع تغطية
 /// الحالات الحدّية (فارغ/null، بلا تطابق، صفوف متعددة، اسم مخزَّن مختلف).
 /// </summary>
+[Trait("Category", "Unit")]
 public class AppealSnapshotSerializerTests
 {
     [Fact]

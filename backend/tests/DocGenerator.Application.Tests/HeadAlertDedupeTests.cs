@@ -7,6 +7,7 @@ namespace DocGenerator.Application.Tests;
 /// حراسة بناء مفتاح منع التكرار (الخطة §6.4 و§14.1): القوالب المعتمدة، والنطاق،
 /// وإلزام النوع، وعدم القصّ الصامت، وإعادة توجيه المستلم عند التعاقب.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HeadAlertDedupeTests
 {
     private static HeadAlertDedupeScope Scope(

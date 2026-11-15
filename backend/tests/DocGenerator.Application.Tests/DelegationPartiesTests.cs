@@ -9,6 +9,7 @@ namespace DocGenerator.Application.Tests;
 /// ليستطيع <c>HeadAlertService</c> تطبيقه بلا استدعاء خدمة أخرى وبلا استعلام إضافي.
 /// الأطراف الثلاثة هي السلوك القائم بلا توسعة.
 /// </summary>
+[Trait("Category", "Unit")]
 public class DelegationPartiesTests
 {
     [Fact]

@@ -5,6 +5,7 @@ using Xunit;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>مصفوفة صلاحيات سجل الجهات العامة (د3/د4/د10) — المرحلة 1.</summary>
+[Trait("Category", "Unit")]
 public class EntityRegistryPermissionsTests
 {
     [Theory]

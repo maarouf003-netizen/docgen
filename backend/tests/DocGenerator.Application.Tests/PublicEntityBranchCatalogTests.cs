@@ -10,6 +10,7 @@ namespace DocGenerator.Application.Tests;
 /// هذا الاختبار يثبّت دلالات المصدر (بما فيها الحالات الحدّية) فلا «تُصلح»
 /// دلالته دون أن يكسر التطابق مع الواجهة بدل أن تتمايز الصيغة بصمت.
 /// </summary>
+[Trait("Category", "Unit")]
 public class PublicEntityBranchCatalogTests
 {
     [Theory]
