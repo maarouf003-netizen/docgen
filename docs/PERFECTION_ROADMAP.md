@@ -480,7 +480,8 @@
 
 #### `P4-06` — أدوات الجودة
 
-- **الحالة (2026-11-15):** جزئيًا — منفّذ:
+- **الحالة (2026-11-15):** جزئيًا — PR
+  [`#169`](https://github.com/maarouf003-netizen/docgen/pull/169): منفّذ:
   - `backend/Directory.Packages.props` (CPM): 24 حزمة بإصدار مركزي، وأُزيل `Version` من
     35 مرجعًا في 6 مشاريع؛ CPM يفرض نفسه (`NU1008` عند إصدار محلي).
   - `global.json`: SDK `10.0.100` مع `rollForward: latestFeature`.
