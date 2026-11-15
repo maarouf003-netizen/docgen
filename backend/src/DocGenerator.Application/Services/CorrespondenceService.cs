@@ -118,6 +118,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
     private readonly IDbExceptionClassifier _errors;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IEntropySource _entropy;
 
     public CorrespondenceService(
         ICorrespondenceRepository letters,
@@ -134,7 +135,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IRepository<Section> sections,
-        IRepository<ExecutionCircuit> circuits)
+        IRepository<ExecutionCircuit> circuits,
+        IEntropySource? entropy = null)
     {
         _letters = letters;
         _documents = documents;
@@ -151,6 +153,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         _errors = errors;
         _clock = clock;
         _timeZone = timeZone;
+        _entropy = entropy ?? SystemEntropySource.Instance;
     }
 
     public async Task<PagedResult<CorrespondenceListItemDto>> SearchAsync(
@@ -888,7 +891,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
         for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
-            var random = Random.Shared.NextInt64(0, 100_000)
+            var random = _entropy.NextInt64(0, 100_000)
                 .ToString(System.Globalization.CultureInfo.InvariantCulture)
                 .PadLeft(NumberRandomDigits, '0');
             var candidate = $"{prefix}-{year}-{random}";

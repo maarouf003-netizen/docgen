@@ -36,13 +36,15 @@ public class RF001NumberingCharacterizationTests
         return body!.RootElement.GetProperty("id").GetInt32();
     }
 
+    private static int s_numberSeq;
+
     [Fact]
     public async Task SameBasisNumber_TwoCreates_SecondConflict()
     {
         // RF-009: القيد الفريد الجزئي + الفحص الخدمي — الثاني 409 برسالة ودية.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var number = $"9{Random.Shared.Next(100000, 999999)}";
+        var number = $"9{System.Threading.Interlocked.Increment(ref s_numberSeq):D6}";
 
         var first = await CreateIdAsync(client, NumberedPayload("تكرار أول", number));
 
@@ -58,7 +60,7 @@ public class RF001NumberingCharacterizationTests
         // v2: الاستعادة = NeedsRegistration + رقم جديد؛ لا فحص تفرد لأن الرقم يُفرَّغ.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
-        var number = $"8{Random.Shared.Next(100000, 999999)}";
+        var number = $"8{System.Threading.Interlocked.Increment(ref s_numberSeq):D6}";
 
         var doomed = await CreateIdAsync(client, NumberedPayload("سيُحذف", number));
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/documents/{doomed}")).StatusCode);
