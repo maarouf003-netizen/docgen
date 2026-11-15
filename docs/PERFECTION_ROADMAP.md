@@ -353,7 +353,8 @@
 
 #### `P2-06` — SAST/DAST/SBOM
 
-- **الحالة (2026-11-15):** جزئيًا — بوابة الاعتماديات وSBOM منفّذتان:
+- **الحالة (2026-11-15):** جزئيًا — PR
+  [`#168`](https://github.com/maarouf003-netizen/docgen/pull/168): بوابة الاعتماديات وSBOM منفّذتان:
   - `scripts/dependency-audit.mjs` يحوّل `dotnet list package --vulnerable` (كان يُرجع
     `0` دائمًا) إلى بوابة فعلية: `High`/`Critical` ⇒ فشل، وشدّة مجهولة ⇒ fail-closed،
     مع اختبار ذاتي على 5 عيّنات ثابتة.
