@@ -1,0 +1,24 @@
+# P4-06 — تنسيق موحّد (إرشادي، بلا بوابة `dotnet format` في هذه الجولة).
+# القاعدة: الملفات المولّدة/الهجرات تُستثنى من التنسيق اليدوي.
+
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{cs,csproj,props,targets,sln}]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[backend/src/DocGenerator.Infrastructure/Persistence/Migrations*/**]
+indent_size = 4
+generated_code = true
