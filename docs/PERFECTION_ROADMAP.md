@@ -483,7 +483,10 @@
 
 #### `P5-03` — Health checks
 
-- **الحالة (2026-11-15):** منفّذ — فصل liveness/readiness:
+- **الحالة (2026-11-15):** منفّذ — PR
+  [`#165`](https://github.com/maarouf003-netizen/docgen/pull/165)، والتفاصيل في
+  [`docs/audit/26-p5-03-health-checks-20261115.md`](audit/26-p5-03-health-checks-20261115.md):
+  فصل liveness/readiness:
   - `GET /healthz` → حياة العملية فقط (`Predicate = _ => false`، بلا قاعدة).
   - `GET /readyz` → القاعدة + صندوق الصادر (وسم `ready`)؛ `503` عند تأخر أقدم رسالة
     معلّقة فوق `HeadAlerts:Outbox:Health:LagThresholdMinutes` (افتراضي 15).
