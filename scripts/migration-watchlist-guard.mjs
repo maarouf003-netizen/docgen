@@ -94,6 +94,10 @@ for (const target of TARGETS) {
 
   sections.set(target.file, section);
 
+  // المطابقة داخل بنود القائمة فقط (`- ...`)، لا في أي نص حر داخل القسم: ذكر الاسم
+  // في شرح لا يُعدّ تسجيلًا للهجرة. البنود هي عقد القائمة في الملفين.
+  const bulletLines = section.split(/\r?\n/).filter((line) => /^\s*[-*]\s/.test(line));
+
   for (const migration of migrations) {
     // الهجرة قد تُذكر باسم صنفها وحده (`P0_06_OptimisticConcurrency`) أو داخل
     // معرّفها الكامل (`20261114160957_P0_06_OptimisticConcurrency`)، فنسمح بشرطة
@@ -101,9 +105,9 @@ for (const target of TARGETS) {
     const pattern = new RegExp(
       `(?<![A-Za-z0-9])${migration.className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_])`,
     );
-    if (!pattern.test(section)) {
+    if (!bulletLines.some((line) => pattern.test(line))) {
       problems.push(
-        `${target.file}: الهجرة \`${migration.className}\` (${migration.file}) غير مذكورة في قسم «${target.heading}».`,
+        `${target.file}: الهجرة \`${migration.className}\` (${migration.file}) ليست بندًا في قسم «${target.heading}».`,
       );
     }
   }
