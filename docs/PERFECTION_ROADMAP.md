@@ -238,6 +238,10 @@
 
 #### `P1-02` — حزمة الحتمية
 
+- **الحالة (2026-11-15):** مغلق — `IEntropySource` محقون ومسجّل، `TimeProvider` في قرارات
+  الزمن، ساعة اختبار ثابتة، حارس `CI` بخط أساس صفر، و**20/20 تشغيلًا بلا flake**
+  ([run 43694989802](https://github.com/maarouf003-netizen/docgen/actions/runs/43694989802)).
+  التفاصيل في `docs/adr/0006-determinism-policy.md`.
 - **العمل:** `TimeProvider` في كل خدمة؛ حقن `Guid`/`Random`؛ منع `GetHashCode` في الـfixtures؛ محلل/سكربت CI يرفض `DateTime.Now`/`Random` غير الم seeded في الاختبارات.
 - **DoD:** 20 تشغيلًا متتاليًا بلا flake؛ صفر اختبار معطّل.
 
