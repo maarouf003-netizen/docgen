@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!--
+    P1-06: المشروع يشير إلى الطبقات الأربع عمدًا — حارس المعمارية يجب أن يرى كل
+    تجميعة ليثبت *غياب* الاعتماد، وليس فقط ما تعتمد عليه تجميعة واحدة.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DocGenerator.Api\DocGenerator.Api.csproj" />
+    <ProjectReference Include="..\..\src\DocGenerator.Application\DocGenerator.Application.csproj" />
+    <ProjectReference Include="..\..\src\DocGenerator.Domain\DocGenerator.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DocGenerator.Infrastructure\DocGenerator.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      تشغيل متسلسل مقصود: NetArchTest يحمّل التجميعات ويخزّنها في حالة ساكنة،
+      والتوازي بين المجموعات قد يجعل النتيجة غير حتمية. زمن المجموعة كلها ثوانٍ،
+      فلا مكسب أداء يستحق مخاطرة flake في بوابة معمارية.
+    -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
