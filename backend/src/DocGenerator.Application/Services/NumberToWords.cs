@@ -21,6 +21,10 @@ public static class NumberToWords
 
     public static string Convert(long number)
     {
+        // P1-04: `-long.MinValue` يفيض ويعيد نفس القيمة ⇒ تكرار لا نهائي. القيمة المطلقة
+        // تساوي `long.MaxValue + 1`، فتُصاغ كـ«ناقص MaxValue وواحد».
+        if (number == long.MinValue)
+            return "ناقص " + Convert(long.MaxValue) + " وواحد";
         if (number < 0)
             return "ناقص " + Convert(-number);
         if (number == 0)
