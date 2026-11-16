@@ -1,4 +1,3 @@
-using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -92,30 +91,16 @@ public class ReviewLettersController : ControllerBase
         if (!IsLawyer)
             return Forbid();
 
-        try
-        {
-            await _letters.MarkRepliesSeenAsync(id, UserId, ct);
-            return NoContent();
-        }
-        catch (ArgumentException e)
-        {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
+        await _letters.MarkRepliesSeenAsync(id, UserId, ct);
+        return NoContent();
     }
 
     /// <summary>كتب ملف محدد — لمالك الملف ورئيس نطاقه والإدارة ومتابعيه.</summary>
     [HttpGet("document/{documentId:int}")]
     public async Task<IActionResult> ListByDocument(int documentId, CancellationToken ct)
     {
-        try
-        {
-            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
-            return Ok(items);
-        }
-        catch (ArgumentException e)
-        {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
+        var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
+        return Ok(items);
     }
 
     /// <summary>تسطير كتاب مطالعة — المحامي فقط.</summary>
@@ -135,15 +120,8 @@ public class ReviewLettersController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        try
-        {
-            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
-            return Ok(letter);
-        }
-        catch (ArgumentException e)
-        {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
+        var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
+        return Ok(letter);
     }
 
     /// <summary>إضافة لاحق إلى كتاب — محامي الكتاب فقط.</summary>
@@ -154,15 +132,8 @@ public class ReviewLettersController : ControllerBase
         if (!RolePermissions.CanCreateReviewLetters(Role))
             return Forbid();
 
-        try
-        {
-            var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
-            return Ok(addendum);
-        }
-        catch (ArgumentException e)
-        {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
+        var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
+        return Ok(addendum);
     }
 
     /// <summary>رد مالك الكتاب على كتاب — قسمه لدوائر القسم وبلا دائرة، وشعبته لدوائر شعبته (§10).</summary>
@@ -177,14 +148,7 @@ public class ReviewLettersController : ControllerBase
         if (Role == UserRole.SubHead && SectionId is null)
             return Forbid();
 
-        try
-        {
-            var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct, Role, SectionId);
-            return Ok(reply);
-        }
-        catch (ArgumentException e)
-        {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
+        var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct, Role, SectionId);
+        return Ok(reply);
     }
 }

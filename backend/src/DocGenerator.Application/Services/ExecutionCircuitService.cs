@@ -147,13 +147,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (actor.Role == UserRole.Head)
             return null;
         if (actor.Role != UserRole.SubHead)
-            throw new ArgumentException("إنشاء الدوائر مقصور على الرؤساء — الإدارة تنقل فقط");
+            throw new UnauthorizedAccessException("إنشاء الدوائر مقصور على الرؤساء — الإدارة تنقل فقط");
         if (actor.SectionId is null)
-            throw new ArgumentException("حسابك بلا شعبة — راجع الإدارة");
+            throw new UnauthorizedAccessException("حسابك بلا شعبة — راجع الإدارة");
         var section = await _sections.GetByIdAsync(actor.SectionId.Value, ct)
             ?? throw new ArgumentException("شعبتك غير موجودة — راجع الإدارة");
         if (section.BranchId != branchId)
-            throw new ArgumentException("شعبتك ليست ضمن هذا الفرع");
+            throw new UnauthorizedAccessException("شعبتك ليست ضمن هذا الفرع");
         return section;
     }
 

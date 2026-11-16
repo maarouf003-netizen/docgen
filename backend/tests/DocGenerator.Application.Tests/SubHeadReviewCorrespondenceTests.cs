@@ -398,8 +398,8 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Equal(2, subView.TotalCount);
         Assert.All(subView.Items, i => Assert.Equal(sectionId, i.RecipientSectionId));
 
-        // رمز بلا شعبة مرفوض.
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        // رمز بلا شعبة مرفوض (نطاق فاعل غير صالح ⇒ 403 لا 400).
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _letters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null));
     }
 
@@ -580,7 +580,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Equal(1, subView.TotalCount);
         Assert.Equal("sub_masyaf", subView.Items.Single().TargetName);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _correspondences.SearchAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _correspondences.SearchAsync(
             sub.Id, UserRole.SubHead, _branch.Id, null, null, null, 1, 20, default, null));
     }
 

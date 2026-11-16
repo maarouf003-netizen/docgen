@@ -531,6 +531,17 @@
 
 #### `P4-03` — تحقق مركزي وProblemDetails
 
+- **الحالة (2026-11-16):** **جزئيًا** — PR
+  [`#185`](https://github.com/maarouf003-netizen/docgen/pull/185): الجزء الأول منفّذ: مسح دلالة
+  `400↔403/404` في المطالعات والمراسلات ودوائر التنفيذ. صُحّح خلط «فشل التحقق ⇒ 404»
+  في `ReviewLettersController` (حُذفت 5 كتل `catch (ArgumentException) ⇒ NotFound`)،
+  ونُقل المفقود إلى `KeyNotFoundException` (404) والصلاحية/النطاق إلى
+  `UnauthorizedAccessException` (403) في الخدمات الثلاث. حارس `ApiErrorMessagesTests`
+  أُعيد ضبطه من 9 إلى 4 كتل مسموحة بتوثيق. التفاصيل:
+  `docs/audit/43-p4-03-error-semantics-20261116.md`.
+  **متبقٍ:** `FluentValidation`/`IValidator<T>` موحّد، و`ProblemDetails` بشكل
+  `code/field/message`، وربط الواجهة؛ وتوحيد «رئيس بلا فرع» (`D11` يفرّق كتابة `400`/
+  قراءة `403` وبعض العدّادات ما زالت `400`) — قرار مالك قبل أي تغيير.
 - **العمل:** `FluentValidation` أو `IValidator<T>` موحّد؛ `ProblemDetails` مع `code`, `field`, `message` عربي؛ ربط أخطاء الواجهة.
 - **DoD:** كل 400 بنفس الشكل؛ لا رسائل متفرقة.
 

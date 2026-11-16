@@ -185,17 +185,17 @@ public sealed class CorrespondenceService : ICorrespondenceService
                     actorBranchId.Value, await ResolveHeadGovernorateAsync(actorBranchId.Value, ct),
                     q, importanceFilter, page, perPage, ct),
             UserRole.Head
-                => throw new ArgumentException("رئيس القسم دون فرع لا يمكنه عرض المراسلات"),
+                => throw new UnauthorizedAccessException("رئيس القسم دون فرع لا يمكنه عرض المراسلات"),
             // نطاق الشعبة (§10): طرفٌ فيها أو ملك دائرة شعبته — بلا تدهور.
             UserRole.SubHead when actorBranchId is not null && actorSectionId is not null
                 => await _letters.SearchForScopeAsync(
                     actorUserId, actorBranchId.Value, actorSectionId.Value,
                     q, importanceFilter, page, perPage, ct),
             UserRole.SubHead
-                => throw new ArgumentException("حسابك بلا شعبة — أعد الدخول"),
+                => throw new UnauthorizedAccessException("حسابك بلا شعبة — أعد الدخول"),
             UserRole.Manager or UserRole.Admin
                 => await _letters.SearchAllAsync(governorate, q, importanceFilter, page, perPage, ct),
-            _ => throw new ArgumentException("الدور غير مخوّل لعرض المراسلات"),
+            _ => throw new UnauthorizedAccessException("الدور غير مخوّل لعرض المراسلات"),
         };
 
         return new PagedResult<CorrespondenceListItemDto>

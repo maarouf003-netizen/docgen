@@ -146,14 +146,14 @@ public sealed class ReviewLetterService : IReviewLetterService
             UserRole.Head when actorBranchId is not null
                 => await _letters.SearchForScopeAsync(actorBranchId.Value, null, q, page, perPage, ct),
             UserRole.Head
-                => throw new ArgumentException("رئيس القسم دون فرع لا يمكنه عرض كتب المطالعة"),
+                => throw new UnauthorizedAccessException("رئيس القسم دون فرع لا يمكنه عرض كتب المطالعة"),
             UserRole.SubHead when actorBranchId is not null && actorSectionId is not null
                 => await _letters.SearchForScopeAsync(actorBranchId.Value, actorSectionId, q, page, perPage, ct),
             UserRole.SubHead
-                => throw new ArgumentException("حسابك بلا شعبة — أعد الدخول"),
+                => throw new UnauthorizedAccessException("حسابك بلا شعبة — أعد الدخول"),
             UserRole.Manager or UserRole.Admin
                 => await _letters.SearchAllAsync(administrativeBranch, q, page, perPage, ct),
-            _ => throw new ArgumentException("الدور غير مخوّل لعرض كتب المطالعة"),
+            _ => throw new UnauthorizedAccessException("الدور غير مخوّل لعرض كتب المطالعة"),
         };
 
         // حالة الإطلاع (هل طالع محامي الكتاب الرد؟) معلومة خاصة بمحامي الكتاب نفسه،
@@ -173,7 +173,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null)
     {
         var letter = await _letters.GetByIdWithDetailsAsync(id, ct)
-            ?? throw new ArgumentException("كتاب المطالعة غير موجود");
+            ?? throw new KeyNotFoundException("كتاب المطالعة غير موجود");
 
         if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, actorSectionId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على كتاب المطالعة هذا");
@@ -297,7 +297,7 @@ public sealed class ReviewLetterService : IReviewLetterService
 
         // قراءة متتبَّعة (GetByIdAsync بلا AsNoTracking) لتُحدَّث حالة الكتاب في المعاملة نفسها.
         var letter = await _letters.GetByIdAsync(letterId, ct)
-            ?? throw new ArgumentException("كتاب المطالعة غير موجود");
+            ?? throw new KeyNotFoundException("كتاب المطالعة غير موجود");
 
         if (letter.CreatedById != actorUserId)
             throw new UnauthorizedAccessException("اللاحق يُضاف من محامي الكتاب نفسه");
@@ -344,7 +344,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             throw new ArgumentException("نص الرد مطلوب");
 
         var letter = await _letters.GetByIdAsync(letterId, ct)
-            ?? throw new ArgumentException("كتاب المطالعة غير موجود");
+            ?? throw new KeyNotFoundException("كتاب المطالعة غير موجود");
 
         if (letter.BranchId != actorBranchId)
             throw new UnauthorizedAccessException("رد المطالعات مقصور على كتب الفرع نفسه");
@@ -420,7 +420,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         CancellationToken ct = default)
     {
         var letter = await _letters.GetTrackedWithMessagesAsync(letterId, ct)
-            ?? throw new ArgumentException("كتاب المطالعة غير موجود");
+            ?? throw new KeyNotFoundException("كتاب المطالعة غير موجود");
 
         if (letter.CreatedById != actorUserId)
             throw new UnauthorizedAccessException("تعليم الإطلاع متاح لمحامي الكتاب نفسه");
@@ -451,7 +451,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         int? actorSectionId = null)
     {
         var document = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new ArgumentException("الملف غير موجود");
+            ?? throw new KeyNotFoundException("الملف غير موجود");
 
         var isOwnerOrSupervisor = role is UserRole.Manager or UserRole.Admin
             || document.CreatedById == actorUserId;
