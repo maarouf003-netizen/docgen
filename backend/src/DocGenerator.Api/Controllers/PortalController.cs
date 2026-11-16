@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
@@ -256,13 +257,18 @@ public class PortalController : ControllerBase
 public class DelegatesController : ControllerBase
 {
     private readonly IEntityDelegateService _delegates;
+    private readonly IUserCapabilities _capabilities;
 
-    public DelegatesController(IEntityDelegateService delegates) => _delegates = delegates;
+    public DelegatesController(IEntityDelegateService delegates, IUserCapabilities capabilities)
+    {
+        _delegates = delegates;
+        _capabilities = capabilities;
+    }
 
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
+        if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
         return Ok(await _delegates.ListAsync(ct, Actor()));
     }
@@ -270,7 +276,7 @@ public class DelegatesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateDelegateRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
+        if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
         return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct, Actor()));
     }
@@ -278,7 +284,7 @@ public class DelegatesController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateDelegateRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
+        if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
         var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct, Actor());
         return dto is null ? NotFound() : Ok(dto);

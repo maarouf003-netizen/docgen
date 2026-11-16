@@ -1,11 +1,11 @@
 using System.Security.Claims;
 using DocGenerator.Application.Common;
 
-namespace DocGenerator.Api.Authorization.Documents;
+namespace DocGenerator.Api.Authorization;
 
 /// <summary>
-/// سؤال قدرة دورّية واحدة من الكتالوج المركزي. الواجهة تفصل المتحكم عن
-/// <see cref="RolePermissions"/> نصيًا (حارس <c>DocumentsControllerAuthorizationGuardTests</c>)
+/// سؤال قدرة دورّية واحدة من الكتالوج المركزي. الواجهة تفصل المتحكمات المُرحَّلة عن
+/// <see cref="RolePermissions"/> نصيًا (حارس <c>AuthorizationMigrationGuardTests</c>)
 /// وتبقي القاعدة في مكان واحد.
 /// </summary>
 public interface IUserCapabilities
@@ -29,6 +29,7 @@ public sealed class UserCapabilities : IUserCapabilities
         {
             UserCapability.HasFullAccess => RolePermissions.HasFullAccess(role),
             UserCapability.IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(role),
+            UserCapability.IsLawyer => RolePermissions.IsLawyer(role),
             UserCapability.CanViewPrintCounter => RolePermissions.CanViewPrintCounter(role),
             UserCapability.CanSearchByLawyer => RolePermissions.CanSearchByLawyer(role),
             UserCapability.CanSeeAdministrativeBranch => RolePermissions.CanSeeAdministrativeBranch(role),
@@ -41,6 +42,9 @@ public sealed class UserCapabilities : IUserCapabilities
             UserCapability.CanManageExecutionActions => RolePermissions.CanManageExecutionActions(role),
             UserCapability.CanRotate => RolePermissions.CanRotate(role),
             UserCapability.CanTransferDocuments => RolePermissions.CanTransferDocuments(role),
+            UserCapability.CanManageEntityRegistry => RolePermissions.CanManageEntityRegistry(role),
+            UserCapability.CanMergeEntities => RolePermissions.CanMergeEntities(role),
+            UserCapability.CanManageDelegates => RolePermissions.CanManageDelegates(role),
             // إغلاق الفشل: قدرة جديدة بلا ربط صريح لا تُمنح افتراضيًا.
             _ => throw new ArgumentOutOfRangeException(
                 nameof(capability), capability, "قدرة غير مربوطة بالكتالوج المركزي"),

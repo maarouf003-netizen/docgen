@@ -330,6 +330,16 @@
   `docs/audit/41-p2-01a-document-policies-20261116.md`.
   **متبقٍ:** `P2-01b` (البوابة + `EntityScope`) و`P2-01c` (المراجعات/المراسلات/التنفيذ/
   الإحصاءات + حارس «كل أكشن له متطلب») — الجرد الكامل أدناه.
+  - **P2-01b (2026-11-16):** منجز — جسر القدرات عُمّم إلى `Authorization` وأُضيفت أربع
+    قدرات؛ `EntityRegistryController` (30 نقطة/37 موضع قرار) و`DelegatesController`
+    بلا أي قرار دورّي (بقي `GetRoleEnum` لتمرير الدور كبيان إلى `EntityRegistryActor`).
+    **حارس راتشة** `AuthorizationMigrationGuardTests`: المتحكمات المُرحَّلة نظيفة، وقائمة
+    انتظار بالملفات الـ13 المتبقية تُفشل أي قرار دورّي جديد وأي قائمة متضخمة.
+    **قرار موثّق:** لم يُنشأ `PortalAccessRequirement`/`EntityScopeRequirement` —
+    نطاق البوابة/السجل مفروض بنيويًا وفي الخدمة ومختبَر، فإضافتهما تكرار بلا تقليص
+    سطح فشل مفتوح (`ADR-0007` §7 ملحق). التفاصيل:
+    `docs/audit/42-p2-01b-portal-entity-20261116.md`.
+  **متبقٍ:** `P2-01c` (13 متحكمًا + إفراغ قائمة الحارس) — الجرد أدناه.
 - **العمل:** `DocumentAccessRequirement` (`Owner`, `Branch`, `Section`, `ForwardedAppeal`)، `PortalAccessRequirement`، `EntityScopeRequirement`؛ `IAuthorizationHandler` لكل منها؛ إزالة `Role ==` من المتحكمات.
 - **DoD:** كل نقطة تستخدم `[Authorize(Policy=...)]` أو `IAuthorizationService`؛ لا منطق صلاحية في المتحكم.
 

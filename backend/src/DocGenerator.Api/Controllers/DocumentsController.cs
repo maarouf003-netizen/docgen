@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
