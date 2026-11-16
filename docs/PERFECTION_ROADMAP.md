@@ -335,8 +335,7 @@
     الوجود خلافًا لـ`403` الداخلي)، `entryId` أجنبي `403`، مندوب بلا ربط `200/0`،
     محامٍ `403`، زائر `401`. التفاصيل:
     `docs/audit/36-p2-02c-portal-scope-matrix-20261116.md`.
-  **متبقٍ:** مصفوفات الاستئناف/سجل الجهات، ومصفوفة `RolePermissions` الذرّية —
-  شرط `DoD` الكامل (تغطية 100%).
+  **متبقٍ:** مصفوفة `RolePermissions` الذرّية — شرط `DoD` الكامل (تغطية 100%).
   - **P2-02d (2026-11-16):** `DelegationScopeMatrixTests` — قائمة إنابات المستند:
     المالك/الرئيس/المدير/المشرف `200`، محامٍ آخر (نفس الفرع أو فرعه) `403`؛
     و`pending` للرئيس `200` وغيره `403`. التفاصيل:
@@ -347,6 +346,11 @@
     `DocumentDelegationServiceTests`/`DelegationsIntegrationTests`/`RF003`، وأُضيفت
     خلايا الكتابة إلى المصفوفة. التفاصيل:
     `docs/audit/38-p2-02e-delegation-error-semantics-20261116.md`.
+  - **P2-02f (2026-11-16):** `AppealScopeMatrixTests` — مالك/رئيس/مدير/مشرف `200`،
+    محامٍ آخر `403` (تفاصيل/قائمة/تعديل/حذف)، مفقود `404`؛ مع **إصلاح نفس ثغرة الدلالة**
+    في الاستئناف: `EnsurePendingByCreator`/`EnsureAssignedFollower` ⇒ `403`، والمفقود
+    ⇒ `404`. التفاصيل: `docs/audit/39-p2-02f-appeal-matrix-20261116.md`.
+  **متبقٍ:** مصفوفة `RolePermissions` الذرّية — شرط `DoD` الكامل (تغطية 100%).
 - **العمل:** `[Theory]` لكل (`role`, `resource`, `owner`, `branch`, `section`, `forwarded`)؛ اختبارات 200/403/404 لكل مسار.
 - **DoD:** تغطية 100% لمصفوفة `RolePermissions` ونقاط الموارد.
 
