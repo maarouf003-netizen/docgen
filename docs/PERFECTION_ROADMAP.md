@@ -319,7 +319,8 @@
 #### `P2-01` — سياسات صلاحيات موردية
 
 - **الحالة (2026-11-16):** **منفّذ جزئيًا** — `ADR-0007`
-  (`docs/adr/0007-resource-authorization-policies.md`) معتمد، و**`P2-01a` منجز**:
+  (`docs/adr/0007-resource-authorization-policies.md`) معتمد، و**`P2-01a` منجز**
+  (PR [`#183`](https://github.com/maarouf003-netizen/docgen/pull/183)):
   بنية متطلب/معالج موردي (`DocumentAccessRequirement` + `DocumentAccessHandler`) وبوابة
   قراءة ضيقة (`IDocumentAccessReader`) وواجهة `IDocumentAuthorization`، ورُحّل
   `DocumentsController` كاملًا (42 نقطة) بلا أي `RolePermissions`/`GetRoleEnum` داخله —
