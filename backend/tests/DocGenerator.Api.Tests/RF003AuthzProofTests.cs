@@ -80,7 +80,8 @@ public class RF003AuthzProofTests
             appellants = new[] { new { kind = "borrower", partyId = 1 } },
             appealedDecisionText = "نص دخيل",
         });
-        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+        // P2-02f: فشل الصلاحية على استئناف الغير = 403 (كان 400 قبل إصلاح دلالة الاستثناء).
+        Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
 
         var original = await lawyer1.GetAsync($"/api/appeals/{appealId}");
         Assert.Equal(HttpStatusCode.OK, original.StatusCode);
@@ -100,7 +101,8 @@ public class RF003AuthzProofTests
         var lawyer2 = _factory.AuthorizedClient(stranger.Username);
 
         var delete = await lawyer2.DeleteAsync($"/api/appeals/{appealId}");
-        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        // P2-02f: فشل الصلاحية = 403 لا 400.
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await lawyer1.GetAsync($"/api/appeals/{appealId}")).StatusCode);
     }

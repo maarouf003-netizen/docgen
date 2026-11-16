@@ -216,7 +216,7 @@ public class DocumentAppealServiceTests : IDisposable
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(doc.Id,
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer2.Id, "lawyer2"));
@@ -448,7 +448,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("1450", updated.AppealBaseNumber);
         Assert.Equal("2026-08-07", updated.RegistrationDate);
         // من غير المتابع مرفوض.
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, null, null, null), _lawyer1.Id, "lawyer1"));
     }
@@ -788,7 +788,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer1.Id, "lawyer1"));
     }
@@ -1201,7 +1201,7 @@ public class DocumentAppealServiceTests : IDisposable
             new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", null, null),
             _lawyer2.Id, "lawyer2");
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.SetReminderAsync(appealId, action.Id,
                 new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer1.Id, "lawyer1"));
     }

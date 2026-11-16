@@ -63,11 +63,12 @@ public sealed class DocumentAppealService : IDocumentAppealService
         CancellationToken ct = default)
     {
         var source = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new ArgumentException("الملف غير موجود");
+            ?? throw new KeyNotFoundException("الملف غير موجود");
 
         ValidateSourceForAppeal(source);
+        // P2-02f: فشل الصلاحية = 403 لا 400 (نفس تصحيح مسارات الإنابة).
         if (source.CreatedById != userId)
-            throw new ArgumentException("لا يمكنك تسطير استئناف على ملف لا تملكه");
+            throw new UnauthorizedAccessException("لا يمكنك تسطير استئناف على ملف لا تملكه");
 
         var direction = ParseDirection(request.Direction);
         var (appellantsJson, appelleesJson) = BuildSnapshots(source, direction, request.Appellants);
@@ -110,7 +111,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         CancellationToken ct = default)
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
-            ?? throw new ArgumentException("الاستئناف غير موجود");
+            ?? throw new KeyNotFoundException("الاستئناف غير موجود");
 
         EnsurePendingByCreator(appeal, userId);
         var source = appeal.Document;
@@ -140,7 +141,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     public async Task<bool> DeleteAsync(int appealId, int userId, string? actorName, CancellationToken ct = default)
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
-            ?? throw new ArgumentException("الاستئناف غير موجود");
+            ?? throw new KeyNotFoundException("الاستئناف غير موجود");
 
         EnsurePendingByCreator(appeal, userId);
         var source = appeal.Document;
@@ -1071,8 +1072,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
     private static void EnsurePendingByCreator(DocumentAppeal appeal, int userId)
     {
+        // P2-02f: الصلاحية أولًا (403)، ثم حالة الاستئناف (400) — لا كشف لحالة استئناف الغير.
         if (appeal.CreatedById != userId)
-            throw new ArgumentException("لا يمكنك تعديل أو حذف استئناف لم تسطّره");
+            throw new UnauthorizedAccessException("لا يمكنك تعديل أو حذف استئناف لم تسطّره");
         if (appeal.AssignedLawyerId is not null || appeal.Status != AppealStatusCatalog.Pending)
             throw new ArgumentException("لا يمكن تعديل أو حذف استئناف بعد إسناده");
     }
@@ -1080,7 +1082,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     private static void EnsureAssignedFollower(DocumentAppeal appeal, int userId)
     {
         if (appeal.AssignedLawyerId != userId)
-            throw new ArgumentException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");
+            throw new UnauthorizedAccessException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");
     }
 
     /// <summary>

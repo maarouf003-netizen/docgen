@@ -431,7 +431,7 @@ public class RescheduleAppealReminderTests : IDisposable
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.RescheduleAppealReminderAsync(appealId, action.Id, "15/8/2026", _lawyer1.Id, "lawyer1"));
         Assert.Contains("ليس مسندًا إليك", ex.Message);
     }
