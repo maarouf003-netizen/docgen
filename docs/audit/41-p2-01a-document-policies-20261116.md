@@ -83,8 +83,12 @@ if (denied is not null) return denied;
 - `DocGenerator.Api.Tests` (`Category=Sequential`): **5/5** ✅.
 - `DocGenerator.Architecture.Tests`: **13/13** ✅ (11 + حارسان جديدان).
 - الحلقة السريعة (`Category=Unit`): **707 + 609** في ≈10 ثوانٍ.
-- حراس: `determinism` (0)، `migration-watchlist` (5)، `migration-safety` (لا هدم)،
-  `secrets` (20) ✅.
+- حراس `CI` الخمسة: `subhead-guards` (نظيف)، `determinism` (0)، `migration-watchlist` (5)،
+  `migration-safety` (لا هدم)، `secrets` (20) ✅.
+  - **درس من الجولة:** تشغيل `subhead-guards` محليًا أول مرة كشف مخالفة أدخلها الترحيل
+    (تمرير `scope.OwnerSectionId` موضعيًا بدل الاسم الذي يطابقه الحارس في القوائم الأربع)؛
+    أُصلحت بوسائط مسمّاة `ownerSectionId: scope.OwnerSectionId` وأُعيد التشغيل محليًا
+    وعلى `CI`. القاعدة المحلية المحدّثة: تُشغَّل حراس `CI` **الخمسة** قبل الـPR، لا الأربعة.
 - الواجهة بلا تغيير: `oxlint`/`tsc`/`vitest` (1804)/`build`/`guard` ✅.
 
 ## 7. الحدود (ما لم يُنجز)
