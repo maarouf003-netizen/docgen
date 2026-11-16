@@ -16,6 +16,8 @@ namespace DocGenerator.Application.Common;
 /// أبدًا): `HasFullAccess`، `CanManageUsers`، `CanManageBranches`،
 /// `CanSeeAdministrativeBranch`، `IsReadOnlyOnDocuments`.
 /// (`CanManageBranches` للمدير توسعة مقصودة بقرار §2.15 — لا علاقة لها بالشعبة).
+/// <para>كل قدرة جديدة هنا يجب أن تُضاف بصفٍّ صريح في
+/// <c>RolePermissionsMatrixTests</c> (كل قدرة × كل دور)، وإلا فشلت بوابة الاختبارات.</para>
 /// </remarks>
 public static class RolePermissions
 {

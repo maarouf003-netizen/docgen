@@ -32,7 +32,7 @@ public sealed partial class PublicEntityService
     public async Task<RenameGroupResponse> RenameGroupAsync(
         RenameGroupRequest request, EntityRegistryActor actor, CancellationToken ct = default)
     {
-        if (!RolePermissions_IsFullAccess(actor.Role))
+        if (!RolePermissions.HasFullAccess(actor.Role))
             throw new UnauthorizedAccessException("إعادة التسمية للمدير أو المشرف فقط");
 
         var newCanonical = Required(request.NewCanonicalName, "اسم الجهة مطلوب", 200);
@@ -184,7 +184,7 @@ public sealed partial class PublicEntityService
     public async Task<AbolishAndReplaceResponse> AbolishAndReplaceAsync(
         AbolishAndReplaceRequest request, EntityRegistryActor actor, CancellationToken ct = default)
     {
-        if (!RolePermissions_IsFullAccess(actor.Role))
+        if (!RolePermissions.HasFullAccess(actor.Role))
             throw new UnauthorizedAccessException("الحلول (إلغاء واستبدال) للمدير أو المشرف فقط");
         if (request.AbolishedGroupIds is null || request.AbolishedGroupIds.Count == 0)
             throw new ArgumentException("حدد هوية أم واحدة على الأقل للإلغاء");
@@ -407,6 +407,4 @@ public sealed partial class PublicEntityService
             count += (await _entities.ListEntriesByGroupAsync(id, token)).Count(e => e.IsActive);
         return count;
     }
-    private static bool RolePermissions_IsFullAccess(DocGenerator.Domain.Enums.UserRole role)
-        => role is DocGenerator.Domain.Enums.UserRole.Manager or DocGenerator.Domain.Enums.UserRole.Admin;
 }
