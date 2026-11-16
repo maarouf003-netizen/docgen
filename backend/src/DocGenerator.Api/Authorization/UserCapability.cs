@@ -1,7 +1,7 @@
-namespace DocGenerator.Api.Authorization.Documents;
+namespace DocGenerator.Api.Authorization;
 
 /// <summary>
-/// أسماء القدرات الدورّية التي يستهلكها متحكم المستندات — **مطابقة حرفيًا** لأسماء
+/// أسماء القدرات الدورّية التي تستهلكها المتحكمات المُرحَّلة إلى سياسات `P2-01` — **مطابقة حرفيًا** لأسماء
 /// الدوال في <c>DocGenerator.Application.Common.RolePermissions</c>.
 ///
 /// <para>
@@ -14,6 +14,7 @@ public enum UserCapability
 {
     HasFullAccess,
     IsHeadOrSubHead,
+    IsLawyer,
     CanViewPrintCounter,
     CanSearchByLawyer,
     CanSeeAdministrativeBranch,
@@ -26,4 +27,7 @@ public enum UserCapability
     CanManageExecutionActions,
     CanRotate,
     CanTransferDocuments,
+    CanManageEntityRegistry,
+    CanMergeEntities,
+    CanManageDelegates,
 }

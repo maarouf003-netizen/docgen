@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;

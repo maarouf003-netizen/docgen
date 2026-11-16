@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.Common;

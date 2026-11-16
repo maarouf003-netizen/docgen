@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Filters;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
@@ -12,8 +13,9 @@ namespace DocGenerator.Api.Controllers;
 
 /// <summary>
 /// السجل المرجعي للجهات العامة (المرحلة 1): إدارة القيود وهوياتها للأدوار
-/// المخوّلة عبر RolePermissions، اقتراحات المحامين واعتمادها من رئيس القسم،
-/// وأداة الاستيراد التاريخي الإدارية. حدود محافظة رئيس القسم مفروضة في الخدمة.
+/// المخوّلة عبر جسر القدرات (`IUserCapabilities` ← الكتالوج المركزي، `P2-01b`)،
+/// اقتراحات المحامين واعتمادها من رئيس القسم، وأداة الاستيراد التاريخي الإدارية.
+/// حدود محافظة رئيس القسم مفروضة في الخدمة عبر `EntityRegistryActor`.
 /// </summary>
 [ApiController]
 [Route("api/entity-registry")]
@@ -21,8 +23,13 @@ namespace DocGenerator.Api.Controllers;
 public class EntityRegistryController : ControllerBase
 {
     private readonly IPublicEntityService _registry;
+    private readonly IUserCapabilities _capabilities;
 
-    public EntityRegistryController(IPublicEntityService registry) => _registry = registry;
+    public EntityRegistryController(IPublicEntityService registry, IUserCapabilities capabilities)
+    {
+        _registry = registry;
+        _capabilities = capabilities;
+    }
 
     private string? ActorName => User.Identity?.Name;
     private UserRole Role => User.GetRoleEnum();
@@ -45,7 +52,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.ListAsync(
             new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage, BranchName: branchName), ct));
@@ -63,8 +70,8 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] string? branchName,
         CancellationToken ct = default)
     {
-        if (Role == UserRole.EntityManager)
-            return Forbid();
+        // المندوب مستبعد بنيويًا بسمة الصنف `[Authorize(Roles=...)]` وحارس البوابة؛
+        // فلا حاجة لفحص دوري داخل الأكشن (فحص زائد لا يضيف ضمانًا).
         return Ok(await _registry.ListAsync(
             new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: branchName), ct));
     }
@@ -77,8 +84,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreatePublicEntityRequest request, CancellationToken ct)
     {
-        if (Role == UserRole.EntityManager)
-            return Forbid();
+        // المندوب مستبعد بنيويًا بسمة الصنف؛ الإنشاء متاح للمحامي أيضًا (حوكمة د4).
         return Ok(await _registry.CreateAsync(request, Actor, ct));
     }
 
@@ -86,7 +92,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdatePublicEntityRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var updated = await _registry.UpdateAsync(id, request, Actor, ct);
         return updated is null ? NotFound() : Ok(updated);
@@ -96,7 +102,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("{id:int}/aliases")]
     public async Task<IActionResult> AddAlias(int id, [FromBody] AddPublicEntityAliasRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var updated = await _registry.AddAliasAsync(id, request, Actor, ct);
         return updated is null ? NotFound() : Ok(updated);
@@ -106,7 +112,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("{id:int}/propose-edit")]
     public async Task<IActionResult> ProposeEdit(int id, [FromBody] ProposeEditRequest request, CancellationToken ct)
     {
-        if (Role != UserRole.Lawyer)
+        if (!_capabilities.Has(User, UserCapability.IsLawyer))
             return Forbid();
         var updated = await _registry.ProposeEditAsync(id, request, Actor, ct);
         return updated is null ? NotFound() : Ok(updated);
@@ -121,7 +127,7 @@ public class EntityRegistryController : ControllerBase
     [HttpGet("pending-review")]
     public async Task<IActionResult> PendingReview(CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.ListNeedsReviewAsync(Actor, ct));
     }
@@ -130,7 +136,7 @@ public class EntityRegistryController : ControllerBase
     [HttpGet("pending-review-count")]
     public async Task<IActionResult> PendingReviewCount(CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(new { count = await _registry.CountNeedsReviewAsync(Actor, ct) });
     }
@@ -139,7 +145,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("{id:int}/approve-review")]
     public async Task<IActionResult> ApproveReview(int id, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var dto = await _registry.ApproveReviewAsync(id, Actor, ct);
         return dto is null ? NotFound() : Ok(dto);
@@ -150,7 +156,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("import-preview")]
     public async Task<IActionResult> ImportPreview(CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.PreviewImportAsync(ct));
     }
@@ -160,7 +166,7 @@ public class EntityRegistryController : ControllerBase
     [SkipIdempotency]
     public async Task<IActionResult> ImportCommit([FromBody] ImportCommitRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         try
         {
@@ -178,7 +184,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("{id:int}/move")]
     public async Task<IActionResult> MoveEntry(int id, [FromBody] MoveEntryRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
     }
@@ -187,7 +193,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("move-all")]
     public async Task<IActionResult> MoveAllEntries([FromBody] MoveAllEntriesRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
     }
@@ -205,7 +211,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var excl = ParseIdList(excludeIds);
         var incl = ParseIdList(includeIds);
@@ -225,7 +231,7 @@ public class EntityRegistryController : ControllerBase
     [HttpGet("groups/{groupId:int}/entries")]
     public async Task<IActionResult> ListGroupEntries(int groupId, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
     }
@@ -234,7 +240,7 @@ public class EntityRegistryController : ControllerBase
     [HttpGet("groups/{groupId:int}/similar-to")]
     public async Task<IActionResult> SimilarTo(int groupId, [FromQuery] double? threshold, [FromQuery] int? maxResults, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.FindSimilarToGroupAsync(groupId, threshold ?? 0, maxResults ?? 0, ct));
     }
@@ -243,7 +249,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/unify-preview")]
     public async Task<IActionResult> UnifyPreview([FromBody] UnifyNamesPreviewRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.PreviewUnifyAsync(request, ct));
     }
@@ -253,7 +259,7 @@ public class EntityRegistryController : ControllerBase
     [SkipIdempotency]
     public async Task<IActionResult> Unify([FromBody] UnifyNamesRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         try
         {
@@ -273,7 +279,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("merge-preview")]
     public async Task<IActionResult> MergePreview([FromBody] MergePreviewRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanMergeEntities(Role))
+        if (!_capabilities.Has(User, UserCapability.CanMergeEntities))
             return Forbid();
         return Ok(await _registry.PreviewMergeAsync(request, ct));
     }
@@ -283,7 +289,7 @@ public class EntityRegistryController : ControllerBase
     [SkipIdempotency]
     public async Task<IActionResult> MergeCommit([FromBody] MergeCommitRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanMergeEntities(Role))
+        if (!_capabilities.Has(User, UserCapability.CanMergeEntities))
             return Forbid();
         try
         {
@@ -303,7 +309,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/rename-preview")]
     public async Task<IActionResult> RenameGroupPreview(int groupId, [FromBody] RenameGroupPreviewRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         if (request.GroupId != groupId)
             return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
@@ -314,7 +320,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/rename")]
     public async Task<IActionResult> RenameGroup(int groupId, [FromBody] RenameGroupRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         if (request.GroupId != groupId)
             return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
@@ -327,7 +333,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/abolish-preview")]
     public async Task<IActionResult> AbolishPreview([FromBody] AbolishReplacePreviewRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.PreviewAbolishAndReplaceAsync(request, ct));
     }
@@ -336,7 +342,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/abolish-and-replace")]
     public async Task<IActionResult> AbolishAndReplace([FromBody] AbolishAndReplaceRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         return Ok(await _registry.AbolishAndReplaceAsync(request, Actor, ct));
     }
@@ -353,7 +359,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.ListChangeEventsAsync(
             new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor, ct));
@@ -370,7 +376,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] string? to,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var stream = await _registry.ExportChangeEventsAsync(
             new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
@@ -383,7 +389,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/branches/preview")]
     public async Task<IActionResult> PreviewBranchAction(int groupId, [FromBody] PreviewBranchActionRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.PreviewBranchActionAsync(groupId, request, Actor, ct));
     }
@@ -392,7 +398,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/branches/{entryId:int}/rename-branch")]
     public async Task<IActionResult> RenameBranch(int groupId, int entryId, [FromBody] RenameBranchRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
     }
@@ -401,7 +407,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/branches/merge")]
     public async Task<IActionResult> MergeBranches(int groupId, [FromBody] MergeBranchesRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
     }
@@ -410,7 +416,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/branches/{entryId:int}/abolish")]
     public async Task<IActionResult> AbolishBranch(int groupId, int entryId, [FromBody] AbolishBranchRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
     }
@@ -419,7 +425,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("groups/{groupId:int}/branches/unify")]
     public async Task<IActionResult> UnifyBranches(int groupId, [FromBody] UnifyBranchesRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         return Ok(await _registry.UnifyBranchesAsync(groupId, request, Actor, ct));
     }
@@ -430,7 +436,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("entries/{entryId:int}/suggest-parent-edit")]
     public async Task<IActionResult> SuggestParentEdit(int entryId, [FromBody] SuggestParentEditRequest request, CancellationToken ct)
     {
-        if (Role != UserRole.Head && Role != UserRole.SubHead)
+        if (!_capabilities.Has(User, UserCapability.IsHeadOrSubHead))
             return Forbid();
         return Ok(await _registry.SuggestParentEditAsync(entryId, request, Actor, ct));
     }
@@ -444,7 +450,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
         var result = await _registry.ListParentEditSuggestionsAsync(
             new ParentEditSuggestionListQuery(status, groupId, page, perPage), Actor, ct);
@@ -455,7 +461,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("parent-edit-suggestions/{suggestionId:int}/review")]
     public async Task<IActionResult> ReviewParentEditSuggestion(int suggestionId, [FromBody] ReviewParentEditSuggestionRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
         return dto is null ? NotFound() : Ok(dto);
@@ -465,7 +471,7 @@ public class EntityRegistryController : ControllerBase
     [HttpPost("parent-edit-suggestions/{suggestionId:int}/withdraw")]
     public async Task<IActionResult> WithdrawParentEditSuggestion(int suggestionId, CancellationToken ct)
     {
-        if (Role != UserRole.Head && Role != UserRole.SubHead)
+        if (!_capabilities.Has(User, UserCapability.IsHeadOrSubHead))
             return Forbid();
         var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
         return dto is null ? NotFound() : Ok(dto);
