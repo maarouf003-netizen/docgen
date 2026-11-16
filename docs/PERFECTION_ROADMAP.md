@@ -330,7 +330,8 @@
   `docs/audit/41-p2-01a-document-policies-20261116.md`.
   **متبقٍ:** `P2-01b` (البوابة + `EntityScope`) و`P2-01c` (المراجعات/المراسلات/التنفيذ/
   الإحصاءات + حارس «كل أكشن له متطلب») — الجرد الكامل أدناه.
-  - **P2-01b (2026-11-16):** منجز — جسر القدرات عُمّم إلى `Authorization` وأُضيفت أربع
+  - **P2-01b (2026-11-16):** PR
+    [`#184`](https://github.com/maarouf003-netizen/docgen/pull/184) — منجز: جسر القدرات عُمّم إلى `Authorization` وأُضيفت أربع
     قدرات؛ `EntityRegistryController` (30 نقطة/37 موضع قرار) و`DelegatesController`
     بلا أي قرار دورّي (بقي `GetRoleEnum` لتمرير الدور كبيان إلى `EntityRegistryActor`).
     **حارس راتشة** `AuthorizationMigrationGuardTests`: المتحكمات المُرحَّلة نظيفة، وقائمة
