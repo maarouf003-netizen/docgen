@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using System.Text;
 using DocGenerator.Api.Auth;
+using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
@@ -185,6 +186,7 @@ builder.Services
 
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<DocGenerator.Api.Security.ExportConcurrencyGuard>();
+builder.Services.AddDocumentAuthorization();
 builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
 // احتفاظ المنتدى: قيمة سالبة تُفشل الإقلاع مبكرًا (كحارس مفتاح JWT أعلاه) —
 // `0` معطّل مشروع، والموجب أشهر الحذف الصلب التلقائي عدا المثبّتة.
