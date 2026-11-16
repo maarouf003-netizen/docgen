@@ -221,7 +221,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchDeletedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
+        var result = await _search.SearchDeletedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -238,7 +238,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchStruckOffAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
+        var result = await _search.SearchStruckOffAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -252,7 +252,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchExecutedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
+        var result = await _search.SearchExecutedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -266,7 +266,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchReferredToStartAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
+        var result = await _search.SearchReferredToStartAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
