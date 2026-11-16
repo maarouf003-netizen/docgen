@@ -560,6 +560,14 @@
 
 #### `P5-05` — خط أنابيب الهجرات
 
+- **الحالة (2026-11-16):** جزئيًا — الجزء الثابت منفّذ: `scripts/migration-safety-guard.mjs`
+  في بوابة `guards` يفشل عند أي `DropTable/DropColumn/DropSchema/Rename*/AlterColumn<T>/
+  DeleteData` داخل **`Up`** بلا استثناء موثّق في `scripts/migration-safety-allowlist.json`
+  (مع سبب)، ويتجاهل `Down` عمدًا، ويفشل عند استثناء قديم. تحقق سلبي مزدوج موثّق (هجرة
+  تجريبية فشلت، واستثناء موثّق نجح، ثم نُظِّف). التفاصيل:
+  `docs/audit/33-p5-05a-migration-safety-20261116.md`.
+  **متبقٍ:** توليد SQL idempotent كأثر مراجعة، dry-run على staging، وإلزام نسخة احتياطية
+  موثّقة قبل كل تطبيق (`P5-04`).
 - **العمل:** توليد SQL، مراجعة، dry-run، نسخة احتياطية، `expand/contract`، `CONCURRENTLY`، منع الحذف في نفس الإصدار.
 - **DoD:** لا هجرة تُطبق يدويًا بلا سجل/مراجعة.
 - **الاعتمادية:** `P0-02` (Baseline) و`P5-04` (staging).
