@@ -26,6 +26,9 @@ public class QueryBudgetTests
     /// <summary>سقف تفاصيل صف واحد: القياس 18 + هامش 2.</summary>
     private const int DetailBudget = 20;
 
+    /// <summary>سقف تصدير Excel لخمسة عشر صفًا: القياس 10 + هامش 4.</summary>
+    private const int ExportBudget = 14;
+
     [Fact]
     public async Task DocumentsList_PageOfFifteen_StaysWithinQueryBudget()
     {
@@ -66,5 +69,28 @@ public class QueryBudgetTests
         Assert.True(
             counter.Count <= DetailBudget,
             $"تجاوزت تفاصيل المستند ميزانية الاستعلامات: {counter.Count} > {DetailBudget}");
+    }
+
+    [Fact]
+    public async Task DocumentsExport_WithFifteenRows_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var login = await factory.LoginAsync("lawyer1", "123456");
+        var token = login!.Token!;
+
+        for (var i = 1; i <= 15; i++)
+        {
+            await factory.CreateDocumentAsync(token, borrowerName: $"مستلف تصدير {i}");
+        }
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.ClientWithToken(token).GetAsync("/api/documents/export");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ExportBudget,
+            $"تجاوز تصدير المستندات ميزانية الاستعلامات: {counter.Count} > {ExportBudget}");
     }
 }
