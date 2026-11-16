@@ -192,6 +192,21 @@ jobs:
           if grep -qi 'datetime2' /tmp/pg_migrations.sql; then
             echo "FORBIDDEN: 'datetime2' in Postgres migration script (see FR-001)"; exit 1;
           fi
+      # P5-05b: أثر DDL للمراجعة قبل النشر — سكربت idempotent كامل (بلا اتصال بقاعدة).
+      # يُرفع مع كل تشغيل كي يراجع المالك/المراجع SQL الفعلي لا وصف الهجرة.
+      - name: Generate idempotent Postgres script (review artifact)
+        env:
+          POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
+        run: |
+          mkdir -p artifacts/migrations
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef migrations script --idempotent --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api -o artifacts/migrations/pg-idempotent.sql
+      - name: Upload migration SQL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-sql
+          path: artifacts/migrations
+          retention-days: 30
 
   # اختبارات البوابة الحية لـ Postgres (FR-002): الاختبارات المبوبة بـ
   # DOCGEN_TEST_POSTGRES (مهاجرة + مسح) تعمل هنا فعليًا بدل تخطيها الصامت محليًا.
