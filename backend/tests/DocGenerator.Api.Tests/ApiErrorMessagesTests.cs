@@ -124,10 +124,16 @@ public class ApiErrorMessagesTests
     }
 
     /// <summary>
-    /// حارس البند 3: لم يبقَ في المتحكمات أي <c>catch (ArgumentException</c> يترجم إلى
+    /// حارس البند 3: لا متحكم يترجم <c>catch (ArgumentException</c> إلى
     /// <c>BadRequest</c> — الترجمة صارت في <see cref="GlobalExceptionHandler"/> وحدها.
-    /// الاستثناء الوحيد المسموح هو كتل <c>NotFound</c> التسع المضبوطة صراحةً (سلوك مقصود
-    /// لأن المورد قد يكون غير موجود أصلًا)، وأي كتلة أخرى أو أي زيادة/نقص = فشل الحارس.
+    ///
+    /// <para>
+    /// الكتل المسموحة الآن <b>أربع</b> (<c>Appeals</c>×3 و<c>Delegations</c>×1)
+    /// وكلها <c>NotFound</c> لمورد قد يكون غير موجود أصلًا. <c>P4-03</c> أزال خمس كتل
+    /// من <c>ReviewLettersController</c> لأنها كانت تحوّل فشل تحقق (نص لاحق/رد فارغ)
+    /// إلى <c>404</c>؛ ونُقل «المفقود» إلى <see cref="KeyNotFoundException"/> (404 في
+    /// المعالج العام). أي زيادة/نقص مستقبلًا يُفشل الحارس حتى يُقره تغيير واعٍ.
+    /// </para>
     /// </summary>
     [Fact]
     public void Controllers_DoNotTranslateArgumentExceptionToBadRequest()
@@ -157,7 +163,7 @@ public class ApiErrorMessagesTests
         Assert.True(
             offenders.Count == 0,
             "كتل catch (ArgumentException) ما زالت تترجم إلى BadRequest: " + string.Join(", ", offenders));
-        Assert.Equal(9, argumentCatches.Count);
+        Assert.Equal(4, argumentCatches.Count);
     }
 
     [Theory]

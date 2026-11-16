@@ -1127,7 +1127,7 @@ public class ExecutionCircuitServiceTests : IDisposable
     [Fact]
     public async Task Create_NonHeadCreator_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _circuits.CreateAsync(_branchId, _lawyer1Id, "lawyer1", "دائرة"));
     }
 
@@ -1143,7 +1143,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         _db.Users.Add(sub);
         await _db.SaveChangesAsync();
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _circuits.CreateAsync(_branchId, sub.Id, "sub_noscope", "دائرة"));
         Assert.Contains("بلا شعبة", ex.Message);
     }

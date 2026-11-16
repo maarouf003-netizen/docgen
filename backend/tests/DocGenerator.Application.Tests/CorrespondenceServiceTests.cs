@@ -77,6 +77,17 @@ public class CorrespondenceServiceTests : IDisposable
         _service = BuildService();
     }
 
+    /// <summary>
+    /// P4-03: نطاق فاعل غير صالح (رئيس بلا فرع) = 403 لا 400 — نفس قاعدة
+    /// P2-01e/f على المراسلات.
+    /// </summary>
+    [Fact]
+    public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SearchAsync(_head.Id, UserRole.Head, null, null, null, null, 1, 20));
+    }
+
     public void Dispose() => _db.Dispose();
 
     private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));

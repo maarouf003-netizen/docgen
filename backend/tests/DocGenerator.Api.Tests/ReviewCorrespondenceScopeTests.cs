@@ -179,4 +179,54 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
             e => e.GetProperty("id").GetInt32() == letterId);
         Assert.Equal(HttpStatusCode.OK, (await subClient.GetAsync($"/api/correspondence/{letterId}")).StatusCode);
     }
+
+    /// <summary>
+    /// P4-03: عقد دلالة الأخطاء للمطالعات — المفقود `404` (KeyNotFound) لا `400`،
+    /// والتحقق `400` لا `404` (كان `catch (ArgumentException) ⇒ NotFound` يخلط بينهما).
+    /// </summary>
+    [Fact]
+    public async Task Letter_ErrorSemantics_MissingIs404_AndValidationIs400()
+    {
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var lawyer = Factory.ClientWithToken(lawyerToken);
+        var head = Factory.AuthorizedClient("head1");
+
+        // مفقود بجسم صالح ⇒ 404 على التفاصيل واللاحق والرد.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await lawyer.GetAsync("/api/review-letters/999999")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await lawyer.PostAsJsonAsync(
+                "/api/review-letters/999999/addenda", new { bodyHtml = "<p>لاحق</p>" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await head.PostAsJsonAsync(
+                "/api/review-letters/999999/replies", new { bodyHtml = "<p>رد</p>" })).StatusCode);
+
+        // موجود + جسم فارغ ⇒ 400 (تحقق) لا 404.
+        var created = await lawyer.PostAsJsonAsync("/api/review-letters", new
+        {
+            documentId = (int?)null,
+            bodyHtml = "<p>كتاب عام للقسم</p>",
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var letterId = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await lawyer.PostAsJsonAsync(
+                $"/api/review-letters/{letterId}/addenda", new { bodyHtml = "<p></p>" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await head.PostAsJsonAsync(
+                $"/api/review-letters/{letterId}/replies", new { bodyHtml = "" })).StatusCode);
+    }
+
+    /// <summary>P4-03: المراسلة المفقودة `404` (مثبتة؛ لا تُحوَّل إلى `400`).</summary>
+    [Fact]
+    public async Task Correspondence_ErrorSemantics_MissingIs404()
+    {
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var lawyer = Factory.ClientWithToken(lawyerToken);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await lawyer.GetAsync("/api/correspondence/999999")).StatusCode);
+    }
 }

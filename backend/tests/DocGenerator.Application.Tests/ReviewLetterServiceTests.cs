@@ -44,6 +44,25 @@ public class ReviewLetterServiceTests : IDisposable
         _service = BuildService();
     }
 
+    /// <summary>
+    /// P4-03: نطاق فاعل غير صالح (رئيس بلا فرع) = 403 لا 400 — نفس قاعدة
+    /// P2-01e/f على المطالعات.
+    /// </summary>
+    [Fact]
+    public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SearchAsync(_head.Id, UserRole.Head, null, null, 1, 20, null));
+    }
+
+    /// <summary>P4-03: الكتاب المفقود KeyNotFound (404) لا Argument (400/404 مموّه).</summary>
+    [Fact]
+    public async Task GetById_Missing_ThrowsKeyNotFound()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            _service.GetByIdAsync(999_999, _lawyer1.Id, UserRole.Lawyer, _branchId, default));
+    }
+
     public void Dispose() => _db.Dispose();
 
     private ReviewLetterService BuildService(IEntropySource? entropy = null)
