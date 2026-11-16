@@ -196,14 +196,15 @@ public class DelegationsIntegrationTests
     }
 
     [Fact]
-    public async Task Create_ByLawyerNotOwner_BadRequest()
+    public async Task Create_ByLawyerNotOwner_Forbidden()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
         var otherLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_other"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         var client = _factory.AuthorizedClient(otherLawyer.Username);
         var response = await client.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId));
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // P2-02e: فشل ملكية المصدر = 403 لا 400.
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]

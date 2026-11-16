@@ -10,17 +10,16 @@ using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// P2-02d — مصفوفة عزل الإنابة (قراءة) — المورد الثالث في `P2-02`.
+/// P2-02d/e — مصفوفة عزل الإنابة (قراءة + رفض كتابة) — المورد الثالث في `P2-02`.
 /// <para>
 /// العقد المقيس: قائمة إنابات المستند يراها مالك المستند والرئيس/المدير/المشرف، بينما
 /// محامٍ آخر (نفس الفرع أو فرع آخر) يحصل على `403`؛ وقائمة `pending` مخصّصة للرئيس
-/// وحده في هذا القياس (المدير/المشرف ممنوعان اليوم — انظر الملاحظة أدناه).
+/// وحده في هذا القياس (المدير/المشرف ممنوعان اليوم — قرار قائم يُراجع مع `P2-01`).
 /// </para>
 /// <para>
-/// <b>ملاحظة ثغرة مكتشفة (موثّقة لا مُصلحة هنا):</b> محاولة حذف/تعديل إنابة ليست للمستخدم
-/// تُرجع `400` لا `403`، لأن `EnsurePendingByOwner` يرمي `ArgumentException` (يُعيَّن إلى
-/// `400`). تغييره إلى `UnauthorizedAccessException` يمسّ عشرات الاختبارات ويستحق تغييرًا
-/// مستقلًا موسومًا (مسجّل في خارطة الطريق).
+/// P2-02e: تعديل/حذف إنابة ليست للمستخدم يعيد **`403`** (كان `400` لأن
+/// `EnsurePendingByOwner` يرمي `ArgumentException`)، وإنابة غير موجودة تعيد **`404`**
+/// (كانت `400`). فحص الملكية صار قبل فحص الحالة فلا يكشف حالة إنابة الغير.
 /// </para>
 /// </summary>
 public class DelegationScopeMatrixTests
@@ -54,7 +53,8 @@ public class DelegationScopeMatrixTests
             assetIds = new[] { assetId },
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.NotNull(await created.Content.ReadFromJsonAsync<DelegationDto>());
+        var delegation = await created.Content.ReadFromJsonAsync<DelegationDto>();
+        Assert.NotNull(delegation);
 
         var damascusBranchId = await factory.GetBranchIdAsync("DAM");
         var aleppoBranchId = await factory.GetBranchIdAsync("ALP");
@@ -117,6 +117,54 @@ public class DelegationScopeMatrixTests
         await ExpectPendingAsync("same-branch lawyer", factory.AuthorizedClient(sameBranchLawyer.Username), HttpStatusCode.Forbidden);
         await ExpectPendingAsync("manager", factory.AuthorizedClient("manager"), HttpStatusCode.Forbidden);
         await ExpectPendingAsync("admin", factory.AuthorizedClient("admin"), HttpStatusCode.Forbidden);
+
+        // 5) P2-02e: الكتابة على إنابة الغير = 403 (لا 400)، والمفقود = 404.
+        var updatePayload = new
+        {
+            delegatedCourt = "محكمة دمشق",
+            isExternal = false,
+            externalBranchId = (int?)null,
+            delegationDate = "1/8/2026",
+            delegationText = "محاولة تعديل غير مصرّح",
+            depositBookNumber = "قيد-مصفوفة",
+            depositBookDate = "2/8/2026",
+            assetIds = new[] { assetId },
+        };
+
+        foreach (var (actor, username) in new (string, string)[]
+                 {
+                     ("same-branch lawyer", sameBranchLawyer.Username),
+                     ("other-branch lawyer", otherBranchLawyer.Username),
+                 })
+        {
+            var foreignClient = factory.AuthorizedClient(username);
+            var update = await foreignClient.PutAsJsonAsync($"/api/delegations/{delegation!.Id}", updatePayload);
+            if (update.StatusCode != HttpStatusCode.Forbidden)
+            {
+                failures.Add($"{actor}: تعديل إنابة الغير={update.StatusCode} والمتوقع Forbidden");
+            }
+
+            var delete = await foreignClient.DeleteAsync($"/api/delegations/{delegation.Id}");
+            if (delete.StatusCode != HttpStatusCode.Forbidden)
+            {
+                failures.Add($"{actor}: حذف إنابة الغير={delete.StatusCode} والمتوقع Forbidden");
+            }
+        }
+
+        var missingUpdate = await owner.PutAsJsonAsync("/api/delegations/999999", updatePayload);
+        if (missingUpdate.StatusCode != HttpStatusCode.NotFound)
+        {
+            failures.Add($"missing update: {missingUpdate.StatusCode} والمتوقع NotFound");
+        }
+
+        var missingDelete = await owner.DeleteAsync("/api/delegations/999999");
+        if (missingDelete.StatusCode != HttpStatusCode.NotFound)
+        {
+            failures.Add($"missing delete: {missingDelete.StatusCode} والمتوقع NotFound");
+        }
+
+        // الإنابة ما زالت موجودة للمالك بعد محاولات الغير.
+        await ExpectDocumentListAsync("owner after denials", owner, HttpStatusCode.OK, expectDelegation: true);
 
         Assert.True(
             failures.Count == 0,

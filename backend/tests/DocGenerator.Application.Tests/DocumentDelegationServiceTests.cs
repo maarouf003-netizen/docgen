@@ -204,7 +204,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لا تملكه", ex.Message);
     }
@@ -533,7 +533,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لا تملكه", ex.Message);
     }
@@ -2502,7 +2502,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
         Assert.Contains("غير موجودة", exAssign.Message);
 
-        var exUpdate = await Assert.ThrowsAsync<ArgumentException>(() =>
+        var exUpdate = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             _service.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("غير موجودة", exUpdate.Message);
 

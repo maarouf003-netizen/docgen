@@ -339,11 +339,14 @@
   شرط `DoD` الكامل (تغطية 100%).
   - **P2-02d (2026-11-16):** `DelegationScopeMatrixTests` — قائمة إنابات المستند:
     المالك/الرئيس/المدير/المشرف `200`، محامٍ آخر (نفس الفرع أو فرعه) `403`؛
-    و`pending` للرئيس `200` وغيره `403`. **ثغرة مكتشفة وموثّقة (تُصلح لاحقًا):**
-    حذف/تعديل إنابة الغير يعيد `400` لا `403` (وإنابة غير موجودة `400` لا `404`) لأن
-    `EnsurePendingByOwner` يرمي `ArgumentException`؛ الإصلاح يستدعي تحديث عشرات
-    الاختبارات فاستُبعد عن PR اختباري. التفاصيل:
+    و`pending` للرئيس `200` وغيره `403`. التفاصيل:
     `docs/audit/37-p2-02d-delegation-matrix-20261116.md`.
+  - **P2-02e (2026-11-16):** إصلاح دلالة الأخطاء المكتشفة: ملكية الإنابة/المصدر ⇒
+    `403` (`UnauthorizedAccessException`)، والإنابة/المصدر المفقود ⇒ `404`
+    (`KeyNotFoundException`)، وفحص الملكية قبل حالة الإنابة. حُدّثت التوقعات في
+    `DocumentDelegationServiceTests`/`DelegationsIntegrationTests`/`RF003`، وأُضيفت
+    خلايا الكتابة إلى المصفوفة. التفاصيل:
+    `docs/audit/38-p2-02e-delegation-error-semantics-20261116.md`.
 - **العمل:** `[Theory]` لكل (`role`, `resource`, `owner`, `branch`, `section`, `forwarded`)؛ اختبارات 200/403/404 لكل مسار.
 - **DoD:** تغطية 100% لمصفوفة `RolePermissions` ونقاط الموارد.
 

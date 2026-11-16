@@ -90,11 +90,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         CancellationToken ct = default)
     {
         var source = await _documents.GetByIdAsync(sourceDocumentId, ct)
-            ?? throw new ArgumentException("الملف المنيب غير موجود");
+            ?? throw new KeyNotFoundException("الملف المنيب غير موجود");
 
         ValidateSourceForDelegation(source);
+        // P2-02e: فشل الصلاحية يجب أن يظهر 403 لا 400 — الرسالة تبقى كما هي للعميل.
         if (source.CreatedById != userId)
-            throw new ArgumentException("لا يمكنك تسطير إنابة على ملف لا تملكه");
+            throw new UnauthorizedAccessException("لا يمكنك تسطير إنابة على ملف لا تملكه");
         if (source.NeedsRegistration)
             throw new ArgumentException("لا يمكن تسطير إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
 
@@ -197,7 +198,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         CancellationToken ct = default)
     {
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
-            ?? throw new ArgumentException("الإنابة غير موجودة");
+            ?? throw new KeyNotFoundException("الإنابة غير موجودة");
 
         EnsurePendingByOwner(delegation, userId);
         var source = delegation.SourceDocument;
@@ -293,7 +294,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     public async Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default)
     {
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
-            ?? throw new ArgumentException("الإنابة غير موجودة");
+            ?? throw new KeyNotFoundException("الإنابة غير موجودة");
 
         EnsurePendingByOwner(delegation, userId);
         var source = delegation.SourceDocument;
@@ -1295,10 +1296,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
     private void EnsurePendingByOwner(DocumentDelegation delegation, int userId)
     {
+        // P2-02e: فحص الملكية أولًا (403) قبل حالة الإنابة (400) — لا نكشف حالة إنابة
+        // ليست للمستخدم برسالة 400، ولا نخلط فشل الصلاحية بخطأ مدخلات.
+        if (delegation.SourceDocument.CreatedById != userId)
+            throw new UnauthorizedAccessException("لا يمكنك تعديل أو حذف إنابة على ملف لا تملكه");
         if (delegation.Status != DelegationStatusCatalog.PendingHead)
             throw new ArgumentException("لا يمكن تعديل أو حذف إنابة لم تعد معلّقة");
-        if (delegation.SourceDocument.CreatedById != userId)
-            throw new ArgumentException("لا يمكنك تعديل أو حذف إنابة على ملف لا تملكه");
     }
 
     private async Task<(string Court, int? CircuitId, DelegationFields Fields)> ValidateAndBuildAsync(
