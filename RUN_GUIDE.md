@@ -352,6 +352,23 @@ npm test
   تقييم المشروع المبكرة في بوابة CI بمفتاح `-warnaserror`).
 - **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.
 
+### مراجعة SQL الهجرات قبل النشر (P5-05b — إلزامي)
+
+- كل تشغيل `CI` لوظيفة `migration-guard` يُولّد سكربت `PostgreSQL` **idempotent**
+  كاملًا ويرفعه كأثر `migrations-sql` (`pg-idempotent.sql`، احتفاظ 30 يومًا). راجع
+  **نص DDL الفعلي** للـPR قبل دمجه، لا وصف الهجرة فقط.
+- قائمة المراجعة السريعة قبل التطبيق:
+  1. **expand أولًا:** الهجرة الحالية تضيف أعمدة/جداول/فهارس ولا تحذف شيئًا.
+  2. **أي هدم** (`Drop*`/`Rename*`/`AlterColumn`/`DeleteData`) في `Up` يجب أن يكون
+     استثناءً موثّقًا في `scripts/migration-safety-allowlist.json` بسببه، ويفضّل في
+     إصدار لاحق بعد نقل البيانات — حارس `migration-safety-guard` يمنعه بلا استثناء.
+  3. **الترتيب:** نسخة احتياطية مجرَّبة ← `dotnet ef database update --context
+     DocGeneratorPostgresDbContext` ← تحقق `__EFMigrationsHistory` ← تشغيل النسخة.
+  4. **لا `--context DocGeneratorDbContext`** (لا هجرات له بعد `P0-02`).
+  5. القيود المعتمدة على البيانات (`P0-07b` وما بعدها): شغّل فحص ما قبل النشر المرفق
+     (`scripts/p0-07b-preflight.sql`) على القاعدة المستهدفة أولًا.
+- تفاصيل وأدلة: `docs/audit/33-p5-05a-migration-safety-20261116.md` و`docs/audit/34-p5-05b-ddl-artifact-20261116.md`.
+
 ### سلامة التراجع `Down` (تحذيرات — `RF-001`/`INT-013`)
 
 - القاعدة: **لا تراجع (`MigrateAsync` لنسخة أقدم) على أي قاعدة تحمل بيانات حية** — التراجع
