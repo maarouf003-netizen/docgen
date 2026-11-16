@@ -132,10 +132,11 @@ public class RF003AuthzProofTests
             depositBookDate = "2/8/2026",
             assetIds = new[] { assetId },
         });
-        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+        // P2-02e: فشل الصلاحية = 403 (كان 400 قبل إصلاح دلالة الاستثناء).
+        Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
 
         var delete = await lawyer2.DeleteAsync($"/api/delegations/{delegationId}");
-        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
 
         var mine = await lawyer1.GetAsync($"/api/documents/{docId}/delegations");
         Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
