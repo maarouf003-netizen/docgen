@@ -1,7 +1,6 @@
-using DocGenerator.Application.Common;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,16 +12,17 @@ namespace DocGenerator.Api.Controllers;
 public class BranchesController : ControllerBase
 {
     private readonly IBranchManagementService _branches;
+    private readonly IUserCapabilities _capabilities;
 
-    public BranchesController(IBranchManagementService branches)
+    public BranchesController(IBranchManagementService branches, IUserCapabilities capabilities)
     {
         _branches = branches;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool CanManageBranches => RolePermissions.CanManageBranches(Role);
+    private bool CanManageBranches => _capabilities.Has(User, UserCapability.CanManageBranches);
 
     /// <summary>قائمة الفروع — كل الأدوار المصادَّقة (للقوائم المنسدلة والإدارة).</summary>
     [HttpGet]

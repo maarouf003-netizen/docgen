@@ -1,8 +1,7 @@
-using DocGenerator.Application.Common;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,16 +14,18 @@ namespace DocGenerator.Api.Controllers;
 public class AppSuggestionsController : ControllerBase
 {
     private readonly IAppSuggestionService _suggestions;
+    private readonly IUserCapabilities _capabilities;
 
-    public AppSuggestionsController(IAppSuggestionService suggestions)
+    public AppSuggestionsController(IAppSuggestionService suggestions, IUserCapabilities capabilities)
     {
         _suggestions = suggestions;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool IsAdmin => RolePermissions.CanViewAppSuggestions(Role);
+    /// <summary>صندوق المشرف/المدير (`CanViewAppSuggestions` عبر جسر القدرات).</summary>
+    private bool IsAdmin => _capabilities.Has(User, UserCapability.CanViewAppSuggestions);
 
     /// <summary>
     /// قائمة الاقتراحات: المشرف يرى الصندوق مرقّمًا (`page`/`perPage` — بحد أقصى 50)،
@@ -56,7 +57,7 @@ public class AppSuggestionsController : ControllerBase
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Create([FromBody] CreateAppSuggestionRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanSuggestApp(Role))
+        if (!_capabilities.Has(User, UserCapability.CanSuggestApp))
             return Forbid();
         var suggestion = await _suggestions.CreateAsync(request.Message, User.GetUserId(), ActorName, ct);
         return CreatedAtAction(nameof(Get), new { id = suggestion.Id }, suggestion);

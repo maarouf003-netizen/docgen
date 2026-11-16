@@ -47,7 +47,8 @@ public sealed class StatisticsBranchGuardTests
         if (branchId.HasValue)
             claims.Add(new Claim("branch_id", branchId.Value.ToString()));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
-        var controller = new StatisticsController(new FakeStatisticsService(), null!);
+        var controller = new StatisticsController(
+            new FakeStatisticsService(), null!, new DocGenerator.Api.Authorization.UserCapabilities());
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext { User = principal },

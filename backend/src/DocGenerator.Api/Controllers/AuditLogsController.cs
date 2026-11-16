@@ -1,7 +1,7 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,10 +13,16 @@ namespace DocGenerator.Api.Controllers;
 public class AuditLogsController : ControllerBase
 {
     private readonly IAuditLogService _logs;
+    private readonly IUserCapabilities _capabilities;
 
-    public AuditLogsController(IAuditLogService logs) => _logs = logs;
+    public AuditLogsController(IAuditLogService logs, IUserCapabilities capabilities)
+    {
+        _logs = logs;
+        _capabilities = capabilities;
+    }
 
-    private UserRole Role => User.GetRoleEnum();
+    private bool IsHead => _capabilities.Has(User, UserCapability.IsHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
 
     [HttpGet]
     public async Task<ActionResult<PagedResult<AuditLogDto>>> Search(
@@ -32,10 +38,10 @@ public class AuditLogsController : ControllerBase
         // المدير/المشرف بلا نطاق كما قبل. نفس نمط scopeBranchId في UserManagementController.
         // L-05 (2026-10-17): رئيس قسم بلا رمز فرع مرفوض صريحًا بدل النطاق الإجمالي —
         // تحوّط دفاعي موازٍ لمانع القاعدة (CK_Users_BranchRequiredForBranchRoles) وحارس الدخول.
-        var scopeBranchId = Role == UserRole.Head ? User.GetBranchId() : null;
-        if (Role == UserRole.Head && scopeBranchId is null) return Forbid();
+        var scopeBranchId = IsHead ? User.GetBranchId() : null;
+        if (IsHead && scopeBranchId is null) return Forbid();
         int? scopeSectionId = null;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             scopeSectionId = User.GetSectionId();
             if (scopeSectionId is null) return Forbid();

@@ -341,6 +341,14 @@
     سطح فشل مفتوح (`ADR-0007` §7 ملحق). التفاصيل:
     `docs/audit/42-p2-01b-portal-entity-20261116.md`.
   **متبقٍ:** `P2-01c` (13 متحكمًا + إفراغ قائمة الحارس) — الجرد أدناه.
+  - **P2-01c‑1 (2026-11-17):** 7 متحكمات إدارة/قراءة رُحّلت إلى جسر القدرات:
+    `Statistics`, `AuditLogs`, `Forum`, `AppSuggestions`, `Branches`, `Sections`,
+    `PersonalReminders`. أُضيفت هويات الدور `IsHead/IsSubHead/IsAdmin` إلى الكتالوج
+    (لا تمنح قدرة) ومقابلها أربع قدرات في الجسر. المصفوفة 41×6 = 246 خلية، والجسر
+    25×6 = 150. قائمة الانتظار نزلت **13 → 6**. تحقق سلبي مزدوج موثّق. التفاصيل:
+    `docs/audit/44-p2-01c1-admin-controllers-20261117.md`.
+  **متبقٍ:** 6 متحكمات (`Appeals`, `Correspondences`, `Delegations`,
+  `ExecutionCircuits`, `ReviewLetters`, `UserManagement`) ثم إفراغ القائمة.
 - **العمل:** `DocumentAccessRequirement` (`Owner`, `Branch`, `Section`, `ForwardedAppeal`)، `PortalAccessRequirement`، `EntityScopeRequirement`؛ `IAuthorizationHandler` لكل منها؛ إزالة `Role ==` من المتحكمات.
 - **DoD:** كل نقطة تستخدم `[Authorize(Policy=...)]` أو `IAuthorizationService`؛ لا منطق صلاحية في المتحكم.
 
