@@ -23,6 +23,9 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IDocumentService, DocumentService>();
+        // P2-01a: بوابة القراءة الضيقة لسياسات الوصول إلى المستند (إسقاط F-01 + سؤالا
+        // الاستئناف) — يستهلكها معالج السياسة في Api بدل استدعاء المستودعات مباشرة.
+        services.AddScoped<IDocumentAccessReader, DocumentAccessReader>();
         // لا مفتاح إعداد للإنتاج: السلوك الانتقالي للاختبارات يُحقن مباشرة في مصنع الاختبار.
         services.AddSingleton(new NumberRegistryOptions());
         services.AddScoped<IDocumentNumberRegistry, DocumentNumberRegistry>();

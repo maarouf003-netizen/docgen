@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Options;
@@ -14,7 +15,8 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// انحدار F-01: نقاط المتدخلين الثلاث تفحص الوصول عبر الإسقاط الخفيف
 /// <see cref="DocumentAccessInfo"/> ولا تستدعي التحميل الكامل للمستند في المتحكم.
-/// يثبت الاختبار أن <c>GetAsync</c> لا يُستدعى أبدًا، وأن الحالات 404/403/200 محفوظة.
+/// يثبت الاختبار أن <c>GetAsync</c> لا يُستدعى أبدًا، وأن الحالات 404/403/200 محفوظة،
+/// وأن حلّ المورد انتقل إلى سياسة <c>IDocumentAuthorization</c> (P2-01a) وليس المتحكم.
 /// </summary>
 [Trait("Category", "Unit")]
 public sealed class DocumentAccessProjectionTests
@@ -24,12 +26,13 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_UsesAccessProjection_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService
+        var documents = new StubDocumentService();
+        var interventions = new StubInterventionService();
+        var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId, 3, null, null),
         };
-        var interventions = new StubInterventionService();
-        var controller = CreateController(documents, interventions);
+        var controller = CreateController(documents, interventions, authorization);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
@@ -42,12 +45,13 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_OtherLawyer_Forbids_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService
+        var documents = new StubDocumentService();
+        var interventions = new StubInterventionService();
+        var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId + 1, 3, null, null),
         };
-        var interventions = new StubInterventionService();
-        var controller = CreateController(documents, interventions);
+        var controller = CreateController(documents, interventions, authorization);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
@@ -60,9 +64,10 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_MissingDocument_ReturnsNotFound_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService { AccessInfo = null };
+        var documents = new StubDocumentService();
         var interventions = new StubInterventionService();
-        var controller = CreateController(documents, interventions);
+        var authorization = new StubDocumentAuthorization { AccessInfo = null };
+        var controller = CreateController(documents, interventions, authorization);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
@@ -75,12 +80,13 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task UpdateAndDeleteIntervention_UseAccessProjection_AndNeverLoadFullDocument()
     {
-        var documents = new StubDocumentService
+        var documents = new StubDocumentService();
+        var interventions = new StubInterventionService();
+        var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId, 3, null, null),
         };
-        var interventions = new StubInterventionService();
-        var controller = CreateController(documents, interventions);
+        var controller = CreateController(documents, interventions, authorization);
 
         await controller.UpdateIntervention(
             10, 5, new DocumentInterventionUpsertRequest(), CancellationToken.None);
@@ -92,7 +98,9 @@ public sealed class DocumentAccessProjectionTests
     }
 
     private static DocumentsController CreateController(
-        StubDocumentService documents, StubInterventionService interventions)
+        StubDocumentService documents,
+        StubInterventionService interventions,
+        StubDocumentAuthorization authorization)
     {
         var identity = new ClaimsIdentity(
         [
@@ -114,6 +122,7 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
+            authorization,
             ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {
@@ -124,10 +133,12 @@ public sealed class DocumentAccessProjectionTests
         };
     }
 
-    /// <summary>بديل صريح: أي استدعاء للتحميل الكامل يفشل الاختبار فورًا.</summary>
+    /// <summary>
+    /// بديل صريح: أي استدعاء للتحميل الكامل أو لحلّ المورد من المتحكم يفشل الاختبار فورًا
+    /// (حلّ المورد ملك السياسة).
+    /// </summary>
     private sealed class StubDocumentService : IDocumentService
     {
-        public DocumentAccessInfo? AccessInfo { get; init; }
         public bool GetAsyncCalled { get; private set; }
 
         public Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)
@@ -139,7 +150,8 @@ public sealed class DocumentAccessProjectionTests
 
         public Task<DocumentAccessInfo?> GetAccessInfoAsync(
             int documentId, CancellationToken ct = default)
-            => Task.FromResult(AccessInfo);
+            => throw new InvalidOperationException(
+                "P2-01a: حلّ المورد ملك سياسة IDocumentAuthorization لا المتحكم");
 
         public Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default)
             => throw new NotSupportedException();
@@ -200,5 +212,37 @@ public sealed class DocumentAccessProjectionTests
             DeleteCalled = true;
             return Task.FromResult(false);
         }
+    }
+
+    /// <summary>
+    /// بديل السياسة في اختبار الوحدة: يثبت أن المتحكم يترجم نتيجة السياسة فقط
+    /// (200/403/404)، وأن قاعدة النطاق نفسها تُختبر في <c>DocumentAccessHandlerTests</c>
+    /// و<b>لا</b> تُكرَّر هنا.
+    /// </summary>
+    private sealed class StubDocumentAuthorization : IDocumentAuthorization
+    {
+        public DocumentAccessInfo? AccessInfo { get; init; }
+
+        public Task<DocumentAccessOutcome> AuthorizeAsync(
+            ClaimsPrincipal user, int documentId, DocumentAction action, CancellationToken ct = default)
+        {
+            if (AccessInfo is null)
+            {
+                return Task.FromResult(DocumentAccessOutcome.NotFound);
+            }
+
+            var userId = int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            return Task.FromResult(AccessInfo.CreatedById == userId
+                ? DocumentAccessOutcome.Allowed
+                : DocumentAccessOutcome.Forbidden);
+        }
+
+        public Task<DocumentAccessOutcome> AuthorizeAsync(
+            ClaimsPrincipal user, DocumentResponse document, DocumentAction action, CancellationToken ct = default)
+            => Task.FromResult(DocumentAccessOutcome.Allowed);
+
+        public bool Has(ClaimsPrincipal user, UserCapability capability) => false;
+
+        public DocumentListScope? ResolveListScope(ClaimsPrincipal user) => null;
     }
 }

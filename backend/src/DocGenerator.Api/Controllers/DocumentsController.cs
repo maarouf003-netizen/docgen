@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
@@ -41,6 +42,7 @@ public class DocumentsController : ControllerBase
     private readonly IStrikeOffReminderService _strikeOffReminders;
     private readonly IAuditLogService _auditLogs;
     private readonly IAuditLogger _audit;
+    private readonly IDocumentAuthorization _authorization;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -57,6 +59,7 @@ public class DocumentsController : ControllerBase
         IStrikeOffReminderService strikeOffReminders,
         IAuditLogService auditLogs,
         IAuditLogger audit,
+        IDocumentAuthorization authorization,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -72,22 +75,18 @@ public class DocumentsController : ControllerBase
         _strikeOffReminders = strikeOffReminders;
         _auditLogs = auditLogs;
         _audit = audit;
+        _authorization = authorization;
         _clock = clock;
         _timeZone = timeZone;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool CanViewPrintCounter => RolePermissions.CanViewPrintCounter(Role);
-    private bool CanSearchByLawyer => RolePermissions.CanSearchByLawyer(Role);
-    private bool CanEdit => RolePermissions.CanEditDocuments(Role);
-    private bool CanChangeStatus => RolePermissions.CanChangeDocumentStatus(Role);
-    private bool CanDelete => RolePermissions.CanDeleteDocuments(Role);
-    private bool CanManageActions => RolePermissions.CanManageExecutionActions(Role);
-    private bool CanRotate => RolePermissions.CanRotate(Role);
+    /// <summary>
+    /// تعقيم عدّاد الطباعة لغير المصرَّح لهم (`CanViewPrintCounter`) — قدرة دورّية غير
+    /// موردية تُقرأ من الكتالوج عبر <see cref="IDocumentAuthorization"/>، لا قاعدة محلية.
+    /// </summary>
+    private bool CanViewPrintCounter => _authorization.Has(User, UserCapability.CanViewPrintCounter);
 
     private DocumentResponse Sanitize(DocumentResponse doc)
     {
@@ -96,10 +95,6 @@ public class DocumentsController : ControllerBase
         return doc;
     }
 
-    /// <summary>
-    /// استجابة قائمة مع تعقيم عدّاد الطباعة لغير المصرَّح لهم (سياسة CanViewPrintCounter) —
-    /// المصدر الوحيد لهذا النمط في نقاط القوائم الخمس (المسار (ب) من الخطة).
-    /// </summary>
     private IActionResult OkSanitized(PagedResult<DocumentResponse> result)
     {
         if (!CanViewPrintCounter)
@@ -108,59 +103,31 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
-    /// نطاق المالك المشتق خادميًا لقوائم الملفات (§5 — قرار §2.21): شعبة رئيس
-    /// الشعبة من الرمز، و`null` لغيره. رئيس شعبة برمز بلا شعبة مرفوض (أعد
-    /// الدخول) بدل التدهور لنطاق القسم.
+    /// ترجمة نتيجة سياسة الوصول إلى استجابة: `null` = متابعة، وإلا `404` (مفقود حُلّ
+    /// قبل التقييم) أو `403` (موجود خارج النطاق/القدرة). المورد يُحلّ داخل السياسة
+    /// بإسقاط F-01 (قراءة واحدة بلا شجرة Include)، فلا يحمل المتحكم أي قاعدة وصول.
     /// </summary>
-    private ActionResult? RequireOwnerScope(out int? ownerSectionId)
+    private async Task<ActionResult?> RequireDocumentAccessAsync(
+        int id, DocumentAction action, CancellationToken ct)
     {
-        ownerSectionId = null;
-        if (Role == UserRole.SubHead)
+        var outcome = await _authorization.AuthorizeAsync(User, id, action, ct);
+        return outcome switch
         {
-            ownerSectionId = User.GetSectionId();
-            if (ownerSectionId is null)
-                return Forbid();
-        }
-        return null;
+            DocumentAccessOutcome.Allowed => null,
+            DocumentAccessOutcome.NotFound => NotFound(),
+            _ => Forbid(),
+        };
     }
 
     /// <summary>
-    /// وصول القراءة بالنطاق (§5 + الاستثناء القرائي 22′): مدير/مشرف (الكل)؛
-    /// محامٍ (ملفاته)؛ رئيس قسم (ملفات دوائر القسم + بلا دائرة + المحال له حتى
-    /// الحسم)؛ رئيس شعبة (ملفات دوائر شعبته).
-    ///
-    /// <para>المنطق معرَّف مرة واحدة على الإسقاط الخفيف <see cref="DocumentAccessInfo"/>؛
-    /// حمل <see cref="DocumentResponse"/> الثقيل يُحوَّل إليه ولا تنسخ القاعدة (F-01).</para>
+    /// تقييم مورد محمَّل مسبقًا (تفاصيل/ملف محذوف) بلا قراءة إضافية — المفقود يُفحص
+    /// عند التحميل، فالفشل هنا `403` فقط.
     /// </summary>
-    private Task<bool> CanAccessAsync(DocumentResponse doc)
-        => CanAccessAsync(new DocumentAccessInfo(
-            doc.Id, doc.CreatedById, doc.BranchId, doc.ExecutionCircuitId, doc.SectionId));
-
-    private async Task<bool> CanAccessAsync(DocumentAccessInfo doc)
-    {
-        if (HasFullAccess) return true;
-        if (Role == UserRole.Lawyer)
-            return doc.CreatedById == User.GetUserId();
-        if (doc.BranchId != User.GetBranchId())
-            return false;
-        if (Role == UserRole.Head)
-        {
-            if (doc.ExecutionCircuitId is null || !doc.SectionId.HasValue)
-                return true;
-            // الاستثناء القرائي: محال لرئيس قسم نفس الفرع — يُرى حتى الحسم.
-            return await _appeals.HasForwardedAppealAsync(doc.Id);
-        }
-        if (Role == UserRole.SubHead)
-            return doc.SectionId.HasValue && doc.SectionId == User.GetSectionId();
-        return false;
-    }
-
-    /// <summary>
-    /// وصول القراءة الموسّع: يضيف على قاعدة CanAccess المحامي المُسند إليه متابعة
-    /// استئناف على هذا الملف (قراءة فقط — لصفحة تفاصيل الاستئناف).
-    /// </summary>
-    private async Task<bool> CanAccessOrFollowAsync(DocumentResponse doc)
-        => await CanAccessAsync(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
+    private async Task<ActionResult?> RequireDocumentAccessAsync(
+        DocumentResponse doc, DocumentAction action, CancellationToken ct)
+        => await _authorization.AuthorizeAsync(User, doc, action, ct) == DocumentAccessOutcome.Allowed
+            ? null
+            : Forbid();
 
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -172,16 +139,15 @@ public class DocumentsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // البحث/الفلترة باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
-        if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
+        if (!string.IsNullOrWhiteSpace(lawyer)
+            && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
             return Forbid();
 
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
         var result = await _search.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            page, perPage, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
+            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -193,17 +159,18 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? executedEntity, [FromQuery] string? publicEntityBranch,
         CancellationToken ct)
     {
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
         var options = await _search.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
-            administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
+            administrativeBranch, executedEntity, publicEntityBranch,
+            scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return Ok(new
         {
             applicants = options.Applicants,
             courts = options.Courts,
-            lawyers = CanSearchByLawyer ? options.Lawyers : new List<string>(),
+            lawyers = _authorization.Has(User, UserCapability.CanSearchByLawyer)
+                ? options.Lawyers
+                : new List<string>(),
             administrativeBranches = options.AdministrativeBranches,
             branches = options.Branches,
             executedEntities = options.ExecutedEntities,
@@ -222,22 +189,21 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? publicEntityBranch, CancellationToken ct)
     {
         // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
-        if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
+        if (!string.IsNullOrWhiteSpace(lawyer)
+            && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
             return Forbid();
 
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
         var items = await _search.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
+            scope.VisibleBranchId, scope.VisibleUserId, ct, ActorName, ownerSectionId: scope.OwnerSectionId);
         // بلا Sanitize هنا: ورقة التصدير لا تحمل أي عدّاد (لا مشاهدة ولا طباعة) — فلا شيء يُعقَّم.
 
         var stream = _excel.BuildDocumentsWorkbook(
             items,
-            includeAdministrativeBranch: RolePermissions.CanSeeAdministrativeBranch(Role),
-            includeAssignedLawyer: RolePermissions.CanSeeAssignedLawyer(Role));
+            includeAdministrativeBranch: _authorization.Has(User, UserCapability.CanSeeAdministrativeBranch),
+            includeAssignedLawyer: _authorization.Has(User, UserCapability.CanSeeAssignedLawyer));
 
         return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
@@ -249,15 +215,13 @@ public class DocumentsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // رؤية المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مدير ومشرف (الكل) — `BQ-001`.
-        if (!RolePermissions.CanViewDeletedDocuments(Role))
+        if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
             return Forbid();
 
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
-        var result = await _search.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchDeletedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -268,15 +232,13 @@ public class DocumentsController : ControllerBase
     {
         // رؤية الملفات المشطوبة في وضع «منفذ عليه» بنفس صلاحيات المحذوفات:
         // محامٍ (ملفاته) / رئيس قسم (فرعه) / مدير ومشرف (الكل) — `BQ-001`.
-        if (!RolePermissions.CanViewDeletedDocuments(Role))
+        if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
             return Forbid();
 
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
-        var result = await _search.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchStruckOffAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -287,12 +249,10 @@ public class DocumentsController : ControllerBase
     {
         // صفحة «الملفات المنفذة» ظاهرة لجميع الأدوار (لا تُحجب بصلاحية المحذوفات):
         // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
-        var result = await _search.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchExecutedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -303,12 +263,10 @@ public class DocumentsController : ControllerBase
     {
         // صفحة «محال الى البداية» ظاهرة لجميع الأدوار (كصفحة «الملفات المنفذة»):
         // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
-        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
-        var result = await _search.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchReferredToStartAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, scope.OwnerSectionId);
         return OkSanitized(result);
     }
 
@@ -320,7 +278,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetStrikeOffReminders(
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
-        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+        if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
         var result = await _strikeOffReminders.GetAsync(
@@ -332,7 +290,7 @@ public class DocumentsController : ControllerBase
     [HttpGet("strike-off-reminders/count")]
     public async Task<IActionResult> GetStrikeOffRemindersCount(CancellationToken ct)
     {
-        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+        if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
         var count = await _strikeOffReminders.GetCountAsync(
@@ -344,7 +302,7 @@ public class DocumentsController : ControllerBase
     [HttpPost("{id:int}/strike-off-reminder/dismiss")]
     public async Task<IActionResult> DismissStrikeOffReminder(int id, CancellationToken ct)
     {
-        if (!RolePermissions.CanViewStrikeOffReminders(Role))
+        if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
         return await _strikeOffReminders.DismissAsync(id, User.GetUserId(), ActorName, ct)
@@ -357,7 +315,8 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
+        if (denied is not null) return denied;
         // RF-018 (SEC-003 + قرار BQ-021): فتح التفاصيل الناجح والمصرّح يُدوَّن (قارئ + ملف) —
         // في المتحكم عمدًا لا الخدمة (GetAsync تُستدعَى من مسارات أخرى)، والقوائم خارج النطاق.
         await _audit.LogAsync(ActorName, "view_document", doc.Id, doc.DocumentType,
@@ -371,7 +330,8 @@ public class DocumentsController : ControllerBase
         // تاريخ أرقام الأساس — بنفس صلاحيات العرض المفصّل للملف.
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
+        if (denied is not null) return denied;
         return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
     }
 
@@ -381,7 +341,8 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetDeletedAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Read, ct);
+        if (denied is not null) return denied;
         return Ok(await _documents.GetDeletedBaseNumberHistoryAsync(id, ct));
     }
 
@@ -390,10 +351,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> CorrectBaseNumber(
         int id, int year, [FromBody] CorrectBaseNumberRequest request, CancellationToken ct)
     {
-        if (!CanRotate) return Forbid();
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Rotate, ct);
+        if (denied is not null) return denied;
         try
         {
             await _documents.CorrectBaseNumberAsync(id, year, request, User.GetUserId(), ActorName, ct);
@@ -409,10 +368,8 @@ public class DocumentsController : ControllerBase
     [HttpDelete("{id:int}/base-numbers/{year:int}")]
     public async Task<IActionResult> UndoRotation(int id, int year, CancellationToken ct)
     {
-        if (!CanRotate) return Forbid();
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Rotate, ct);
+        if (denied is not null) return denied;
         try
         {
             await _documents.UndoRotationAsync(id, year, User.GetUserId(), ActorName, ct);
@@ -432,9 +389,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetChanges(
         int id, [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Read, ct);
+        if (denied is not null) return denied;
         return Ok(await _auditLogs.GetDocumentChangesAsync(id, page, perPage, ct));
     }
 
@@ -443,7 +399,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] DocumentUpsertRequest request, CancellationToken ct)
     {
         // إدخال الملفات محصور بالمحامي: لا إدخال للرؤساء، وقراءة مطلقة للمدير/المشرف.
-        if (!CanEdit)
+        if (!_authorization.Has(User, UserCapability.CanEditDocuments))
             return Forbid();
 
         try
@@ -463,11 +419,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] DocumentUpsertRequest request, CancellationToken ct)
     {
         // التعديل محصور بالمحامي (للملفات التي يملكها).
-        if (!CanEdit) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
+        if (denied is not null) return denied;
 
         var updated = await _documents.UpdateAsync(id, request, ActorName, User.GetUserId(), ct);
         return updated is null ? NotFound() : Ok(Sanitize(updated));
@@ -481,13 +434,10 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> AddIntervention(
         int id, [FromBody] DocumentInterventionUpsertRequest request, CancellationToken ct)
     {
-        if (!CanEdit) return Forbid();
-
-        // F-01: فحص الوصول من إسقاط خفيف — التحميل الكامل الوحيد في هذا المسار
+        // F-01: السياسة تحلّ المورد بإسقاط خفيف — التحميل الكامل الوحيد في هذا المسار
         // هو القراءة الطازجة تحت القفل داخل خدمة المتدخلين.
-        var access = await _documents.GetAccessInfoAsync(id, ct);
-        if (access is null) return NotFound();
-        if (!await CanAccessAsync(access)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
+        if (denied is not null) return denied;
 
         var created = await _interventions.AddAsync(id, request, User.GetUserId(), ActorName, ct);
         return Ok(created);
@@ -498,12 +448,9 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> UpdateIntervention(
         int id, int interventionId, [FromBody] DocumentInterventionUpsertRequest request, CancellationToken ct)
     {
-        if (!CanEdit) return Forbid();
-
-        // F-01: نفس إسقاط الوصول الخفيف — الخدمة تحمّل المستند مرة واحدة للتعديل.
-        var access = await _documents.GetAccessInfoAsync(id, ct);
-        if (access is null) return NotFound();
-        if (!await CanAccessAsync(access)) return Forbid();
+        // F-01: نفس الإسقاط الخفيف عبر السياسة — الخدمة تحمّل المستند مرة واحدة للتعديل.
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
+        if (denied is not null) return denied;
 
         var updated = await _interventions.UpdateAsync(
             id, interventionId, request, User.GetUserId(), ActorName, ct);
@@ -515,12 +462,9 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> DeleteIntervention(
         int id, int interventionId, CancellationToken ct)
     {
-        if (!CanEdit) return Forbid();
-
-        // F-01: نفس إسقاط الوصول الخفيف — الخدمة تحمّل المستند مرة واحدة للحذف.
-        var access = await _documents.GetAccessInfoAsync(id, ct);
-        if (access is null) return NotFound();
-        if (!await CanAccessAsync(access)) return Forbid();
+        // F-01: نفس الإسقاط الخفيف عبر السياسة — الخدمة تحمّل المستند مرة واحدة للحذف.
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
+        if (denied is not null) return denied;
 
         return await _interventions.DeleteAsync(id, interventionId, ActorName, ct)
             ? NoContent()
@@ -531,7 +475,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetRotationList([FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // تدوير أرقام الأساس للمحامي فقط — على ملفاته.
-        if (!CanRotate)
+        if (!_authorization.Has(User, UserCapability.CanRotate))
             return Forbid();
 
         return Ok(await _documents.GetRotationListAsync(User.GetUserId(), page, perPage, ct));
@@ -541,7 +485,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> SaveBaseNumbers([FromBody] SaveBaseNumbersRequest request, CancellationToken ct)
     {
         // تدوير أرقام الأساس للمحامي فقط — على ملفاته.
-        if (!CanRotate)
+        if (!_authorization.Has(User, UserCapability.CanRotate))
             return Forbid();
 
         await _documents.SaveBaseNumbersAsync(
@@ -553,12 +497,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         // الحذف المنطقي محصور بالمحامي صاحب الملف.
-        if (!CanDelete)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Delete, ct);
+        if (denied is not null) return denied;
 
         return await _documents.DeleteAsync(id, ActorName, ct) ? NoContent() : NotFound();
     }
@@ -567,12 +507,10 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Restore(int id, CancellationToken ct)
     {
         // استعادة المحذوف منطقياً من اختصاص المحامي صاحب الملف فقط.
-        if (!CanDelete)
-            return Forbid();
-
         var doc = await _documents.GetDeletedAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Restore, ct);
+        if (denied is not null) return denied;
 
         return await _documents.RestoreAsync(id, ActorName, ct)
             ? Ok(new { message = "تمت استعادة المستند" })
@@ -583,11 +521,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> SetStatus(int id, [FromBody] StatusRequest request, CancellationToken ct)
     {
         // تغيير حالة المستند محصور بالمحامي (للملفات التي يملكها).
-        if (!CanChangeStatus) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
+        if (denied is not null) return denied;
 
         var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
         return ok ? Ok(new { message = "تم تحديث الحالة" }) : DocumentNotFound();
@@ -598,11 +533,8 @@ public class DocumentsController : ControllerBase
     {
         // التراجع عن الحالة (من تريث/منفذ بالتسوية/منفذ جبريا إلى متداول) محصور بالمحامي
         // (للملفات التي يملكها) — بموجب كتاب الجهة العامة بالسير بالملف.
-        if (!CanChangeStatus) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
+        if (denied is not null) return denied;
 
         var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
         return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : DocumentNotFound();
@@ -614,11 +546,8 @@ public class DocumentsController : ControllerBase
         // العودة من «محال الى البداية» (بنتيجتين: استعادة «منفذ جزئيًا» حسب اللازمة وإلا
         // «متداول») محصورة بالمحامي (للملفات التي يملكها) — بصلاحية «تغيير الحالة» كنظيريها
         // التراجع/الاعتبار، وبلا حقول إلزامية (رقم الملف الجديد الاختياري يفعّل التجديد).
-        if (!CanChangeStatus) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
+        if (denied is not null) return denied;
 
         var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
         return ok ? Ok(new { message = "أعيد السير بالملف" }) : DocumentNotFound();
@@ -630,11 +559,8 @@ public class DocumentsController : ControllerBase
         // «اعتبار الملف منفذًا كاملًا بهذا البيع» (إغلاق «منفذ جبريا — منفذ جزئيا» الذي
         // فُعّل تلقائيًا بإتمام إنابة) محصور بالمحامي (للملفات التي يملكها) — يُلزم إدخال
         // «تاريخ تحويل بدل المبيع للجهة العامة» مع «رقم الإشعار» الاختياري.
-        if (!CanChangeStatus) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
+        if (denied is not null) return denied;
 
         var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
         return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : DocumentNotFound();
@@ -645,11 +571,8 @@ public class DocumentsController : ControllerBase
     {
         // تغيير حالة وضع «الجهة العامة منفذ عليها» محصور بالمحامي (للملفات التي يملكها) —
         // يعمل على ملفات صفة executed فقط.
-        if (!CanChangeStatus) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
+        if (denied is not null) return denied;
 
         var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
         return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : DocumentNotFound();
@@ -660,11 +583,8 @@ public class DocumentsController : ControllerBase
     {
         // إعادة ملف مشطوب إلى المتداول من اختصاص المحامي صاحب الملف فقط
         // (بذات حكم الاستعادة في المحذوفات).
-        if (!CanDelete) return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Restore, ct);
+        if (denied is not null) return denied;
 
         return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
             ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
@@ -691,7 +611,8 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Read, ct);
+        if (denied is not null) return denied;
 
         // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات عائلة وضع «منفذ عليه» لا تُولَّد.
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
@@ -718,17 +639,17 @@ public class DocumentsController : ControllerBase
     {
         // عدد ملفات المحامي (معاينة قبل النقل الجماعي) — رئيس القسم والشعبة
         // (ضمن فرعه) فقط — بالنطاق نفسه (§5.5): المعاينة تطابق المنقول فعلًا.
-        if (!RolePermissions.CanTransferDocuments(Role))
+        if (!_authorization.Has(User, UserCapability.CanTransferDocuments))
             return Forbid();
 
         // رئيس القسم والشعبة بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
         var scopeBranchId = User.GetBranchId();
         if (scopeBranchId is null)
             return Forbid();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
-        var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, ownerSectionId);
+        var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, scope.OwnerSectionId);
         return Ok(new { count });
     }
 
@@ -738,22 +659,22 @@ public class DocumentsController : ControllerBase
     {
         // نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم والشعبة
         // (ضمن فرعه) فقط — بتقاطع النطاق (§5.5): ملفات المصدر ضمن نطاق المنفِّذ فقط.
-        if (!RolePermissions.CanTransferDocuments(Role))
+        if (!_authorization.Has(User, UserCapability.CanTransferDocuments))
             return Forbid();
 
         // رئيس القسم والشعبة بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
         var scopeBranchId = User.GetBranchId();
         if (scopeBranchId is null)
             return Forbid();
-        var scopeError = RequireOwnerScope(out var ownerSectionId);
-        if (scopeError is not null) return scopeError;
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
 
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد العدد المخزن نفسه.
             var transferredCount = await _documents.TransferAllAsync(
                 request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct,
-                IdempotencyKeyHeader(), ownerSectionId, User.GetUserId());
+                IdempotencyKeyHeader(), scope.OwnerSectionId, User.GetUserId());
             return Ok(new { transferredCount });
         }
         catch (IdempotentReplayException r)
@@ -774,13 +695,9 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Transfer(int id, [FromBody] TransferDocumentRequest request, CancellationToken ct)
     {
         // نقل الملفات بين المحامين — رئيس القسم والشعبة (ضمن فرعه) فقط —
-        // والملف نفسه ضمن نطاق المنفِّذ (`CanAccessAsync`).
-        if (!RolePermissions.CanTransferDocuments(Role))
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        // والملف نفسه ضمن نطاق المنفِّذ.
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.Transfer, ct);
+        if (denied is not null) return denied;
 
         try
         {
@@ -803,7 +720,8 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
+        if (denied is not null) return denied;
 
         var actions = await _executionActions.GetExecutionActionsAsync(id, ct);
         return Ok(actions);
@@ -813,12 +731,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> AddAction(int id, [FromBody] AddExecutionActionRequest request, CancellationToken ct)
     {
         // الإضافة للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
         return Ok(action);
@@ -828,12 +742,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> UpdateAction(int id, int actionId, [FromBody] UpdateExecutionActionRequest request, CancellationToken ct)
     {
         // التعديل للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
         if (action is null) return NotFound();
@@ -848,12 +758,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> RescheduleReminder(int id, int actionId, [FromBody] RescheduleActionReminderRequest? request, CancellationToken ct)
     {
         // النقل للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, request?.Version, ct);
         return Ok(action);
@@ -863,12 +769,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> DeleteAction(int id, int actionId, CancellationToken ct)
     {
         // الحذف للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         var deleted = await _executionActions.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
         if (!deleted) return NotFound();
@@ -884,12 +786,8 @@ public class DocumentsController : ControllerBase
         int id, int actionId, [FromBody] SetActionReminderRequest request, CancellationToken ct)
     {
         // إدارة التذكير للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         var action = await _executionActions.SetReminderAsync(id, actionId, request, ActorName, ct);
         return Ok(action);
@@ -899,12 +797,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> ClearReminder(int id, int actionId, CancellationToken ct)
     {
         // إلغاء التذكير للمحامي فقط
-        if (!CanManageActions)
-            return Forbid();
-
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
+        var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
+        if (denied is not null) return denied;
 
         return await _executionActions.ClearReminderAsync(id, actionId, ActorName, ct)
             ? NoContent()
