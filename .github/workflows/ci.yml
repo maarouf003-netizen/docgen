@@ -103,6 +103,10 @@ jobs:
       # وAGENTS.md؛ النسيان يعني رفض إقلاع في الإنتاج (AutoMigrate=false).
       - name: Migration watchlist guard
         run: node scripts/migration-watchlist-guard.mjs
+      # P5-05a: يمنع عمليات الهدم (Drop/Alter/Rename/DeleteData) في `Up` بلا استثناء
+      # موثّق — قرار expand/contract لا يمرّ صامتًا إلى قاعدة الإنتاج.
+      - name: Migration safety guard
+        run: node scripts/migration-safety-guard.mjs
       # P2-05: يمنع دخول أسرار (مفاتيح/رموز/سلاسل اتصال بكلمات مرور) إلى الملفات
       # المتتبَّعة؛ خط الأساس يسمح بقيم الاختبار الموثّقة فقط، ولا تُطبع القيم أبدًا.
       - name: Secrets guard
