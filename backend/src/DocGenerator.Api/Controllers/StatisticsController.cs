@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -19,14 +19,21 @@ public class StatisticsController : ControllerBase
 {
     private readonly IStatisticsService _stats;
     private readonly IRepository<Branch> _branches;
+    private readonly IUserCapabilities _capabilities;
 
-    public StatisticsController(IStatisticsService stats, IRepository<Branch> branches)
+    public StatisticsController(
+        IStatisticsService stats, IRepository<Branch> branches, IUserCapabilities capabilities)
     {
         _stats = stats;
         _branches = branches;
+        _capabilities = capabilities;
     }
 
-    private UserRole Role => User.GetRoleEnum();
+    private bool HasFullAccess => _capabilities.Has(User, UserCapability.HasFullAccess);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool IsHead => _capabilities.Has(User, UserCapability.IsHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
+    private bool IsLawyer => _capabilities.Has(User, UserCapability.IsLawyer);
 
     /// <summary>
     /// فرع الدور المقيَّد بالفرع (رئيس قسم/محامٍ): رفض صريح (400) عند غيابه —
@@ -51,19 +58,19 @@ public class StatisticsController : ControllerBase
     {
         branchId = 0;
         ownerSectionId = null;
-        fullAccess = RolePermissions.HasFullAccess(Role);
+        fullAccess = HasFullAccess;
         if (fullAccess)
             return null;
         var error = RequireOwnBranch(out branchId);
         if (error is not null) return error;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             var section = User.GetSectionId();
             if (section is null)
                 return Forbid();
             ownerSectionId = section;
         }
-        else if (Role != UserRole.Head)
+        else if (!IsHead)
         {
             return Forbid();
         }
@@ -77,9 +84,9 @@ public class StatisticsController : ControllerBase
         // الأدوار المقيَّدة (رئيس/شعبة/محامٍ — المندوب مستبعد بقيد الدور أعلاه):
         // الرؤساء بنطاق المالك (§12/قرار 27)، والمحامي بفرعه كما كان.
         // `null` هنا تعني الكل ولا تُمنح إلا لوصول المدير/المشرف الكامل.
-        if (RolePermissions.HasFullAccess(Role))
+        if (HasFullAccess)
             return Ok(await _stats.GetDashboardStatsAsync(null, ct));
-        if (Role is UserRole.Head or UserRole.SubHead)
+        if (IsHeadOrSubHead)
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
@@ -95,9 +102,9 @@ public class StatisticsController : ControllerBase
     public async Task<ActionResult<List<MonthlyStatDto>>> Monthly(CancellationToken ct)
     {
         // كـ `/dashboard` أعلاه: الرؤساء بنطاق المالك، والمحامي بفرعه.
-        if (RolePermissions.HasFullAccess(Role))
+        if (HasFullAccess)
             return Ok(await _stats.GetMonthlyStatsAsync(null, ct));
-        if (Role is UserRole.Head or UserRole.SubHead)
+        if (IsHeadOrSubHead)
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
@@ -141,7 +148,7 @@ public class StatisticsController : ControllerBase
 
         // نطاق المالك (§12/قرار 27): رئيس القسم لإحصاء قسمه (تضييق مقصود)،
         // ورئيس الشعبة لشعبته، والمدير/المشرف للفرع ككل — ولا اختيار فرع آخر للرؤساء.
-        if (RolePermissions.HasFullAccess(Role))
+        if (HasFullAccess)
             return Ok(await _stats.GetManagerStatsAsync(period, branchId, year, month, quarter, ct));
         var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
         if (scopeError is not null) return scopeError;
@@ -163,7 +170,7 @@ public class StatisticsController : ControllerBase
             return invalid;
 
         // جدول المحامين بالنطاق نفسه (§12): العدّ ضمن نطاق المالك فقط.
-        if (RolePermissions.HasFullAccess(Role))
+        if (HasFullAccess)
         {
             if (branchId <= 0)
                 return BadRequest(new { message = "branchId مطلوب لجدول محامي الفرع" });
@@ -201,21 +208,21 @@ public class StatisticsController : ControllerBase
         [FromQuery] int? branchId = null,
         CancellationToken ct = default)
     {
-        int? effectiveBranch = RolePermissions.HasFullAccess(Role) ? branchId : null;
-        if (Role is UserRole.Head or UserRole.SubHead)
+        int? effectiveBranch = HasFullAccess ? branchId : null;
+        if (IsHeadOrSubHead)
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
             return Ok(await _stats.GetAvailablePeriodsAsync(own, null, ct, ownerSectionId, false));
         }
-        else if (Role == UserRole.Lawyer)
+        else if (IsLawyer)
         {
             // الحصر بالملفات يبقى عبر userId أدناه؛ الحارس هنا يرفض الحالة
             // الشاذة (محامٍ بلا فرع) بدل تمريرها بصمت.
             var error = RequireOwnBranch(out _);
             if (error is not null) return error;
         }
-        var userId = Role == UserRole.Lawyer ? User.GetUserId() : (int?)null;
+        var userId = IsLawyer ? User.GetUserId() : (int?)null;
 
         return Ok(await _stats.GetAvailablePeriodsAsync(effectiveBranch, userId, ct));
     }

@@ -1,8 +1,8 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,15 +14,16 @@ namespace DocGenerator.Api.Controllers;
 public class SectionsController : ControllerBase
 {
     private readonly ISectionService _sections;
+    private readonly IUserCapabilities _capabilities;
 
-    public SectionsController(ISectionService sections)
+    public SectionsController(ISectionService sections, IUserCapabilities capabilities)
     {
         _sections = sections;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
-    private UserRole Role => User.GetRoleEnum();
-    private bool CanManage => RolePermissions.CanManageBranches(Role);
+    private bool CanManage => _capabilities.Has(User, UserCapability.CanManageBranches);
 
     /// <summary>قائمة شعب فرع — كل الأدوار المصادَّقة (للمنسدلات والإدارة)؛ الفرع إلزامي صراحةً.</summary>
     [HttpGet]

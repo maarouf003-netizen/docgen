@@ -33,6 +33,13 @@ public class AuthorizationMigrationGuardTests
         ["Controllers/DocumentsController.cs"] = ["GetRoleEnum"],
         ["Controllers/EntityRegistryController.cs"] = [],
         ["Controllers/PortalController.cs"] = [],
+        ["Controllers/AppSuggestionsController.cs"] = [],
+        ["Controllers/AuditLogsController.cs"] = [],
+        ["Controllers/BranchesController.cs"] = [],
+        ["Controllers/ForumController.cs"] = [],
+        ["Controllers/PersonalRemindersController.cs"] = [],
+        ["Controllers/SectionsController.cs"] = [],
+        ["Controllers/StatisticsController.cs"] = [],
     };
 
     /// <summary>
@@ -42,17 +49,10 @@ public class AuthorizationMigrationGuardTests
     private static readonly Dictionary<string, string> PendingControllers = new(StringComparer.Ordinal)
     {
         ["AppealsController.cs"] = "P2-01c",
-        ["AppSuggestionsController.cs"] = "P2-01c",
-        ["AuditLogsController.cs"] = "P2-01c",
-        ["BranchesController.cs"] = "P2-01c",
         ["CorrespondencesController.cs"] = "P2-01c",
         ["DelegationsController.cs"] = "P2-01c",
         ["ExecutionCircuitsController.cs"] = "P2-01c",
-        ["ForumController.cs"] = "P2-01c",
-        ["PersonalRemindersController.cs"] = "P2-01c",
         ["ReviewLettersController.cs"] = "P2-01c",
-        ["SectionsController.cs"] = "P2-01c",
-        ["StatisticsController.cs"] = "P2-01c",
         ["UserManagementController.cs"] = "P2-01c",
     };
 
@@ -68,12 +68,20 @@ public class AuthorizationMigrationGuardTests
     [InlineData("Controllers/DocumentsController.cs")]
     [InlineData("Controllers/EntityRegistryController.cs")]
     [InlineData("Controllers/PortalController.cs")]
+    [InlineData("Controllers/AppSuggestionsController.cs")]
+    [InlineData("Controllers/AuditLogsController.cs")]
+    [InlineData("Controllers/BranchesController.cs")]
+    [InlineData("Controllers/ForumController.cs")]
+    [InlineData("Controllers/PersonalRemindersController.cs")]
+    [InlineData("Controllers/SectionsController.cs")]
+    [InlineData("Controllers/StatisticsController.cs")]
     public void MigratedController_HasNoDirectRoleDecisions(string relativePath)
     {
         var lines = ReadCodeLines(relativePath);
 
-        // حماية من خضرة كاذبة: ملف فارغ/مفقود ينجح دائمًا.
-        Assert.True(lines.Count > 50, $"{relativePath}: عُثر على {lines.Count} سطر كود فقط — المسار خاطئ.");
+        // حماية من خضرة كاذبة: ملف فارغ/مفقود ينجح دائمًا. الحد 15 سطر كود يكفي
+        // لأصغر متحكم في القائمة (AuditLogs ~40) ويمنع مسارًا خاطئًا/فارغًا.
+        Assert.True(lines.Count > 15, $"{relativePath}: عُثر على {lines.Count} سطر كود فقط — المسار خاطئ.");
 
         var forbidden = new List<string> { "RolePermissions", "RoleComparison" };
         if (MigratedControllers.TryGetValue(relativePath, out var extra))

@@ -1,8 +1,7 @@
-using DocGenerator.Application.Common;
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,16 +14,18 @@ namespace DocGenerator.Api.Controllers;
 public class PersonalRemindersController : ControllerBase
 {
     private readonly IPersonalReminderService _reminders;
+    private readonly IUserCapabilities _capabilities;
 
-    public PersonalRemindersController(IPersonalReminderService reminders)
+    public PersonalRemindersController(
+        IPersonalReminderService reminders, IUserCapabilities capabilities)
     {
         _reminders = reminders;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool CanManage => RolePermissions.CanManagePersonalReminders(Role);
+    private bool CanManage => _capabilities.Has(User, UserCapability.CanManagePersonalReminders);
 
     /// <summary>تذكيرات المحامي الشخصية — المالك فقط (`includeArchived` للأرشيف).</summary>
     [HttpGet]

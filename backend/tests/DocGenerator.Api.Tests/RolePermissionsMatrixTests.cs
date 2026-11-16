@@ -52,6 +52,10 @@ public sealed class RolePermissionsMatrixTests
         // ── هوية الدور ──
         new(nameof(RolePermissions.IsHeadOrSubHead), UserRole.Head, UserRole.SubHead),
         new(nameof(RolePermissions.IsLawyer), UserRole.Lawyer),
+        // هويات الدور (P2-01c): تصف الدور نفسه لا تمنح قدرة — انظر ثابت التماثل أدناه.
+        new(nameof(RolePermissions.IsHead), UserRole.Head),
+        new(nameof(RolePermissions.IsSubHead), UserRole.SubHead),
+        new(nameof(RolePermissions.IsAdmin), UserRole.Admin),
 
         // ── ملفات: كتابة/حالة/حذف ──
         new(nameof(RolePermissions.CanEditDocuments), UserRole.Lawyer),
@@ -136,7 +140,7 @@ public sealed class RolePermissionsMatrixTests
         new(nameof(RolePermissions.CanManageExecutionCircuits), UserRole.Head, UserRole.SubHead),
     ];
 
-    /// <summary>كل خلية كحالة اختبار مستقلة: 38 قدرة × 6 أدوار = 228 خلية.</summary>
+    /// <summary>كل خلية كحالة اختبار مستقلة: 41 قدرة × 6 أدوار = 246 خلية.</summary>
     public static TheoryData<UserRole, string, bool> Cells
     {
         get
@@ -233,11 +237,23 @@ public sealed class RolePermissionsMatrixTests
     /// <summary>
     /// قرار §2.1: رئيس الشعبة يملك صلاحيات رئيس القسم نفسها (لا أكثر ولا أقل)،
     /// والمجموعة السلبية رفضٌ صريح في الجدول لكلٍّ منهما (المدير/المشرف فقط).
+    /// <para>
+    /// تُستثنى **هويات الدور** (<see cref="RolePermissions.IsHead"/> و
+    /// <see cref="RolePermissions.IsSubHead"/>) لأنها تصف الدور نفسه ولا تمنح قدرة؛
+    /// كل صفوف القدرات — بلا استثناء — تبقى مشمولة بالثابت.
+    /// </para>
     /// </summary>
     [Fact]
     public void SubHead_HoldsExactlyTheHeadCapabilitySet()
     {
+        var identityPredicates = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(RolePermissions.IsHead),
+            nameof(RolePermissions.IsSubHead),
+        };
+
         var deviations = Rows
+            .Where(row => !identityPredicates.Contains(row.Name))
             .Where(row => row.Holds(UserRole.SubHead) != row.Holds(UserRole.Head))
             .Select(row => $"{row.Name}: Head={row.Holds(UserRole.Head)} SubHead={row.Holds(UserRole.SubHead)}")
             .ToArray();

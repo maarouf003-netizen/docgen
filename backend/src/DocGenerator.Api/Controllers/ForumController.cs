@@ -1,9 +1,9 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -21,20 +21,22 @@ namespace DocGenerator.Api.Controllers;
 public class ForumController : ControllerBase
 {
     private readonly IForumService _forum;
+    private readonly IUserCapabilities _capabilities;
 
-    public ForumController(IForumService forum)
+    public ForumController(IForumService forum, IUserCapabilities capabilities)
     {
         _forum = forum;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
     private int? SectionId => User.GetSectionId();
     private int UserId => User.GetUserId();
 
     /// <summary>رئيس الشعبة بلا شعبة جلسة مكسورة — تُرفض الكتابة ككل المسارات.</summary>
-    private bool SubHeadSessionBroken => Role == UserRole.SubHead && SectionId is null;
+    private bool SubHeadSessionBroken =>
+        _capabilities.Has(User, UserCapability.IsSubHead) && SectionId is null;
 
     /// <summary>شريحة التيار بمفتاح `Id` (الأحدث أولًا بلا مؤشر).</summary>
     [HttpGet("messages")]
@@ -111,7 +113,7 @@ public class ForumController : ControllerBase
         if (SubHeadSessionBroken)
             return Forbid();
         // التثبيت للمشرف حصرًا (مصفوفة §2-أ — المدير قارئ هنا لا مثبّت).
-        if (Role != UserRole.Admin)
+        if (!_capabilities.Has(User, UserCapability.IsAdmin))
             return Forbid();
         try
         {

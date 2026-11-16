@@ -30,6 +30,9 @@ public sealed class UserCapabilities : IUserCapabilities
             UserCapability.HasFullAccess => RolePermissions.HasFullAccess(role),
             UserCapability.IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(role),
             UserCapability.IsLawyer => RolePermissions.IsLawyer(role),
+            UserCapability.IsHead => RolePermissions.IsHead(role),
+            UserCapability.IsSubHead => RolePermissions.IsSubHead(role),
+            UserCapability.IsAdmin => RolePermissions.IsAdmin(role),
             UserCapability.CanViewPrintCounter => RolePermissions.CanViewPrintCounter(role),
             UserCapability.CanSearchByLawyer => RolePermissions.CanSearchByLawyer(role),
             UserCapability.CanSeeAdministrativeBranch => RolePermissions.CanSeeAdministrativeBranch(role),
@@ -45,6 +48,10 @@ public sealed class UserCapabilities : IUserCapabilities
             UserCapability.CanManageEntityRegistry => RolePermissions.CanManageEntityRegistry(role),
             UserCapability.CanMergeEntities => RolePermissions.CanMergeEntities(role),
             UserCapability.CanManageDelegates => RolePermissions.CanManageDelegates(role),
+            UserCapability.CanManageBranches => RolePermissions.CanManageBranches(role),
+            UserCapability.CanViewAppSuggestions => RolePermissions.CanViewAppSuggestions(role),
+            UserCapability.CanSuggestApp => RolePermissions.CanSuggestApp(role),
+            UserCapability.CanManagePersonalReminders => RolePermissions.CanManagePersonalReminders(role),
             // إغلاق الفشل: قدرة جديدة بلا ربط صريح لا تُمنح افتراضيًا.
             _ => throw new ArgumentOutOfRangeException(
                 nameof(capability), capability, "قدرة غير مربوطة بالكتالوج المركزي"),

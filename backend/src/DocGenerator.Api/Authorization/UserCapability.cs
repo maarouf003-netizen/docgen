@@ -15,6 +15,9 @@ public enum UserCapability
     HasFullAccess,
     IsHeadOrSubHead,
     IsLawyer,
+    IsHead,
+    IsSubHead,
+    IsAdmin,
     CanViewPrintCounter,
     CanSearchByLawyer,
     CanSeeAdministrativeBranch,
@@ -30,4 +33,8 @@ public enum UserCapability
     CanManageEntityRegistry,
     CanMergeEntities,
     CanManageDelegates,
+    CanManageBranches,
+    CanViewAppSuggestions,
+    CanSuggestApp,
+    CanManagePersonalReminders,
 }

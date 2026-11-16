@@ -31,6 +31,19 @@ public static class RolePermissions
     /// <summary>محامٍ — الدور الذي يملك مستنداته ويستلم تنبيهات ملفاته.</summary>
     public static bool IsLawyer(UserRole role) => role == UserRole.Lawyer;
 
+    /// <summary>
+    /// رئيس قسم — **هوية دور** تُستخدم لاشتقاق النطاق في أسطح الإحصاء/التدقيق،
+    /// لا لمنح صلاحية (القدرات لها مسنداتها أدناه). أُضيفت في `P2-01c` كي لا تحمل
+    /// المتحكمات مقارنة دور مباشرة.
+    /// </summary>
+    public static bool IsHead(UserRole role) => role == UserRole.Head;
+
+    /// <summary>رئيس شعبة — هوية دور لاشتقاق النطاق (انظر <see cref="IsHead"/>).</summary>
+    public static bool IsSubHead(UserRole role) => role == UserRole.SubHead;
+
+    /// <summary>مشرف (`Admin`) — هوية الدور التي تُقيَّد بها أسطح إدارية صرفة (تثبيت المنتدى).</summary>
+    public static bool IsAdmin(UserRole role) => role == UserRole.Admin;
+
     /// <summary>إدخال/تعديل مستند جديد — المحامي فقط (للملفات التي يملكها).</summary>
     public static bool CanEditDocuments(UserRole role) => role == UserRole.Lawyer;
 

@@ -59,7 +59,8 @@ public sealed class AuditLogsBranchGuardTests
             claims.Add(new Claim("section_id", sectionId.Value.ToString()));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
         var service = new FakeAuditLogService();
-        var controller = new AuditLogsController(service);
+        var controller = new AuditLogsController(
+            service, new DocGenerator.Api.Authorization.UserCapabilities());
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext { User = principal },
