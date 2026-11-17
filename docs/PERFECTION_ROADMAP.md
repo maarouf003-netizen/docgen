@@ -333,7 +333,8 @@
   - **`P2-01c‑1`** (PR [`#186`](https://github.com/maarouf003-netizen/docgen/pull/186)):
     7 متحكمات إدارة/قراءة، وهوية `IsHead/IsSubHead/IsAdmin`. التفاصيل:
     `docs/audit/44-p2-01c1-admin-controllers-20261117.md`.
-  - **`P2-01c‑2`** (2026-11-17): الستة الأخيرة (`Appeals`, `Correspondences`,
+  - **`P2-01c‑2`** (PR
+    [`#187`](https://github.com/maarouf003-netizen/docgen/pull/187)، 2026-11-17): الستة الأخيرة (`Appeals`, `Correspondences`,
     `Delegations`, `ExecutionCircuits`, `ReviewLetters`, `UserManagement`) + هوية
     `IsEntityManager`. الجسر **35×6 = 210 خلية**، والمصفوفة **42×6 = 252**.
     **قائمة انتظار الحارس أُفرغت** — لا متحكم يحمل `RolePermissions` أو مقارنة دور،
