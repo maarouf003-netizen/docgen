@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -333,6 +334,12 @@ try
     builder.Services.AddSwaggerGen(o =>
     {
         o.SwaggerDoc("v1", new OpenApiInfo { Title = "DocGenerator API", Version = "v1" });
+        // P4-04: operationId حتمي `Controller_Action` — بدونه لا يمكن توليد عميل TS
+        // مستقر (`P6-06`)، ويفشل حارس العقد على أي عملية بلا معرّف.
+        o.CustomOperationIds(description =>
+            description.ActionDescriptor is ControllerActionDescriptor action
+                ? $"{action.ControllerName}_{action.ActionName}"
+                : null);
         o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
             Name = "Authorization",
@@ -341,16 +348,9 @@ try
             BearerFormat = "JWT",
             In = ParameterLocation.Header,
         });
-        o.AddSecurityRequirement(new OpenApiSecurityRequirement
-        {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" },
-            },
-            Array.Empty<string>()
-        },
-        });
+        // مخطط الأمان لكل عملية مصادَقة، ويُفرَّغ لعمليات AllowAnonymous (login/logout/…).
+        // المتطلب العام على مستوى الوثيقة كان يوهم العميل المولَّد أن الدخول يحتاج رمزًا.
+        o.OperationFilter<DocGenerator.Api.Swagger.BearerSecurityOperationFilter>();
     });
 
     // رايات الحماية لكل بيئة (S3): الافتراضي مغلق لمنصة تتولى TLS بنفسها؛ المخدّم الخاص
