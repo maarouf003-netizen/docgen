@@ -88,7 +88,7 @@ public class DatabasePoolSettingsTests
     [Fact]
     public void ApplyPoolDefaults_AppliesToNormalizedUri()
     {
-        var normalized = PostgresConnectionString.Normalize("postgres://u:p@h:5432/db?sslmode=require");
+        var normalized = PostgresConnectionString.Normalize("postgres://h:5432/db?sslmode=require");
 
         var result = PostgresConnectionString.ApplyPoolDefaults(normalized, new DatabasePoolOptions { MaxPoolSize = 12 });
 
