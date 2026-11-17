@@ -825,7 +825,8 @@
 
 #### `P7-03` — Release checklist/DoD
 
-- **الحالة (2026-11-17):** **مغلق توثيقيًا** — [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md):
+- **الحالة (2026-11-17):** **مغلق توثيقيًا** — PR
+  [`#202`](https://github.com/maarouf003-netizen/docgen/pull/202) — [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md):
   قبل النافذة (البوابات الثماني، `CHANGELOG`، نسخة احتياطية/استعادة، الهجرات وpreflight،
   متغيّرات `P2-03`، الاعتماديات، خطة التراجع)، أثناءها (سجل الهجرات ثم التطبيق ثم النشر)،
   بعدها (health/ready/outbox، الرؤوس والكوكيز، فحص دخاني، السجلات)، معايير التراجع،
@@ -835,7 +836,8 @@
 
 #### `P7-04` — سياسة الاعتماديات
 
-- **الحالة (2026-11-17):** **جزئيًا** — `.github/dependabot.yml` يفعّل تحديثات أسبوعية
+- **الحالة (2026-11-17):** **جزئيًا** — PR
+  [`#202`](https://github.com/maarouf003-netizen/docgen/pull/202): `.github/dependabot.yml` يفعّل تحديثات أسبوعية
   مجمّعة (NuGet في `/backend`، npm في `/frontend` بالتقسيم prod/dev، وGitHub Actions)،
   مع `open-pull-requests-limit` و`versioning-strategy: increase` للـnpm. بوابات
   `dependency-audit`/`npm-audit-guard`/`dependency-review` تبقى الحكم على الثغرات.
