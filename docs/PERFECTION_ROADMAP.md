@@ -440,7 +440,8 @@
     `docs/audit/56-npm-audit-allowlist-20261117.md`.
   - SBOM (CycloneDX 6.3.1 للخلفية، `@cyclonedx/cyclonedx-npm` للواجهة) يُرفع كأثر
     `sbom` في وظيفة `audit` (30 يومًا).
-  - **`P2-06` (تكملة، 2026-11-17):** `.github/workflows/security.yml`:
+  - **`P2-06` (تكملة، 2026-11-17):** PR
+    [`#199`](https://github.com/maarouf003-netizen/docgen/pull/199) — `.github/workflows/security.yml`:
     - **CodeQL** للـ`C#` والـ`JavaScript/TypeScript` (بناء فعلي للخلفية مع
       `--locked-mode`، `security-and-quality`، SARIF إلى Code scanning، أسبوعيًا أيضًا).
     - **Dependency review** على كل `PR` (`fail-on-severity: high`).
