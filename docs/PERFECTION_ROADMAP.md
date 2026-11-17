@@ -600,6 +600,16 @@
 
 #### `P4-04` — OpenAPI + عميل TS مولّد
 
+- **الحالة (2026-11-17):** **جزئيًا — أساس العقد مثبت.** PR
+  [`#196`](https://github.com/maarouf003-netizen/docgen/pull/196): أُضيف `operationId` حتمي
+  (`Controller_Action`) لكل عملية، ولقطة عقد مُطبَّعة في
+  `docs/openapi/docgen-v1.json` (239 عملية) يتحقق منها اختبار `OpenApiContractTests`
+  عند كل تشغيل (تطابق اللقطة + `operationId` فريد + معاملات مسار معلنة + مخطط
+  `Bearer`). أي تغيير في سطح `API` يفشل حتى يُحدَّث العقد واعيًا بأمر موثّق. التفاصيل:
+  `docs/audit/54-p4-04-openapi-contract-20261117.md`.
+  **متبقٍ:** توليد `frontend/src/api/generated.ts` من اللقطة (`openapi-typescript`)،
+  إحلاله تدريجيًا محل `types/document.ts`، وإصدار `API` (`/api/v1` أو
+  `Accept-Version` + سياسة إهمال) — `P6-06`/`P4-05`.
 - **العمل:** تفعيل OpenAPI في staging/prod محمي؛ `openapi-typescript`/NSwag لتوليد `frontend/src/api/generated.ts`؛ حذف `types/document.ts` اليدوي تدريجيًا؛ contract tests؛ **إصدار API** (`/api/v1` أو `Accept-Version` + سياسة إهمال).
 - **DoD:** تغيير API يكسر التوليد/الاختبارات، لا الواجهة بصمت؛ لا كسر بلا إصدار.
 - **الاعتمادية:** `P4-03` (شكل أخطاء/عقود) و`P6-06`.
