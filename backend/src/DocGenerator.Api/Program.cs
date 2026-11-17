@@ -226,6 +226,11 @@ try
     builder.Services.AddMemoryCache();
     builder.Services.AddSingleton<DocGenerator.Api.Security.ExportConcurrencyGuard>();
     builder.Services.AddDocumentAuthorization();
+    // P2-08: حدود المعدل تُتحقق عند الإقلاع بدل إخفاء القيم غير الصالحة بـMath.Max.
+    var rateLimitOptions = builder.Configuration
+        .GetSection("RateLimiting")
+        .Get<DocGenerator.Application.Common.RateLimitOptions>() ?? new DocGenerator.Application.Common.RateLimitOptions();
+    rateLimitOptions.Validate();
     builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
     // احتفاظ المنتدى: قيمة سالبة تُفشل الإقلاع مبكرًا (كحارس مفتاح JWT أعلاه) —
     // `0` معطّل مشروع، والموجب أشهر الحذف الصلب التلقائي عدا المثبّتة.

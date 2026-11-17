@@ -27,13 +27,17 @@ public static class RateLimitingSetup
     public static void Configure(RateLimiterOptions options)
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.OnRejected = async (context, cancellationToken)
-            => await ApiProblem.WriteAsync(
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            // RFC 6585: كل 429 يحمل Retry-After (نافذة السياسات دقيقة واحدة).
+            context.HttpContext.Response.Headers.RetryAfter = "60";
+            await ApiProblem.WriteAsync(
                 context.HttpContext,
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.RateLimited,
                 RejectionMessage,
                 cancellationToken: cancellationToken);
+        };
 
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         {
@@ -72,7 +76,8 @@ public static class RateLimitingSetup
     private static RateLimitPartition<string> Partition(string key, int perMinute)
         => RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = Math.Max(1, perMinute),
+            // القيم محققة عند الإقلاع (RateLimitOptions.Validate) — لا تسطيح صامت هنا.
+            PermitLimit = perMinute,
             Window = TimeSpan.FromMinutes(1),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 0,

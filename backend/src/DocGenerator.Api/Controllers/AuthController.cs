@@ -28,6 +28,14 @@ public class AuthController : ControllerBase
     /// <summary>نفس عمر Cookie الجلسة بالضبط حتى يتزامن زوجا Cookie (المصادقة + CSRF) عند الطرح والانتهاء.</summary>
     private TimeSpan SessionMaxAge => TimeSpan.FromMinutes(Math.Max(1, _jwt.ExpiryMinutes));
 
+    /// <summary>
+    /// `Retry-After` لرفض محدّد الدخول المعتمد على القاعدة (RFC 6585): نافذة المراقبة
+    /// كاملة بالثواني، مقيَّدة بقيمة موجبة حتى لا يخرج `0` من إعداد خاطئ.
+    /// </summary>
+    private string LoginRetryAfterSeconds =>
+        (Math.Max(1, _rateOptions.WindowMinutes) * 60)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     public AuthController(
         IAuthService auth,
         ILoginRateLimiter rateLimiter,
@@ -56,11 +64,14 @@ public class AuthController : ControllerBase
         var rateKey = $"{ip}:{request.Username.Trim().ToLowerInvariant()}";
 
         if (!await _rateLimiter.IsAllowedAsync(rateKey, ct))
+        {
+            Response.Headers.RetryAfter = LoginRetryAfterSeconds;
             return ApiProblem.Result(
                 HttpContext,
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.RateLimited,
                 $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق");
+        }
 
         var result = await _auth.LoginAsync(request, ct);
         return result.Status switch
@@ -104,11 +115,14 @@ public class AuthController : ControllerBase
         // التسجيل ذرّي: إن بلغ الحد خلال سباق بين الفحص المبدئي والتسجيل تُرفض المحاولة فورًا.
         var recorded = await _rateLimiter.TryRecordFailureAsync(rateKey, ct);
         if (!recorded)
+        {
+            Response.Headers.RetryAfter = LoginRetryAfterSeconds;
             return ApiProblem.Result(
                 HttpContext,
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.RateLimited,
                 $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق");
+        }
         return ApiProblem.Result(
                     HttpContext,
                     StatusCodes.Status401Unauthorized,
