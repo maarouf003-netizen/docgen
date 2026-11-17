@@ -56,44 +56,45 @@ public sealed class StatisticsBranchGuardTests
         return controller;
     }
 
-    private static void AssertBadRequestWithBranchMessage<T>(ActionResult<T> result)
+    private static void AssertForbiddenWithBranchMessage<T>(ActionResult<T> result)
     {
-        var bad = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal((int)HttpStatusCode.BadRequest, bad.StatusCode);
+        var forbidden = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal((int)HttpStatusCode.Forbidden, forbidden.StatusCode);
         // يُقرأ النص بعد فكّ التسلسل: المسرِّع الافتراضي يهرّب العربية (`\uXXXX`).
         using var json = System.Text.Json.JsonDocument.Parse(
-            System.Text.Json.JsonSerializer.Serialize(bad.Value));
+            System.Text.Json.JsonSerializer.Serialize(forbidden.Value));
+        Assert.Equal("branch_required", json.RootElement.GetProperty("code").GetString());
         Assert.Contains("غير مرتبط بفرع", json.RootElement.GetProperty("message").GetString());
     }
 
     [Theory]
     [InlineData("head")]
     [InlineData("lawyer")]
-    public async Task Dashboard_BranchlessBranchRole_BadRequest(string role)
+    public async Task Dashboard_BranchlessBranchRole_Forbidden(string role)
     {
         var result = await ControllerFor(role, branchId: null).Dashboard(CancellationToken.None);
 
-        AssertBadRequestWithBranchMessage(result);
+        AssertForbiddenWithBranchMessage(result);
     }
 
     [Theory]
     [InlineData("head")]
     [InlineData("lawyer")]
-    public async Task MonthlyStats_BranchlessBranchRole_BadRequest(string role)
+    public async Task MonthlyStats_BranchlessBranchRole_Forbidden(string role)
     {
         var result = await ControllerFor(role, branchId: null).Monthly(CancellationToken.None);
 
-        AssertBadRequestWithBranchMessage(result);
+        AssertForbiddenWithBranchMessage(result);
     }
 
     [Theory]
     [InlineData("head")]
     [InlineData("lawyer")]
-    public async Task AvailablePeriods_BranchlessBranchRole_BadRequest(string role)
+    public async Task AvailablePeriods_BranchlessBranchRole_Forbidden(string role)
     {
         var result = await ControllerFor(role, branchId: null).AvailablePeriods(null, CancellationToken.None);
 
-        AssertBadRequestWithBranchMessage(result);
+        AssertForbiddenWithBranchMessage(result);
     }
 
     [Fact]

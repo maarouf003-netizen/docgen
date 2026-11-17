@@ -70,9 +70,10 @@ public class ReviewLettersController : ControllerBase
         if (!IsHeadOrSubHead)
             return Forbid();
         if (BranchId is null)
+            // عدّاد قراءة (D11): 403 لا 400 — لا نطاق = لا صلاحية.
             return ApiProblem.Result(
                 HttpContext,
-                StatusCodes.Status400BadRequest,
+                StatusCodes.Status403Forbidden,
                 ApiErrorCodes.BranchRequired,
                 "الرئيس دون فرع");
         if (IsSubHead && SectionId is null)
