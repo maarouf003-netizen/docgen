@@ -59,8 +59,9 @@ public class ProductionSpaFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Production");
         builder.UseWebRoot(_webRoot);
-        builder.UseSetting("Security:CspReportOnly", "false");
-        builder.UseSetting("Security:KnownProxies:0", "127.0.0.1");
+        // وضع أمني إنتاجي مكتمل (P2-03): الحارس يرفض الإقلاع بدونه، والاختبارات تتحقق
+        // من الرؤوس/الرفض فوق إعداد صالح لا فوق إعداد ناقص.
+        builder.UseSecureProductionDefaults();
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
         builder.UseSetting("Database:AutoMigrate", "false");

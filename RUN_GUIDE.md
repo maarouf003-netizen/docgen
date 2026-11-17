@@ -229,6 +229,17 @@ npm test
 
 ### إعدادات الحماية للمخدّم الخاص (خطة `docs/SECURITY_PLAN.md`)
 
+- **`P2-03` — لا إقلاع في `Production` بوضع ناقص:** إذا كان
+  `ASPNETCORE_ENVIRONMENT=Production` ترفض الخدمة الإقلاع (fail-closed) حتى تُضبط **كلها**:
+  - `AllowedHosts` صريح بلا `*` (مثال `docgen.gov.sy;127.0.0.1`)؛
+  - `Security__HstsEnabled=true` و`Security__HttpsRedirectionEnabled=true`؛
+  - `Security__CspReportOnly=false` (فرض `CSP` لا مراقبتها)؛
+  - `Swagger__Enabled=false`؛
+  - **إما** `Security__KnownProxies__0=<IP/CIDR صالح>` (يُرفض `0.0.0.0/0` و`::/0` والإدخال غير الصالح)
+    **أو** `Security__TlsTerminatedByApp=true` إذا أنهى `Kestrel` الـ`TLS` بنفسه.
+  الرسالة تجمع كل المفاتيح الناقصة مرة واحدة. الحارس: `SecurityProductionPosture`
+  (`SecurityProductionPostureTests` + `ProductionPostureIntegrationTests` + `CspProductionIntegrationTests`).
+  **قبل ترقية نسخة تحمل هذا الحارس، اضبط هذه المتغيّرات في لوحة المضيف، وإلا لن تقلع الخدمة.**
 - `Security:KnownProxies` — **إلزامي على المخدّم الخاص**: عناوين `IP` البروكسي العكسي (`nginx`/`Traefik`)
   أو نطاقات `CIDR` ضيقة حصرًا (مثال `["10.0.0.5"]` أو `["10.0.0.0/31"]`)؛ **لا تُستخدم نطاقات واسعة**
   كـ`/8` لأن أي مضيف فيها يستطيع تزوير `X-Forwarded-For`. بدونها يُرى كل الزوار بعنوان البروكسي
@@ -265,7 +276,8 @@ npm test
   الرمز: `HstsSetup.Validate`/`Configure`، والحراس: `HstsSetupTests` + `HstsHeaderTests`
   + `HstsProductionIntegrationTests`.
 - `Security:CspReportOnly` — `true` افتراضيًا (وضع المراقبة على التجريبي)، و`false` على المخدّم الخاص
-  بعد جولة اختبار واحدة لفرض `Content-Security-Policy`.
+  بعد جولة اختبار واحدة لفرض `Content-Security-Policy`. **منذ `P2-03` صار `false` إلزاميًا في
+  `Production`** (رفض إقلاع)، فالبروفة أدناه تُنفَّذ في `staging` قبل الترقية.
   - **`upgrade-insecure-requests` أُزيلت من السياسة نهائيًا (`W0-CSP`)**: على خادم يخدم عبر `HTTP`
     (حالة النقل الأولى على الشبكة الداخلية) تُحوِّل المتصفحات كل أصول الصفحة إلى `https` فتفشل ⇒
     **صفحة بيضاء**. تحديث البروتوكول مسؤولية `HSTS`/`HttpsRedirection` صراحةً. لا تُعِدها عند تعديل

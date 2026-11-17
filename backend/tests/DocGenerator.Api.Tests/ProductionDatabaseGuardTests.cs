@@ -82,6 +82,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         {
             builder.UseEnvironment("Production");
             // ADR-0001: سلسلة Postgres شكلية للحارس، والسياق الفعلي SQLite اختباري فقط.
+            builder.UseSecureProductionDefaults();
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
             // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.

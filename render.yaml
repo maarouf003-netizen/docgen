@@ -33,3 +33,18 @@ services:
         value: Production
       - key: Database__AutoMigrate
         value: "false"
+      # P2-03: الخدمة لا تقلع في Production بغير هذه القيم. AllowedHosts يجب أن يحمل
+      # النطاق الفعلي (ومعه عنوان فحص الصحة)، وKnownProxies عنوان/شبكة بروكسي Render
+      # (أو Security__TlsTerminatedByApp=true إن أنهى Kestrel الـTLS بنفسه).
+      - key: AllowedHosts
+        sync: false
+      - key: Security__HstsEnabled
+        value: "true"
+      - key: Security__HttpsRedirectionEnabled
+        value: "true"
+      - key: Security__CspReportOnly
+        value: "false"
+      - key: Security__KnownProxies__0
+        sync: false
+      - key: Swagger__Enabled
+        value: "false"

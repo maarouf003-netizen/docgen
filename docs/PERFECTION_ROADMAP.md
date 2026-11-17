@@ -385,6 +385,17 @@
 
 #### `P2-03` — افتراضات أمنية آمنة في الإنتاج
 
+- **الحالة (2026-11-17):** **منفّذ آليًا — بروفة `staging` متبقية (إجراء مالك).** PR
+  [`#193`](https://github.com/maarouf003-netizen/docgen/pull/193) — حارس `SecurityProductionPosture` يرفض إقلاع `Production` (fail-closed) ما لم تُضبط:
+  `AllowedHosts` صريح بلا `*`، `Security:HstsEnabled=true`،
+  `Security:HttpsRedirectionEnabled=true`، `Security:CspReportOnly=false`،
+  `Swagger:Enabled=false`، و**إما** `Security:KnownProxies` صالح (يرفض `0.0.0.0/0`
+  والإدخال غير الصالح) **أو** `Security:TlsTerminatedByApp=true`. أُضيفت اختبارات
+  سياسة الكوكيز (`AuthCookie`/CSRF: `Secure`/`HttpOnly`/`SameSite=Strict`) واختبار
+  أن `Production` لا يُصدر أي ترويسة CORS لـ`localhost`. `render.yaml` و`RUN_GUIDE.md`
+  §9 يوثّقان المتغيّرات الإلزامية. التفاصيل: `docs/audit/51-p2-03-production-security-20261117.md`.
+  **متبقٍ (لا يُغلق آليًا):** فحص رؤوس `HSTS`/`CSP`/Cookies/CORS على `staging` فعلي،
+  وقيمة `AllowedHosts`/`KnownProxies` الحقيقية عند المالك، وقرار `HstsPreload`.
 - **العمل:** `HstsEnabled=true`، `HstsPreload` بقرار، `CspReportOnly=false` بعد مراجعة التقارير، `HttpsRedirectionEnabled=true`، `AllowedHosts` صريح، `KnownProxies` مضبوط، CORS إنتاجي صريح (لا localhost)، ومراجعة `CsrfMiddleware`/`SameSite`/`Secure`/`HttpOnly`؛ رفض الإقلاع عند نقص أي منها في Production.
 - **DoD:** فحص رؤوس الاستجابة/Cookies/CORS في staging.
 

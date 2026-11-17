@@ -41,6 +41,15 @@ public sealed class SecurityOptions
     /// <summary>إعادة توجيه <c>HTTP-&gt;HTTPS</c> داخل التطبيق — المخدّم الخاص فقط (المنصات تتولاها).</summary>
     public bool HttpsRedirectionEnabled { get; set; }
 
+    /// <summary>
+    /// هل يُنهي التطبيق <c>TLS</c> بنفسه (شهادة على <c>Kestrel</c>) بدل بروكسي عكسي؟
+    /// الافتراضي <c>false</c> (خلف بروكسي). في <c>Production</c> يشترط حارس
+    /// <see cref="SecurityProductionPosture"/> عندها إمّا <c>KnownProxies</c> صالحًا (لأن
+    /// البروكسي هو من يبلّغ <c>X-Forwarded-Proto</c>) أو هذه الراية <c>true</c>؛ وإلا
+    /// فإعادة التوجيه إلى <c>HTTPS</c> تدور بلا نهاية لأن الطلب يبدو <c>HTTP</c> دائمًا.
+    /// </summary>
+    public bool TlsTerminatedByApp { get; set; }
+
     /// <summary>وضع مراقبة <c>CSP</c> (ترويسة <c>Report-Only</c>) قبل الفرض — <c>true</c> افتراضيًا.</summary>
     public bool CspReportOnly { get; set; } = true;
 
