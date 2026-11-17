@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { api, getApiErrorMessage, getCsrfToken } from './client';
+import { api, getApiErrorMessage, getCsrfToken, readApiProblemBody } from './client';
 import { ContractError } from './contractError';
 
 describe('getApiErrorMessage', () => {
@@ -37,6 +37,27 @@ describe('getApiErrorMessage', () => {
         },
       }),
     ).toBe('الطلب غير صالح — تحقق من الحقول وأعد المحاولة');
+  });
+
+  it('رسالة الخادم تسبق الرسالة الثابتة حتى في 401/403 (جسم `ApiProblem`)', () => {
+    expect(
+      getApiErrorMessage({
+        isAxiosError: true,
+        response: {
+          status: 401,
+          data: { status: 401, code: 'unauthorized', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' },
+        },
+      }),
+    ).toBe('اسم المستخدم أو كلمة المرور غير صحيحة');
+    expect(
+      getApiErrorMessage({
+        isAxiosError: true,
+        response: {
+          status: 403,
+          data: { status: 403, code: 'csrf_rejected', message: 'طلب مرفوض: ترويسة الحماية غير صحيحة' },
+        },
+      }),
+    ).toBe('طلب مرفوض: ترويسة الحماية غير صحيحة');
   });
 
   it('يعيد رسالة الجلسة عند 401', () => {
@@ -89,6 +110,43 @@ describe('getApiErrorMessage', () => {
     expect(getApiErrorMessage(new ContractError('تعذّر قراءة قائمة التنبيهات'))).toBe(
       'تعذّر قراءة قائمة التنبيهات',
     );
+  });
+});
+
+describe('readApiProblemBody (عقد الخطأ الموحّد)', () => {
+  it('يقرأ المفاتيح المعروفة ويتجاهل غير الصالح منها', () => {
+    const body = readApiProblemBody({
+      status: 400,
+      code: 'validation_failed',
+      message: 'سنة غير صالحة',
+      field: 'year',
+      traceId: 'trace-1',
+      title: 'Bad Request',
+    });
+
+    expect(body).toEqual({
+      status: 400,
+      code: 'validation_failed',
+      message: 'سنة غير صالحة',
+      field: 'year',
+      traceId: 'trace-1',
+    });
+  });
+
+  it('يُبقي رسائل errors النصية غير الفارغة فقط', () => {
+    const body = readApiProblemBody({
+      message: 'تحقق من الحقول',
+      errors: { year: ['سنة غير صالحة', '', 42], month: 'ليست مصفوفة' },
+    });
+
+    expect(body?.errors).toEqual({ year: ['سنة غير صالحة'] });
+  });
+
+  it('يعيد null لجسم فارغ أو ليس كائنًا', () => {
+    expect(readApiProblemBody(undefined)).toBeNull();
+    expect(readApiProblemBody('نص')).toBeNull();
+    expect(readApiProblemBody([1, 2])).toBeNull();
+    expect(readApiProblemBody({ unknown: true })).toBeNull();
   });
 });
 
