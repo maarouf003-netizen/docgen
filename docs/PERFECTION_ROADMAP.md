@@ -527,6 +527,15 @@
 
 #### `P3-09` — ضبط الاتصال والـPool
 
+- **الحالة (2026-11-17):** **منفّذ آليًا — قياس الحمل متبقٍ.** أُضيف `Database:Pool`
+  (`MaxPoolSize=20` · `MinPoolSize=0` · `ConnectionTimeoutSeconds=15` ·
+  `CommandTimeoutSeconds=30` · `IdleLifetimeSeconds=300` · `HealthCheckTimeoutSeconds=5`)
+  ويُطبَّق على سلسلة `Npgsql` **كافتراضات فقط**: أي مفتاح صريح في السلسلة (ومنها
+  `connect_timeout` من URI) يبقى محترمًا. القيم تُتحقق عند الإقلاع، و`/readyz` مقيَّد
+  بمهلة صريحة كي لا ينتظر اتصالًا من مجمّع مستنزف. التفاصيل:
+  `docs/audit/52-p3-09-db-pool-20261117.md`.
+  **متبقٍ (لا يُغلق آليًا):** قياس `pool utilization` تحت حمل فعلي على `PostgreSQL`
+  (ضمن `P3-01`)، وضبط `MaxPoolSize` النهائي حسب عدد النسخ وحدّ المزوّد.
 - **العمل:** مراجعة `Npgsql` (`MaxPoolSize`، `Timeout`، `CommandTimeout`، `KeepAlive`، `Maximum Pool Size` مع حدود Render/Supabase)؛ health check بمهلة؛ منع استنزاف الـpool أثناء التقارير/التصدير.
 - **DoD:** لا `Timeout` عشوائي تحت الحمل؛ قياس pool utilization.
 
