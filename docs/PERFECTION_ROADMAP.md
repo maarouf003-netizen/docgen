@@ -444,10 +444,14 @@
     [`#199`](https://github.com/maarouf003-netizen/docgen/pull/199) — `.github/workflows/security.yml`:
     - **CodeQL** للـ`C#` والـ`JavaScript/TypeScript` (بناء فعلي للخلفية مع
       `--locked-mode`، `security-and-quality`، SARIF إلى Code scanning، أسبوعيًا أيضًا).
-    - **`dependency-review` مؤجّل:** GitHub Dependency graph غير مفعّل في إعدادات
-      المستودع (إجراء مالك: Settings → Security analysis)، والمكوّن يفشل بلا تفعيله.
-    - **قرار:** CodeQL **ليس ضمن البوابات الست المطلوبة** بعد؛ يُضاف إلى حماية الفرع
-      بعد ثبات تاريخ أخضر (لا نُقفل الدمج على أداة جديدة قبل برهانها).
+    - **`dependency-review`** مُفعّل الآن بعد تفعيل المالك لـGitHub Dependency graph
+      (كان معطّلًا بإعداد المستودع): `fail-on-severity: high` على كل `PR`.
+    - **`P2-06` (تكملة، 2026-11-17):** PR
+      [`#200`](https://github.com/maarouf003-netizen/docgen/pull/200) — **`CodeQL` صار بوابة
+      مطلوبة في `master`**: أُضيف السياقان `CodeQL (csharp)` و`CodeQL (javascript-typescript)`
+      إلى حماية الفرع مع الستة القائمة (8 سياقات، `strict=false`، `enforce_admins=true`).
+      أُزيل `paths-ignore` كي تُنتَج الفحوص على الـPR الوثائقي أيضًا. التفاصيل:
+      `docs/audit/58-codeql-branch-protection-20261117.md`.
   **المتبقي (البند الكامل):** `Semgrep` (يتطلب ضبط قواعد/توكن)، `DAST` (يحتاج `staging`)،
   `Trivy` للصورة (يحتاج بناء صورة في CI)، وبوابة `Snyk`/OSS Index إن رغب المالك
   بـ`SNYK_TOKEN`. التفاصيل: `docs/audit/28-p2-06-dependency-gate-20261115.md` و
