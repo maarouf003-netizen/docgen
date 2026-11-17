@@ -660,7 +660,8 @@
 
 #### `P4-07` — ADRs/CODEOWNERS/PR template
 
-- **الحالة (2026-11-17):** **مغلق** — `ADR-0001`…`ADR-0008` موثّقة ومربوطة من
+- **الحالة (2026-11-17):** **مغلق** — PR
+  [`#197`](https://github.com/maarouf003-netizen/docgen/pull/197): `ADR-0001`…`ADR-0008` موثّقة ومربوطة من
   [`docs/README.md`](README.md)، وأُضيف `.github/CODEOWNERS` و
   `.github/pull_request_template.md` (قائمة بوابات + هجرات + أمان + واجهة + وثائق)،
   وسياسة حدّ حجم الـ`PR` (≤~400 سطر/20 ملفًا) في `CONTRIBUTING.md`. التفاصيل:
@@ -779,7 +780,8 @@
 
 #### `P7-01` — فهرس الوثائق وADRs/Runbooks
 
-- **الحالة (2026-11-17):** **مغلق** — `docs/README.md` (بداية/ADRs/لقطات/خطط/Runbooks/OpenAPI)،
+- **الحالة (2026-11-17):** **مغلق** — PR
+  [`#197`](https://github.com/maarouf003-netizen/docgen/pull/197): `docs/README.md` (بداية/ADRs/لقطات/خطط/Runbooks/OpenAPI)،
   `docs/runbooks/` (نشر/تراجع/هجرات/قاعدة/مصادقة/outbox/تدوير أسرار)، `SECURITY.md`،
   `CONTRIBUTING.md`، `.github/CODEOWNERS`، وقالب `PR`. التفاصيل:
   `docs/audit/55-p7-01-governance-20261117.md`.
