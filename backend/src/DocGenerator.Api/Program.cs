@@ -78,14 +78,21 @@ try
             + "Npgsql connection string. SQLite is not supported at runtime (ADR-0001).");
     }
 
-    var conn = PostgresConnectionString.Normalize(rawConn);
+    // P0-03a/P3-09: إعدادات قاعدة البيانات (إعادة المحاولة + مجمّع الاتصالات) تُقرأ
+    // مرة واحدة قبل بناء السلسلة، لأن قيم المجمّع تُطبَّق عليها كافتراضات.
+    var databaseOptions = builder.Configuration
+        .GetSection(DatabaseOptions.SectionName)
+        .Get<DatabaseOptions>() ?? new DatabaseOptions();
+    databaseOptions.Validate();
+
+    var normalizedConn = PostgresConnectionString.Normalize(rawConn);
 
     // بعد التحويل يجب أن تكون القيمة بصيغة كلامية يقبلها Npgsql دائمًا؛ هذا الحارس يفضح أي تشوّه
     // (ومنها سلسلة SQLite قديمة بقيت في إعداد منشور).
     var parseable = false;
     try
     {
-        _ = new NpgsqlConnectionStringBuilder(conn);
+        _ = new NpgsqlConnectionStringBuilder(normalizedConn);
         parseable = true;
     }
     catch (ArgumentException)
@@ -101,6 +108,9 @@ try
             + "variable to a postgres:// URL (as injected by most hosting platforms), then redeploy. "
             + "SQLite is not supported at runtime (ADR-0001).");
     }
+
+    // P3-09: حدود المجمّع والمهل تُطبَّق كافتراضات لا تمسّ ما صرّح به المشغّل.
+    var conn = PostgresConnectionString.ApplyPoolDefaults(normalizedConn, databaseOptions.Pool);
 
     static string DescribeRawValue(string? raw)
     {
@@ -154,13 +164,6 @@ try
         rollOnFileSizeLimit: true,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
     builder.Services.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
-
-    // P0-03a: إعدادات إعادة المحاولة تُقرأ مرة واحدة وتُمرَّر لمزوّد EF. الافتراضي 0
-    // (معطّل)؛ التفعيل يصبح آمنًا مع الإستراتيجية الواعية بالمعاملة والنطاق لكل محاولة.
-    var databaseOptions = builder.Configuration
-        .GetSection(DatabaseOptions.SectionName)
-        .Get<DatabaseOptions>() ?? new DatabaseOptions();
-    databaseOptions.Validate();
 
     builder.Services
         .AddSingleton(jwt)

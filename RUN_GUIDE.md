@@ -179,6 +179,15 @@ npm test
   لا تُفعّل الإعادة إلا للعمليات التي تستخدم
   `ITransactionRunner.RunAsync(..., retryable: true)` ومعها `IUnitOfWorkFactory`
   (نطاق DI جديد لكل محاولة). `SaveChanges` داخل معاملة نشطة **لا يُعاد** حتى مع التفعيل.
+- `Database:Pool` — **`P3-09`**: حدود مجمّع `Npgsql`، تُطبَّق **كافتراضات فقط**
+  (أي مفتاح مذكور صراحةً في سلسلة الاتصال يتقدم عليها):
+  - `MaxPoolSize=20` · `MinPoolSize=0` · `ConnectionTimeoutSeconds=15` ·
+    `CommandTimeoutSeconds=30` · `IdleLifetimeSeconds=300` · `HealthCheckTimeoutSeconds=5`.
+  - **معادلة التوسع الأفقي:** `MaxPoolSize × عدد النسخ` + هامش للإدارة/الهجرات يجب أن يبقى
+    داخل حد اتصالات `Postgres` (Supabase/Render). مثال: نسختان × 20 = 40 اتصالًا.
+  - `HealthCheckTimeoutSeconds` يقيّد `/readyz` كي لا ينتظر اتصالًا من مجمّع مستنزف
+    حتى مهلة الاتصال الكاملة؛ تجاوزه = `Unhealthy` بلا تفاصيل داخلية.
+  - القيم خارج الحدود ترفض الإقلاع برسالة تسمّي المفتاح (`validate` في `DatabasePoolOptions`).
 
 ### اقتران نشر `PR-4` + `PR-5` (تنبيهات — إلزامي)
 

@@ -1,3 +1,7 @@
+using DocGenerator.Application.Common;
+using Npgsql;
+using System.Data.Common;
+
 namespace DocGenerator.Infrastructure.Persistence;
 
 /// <summary>
@@ -64,5 +68,46 @@ public static class PostgresConnectionString
         if (value.Length == 0 || value.IndexOfAny([';', '=', '"']) < 0)
             return value;
         return "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+
+    /// <summary>
+    /// يطبّق حدود مجمّع الاتصالات (<see cref="DatabasePoolOptions"/>) **كقيم افتراضية**
+    /// على سلسلة اتصال بصيغة كلامية (بعد <see cref="Normalize"/>): المفاتيح المذكورة
+    /// صراحةً في السلسلة لا تُلمس، لأن المشغّل قد يضبطها وفق حدود المضيف
+    /// (<c>Supabase</c>/<c>Render</c>) أو يستخدم <c>Pooling=false</c> عمدًا.
+    ///
+    /// <para>
+    /// الغرض: منع «السلوك الافتراضي الغامض» تحت الحمل (مهل وحجم مجمّع غير مذكورة)
+    /// دون مصادرة قرار صريح. يرفض الإقلاع عند قيم خارج الحدود عبر
+    /// <see cref="DatabasePoolOptions.Validate"/>.
+    /// </para>
+    /// </summary>
+    public static string ApplyPoolDefaults(string connectionString, DatabasePoolOptions pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return connectionString;
+
+        pool.Validate();
+
+        var specified = new DbConnectionStringBuilder { ConnectionString = connectionString }
+            .Keys.Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+
+        if (!specified.Contains("Maximum Pool Size"))
+            builder.MaxPoolSize = pool.MaxPoolSize;
+        if (!specified.Contains("Minimum Pool Size"))
+            builder.MinPoolSize = pool.MinPoolSize;
+        if (!specified.Contains("Timeout"))
+            builder.Timeout = pool.ConnectionTimeoutSeconds;
+        if (!specified.Contains("Command Timeout"))
+            builder.CommandTimeout = pool.CommandTimeoutSeconds;
+        if (!specified.Contains("Connection Idle Lifetime"))
+            builder.ConnectionIdleLifetime = pool.IdleLifetimeSeconds;
+
+        return builder.ConnectionString;
     }
 }
