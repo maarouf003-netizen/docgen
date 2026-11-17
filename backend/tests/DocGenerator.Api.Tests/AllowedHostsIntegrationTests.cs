@@ -64,7 +64,7 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Production");
-            builder.UseSetting("AllowedHosts", AllowedList);
+            builder.UseSecureProductionDefaults(allowedHosts: AllowedList);
             // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري.
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));

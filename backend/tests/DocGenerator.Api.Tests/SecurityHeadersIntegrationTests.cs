@@ -18,7 +18,7 @@ public class SecurityHeadersIntegrationTests
 
     public SecurityHeadersIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private static void AssertSecurityHeaders(HttpResponseMessage response)
+    private static void AssertSecurityHeaders(HttpResponseMessage response, bool reportOnly = true)
     {
         Assert.Equal("nosniff", Single(response, "X-Content-Type-Options"));
         Assert.Equal("DENY", Single(response, "X-Frame-Options"));
@@ -28,11 +28,13 @@ public class SecurityHeadersIntegrationTests
             Single(response, "Permissions-Policy"));
         Assert.Equal("same-origin", Single(response, "Cross-Origin-Opener-Policy"));
         Assert.Equal("same-origin", Single(response, "Cross-Origin-Resource-Policy"));
-        // الافتراضي وضع المراقبة (Security:CspReportOnly=true) — الفرض على المخدّم الخاص فقط.
-        var csp = Single(response, "Content-Security-Policy-Report-Only");
+        // التطوير يراقب (Report-Only)، والإنتاج يفرض منذ P2-03 (CspReportOnly=false إلزامي).
+        var enforced = reportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy";
+        var opposite = reportOnly ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only";
+        var csp = Single(response, enforced);
         Assert.Contains("default-src 'self'", csp);
         Assert.Contains("frame-ancestors 'none'", csp);
-        Assert.False(response.Headers.Contains("Content-Security-Policy"));
+        Assert.False(response.Headers.Contains(opposite));
     }
 
     private static string Single(HttpResponseMessage response, string name)
@@ -90,7 +92,7 @@ public class SecurityHeadersIntegrationTests
         var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.False(response.Headers.TryGetValues("Access-Control-Allow-Origin", out _));
-        AssertSecurityHeaders(response);
+        AssertSecurityHeaders(response, reportOnly: false);
     }
 
     /// <summary>
@@ -108,6 +110,7 @@ public class SecurityHeadersIntegrationTests
         {
             builder.UseEnvironment("Production");
             // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري فقط.
+            builder.UseSecureProductionDefaults();
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
             // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):

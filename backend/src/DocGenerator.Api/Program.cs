@@ -355,6 +355,9 @@ try
     // التحقق من سياسة جمع تقارير CSP عند الإقلاع أيضًا: القيمة الخاطئة لم تعد تُتجاهل
     // بصمت (كانت التقارير تُفقد بلا أثر)، بل تمنع الإقلاع برسالة تسمّي المفتاح والمثال.
     CspSetup.Validate(security);
+    // P2-03: في Production لا يُقبل تشغيل منشور بلا HSTS/إعادة توجيه/CSP صارم/مضيفين صريحين
+    // أو بلا وسيلة موثوقة لمعرفة البروتوكول الأصلي خلف البروكسي — رفض إقلاع مقصود (fail-closed).
+    SecurityProductionPosture.Validate(builder.Environment, builder.Configuration, security);
     if (security.HstsEnabled)
     {
         // المدة و`preload` مستقلان عن التفعيل: `preload` التزام شبه دائم في قوائم المتصفحات،
