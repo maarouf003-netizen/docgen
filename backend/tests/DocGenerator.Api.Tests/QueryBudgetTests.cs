@@ -152,10 +152,18 @@ public class QueryBudgetTests
         var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var documentId = await factory.CreateDocumentAsync(lawyerToken);
 
-        // تعديل حقل لإنتاج مجموعة تغييرات حقلية (وإلا كانت الصفحة فارغة).
+        // تعديل عدة حقول لإنتاج مجموعة تغييرات حقلية (وإلا كانت الصفحة فارغة)،
+        // ولضمان أن أي استعلام لكل حقل يتجاوز السقف لا يمر بهوامش صغيرة.
         var update = await factory.ClientWithToken(lawyerToken).PutAsJsonAsync(
             $"/api/documents/{documentId}",
-            new { borrowerName = "مقترض محدَّث", contractType = "تعهد", amountNumeric = 500 });
+            new
+            {
+                borrowerName = "مقترض محدَّث",
+                applicant = "مدعٍ محدَّث",
+                court = "محكمة محدَّثة",
+                contractType = "تعهد",
+                amountNumeric = 750,
+            });
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
 
         var counter = factory.Services.GetRequiredService<QueryCounter>();
