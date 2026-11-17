@@ -1,19 +1,16 @@
 name: Security
 
-# P2-06 (الجزء الثاني): تحليل ساكن للكود (CodeQL).
-# ملاحظة: هذه الوظائف **إعلامية/حاجبة داخل سيرها** وليست ضمن البوابات الست المطلوبة
-# في حماية الفرع بعد؛ تُضاف إلى الحماية بعد ثبات تاريخ أخضر (قرار مالك).
-# Dependency review مؤجّل: GitHub Dependency graph غير مفعّل في المستودع (إجراء مالك).
+# P2-06: تحليل ساكن (CodeQL) + مراجعة اعتماديات الـPR.
+# CodeQL أصبح **بوابة مطلوبة** في حماية master: `CodeQL (csharp)` و
+# `CodeQL (javascript-typescript)`. لذلك **لا `paths-ignore`**: PR وثائقي يجب أن يُنتج
+# الفحصين وإلا بقي مطلوبًا معلّقًا إلى الأبد.
+# dependency-review إعلامي (غير مطلوب) ويعتمد على تفعيل GitHub Dependency graph.
 
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - ".github/CODEOWNERS"
   schedule:
     # فحص أسبوعي حتى لو لم يتغيّر الكود (قواعد CodeQL تُحدَّث).
     - cron: "17 3 * * 1"
@@ -63,6 +60,17 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-  # Dependency review معطّل: GitHub Dependency graph غير مفعّل في إعدادات المستودع
-  # (Settings → Security analysis)، والمكوّن يفشل بلا تفعيله. لا يمكن تفعيله من الكود.
-  # يُعاد تفعيل الوظيفة بعد تفعيل الميزة (إجراء مالك) — انظر docs/audit/57.
+  dependency-review:
+    name: Dependency review (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
