@@ -1,0 +1,45 @@
+version: 2
+
+# P7-04: تحديثات الاعتماديات الأسبوعية عبر Dependabot (نسخ .NET/الواجهة/Actions).
+# ملاحظة: «تحديثات الأمان» (Security updates) إعداد مستودع منفصل يُفعّله المالك من
+# Settings → Code security؛ هذا الملف يغطي تحديثات الإصدارات الدورية فقط.
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    groups:
+      dotnet-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    groups:
+      npm-production-minor-patch:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      npm-development-minor-patch:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
