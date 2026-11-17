@@ -527,7 +527,8 @@
 
 #### `P3-09` — ضبط الاتصال والـPool
 
-- **الحالة (2026-11-17):** **منفّذ آليًا — قياس الحمل متبقٍ.** أُضيف `Database:Pool`
+- **الحالة (2026-11-17):** **منفّذ آليًا — قياس الحمل متبقٍ.** PR
+  [`#194`](https://github.com/maarouf003-netizen/docgen/pull/194): أُضيف `Database:Pool`
   (`MaxPoolSize=20` · `MinPoolSize=0` · `ConnectionTimeoutSeconds=15` ·
   `CommandTimeoutSeconds=30` · `IdleLifetimeSeconds=300` · `HealthCheckTimeoutSeconds=5`)
   ويُطبَّق على سلسلة `Npgsql` **كافتراضات فقط**: أي مفتاح صريح في السلسلة (ومنها
