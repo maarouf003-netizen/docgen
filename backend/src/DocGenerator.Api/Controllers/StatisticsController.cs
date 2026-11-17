@@ -46,9 +46,10 @@ public class StatisticsController : ControllerBase
         branchId = 0;
         var own = User.GetBranchId();
         if (own is null)
+            // قراءة إحصاءات (D11): 403 لا 400 — الرقم يرسل الرسالة نفسها فالواجهة لا تتغير.
             return ApiProblem.Result(
                 HttpContext,
-                StatusCodes.Status400BadRequest,
+                StatusCodes.Status403Forbidden,
                 ApiErrorCodes.BranchRequired,
                 "الحساب غير مرتبط بفرع");
         branchId = own.Value;

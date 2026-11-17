@@ -45,7 +45,8 @@ public class DelegationsController : ControllerBase
 
     /// <summary>
     /// نطاق الرؤية (§7.1): رئيس بلا فرع مرفوض، ورئيس شعبة بلا شعبة مرفوض —
-    /// بلا تدهور لنطاق أوسع.
+    /// بلا تدهور لنطاق أوسع. **غياب الفرع هنا رفض صلاحية `403`** لأنه يمنع قراءة
+    /// نطاق غير محدد (قرار `D11` الموحّد 2026-11-17: كتابة `400`/قراءة `403`).
     /// </summary>
     private ActionResult? RequireApproverScope(out int branchId, out int? ownerSectionId)
     {
@@ -55,7 +56,7 @@ public class DelegationsController : ControllerBase
         if (branch is null)
             return ApiProblem.Result(
                 HttpContext,
-                StatusCodes.Status400BadRequest,
+                StatusCodes.Status403Forbidden,
                 ApiErrorCodes.BranchRequired,
                 "الرئيس دون فرع لا يمكنه الاطلاع على طلبات الإنابة");
         branchId = branch.Value;

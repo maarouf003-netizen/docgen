@@ -153,9 +153,10 @@ public class AppealsController : ControllerBase
             // رئيس بلا فرع لا يملك نطاق رؤية محددًا — يُرفض بدل تسريب كل الاستئنافات.
             var branch = User.GetBranchId();
             if (branch is null)
+                // قراءة (D11): غياب نطاق الرؤية = رفض صلاحية 403 لا طلب ناقص 400.
                 return ApiProblem.Result(
                     HttpContext,
-                    StatusCodes.Status400BadRequest,
+                    StatusCodes.Status403Forbidden,
                     ApiErrorCodes.BranchRequired,
                     "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات");
             int? section = null;

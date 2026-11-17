@@ -242,9 +242,9 @@ public class DelegationsIntegrationTests
         Assert.NotNull(count);
         Assert.True(count!.Count >= 1);
 
-        // المحامي ممنوع (403). حارس «رئيس بلا فرع» (400) غير قابل للتجسيد عبر
-        // EF (قيد القاعدة) — تغطيته في `DelegationPendingCountBranchGuardTests`
-        // بهوية مطالبات مصنوعة.
+        // المحامي ممنوع (403). حارس «رئيس بلا فرع» أصبح 403 أيضًا (D11 الموحّد)،
+        // وغير قابل للتجسيد عبر EF (قيد القاعدة) — تغطيته في
+        // `DelegationPendingCountBranchGuardTests` و`D11BranchlessReadContractTests`.
         Assert.Equal(HttpStatusCode.Forbidden, (await lawyer1.GetAsync("/api/delegations/pending-count")).StatusCode);
     }
 
