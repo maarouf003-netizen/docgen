@@ -58,7 +58,7 @@ public sealed class StatisticsBranchGuardTests
 
     private static void AssertBadRequestWithBranchMessage<T>(ActionResult<T> result)
     {
-        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        var bad = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal((int)HttpStatusCode.BadRequest, bad.StatusCode);
         // يُقرأ النص بعد فكّ التسلسل: المسرِّع الافتراضي يهرّب العربية (`\uXXXX`).
         using var json = System.Text.Json.JsonDocument.Parse(

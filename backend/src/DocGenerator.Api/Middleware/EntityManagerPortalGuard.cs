@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -47,8 +48,11 @@ public sealed class EntityManagerPortalGuard
                 // RF-005: توثيق الرفض (مرشح لمسح المعرفات) — مخنوق لكل مستخدم حتى لا
                 // يتحول التسجيل نفسه لمتجه فيض على جدول التدقيق.
                 await LogForbiddenAsync(context, path);
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new { message = "غير مسموح خارج مسارات بوابة الجهة" });
+                await ApiProblem.WriteAsync(
+                    context,
+                    StatusCodes.Status403Forbidden,
+                    ApiErrorCodes.PortalScopeForbidden,
+                    "غير مسموح خارج مسارات بوابة الجهة");
                 return;
             }
         }

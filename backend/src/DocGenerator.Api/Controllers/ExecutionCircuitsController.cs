@@ -102,7 +102,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -118,7 +122,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -134,7 +142,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -151,7 +163,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -209,7 +225,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -228,7 +248,11 @@ public class ExecutionCircuitsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -312,7 +336,11 @@ public class PendingRegistrationsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 }

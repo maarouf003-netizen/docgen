@@ -30,7 +30,12 @@ public class SectionsController : ControllerBase
     public async Task<IActionResult> List([FromQuery] int? branchId, CancellationToken ct)
     {
         if (branchId is null)
-            return BadRequest(new { message = "حدد الفرع لعرض شعبه" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "حدد الفرع لعرض شعبه",
+                field: "branchId");
         return Ok(await _sections.ListSectionsAsync(branchId.Value, ct));
     }
 
@@ -47,7 +52,11 @@ public class SectionsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -71,7 +80,11 @@ public class SectionsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 

@@ -45,4 +45,26 @@ public static class ApiErrorMessages
         var message = LogSanitizer.SanitizeForResponse(error.Message).Trim();
         return message.Length == 0 ? Fallback : message;
     }
+
+    /// <summary>
+    /// يُرجع نص خطأ حدودي جاهزًا للعرض من مصدر ليس استثناءً (مثل رسائل
+    /// <c>ModelState</c>): يمرّ بالتطهير نفسه، ويُستبدل بالنص العربي البديل إن
+    /// بقي فارغًا **أو بلا حرف عربي** — فرسائل ربط النموذج الإطارية إنجليزية
+    /// (<c>The JSON value could not be converted…</c>) ولا يجوز أن تصل للمستخدم.
+    ///
+    /// <para>
+    /// هذا يختلف عن <see cref="From"/> عمدًا: ذاك يبقي الرسائل الإنجليزية الخالصة
+    /// لأنها عيوب برمجة داخلية (كـ<c>ArgumentNullException</c>) يجب أن تظهر في
+    /// الاختبارات لا أن تُقنَّع؛ أما هنا فالمصدر مدخلات مستخدم لا رسائل مطوّر.
+    /// </para>
+    /// </summary>
+    public static string FromText(string? text)
+    {
+        var message = LogSanitizer.SanitizeForResponse(text ?? string.Empty).Trim();
+        return message.Length == 0 || !ContainsArabic(message) ? Fallback : message;
+    }
+
+    /// <summary>وجود حرف عربي في النص (نطاق Unicode العربي الأساسي + الملحقات).</summary>
+    private static bool ContainsArabic(string text)
+        => text.Any(ch => ch is >= '\u0600' and <= '\u06FF' or >= '\u0750' and <= '\u077F');
 }

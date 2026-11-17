@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using DocGenerator.Api.Filters;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common.Options;
 using Microsoft.AspNetCore.Authorization;
@@ -42,9 +43,8 @@ public class ClientErrorsController : ControllerBase
     [ResponseCache(NoStore = true)]
     public IActionResult Report([FromBody] ClientErrorReport report)
     {
-        if (report is null || !ModelState.IsValid)
-            return ValidationProblem(ModelState);
-
+        // فشل ربط النموذج يُعالجه `InvalidModelStateResponseFactory` الموحّد (P4-03)
+        // قبل الوصول إلى هنا، فلا كتلة تحقق يدوية مكررة في المتحكم.
         // قيود الحجم قابلة للضبط من الإعدادات (Logging:File) — ترصّ هنا قبل النقر، لا القطع التلقائي فقط.
         // المسار بلا استعلام/مقتطف (قد يحمل الاستعلام توكنات أو بيانات شخصية) ثم قصّ.
         // أسطر الرسالة تُسطَّح لمسافة: سطر السجل النصي أحادي السطر، والمحارف السطرية فيه
@@ -60,8 +60,11 @@ public class ClientErrorsController : ControllerBase
         var countKey = $"{CachePrefix}{userId}";
         var current = _cache.Get<int>(countKey);
         if (current >= _options.ClientErrorPerMinuteLimit)
-            return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { message = "تم تجاوز حد الإبلاغات المسموحة في هذه الدقيقة" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status429TooManyRequests,
+                ApiErrorCodes.ClientErrorLimit,
+                "تم تجاوز حد الإبلاغات المسموحة في هذه الدقيقة");
 
         _cache.Set(countKey, current + 1, TimeSpan.FromMinutes(1));
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DocGenerator.Api.Filters;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -54,7 +55,12 @@ public sealed class CspReportsController : ControllerBase
         }
         catch (JsonException)
         {
-            return BadRequest(new { message = "تقرير CSP غير صالح" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "تقرير CSP غير صالح",
+                field: "body");
         }
 
         using (document)

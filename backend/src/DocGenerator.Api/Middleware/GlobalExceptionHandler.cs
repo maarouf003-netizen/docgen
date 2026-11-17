@@ -168,16 +168,25 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             _ => "حدث خطأ غير متوقع في الخادم",
         };
 
-        httpContext.Response.StatusCode = statusCode;
         var code = exception switch
         {
             NumberReuseWarningException => "number_reuse_warning",
-            DocumentConflictException conflict => conflict.Code,
-            _ => null,
+            DocumentConflictException conflict when !string.IsNullOrWhiteSpace(conflict.Code) => conflict.Code,
+            DbUpdateConcurrencyException => ApiErrorCodes.ConcurrencyConflict,
+            DbUpdateException when isUniqueViolation => ApiErrorCodes.UniqueViolation,
+            ArgumentException => ApiErrorCodes.ValidationFailed,
+            KeyNotFoundException => ApiErrorCodes.NotFound,
+            UnauthorizedAccessException => ApiErrorCodes.Forbidden,
+            _ => ApiProblem.DefaultCodeFor(statusCode),
         };
         var warningToken = exception is NumberReuseWarningException warning ? warning.WarningToken : null;
-        await httpContext.Response.WriteAsJsonAsync(
-            new { message, code, warningToken }, cancellationToken);
+        await ApiProblem.WriteAsync(
+            httpContext,
+            statusCode,
+            code,
+            message,
+            warningToken: warningToken,
+            cancellationToken: cancellationToken);
         return true;
     }
 

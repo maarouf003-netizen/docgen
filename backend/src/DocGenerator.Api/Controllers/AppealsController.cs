@@ -105,7 +105,11 @@ public class AppealsController : ControllerBase
     {
         var doc = await _documents.GetAsync(documentId, ct);
         if (doc is null)
-            return NotFound(new { message = "الملف غير موجود" });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            "الملف غير موجود");
         if (!await CanAccessOrFollowAsync(doc))
             return Forbid();
         try
@@ -114,7 +118,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -145,7 +153,11 @@ public class AppealsController : ControllerBase
             // رئيس بلا فرع لا يملك نطاق رؤية محددًا — يُرفض بدل تسريب كل الاستئنافات.
             var branch = User.GetBranchId();
             if (branch is null)
-                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
+                return ApiProblem.Result(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    ApiErrorCodes.BranchRequired,
+                    "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات");
             int? section = null;
             if (IsSubHead)
             {
@@ -236,7 +248,11 @@ public class AppealsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -253,7 +269,11 @@ public class AppealsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -265,7 +285,11 @@ public class AppealsController : ControllerBase
             return Forbid();
         var branchId = User.GetBranchId();
         if (branchId is null)
-            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه نقل الاستئنافات" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الرئيس دون فرع لا يمكنه نقل الاستئنافات");
         int? section = null;
         if (IsSubHead)
         {
@@ -285,7 +309,11 @@ public class AppealsController : ControllerBase
             return Forbid();
         var branchId = User.GetBranchId();
         if (branchId is null)
-            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات");
         int? section = null;
         if (IsSubHead)
         {
@@ -309,7 +337,11 @@ public class AppealsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -324,7 +356,11 @@ public class AppealsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -339,7 +375,11 @@ public class AppealsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -357,7 +397,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -396,7 +440,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 

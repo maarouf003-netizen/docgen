@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -144,7 +145,9 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
         var alert = await _alerts.GetDetailsAsync(id, Actor, ct);
-        return alert is null ? NotFound(new { message = NotFoundMessage }) : Ok(alert);
+        return alert is null
+            ? ApiProblem.Result(HttpContext, StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, NotFoundMessage)
+            : Ok(alert);
     }
 
     /// <summary>
@@ -155,7 +158,9 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Recipients(int id, CancellationToken ct)
     {
         var recipients = await _alerts.GetRecipientsAsync(id, Actor, ct);
-        return recipients is null ? NotFound(new { message = NotFoundMessage }) : Ok(recipients);
+        return recipients is null
+            ? ApiProblem.Result(HttpContext, StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, NotFoundMessage)
+            : Ok(recipients);
     }
 
     /// <summary>
@@ -192,7 +197,13 @@ public class AlertsController : ControllerBase
         try
         {
             var ok = await _alerts.MarkReadAsync(id, Actor, ct);
-            return ok ? NoContent() : NotFound(new { message = NotFoundMessage });
+            return ok
+                ? NoContent()
+                : ApiProblem.Result(
+                    HttpContext,
+                    StatusCodes.Status404NotFound,
+                    ApiErrorCodes.NotFound,
+                    NotFoundMessage);
         }
         catch (UnauthorizedAccessException)
         {

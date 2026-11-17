@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -69,7 +70,11 @@ public class ReviewLettersController : ControllerBase
         if (!IsHeadOrSubHead)
             return Forbid();
         if (BranchId is null)
-            return BadRequest(new { message = "الرئيس دون فرع" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الرئيس دون فرع");
         if (IsSubHead && SectionId is null)
             return Forbid();
 
@@ -115,7 +120,11 @@ public class ReviewLettersController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanCreateReviewLetters))
             return Forbid();
         if (BranchId is null)
-            return BadRequest(new { message = "المحامي دون فرع لا يمكنه تسطير مطالعات" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "المحامي دون فرع لا يمكنه تسطير مطالعات");
 
         var letter = await _letters.CreateAsync(request, UserId, ActorName, BranchId.Value, ct);
         return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
@@ -148,7 +157,11 @@ public class ReviewLettersController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanReplyReviewLetters))
             return Forbid();
         if (BranchId is null)
-            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الرد على المطالعات" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الرئيس دون فرع لا يمكنه الرد على المطالعات");
         if (IsSubHead && SectionId is null)
             return Forbid();
 

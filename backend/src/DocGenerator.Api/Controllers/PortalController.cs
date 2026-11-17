@@ -170,7 +170,11 @@ public class PortalController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -195,7 +199,11 @@ public class PortalController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -210,7 +218,11 @@ public class PortalController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -225,7 +237,11 @@ public class PortalController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 

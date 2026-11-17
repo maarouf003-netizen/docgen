@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -45,8 +46,10 @@ public class ExceptionHandlerIntegrationTests
         var response = await client.GetAsync("/api/dashboard");
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(ApiProblem.ContentType, response.Content.Headers.ContentType?.MediaType);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(StatusCodes.Status500InternalServerError, doc.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal(ApiErrorCodes.ServerError, doc.RootElement.GetProperty("code").GetString());
         var message = doc.RootElement.GetProperty("message").GetString();
         Assert.False(string.IsNullOrWhiteSpace(message));
     }

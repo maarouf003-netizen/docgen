@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -26,12 +27,13 @@ public static class RateLimitingSetup
     public static void Configure(RateLimiterOptions options)
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.OnRejected = async (context, cancellationToken) =>
-        {
-            context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            await context.HttpContext.Response.WriteAsJsonAsync(
-                new { message = RejectionMessage }, cancellationToken);
-        };
+        options.OnRejected = async (context, cancellationToken)
+            => await ApiProblem.WriteAsync(
+                context.HttpContext,
+                StatusCodes.Status429TooManyRequests,
+                ApiErrorCodes.RateLimited,
+                RejectionMessage,
+                cancellationToken: cancellationToken);
 
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         {

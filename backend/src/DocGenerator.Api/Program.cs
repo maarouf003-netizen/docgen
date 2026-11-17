@@ -14,6 +14,7 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -183,6 +184,41 @@ try
             .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
             .AllowAnyHeader().AllowAnyMethod().AllowCredentials()))
         .AddControllers();
+
+    // P4-03: كل 400 يخرج من MVC (فشل ربط النموذج/JSON غير صالح) يحمل العقد الموحّد
+    // نفسه الذي تكتبه المتحكمات والوسائط — لا ValidationProblemDetails إطاري برسائل
+    // إنجليزية وحقول مختلفة. الرسائل غير العربية (نصوص الإطار) تُستبدل بالبديل العربي.
+    builder.Services.Configure<ApiBehaviorOptions>(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var fieldErrors = context.ModelState
+                .Where(entry => entry.Value is { Errors.Count: > 0 })
+                .Select(entry => new KeyValuePair<string, string[]>(
+                    ApiProblem.NormalizeFieldName(entry.Key),
+                    entry.Value!.Errors
+                        .Select(error => ApiErrorMessages.FromText(error.ErrorMessage))
+                        .ToArray()))
+                // مفاتيح ModelState قد تختلف بالحالة فقط ("Year"/"year") بعد التطبيع،
+                // فتُدمج بدل أن يرمي Dictionary بتكرار مفتاح.
+                .GroupBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(group => new KeyValuePair<string, string[]>(
+                    group.Key,
+                    group.SelectMany(pair => pair.Value).ToArray()))
+                .ToArray();
+
+            var first = fieldErrors.FirstOrDefault();
+            var message = first.Value is { Length: > 0 } values ? values[0] : ApiErrorMessages.Fallback;
+
+            return ApiProblem.Result(
+                context.HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                message,
+                field: first.Key,
+                errors: fieldErrors.Length > 0 ? new Dictionary<string, string[]>(fieldErrors) : null);
+        };
+    });
 
     builder.Services.AddMemoryCache();
     builder.Services.AddSingleton<DocGenerator.Api.Security.ExportConcurrencyGuard>();
