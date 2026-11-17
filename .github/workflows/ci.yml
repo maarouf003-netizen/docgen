@@ -139,9 +139,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: npm audit (high+)
-        working-directory: frontend
-        run: npm audit --audit-level=high
+      - name: Self-test npm audit guard
+        run: node scripts/npm-audit-guard.mjs --self-test
+      # P2-06: بوابة npm audit بدل `npm audit --audit-level=high` الخام: تفشل على أي
+      # High/Critical غير مستثنى، وتقبل استثناءً مؤقتًا مبرّرًا بتاريخ انتهاء فقط
+      # (للثغرات التي لا إصدار مُصلَح لها بعد)، وتفشل إذا انتهى/صار قديمًا.
+      - name: npm audit (high+, documented exceptions only)
+        run: node scripts/npm-audit-guard.mjs
       # P2-06: SBOM (CycloneDX) لكل من الخلفية والواجهة، يُرفع كأثر للمراجعة
       # (لا بوابة عتبة؛ الهدف توفّر جرد اعتماديات لكل إصدار).
       - name: SBOM (.NET, CycloneDX)

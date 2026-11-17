@@ -427,6 +427,13 @@
     `0` دائمًا) إلى بوابة فعلية: `High`/`Critical` ⇒ فشل، وشدّة مجهولة ⇒ fail-closed،
     مع اختبار ذاتي على 5 عيّنات ثابتة.
   - `npm audit --audit-level=high` باقٍ (بوابة حقيقية أصلًا).
+  - **`P2-06` (2026-11-17):** بوابة `npm audit` صارت `scripts/npm-audit-guard.mjs`:
+    تفشل على أي `High/Critical` غير مستثنى، وتقبل استثناءً **مبرّرًا بتاريخ انتهاء** فقط
+    (`scripts/npm-audit-allowlist.json`)، وتفشل إذا انتهى/صار قديمًا، مع `--self-test`.
+    السبب: `GHSA-fc5q-39xc-vjpf` (`picomatch` ReDoS عبر سلسلة `Vite`/`Vitest` التطويرية)
+    بلا إصدار مُصلَح (أحدث إصدار 4.0.7 داخل المدى)، وإصلاح `npm` المقترح يخفض `vitest`
+    لإصدار أقدم. الاستثناء ينتهي 2026-12-17. التفاصيل:
+    `docs/audit/56-npm-audit-allowlist-20261117.md`.
   - SBOM (CycloneDX 6.3.1 للخلفية، `@cyclonedx/cyclonedx-npm` للواجهة) يُرفع كأثر
     `sbom` في وظيفة `audit` (30 يومًا).
   **المتبقي (البند الكامل):** CodeQL/Semgrep (SAST)، DAST، Trivy للصورة، وبوابة
