@@ -1,8 +1,9 @@
 name: Security
 
-# P2-06 (الجزء الثاني): تحليل ساكن للكود (CodeQL) ومراجعة اعتماديات الـPR.
+# P2-06 (الجزء الثاني): تحليل ساكن للكود (CodeQL).
 # ملاحظة: هذه الوظائف **إعلامية/حاجبة داخل سيرها** وليست ضمن البوابات الست المطلوبة
 # في حماية الفرع بعد؛ تُضاف إلى الحماية بعد ثبات تاريخ أخضر (قرار مالك).
+# Dependency review مؤجّل: GitHub Dependency graph غير مفعّل في المستودع (إجراء مالك).
 
 on:
   push:
@@ -62,17 +63,6 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-  dependency-review:
-    name: Dependency review (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          comment-summary-in-pr: never
+  # Dependency review معطّل: GitHub Dependency graph غير مفعّل في إعدادات المستودع
+  # (Settings → Security analysis)، والمكوّن يفشل بلا تفعيله. لا يمكن تفعيله من الكود.
+  # يُعاد تفعيل الوظيفة بعد تفعيل الميزة (إجراء مالك) — انظر docs/audit/57.
