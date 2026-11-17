@@ -578,7 +578,8 @@
     وظائف `backend`/`backend-postgres`/`migration-guard`/`audit`/`flake-sentinel`؛ أي
     انحراف يفشل بـ`NU1004` (تحقق سلبي موثّق). التفاصيل:
     `docs/audit/30-p4-06b-lockfiles-20261116.md`.
-  - **`P4-06c` (2026-11-17):** بوابة `dotnet format --verify-no-changes` مثبتة في وظيفة
+  - **`P4-06c` (2026-11-17):** PR
+    [`#189`](https://github.com/maarouf003-netizen/docgen/pull/189) — بوابة `dotnet format --verify-no-changes` مثبتة في وظيفة
     `backend` بعد البناء. القياس الأول: 69/721 ملفًا (BOM/سطر أخير/تقسيم تهيئات/إزاحة
     عبارات المستوى الأعلى، بلا تغيير دلالي) ⇒ طُبِّع الأساس مرة واحدة (68 ملفًا تنسيقيًا)
     وأُضيف `.gitattributes` (`eol=lf`) و`end_of_line = lf` لثبات النتيجة بين المنصّات.
