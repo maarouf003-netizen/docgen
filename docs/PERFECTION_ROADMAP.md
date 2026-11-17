@@ -548,7 +548,8 @@
   **متبقٍ:** `FluentValidation`/`IValidator<T>` موحّد، و`ProblemDetails` بشكل
   `code/field/message`، وربط الواجهة؛ وتوحيد «رئيس بلا فرع» (`D11` يفرّق كتابة `400`/
   قراءة `403` وبعض العدّادات ما زالت `400`) — قرار مالك قبل أي تغيير.
-- **`P4-03` (تكملة، 2026-11-17):** عقد الخطأ الموحّد منفّذ — `ApiProblem`
+- **`P4-03` (تكملة، 2026-11-17):** PR
+  [`#191`](https://github.com/maarouf003-netizen/docgen/pull/191) — عقد الخطأ الموحّد منفّذ — `ApiProblem`
   (`application/problem+json`) بمفاتيح `type/status/code/message/traceId` وامتدادات
   `field/errors/warningToken`، في **كل** منتج خطأ: المتحكمات، الوسائط والمرشحات،
   معالج الاستثناءات، وربط النموذج الإطاري (`InvalidModelStateResponseFactory`)، مع
