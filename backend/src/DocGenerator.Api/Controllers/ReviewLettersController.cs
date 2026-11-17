@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -18,17 +19,20 @@ namespace DocGenerator.Api.Controllers;
 public class ReviewLettersController : ControllerBase
 {
     private readonly IReviewLetterService _letters;
+    private readonly IUserCapabilities _capabilities;
 
-    public ReviewLettersController(IReviewLetterService letters)
+    public ReviewLettersController(IReviewLetterService letters, IUserCapabilities capabilities)
     {
         _letters = letters;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
     private UserRole Role => User.GetRoleEnum();
-    private bool IsLawyer => Role == UserRole.Lawyer;
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
+    private bool IsLawyer => _capabilities.Has(User, UserCapability.IsLawyer);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
     private int? BranchId => User.GetBranchId();
     private int? SectionId => User.GetSectionId();
     private int UserId => User.GetUserId();
@@ -40,7 +44,7 @@ public class ReviewLettersController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
         var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
             administrativeBranch, ct, SectionId);
@@ -51,7 +55,7 @@ public class ReviewLettersController : ControllerBase
     [HttpGet("filter-options")]
     public async Task<IActionResult> GetFilterOptions(CancellationToken ct)
     {
-        if (!RolePermissions.CanSeeAdministrativeBranch(Role))
+        if (!_capabilities.Has(User, UserCapability.CanSeeAdministrativeBranch))
             return Ok(new { administrativeBranches = new List<string>() });
 
         var branches = await _letters.GetAdministrativeBranchesAsync(ct);
@@ -66,7 +70,7 @@ public class ReviewLettersController : ControllerBase
             return Forbid();
         if (BranchId is null)
             return BadRequest(new { message = "الرئيس دون فرع" });
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
 
         var count = await _letters.CountPendingForHeadAsync(BranchId.Value, SectionId, ct);
@@ -108,7 +112,7 @@ public class ReviewLettersController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateReviewLetterRequest request,
         CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateReviewLetters(Role))
+        if (!_capabilities.Has(User, UserCapability.CanCreateReviewLetters))
             return Forbid();
         if (BranchId is null)
             return BadRequest(new { message = "المحامي دون فرع لا يمكنه تسطير مطالعات" });
@@ -129,7 +133,7 @@ public class ReviewLettersController : ControllerBase
     public async Task<IActionResult> AddAddendum(int id,
         [FromBody] AddReviewLetterAddendumRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateReviewLetters(Role))
+        if (!_capabilities.Has(User, UserCapability.CanCreateReviewLetters))
             return Forbid();
 
         var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
@@ -141,11 +145,11 @@ public class ReviewLettersController : ControllerBase
     public async Task<IActionResult> Reply(int id, [FromBody] ReplyReviewLetterRequest request,
         CancellationToken ct)
     {
-        if (!RolePermissions.CanReplyReviewLetters(Role))
+        if (!_capabilities.Has(User, UserCapability.CanReplyReviewLetters))
             return Forbid();
         if (BranchId is null)
             return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الرد على المطالعات" });
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
 
         var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct, Role, SectionId);

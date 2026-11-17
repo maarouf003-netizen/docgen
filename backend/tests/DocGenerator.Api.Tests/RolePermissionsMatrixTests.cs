@@ -56,6 +56,7 @@ public sealed class RolePermissionsMatrixTests
         new(nameof(RolePermissions.IsHead), UserRole.Head),
         new(nameof(RolePermissions.IsSubHead), UserRole.SubHead),
         new(nameof(RolePermissions.IsAdmin), UserRole.Admin),
+        new(nameof(RolePermissions.IsEntityManager), UserRole.EntityManager),
 
         // ── ملفات: كتابة/حالة/حذف ──
         new(nameof(RolePermissions.CanEditDocuments), UserRole.Lawyer),
@@ -140,7 +141,7 @@ public sealed class RolePermissionsMatrixTests
         new(nameof(RolePermissions.CanManageExecutionCircuits), UserRole.Head, UserRole.SubHead),
     ];
 
-    /// <summary>كل خلية كحالة اختبار مستقلة: 41 قدرة × 6 أدوار = 246 خلية.</summary>
+    /// <summary>كل خلية كحالة اختبار مستقلة: 42 قدرة × 6 أدوار = 252 خلية.</summary>
     public static TheoryData<UserRole, string, bool> Cells
     {
         get
@@ -268,11 +269,15 @@ public sealed class RolePermissionsMatrixTests
     /// البوابة الخارجية: مندوب الجهة يحمل سطح البوابة وحده
     /// (<see cref="RolePermissions.CanUseDelegatePortal"/> + كتابة مراسلاته)،
     /// وأي قدرة أخرى تفتح له مسارًا داخليًا = ثغرة سلطة.
+    /// <para>
+    /// تُستثنى هوية الدور <see cref="RolePermissions.IsEntityManager"/> (تصف الدور نفسه).
+    /// </para>
     /// </summary>
     [Fact]
     public void EntityManager_HoldsOnlyThePortalSurface()
     {
         var held = Rows
+            .Where(row => row.Name != nameof(RolePermissions.IsEntityManager))
             .Where(row => row.Holds(UserRole.EntityManager))
             .Select(row => row.Name)
             .OrderBy(name => name, StringComparer.Ordinal)

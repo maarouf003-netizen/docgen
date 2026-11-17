@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
@@ -22,22 +23,26 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly IExcelExportService _excel;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IUserCapabilities _capabilities;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
         Application.Common.Interfaces.IRepository<Domain.Entities.Branch> branches,
         IExcelExportService excel,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IUserCapabilities capabilities)
     {
         _circuits = circuits;
         _branches = branches;
         _excel = excel;
         _clock = clock;
         _timeZone = timeZone;
+        _capabilities = capabilities;
     }
 
-    private UserRole Role => User.GetRoleEnum();
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
     private string? ActorName => User.Identity?.Name;
     /// <summary>
     /// نطاق المالك المشتق خادميًا (قرار §2.21): الفرع من الرمز، والشعبة من
@@ -48,14 +53,14 @@ public class ExecutionCircuitsController : ControllerBase
     {
         branchId = 0;
         ownerSectionId = null;
-        if (!RolePermissions.CanManageExecutionCircuits(Role))
+        if (!_capabilities.Has(User, UserCapability.CanManageExecutionCircuits))
             return Forbid();
         var own = User.GetBranchId();
         if (own is null)
             // S6.b: غياب سياق التفويض (claim الفرع) فشل تفويض لا طلب مشوَّه.
             return Forbid();
         branchId = own.Value;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             var section = User.GetSectionId();
             if (section is null)
@@ -158,9 +163,9 @@ public class ExecutionCircuitsController : ControllerBase
         if (branchId is null)
             return Forbid();
         // المحامي يرى كل دوائر الفرع (قرار §2.11)؛ الرئيس دوائر نطاقه فقط.
-        var limitToOwner = Role is UserRole.Head or UserRole.SubHead;
+        var limitToOwner = IsHeadOrSubHead;
         var ownerSectionId = limitToOwner ? User.GetSectionId() : null;
-        if (limitToOwner && Role == UserRole.SubHead && ownerSectionId is null)
+        if (limitToOwner && IsSubHead && ownerSectionId is null)
             return Forbid();
         return Ok(await _circuits.ListForLawyerAsync(branchId.Value, ownerSectionId, limitToOwner, ct));
     }
@@ -241,7 +246,7 @@ public class ExecutionCircuitsController : ControllerBase
     [Authorize(Roles = "manager,admin,head,subhead")]
     public async Task<IActionResult> Stats([FromQuery] int? branchId, CancellationToken ct)
     {
-        if (RolePermissions.HasFullAccess(Role))
+        if (_capabilities.Has(User, UserCapability.HasFullAccess))
             return Ok(await _circuits.CircuitStatsAsync(branchId, null, true, ct));
         var error = RequireOwnerScope(out var own, out var ownerSectionId);
         if (error is not null) return error;
@@ -258,7 +263,7 @@ public class ExecutionCircuitsController : ControllerBase
     public async Task<IActionResult> ExportStats([FromQuery] int? branchId, CancellationToken ct)
     {
         List<CircuitStatsDto> rows;
-        if (RolePermissions.HasFullAccess(Role))
+        if (_capabilities.Has(User, UserCapability.HasFullAccess))
         {
             rows = await _circuits.CircuitStatsAsync(branchId, null, true, ct);
         }
@@ -287,7 +292,6 @@ public class PendingRegistrationsController : ControllerBase
         _circuits = circuits;
     }
 
-    private UserRole Role => User.GetRoleEnum();
     private string? ActorName => User.Identity?.Name;
 
     [HttpGet("my-pending-registrations")]

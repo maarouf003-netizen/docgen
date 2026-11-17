@@ -1,7 +1,7 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,18 +13,21 @@ namespace DocGenerator.Api.Controllers;
 public class UserManagementController : ControllerBase
 {
     private readonly IUserManagementService _users;
+    private readonly IUserCapabilities _capabilities;
 
-    public UserManagementController(IUserManagementService users)
+    public UserManagementController(
+        IUserManagementService users, IUserCapabilities capabilities)
     {
         _users = users;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool CanManageBranchLawyers => RolePermissions.CanManageBranchLawyers(Role);
-    private bool CanManageUsers => RolePermissions.CanManageUsers(Role);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool CanManageBranchLawyers =>
+        _capabilities.Has(User, UserCapability.CanManageBranchLawyers);
+    private bool CanManageUsers => _capabilities.Has(User, UserCapability.CanManageUsers);
 
     [HttpGet]
     public async Task<IActionResult> ListUsers(CancellationToken ct)

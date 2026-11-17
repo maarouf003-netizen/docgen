@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -19,21 +20,27 @@ public class AppealsController : ControllerBase
 {
     private readonly IDocumentAppealService _appeals;
     private readonly IDocumentService _documents;
+    private readonly IUserCapabilities _capabilities;
 
-    public AppealsController(IDocumentAppealService appeals, IDocumentService documents)
+    public AppealsController(
+        IDocumentAppealService appeals,
+        IDocumentService documents,
+        IUserCapabilities capabilities)
     {
         _appeals = appeals;
         _documents = documents;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
-    private bool IsHead => Role == UserRole.Head;
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool CanManageAppeals => RolePermissions.CanManageAppeals(Role);
-    private bool CanAssignAppeals => RolePermissions.CanAssignAppeals(Role);
+    private bool HasFullAccess => _capabilities.Has(User, UserCapability.HasFullAccess);
+    private bool IsLawyer => _capabilities.Has(User, UserCapability.IsLawyer);
+    private bool IsHead => _capabilities.Has(User, UserCapability.IsHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool CanManageAppeals => _capabilities.Has(User, UserCapability.CanManageAppeals);
+    private bool CanAssignAppeals => _capabilities.Has(User, UserCapability.CanAssignAppeals);
 
     /// <summary>
     /// قاعدة الوصول للملف بالنطاق (§5 + الاستثناء القرائي 22′): الإدارة (الكل)؛
@@ -43,17 +50,17 @@ public class AppealsController : ControllerBase
     private async Task<bool> CanAccessDocumentAsync(DocGenerator.Application.DTOs.DocumentResponse doc)
     {
         if (HasFullAccess) return true;
-        if (Role == UserRole.Lawyer)
+        if (IsLawyer)
             return doc.CreatedById == User.GetUserId();
         if (doc.BranchId != User.GetBranchId())
             return false;
-        if (Role == UserRole.Head)
+        if (IsHead)
         {
             if (doc.ExecutionCircuitId is null || !doc.SectionId.HasValue)
                 return true;
             return await _appeals.HasForwardedAppealAsync(doc.Id);
         }
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
             return doc.SectionId.HasValue && doc.SectionId == User.GetSectionId();
         return false;
     }
@@ -76,7 +83,7 @@ public class AppealsController : ControllerBase
         var doc = appeal.Document;
         if (doc.BranchId != User.GetBranchId())
             return false;
-        if (Role == UserRole.Head)
+        if (IsHead)
         {
             if (doc.ExecutionCircuitId is null || doc.ExecutionCircuit?.SectionId is null)
                 return true;
@@ -84,7 +91,7 @@ public class AppealsController : ControllerBase
             return appeal.Status == AppealStatusCatalog.Pending
                 && appeal.ForwardState == AppealForwardCatalog.ForwardedToHead;
         }
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
             return doc.ExecutionCircuitId is not null
                 && doc.ExecutionCircuit?.SectionId == User.GetSectionId();
         return false;
@@ -140,7 +147,7 @@ public class AppealsController : ControllerBase
             if (branch is null)
                 return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
             int? section = null;
-            if (Role == UserRole.SubHead)
+            if (IsSubHead)
             {
                 section = User.GetSectionId();
                 if (section is null)
@@ -260,7 +267,7 @@ public class AppealsController : ControllerBase
         if (branchId is null)
             return BadRequest(new { message = "الرئيس دون فرع لا يمكنه نقل الاستئنافات" });
         int? section = null;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             section = User.GetSectionId();
             if (section is null)
@@ -280,7 +287,7 @@ public class AppealsController : ControllerBase
         if (branchId is null)
             return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
         int? section = null;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             section = User.GetSectionId();
             if (section is null)

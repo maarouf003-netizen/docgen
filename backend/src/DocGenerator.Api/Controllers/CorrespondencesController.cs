@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -20,15 +21,23 @@ namespace DocGenerator.Api.Controllers;
 public class CorrespondencesController : ControllerBase
 {
     private readonly ICorrespondenceService _letters;
+    private readonly IUserCapabilities _capabilities;
 
-    public CorrespondencesController(ICorrespondenceService letters)
+    public CorrespondencesController(
+        ICorrespondenceService letters, IUserCapabilities capabilities)
     {
         _letters = letters;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
     private UserRole Role => User.GetRoleEnum();
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
+    private bool IsEntityManager => _capabilities.Has(User, UserCapability.IsEntityManager);
+    private bool IsLawyerOrHead =>
+        _capabilities.Has(User, UserCapability.IsLawyer)
+        || _capabilities.Has(User, UserCapability.IsHead);
     private int? BranchId => User.GetBranchId();
     private int? SectionId => User.GetSectionId();
     private int UserId => User.GetUserId();
@@ -40,7 +49,7 @@ public class CorrespondencesController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
         var result = await _letters.SearchAsync(UserId, Role, BranchId, q, governorate,
             importance, page, perPage, ct, SectionId);
@@ -51,7 +60,7 @@ public class CorrespondencesController : ControllerBase
     [HttpGet("filter-options")]
     public async Task<IActionResult> GetFilterOptions(CancellationToken ct)
     {
-        if (!RolePermissions.CanSeeAdministrativeBranch(Role))
+        if (!_capabilities.Has(User, UserCapability.CanSeeAdministrativeBranch))
             return Ok(new { governorates = new List<string>() });
 
         var governorates = await _letters.GetGovernoratesAsync(ct);
@@ -63,9 +72,9 @@ public class CorrespondencesController : ControllerBase
     public async Task<IActionResult> SearchTargets(
         [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
 
         return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
@@ -75,7 +84,7 @@ public class CorrespondencesController : ControllerBase
     [HttpGet("unseen-count")]
     public async Task<IActionResult> UnseenCount(CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateCorrespondences(Role))
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences))
             return Forbid();
 
         var count = await _letters.CountUnseenAsync(UserId, ct);
@@ -102,11 +111,11 @@ public class CorrespondencesController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateCorrespondenceRequest request,
         CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
-        if (Role is UserRole.Lawyer or UserRole.Head && BranchId is null)
+        if (IsLawyerOrHead && BranchId is null)
             return BadRequest(new { message = "الحساب دون فرع لا يمكنه تسطير مراسلات" });
-        if (Role == UserRole.SubHead && SectionId is null)
+        if (IsSubHead && SectionId is null)
             return Forbid();
 
         var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct, SectionId);
@@ -132,7 +141,7 @@ public class CorrespondencesController : ControllerBase
     public async Task<IActionResult> AddAddendum(int id,
         [FromBody] AddCorrespondenceAddendumRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
 
         try
@@ -151,7 +160,7 @@ public class CorrespondencesController : ControllerBase
     public async Task<IActionResult> Reply(int id, [FromBody] ReplyCorrespondenceRequest request,
         CancellationToken ct)
     {
-        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
 
         try
@@ -171,7 +180,7 @@ public class CorrespondencesController : ControllerBase
     {
         // بوابة الدور الصريحة نفسها في كل مسارات الكتابة: الخدمة تفرض المستلم،
         // وهذه البوابة تمنع أي دور غير كاتب من المحاولة أصلًا (دفاع معمّق).
-        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+        if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
 
         try

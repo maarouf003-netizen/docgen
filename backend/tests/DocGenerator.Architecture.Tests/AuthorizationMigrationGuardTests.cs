@@ -11,10 +11,9 @@ namespace DocGenerator.Architecture.Tests;
 /// (وللمستندات أيضًا لا <c>GetRoleEnum</c> لأن اشتقاق الدور انتقل كليًا إلى الواجهة).
 /// </para>
 /// <para>
-/// (ب) **قائمة انتظار راتشة**: كل متحكم لم يُرحَّل بعد وما زال يحمل قرارًا دورّيًا
-/// مُدرَج بالاسم والسبب (المرحلة). أي ملف جديد بقرار دورّي يفشل فورًا (فشل مفتوح
-/// مستحيل الصمت)، وأي ملف أُفرغ ولم تُحذف قائمته يفشل أيضًا (وإلا صارت القائمة
-/// ادعاءً متضخمًا). إفراغ القائمة = إغلاق <c>P2-01c</c>.
+/// (ب) **قائمة انتظار راتشة**: كانت تُدرج المتحكمات غير المُرحَّلة ومرحلتها. بعد
+/// `P2-01c‑2` أصبحت **فارغة**: أي متحكم — قائم أو جديد — يحمل قرارًا دورّيًا يفشل فورًا،
+/// وأي إدخال مستقبلي في القائمة يفشل أيضًا (لا قائمة متضخمة). إفراغها أغلق `P2-01c`.
 /// </para>
 /// <para>
 /// الفحص نصّي على المصدر لا على التجميعة (السبب في تقرير P2-01a): <c>NetArchTest</c>
@@ -40,21 +39,19 @@ public class AuthorizationMigrationGuardTests
         ["Controllers/PersonalRemindersController.cs"] = [],
         ["Controllers/SectionsController.cs"] = [],
         ["Controllers/StatisticsController.cs"] = [],
+        ["Controllers/AppealsController.cs"] = [],
+        ["Controllers/CorrespondencesController.cs"] = [],
+        ["Controllers/DelegationsController.cs"] = [],
+        ["Controllers/ExecutionCircuitsController.cs"] = [],
+        ["Controllers/ReviewLettersController.cs"] = [],
+        ["Controllers/UserManagementController.cs"] = [],
     };
 
     /// <summary>
-    /// ما تبقّى حتى `P2-01c` — ملف المتحكم ← المرحلة التي ستزيل قراره الدورّي.
-    /// لا تُضف ملفًا بلا مرحلة، ولا تُبقِ ملفًا بعد إفراغه.
+    /// فارغة بعد `P2-01c‑2` — لا متحكم يملك استثناءً. أي إدخال هنا يجب أن يكون قرارًا
+    /// معماريًا معلّلًا (لا لتجاوز فشل)، وأي متحكم بقرار دورّي صار يفشل تلقائيًا.
     /// </summary>
-    private static readonly Dictionary<string, string> PendingControllers = new(StringComparer.Ordinal)
-    {
-        ["AppealsController.cs"] = "P2-01c",
-        ["CorrespondencesController.cs"] = "P2-01c",
-        ["DelegationsController.cs"] = "P2-01c",
-        ["ExecutionCircuitsController.cs"] = "P2-01c",
-        ["ReviewLettersController.cs"] = "P2-01c",
-        ["UserManagementController.cs"] = "P2-01c",
-    };
+    private static readonly Dictionary<string, string> PendingControllers = new(StringComparer.Ordinal);
 
     private static readonly Regex RoleComparison = new(
         @"\bRole\s*(==|!=)\s*(DocGenerator\.Domain\.Enums\.)?UserRole\.|\bRole\s+is\s+(not\s+)?\(?\s*(DocGenerator\.Domain\.Enums\.)?UserRole\.",
@@ -75,6 +72,12 @@ public class AuthorizationMigrationGuardTests
     [InlineData("Controllers/PersonalRemindersController.cs")]
     [InlineData("Controllers/SectionsController.cs")]
     [InlineData("Controllers/StatisticsController.cs")]
+    [InlineData("Controllers/AppealsController.cs")]
+    [InlineData("Controllers/CorrespondencesController.cs")]
+    [InlineData("Controllers/DelegationsController.cs")]
+    [InlineData("Controllers/ExecutionCircuitsController.cs")]
+    [InlineData("Controllers/ReviewLettersController.cs")]
+    [InlineData("Controllers/UserManagementController.cs")]
     public void MigratedController_HasNoDirectRoleDecisions(string relativePath)
     {
         var lines = ReadCodeLines(relativePath);

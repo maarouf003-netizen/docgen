@@ -44,6 +44,9 @@ public static class RolePermissions
     /// <summary>مشرف (`Admin`) — هوية الدور التي تُقيَّد بها أسطح إدارية صرفة (تثبيت المنتدى).</summary>
     public static bool IsAdmin(UserRole role) => role == UserRole.Admin;
 
+    /// <summary>مندوب الجهة العامة — هوية دور تُستخدم لاستثنائه من كتابة المراسلات الداخلية.</summary>
+    public static bool IsEntityManager(UserRole role) => role == UserRole.EntityManager;
+
     /// <summary>إدخال/تعديل مستند جديد — المحامي فقط (للملفات التي يملكها).</summary>
     public static bool CanEditDocuments(UserRole role) => role == UserRole.Lawyer;
 
