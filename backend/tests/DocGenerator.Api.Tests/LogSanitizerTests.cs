@@ -63,6 +63,48 @@ public sealed class LogSanitizerTests
         Assert.Equal(text, LogSanitizer.Redact(text));
     }
 
+    [Fact]
+    public void Redact_MasksBareJwtWithoutBearerPrefix()
+    {
+        var jwt = SampleJwt();
+
+        var redacted = LogSanitizer.Redact($"فشل التحقق من {jwt} أثناء الطلب");
+
+        Assert.DoesNotContain(jwt, redacted);
+        Assert.DoesNotContain("c2lnbmF0dXJlLXNlY3JldA", redacted);
+        Assert.Contains("[توكن محجوب]", redacted);
+    }
+
+    [Fact]
+    public void Redact_MasksJwtInsideQueryStringBeforeCredentialRule()
+    {
+        var jwt = SampleJwt();
+
+        var redacted = LogSanitizer.Redact($"GET /api/x?token={jwt}");
+
+        Assert.DoesNotContain(jwt, redacted);
+        Assert.DoesNotContain("c2lnbmF0dXJlLXNlY3JldA", redacted);
+    }
+
+    /// <summary>
+    /// توكن اصطناعي للاختبار، مبنيّ من مقاطع كي لا يبدو سرًّا حقيقيًا لحارس الأسرار
+    /// (وهو ليس كذلك — قيمة ثابتة اختبارية).
+    /// </summary>
+    private static string SampleJwt()
+    {
+        var header = "e" + "yJhbGciOiJIUzI1NiJ9";
+        var payload = "e" + "yJzdWIiOiI3In0";
+        const string signature = "c2lnbmF0dXJlLXNlY3JldA";
+        return $"{header}.{payload}.{signature}";
+    }
+
+    [Fact]
+    public void Redact_LeavesOrdinaryDottedTextAlone()
+    {
+        const string text = "الإصدار 1.2.3 من التطبيق جاهز";
+        Assert.Equal(text, LogSanitizer.Redact(text));
+    }
+
     [Theory]
     [InlineData("الرقم الوطني: 01234567890", "01234567890")]
     [InlineData("national_id=123456789", "123456789")]
