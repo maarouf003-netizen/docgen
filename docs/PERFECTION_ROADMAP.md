@@ -427,7 +427,8 @@
     `0` دائمًا) إلى بوابة فعلية: `High`/`Critical` ⇒ فشل، وشدّة مجهولة ⇒ fail-closed،
     مع اختبار ذاتي على 5 عيّنات ثابتة.
   - `npm audit --audit-level=high` باقٍ (بوابة حقيقية أصلًا).
-  - **`P2-06` (2026-11-17):** بوابة `npm audit` صارت `scripts/npm-audit-guard.mjs`:
+  - **`P2-06` (2026-11-17):** PR
+    [`#198`](https://github.com/maarouf003-netizen/docgen/pull/198) — بوابة `npm audit` صارت `scripts/npm-audit-guard.mjs`:
     تفشل على أي `High/Critical` غير مستثنى، وتقبل استثناءً **مبرّرًا بتاريخ انتهاء** فقط
     (`scripts/npm-audit-allowlist.json`)، وتفشل إذا انتهى/صار قديمًا، مع `--self-test`.
     السبب: `GHSA-fc5q-39xc-vjpf` (`picomatch` ReDoS عبر سلسلة `Vite`/`Vitest` التطويرية)
