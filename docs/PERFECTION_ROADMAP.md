@@ -385,8 +385,8 @@
 
 #### `P2-03` — افتراضات أمنية آمنة في الإنتاج
 
-- **الحالة (2026-11-17):** **منفّذ آليًا — بروفة `staging` متبقية (إجراء مالك).**
-  حارس `SecurityProductionPosture` يرفض إقلاع `Production` (fail-closed) ما لم تُضبط:
+- **الحالة (2026-11-17):** **منفّذ آليًا — بروفة `staging` متبقية (إجراء مالك).** PR
+  [`#193`](https://github.com/maarouf003-netizen/docgen/pull/193) — حارس `SecurityProductionPosture` يرفض إقلاع `Production` (fail-closed) ما لم تُضبط:
   `AllowedHosts` صريح بلا `*`، `Security:HstsEnabled=true`،
   `Security:HttpsRedirectionEnabled=true`، `Security:CspReportOnly=false`،
   `Swagger:Enabled=false`، و**إما** `Security:KnownProxies` صالح (يرفض `0.0.0.0/0`
