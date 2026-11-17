@@ -1,0 +1,68 @@
+name: Security
+
+# P2-06 (الجزء الثاني): تحليل ساكن للكود (CodeQL).
+# ملاحظة: هذه الوظائف **إعلامية/حاجبة داخل سيرها** وليست ضمن البوابات الست المطلوبة
+# في حماية الفرع بعد؛ تُضاف إلى الحماية بعد ثبات تاريخ أخضر (قرار مالك).
+# Dependency review مؤجّل: GitHub Dependency graph غير مفعّل في المستودع (إجراء مالك).
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/CODEOWNERS"
+  schedule:
+    # فحص أسبوعي حتى لو لم يتغيّر الكود (قواعد CodeQL تُحدَّث).
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [csharp, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # security-and-quality يضيف قواعد جودة فوق الأمن؛ لا يفشل على النتائج،
+          # بل يرفعها إلى Code scanning (SARIF).
+          queries: security-and-quality
+
+      # CodeQL للـC# يحتاج بناءً فعليًا ليستخرج النموذج الدلالي؛
+      # javascript-typescript لا يحتاج خطوة بناء.
+      - if: matrix.language == 'csharp'
+        name: Build backend for extraction
+        run: |
+          dotnet restore backend/DocGenerator.sln --locked-mode
+          dotnet build backend/DocGenerator.sln --no-restore --nologo -v q
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # Dependency review معطّل: GitHub Dependency graph غير مفعّل في إعدادات المستودع
+  # (Settings → Security analysis)، والمكوّن يفشل بلا تفعيله. لا يمكن تفعيله من الكود.
+  # يُعاد تفعيل الوظيفة بعد تفعيل الميزة (إجراء مالك) — انظر docs/audit/57.
