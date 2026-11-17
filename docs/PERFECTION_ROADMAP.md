@@ -318,40 +318,29 @@
 
 #### `P2-01` — سياسات صلاحيات موردية
 
-- **الحالة (2026-11-16):** **منفّذ جزئيًا** — `ADR-0007`
-  (`docs/adr/0007-resource-authorization-policies.md`) معتمد، و**`P2-01a` منجز**
-  (PR [`#183`](https://github.com/maarouf003-netizen/docgen/pull/183)):
-  بنية متطلب/معالج موردي (`DocumentAccessRequirement` + `DocumentAccessHandler`) وبوابة
-  قراءة ضيقة (`IDocumentAccessReader`) وواجهة `IDocumentAuthorization`، ورُحّل
-  `DocumentsController` كاملًا (42 نقطة) بلا أي `RolePermissions`/`GetRoleEnum` داخله —
-  يحرسه فحص مصدري مع تحكم إيجابي، ومصفوفات: 32 خلية معالج (دور × عملية × شكل ملف)،
-  84 خلية جسر قدرات، وست حالات لنطاق القوائم. التطبيع المقصود: المفقود ⇒ `404` قبل أي
-  تقييم، الموجود خارج النطاق ⇒ `403`. التفاصيل:
-  `docs/audit/41-p2-01a-document-policies-20261116.md`.
-  **متبقٍ:** `P2-01b` (البوابة + `EntityScope`) و`P2-01c` (المراجعات/المراسلات/التنفيذ/
-  الإحصاءات + حارس «كل أكشن له متطلب») — الجرد الكامل أدناه.
-  - **P2-01b (2026-11-16):** PR
-    [`#184`](https://github.com/maarouf003-netizen/docgen/pull/184) — منجز: جسر القدرات عُمّم إلى `Authorization` وأُضيفت أربع
-    قدرات؛ `EntityRegistryController` (30 نقطة/37 موضع قرار) و`DelegatesController`
-    بلا أي قرار دورّي (بقي `GetRoleEnum` لتمرير الدور كبيان إلى `EntityRegistryActor`).
-    **حارس راتشة** `AuthorizationMigrationGuardTests`: المتحكمات المُرحَّلة نظيفة، وقائمة
-    انتظار بالملفات الـ13 المتبقية تُفشل أي قرار دورّي جديد وأي قائمة متضخمة.
-    **قرار موثّق:** لم يُنشأ `PortalAccessRequirement`/`EntityScopeRequirement` —
-    نطاق البوابة/السجل مفروض بنيويًا وفي الخدمة ومختبَر، فإضافتهما تكرار بلا تقليص
-    سطح فشل مفتوح (`ADR-0007` §7 ملحق). التفاصيل:
-    `docs/audit/42-p2-01b-portal-entity-20261116.md`.
-  **متبقٍ:** `P2-01c` (13 متحكمًا + إفراغ قائمة الحارس) — الجرد أدناه.
-  - **P2-01c‑1 (2026-11-17):** PR
-    [`#186`](https://github.com/maarouf003-netizen/docgen/pull/186) — 7 متحكمات إدارة/قراءة رُحّلت إلى جسر القدرات:
-    `Statistics`, `AuditLogs`, `Forum`, `AppSuggestions`, `Branches`, `Sections`,
-    `PersonalReminders`. أُضيفت هويات الدور `IsHead/IsSubHead/IsAdmin` إلى الكتالوج
-    (لا تمنح قدرة) ومقابلها أربع قدرات في الجسر. المصفوفة 41×6 = 246 خلية، والجسر
-    25×6 = 150. قائمة الانتظار نزلت **13 → 6**. تحقق سلبي مزدوج موثّق. التفاصيل:
+- **الحالة (2026-11-17):** **مغلق** — `ADR-0007`
+  (`docs/adr/0007-resource-authorization-policies.md`) معتمد، والمراحل الثلاث منفّذة:
+  - **`P2-01a`** (PR [`#183`](https://github.com/maarouf003-netizen/docgen/pull/183)):
+    بنية متطلب/معالج موردي للمستندات + بوابة قراءة ضيقة + `IDocumentAuthorization`،
+    وترحيل `DocumentsController` (42 نقطة) بلا أي `RolePermissions`/`GetRoleEnum`.
+    التطبيع المقصود: المفقود ⇒ `404` قبل التقييم، خارج النطاق ⇒ `403`.
+    التفاصيل: `docs/audit/41-p2-01a-document-policies-20261116.md`.
+  - **`P2-01b`** (PR [`#184`](https://github.com/maarouf003-netizen/docgen/pull/184)):
+    جسر القدرات عُمّم (`IUserCapabilities` ← `RolePermissions`)، و`EntityRegistry`
+    (30 نقطة/37 موضع) و`Delegates` بلا قرارات أدوار. **قرار موثّق:** لم يُنشأ
+    `PortalAccessRequirement`/`EntityScopeRequirement` لأن النطاق بنيوي/خدمي ومختبَر
+    (`ADR-0007` §7 ملحق). التفاصيل: `docs/audit/42-p2-01b-portal-entity-20261116.md`.
+  - **`P2-01c‑1`** (PR [`#186`](https://github.com/maarouf003-netizen/docgen/pull/186)):
+    7 متحكمات إدارة/قراءة، وهوية `IsHead/IsSubHead/IsAdmin`. التفاصيل:
     `docs/audit/44-p2-01c1-admin-controllers-20261117.md`.
-  **متبقٍ:** 6 متحكمات (`Appeals`, `Correspondences`, `Delegations`,
-  `ExecutionCircuits`, `ReviewLetters`, `UserManagement`) ثم إفراغ القائمة.
+  - **`P2-01c‑2`** (2026-11-17): الستة الأخيرة (`Appeals`, `Correspondences`,
+    `Delegations`, `ExecutionCircuits`, `ReviewLetters`, `UserManagement`) + هوية
+    `IsEntityManager`. الجسر **35×6 = 210 خلية**، والمصفوفة **42×6 = 252**.
+    **قائمة انتظار الحارس أُفرغت** — لا متحكم يحمل `RolePermissions` أو مقارنة دور،
+    وأي متحكم جديد بقرار دورّي يفشل فورًا. التفاصيل:
+    `docs/audit/45-p2-01c2-workflow-controllers-20261117.md`.
 - **العمل:** `DocumentAccessRequirement` (`Owner`, `Branch`, `Section`, `ForwardedAppeal`)، `PortalAccessRequirement`، `EntityScopeRequirement`؛ `IAuthorizationHandler` لكل منها؛ إزالة `Role ==` من المتحكمات.
-- **DoD:** كل نقطة تستخدم `[Authorize(Policy=...)]` أو `IAuthorizationService`؛ لا منطق صلاحية في المتحكم.
+- **DoD:** كل نقطة تستخدم `[Authorize(Policy=...)]` أو `IAuthorizationService`؛ لا منطق صلاحية في المتحكم — متحقق: متطلبات موردية للمستندات، وجسر قدرات تطبيقي لبقية الفحوص، وصفر قرارات أدوار في المتحكمات.
 
 #### `P2-02` — مصفوفة صلاحيات مُختبَرة
 

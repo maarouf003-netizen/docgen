@@ -1,3 +1,4 @@
+using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -20,20 +21,27 @@ public class DelegationsController : ControllerBase
 {
     private readonly IDocumentDelegationService _delegations;
     private readonly IDocumentService _documents;
+    private readonly IUserCapabilities _capabilities;
 
-    public DelegationsController(IDocumentDelegationService delegations, IDocumentService documents)
+    public DelegationsController(
+        IDocumentDelegationService delegations,
+        IDocumentService documents,
+        IUserCapabilities capabilities)
     {
         _delegations = delegations;
         _documents = documents;
+        _capabilities = capabilities;
     }
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool CanManage => RolePermissions.CanManageDelegations(Role);
-    private bool CanApprove => RolePermissions.CanApproveDelegations(Role);
+    private bool HasFullAccess => _capabilities.Has(User, UserCapability.HasFullAccess);
+    private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool IsLawyer => _capabilities.Has(User, UserCapability.IsLawyer);
+    private bool IsHead => _capabilities.Has(User, UserCapability.IsHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
+    private bool CanManage => _capabilities.Has(User, UserCapability.CanManageDelegations);
+    private bool CanApprove => _capabilities.Has(User, UserCapability.CanApproveDelegations);
 
     /// <summary>
     /// نطاق الرؤية (§7.1): رئيس بلا فرع مرفوض، ورئيس شعبة بلا شعبة مرفوض —
@@ -47,7 +55,7 @@ public class DelegationsController : ControllerBase
         if (branch is null)
             return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على طلبات الإنابة" });
         branchId = branch.Value;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
         {
             var section = User.GetSectionId();
             if (section is null)
@@ -66,13 +74,13 @@ public class DelegationsController : ControllerBase
     private bool CanAccess(DocumentResponse doc)
     {
         if (HasFullAccess) return true;
-        if (Role == UserRole.Lawyer)
+        if (IsLawyer)
             return doc.CreatedById == User.GetUserId();
         if (doc.BranchId != User.GetBranchId())
             return false;
-        if (Role == UserRole.Head)
+        if (IsHead)
             return doc.ExecutionCircuitId is null || !doc.SectionId.HasValue;
-        if (Role == UserRole.SubHead)
+        if (IsSubHead)
             return doc.SectionId.HasValue && doc.SectionId == User.GetSectionId();
         return false;
     }
