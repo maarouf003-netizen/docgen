@@ -102,7 +102,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -114,7 +118,11 @@ public class CorrespondencesController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences) || IsEntityManager)
             return Forbid();
         if (IsLawyerOrHead && BranchId is null)
-            return BadRequest(new { message = "الحساب دون فرع لا يمكنه تسطير مراسلات" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الحساب دون فرع لا يمكنه تسطير مراسلات");
         if (IsSubHead && SectionId is null)
             return Forbid();
 
@@ -132,7 +140,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -151,7 +163,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -170,7 +186,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -190,7 +210,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 }

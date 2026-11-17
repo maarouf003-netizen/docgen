@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -113,7 +114,12 @@ public class UserManagementController : ControllerBase
         {
             effectiveBranchId = request.BranchId;
             if (effectiveBranchId is null)
-                return BadRequest(new { message = "يجب تحديد الفرع" });
+                return ApiProblem.Result(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    ApiErrorCodes.ValidationFailed,
+                    "يجب تحديد الفرع",
+                    field: "branchId");
         }
 
         var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct, User.GetUserId());

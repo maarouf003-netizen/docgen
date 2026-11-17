@@ -60,7 +60,7 @@ public sealed class DelegationPendingCountBranchGuardTests
 
         var result = await controller.PendingCount(CancellationToken.None);
 
-        var bad = Assert.IsType<BadRequestObjectResult>(result);
+        var bad = Assert.IsType<ObjectResult>(result);
         Assert.Equal((int)HttpStatusCode.BadRequest, bad.StatusCode);
     }
 }

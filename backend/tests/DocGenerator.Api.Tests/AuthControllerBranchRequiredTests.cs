@@ -79,7 +79,7 @@ public sealed class AuthControllerBranchRequiredTests
 
         var result = await controller.Login(new LoginRequest("شاذ", "123456"), CancellationToken.None);
 
-        var bad = Assert.IsType<BadRequestObjectResult>(result);
+        var bad = Assert.IsType<ObjectResult>(result);
         Assert.Equal((int)HttpStatusCode.BadRequest, bad.StatusCode);
         // يُقرأ النص بعد فكّ التسلسل: المسرِّع الافتراضي يهرّب العربية (`\uXXXX`).
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(bad.Value));

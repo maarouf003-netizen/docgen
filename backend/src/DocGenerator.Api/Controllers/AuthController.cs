@@ -4,6 +4,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Api.Auth;
 using DocGenerator.Api.Filters;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -55,14 +56,20 @@ public class AuthController : ControllerBase
         var rateKey = $"{ip}:{request.Username.Trim().ToLowerInvariant()}";
 
         if (!await _rateLimiter.IsAllowedAsync(rateKey, ct))
-            return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { message = $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status429TooManyRequests,
+                ApiErrorCodes.RateLimited,
+                $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق");
 
         var result = await _auth.LoginAsync(request, ct);
         return result.Status switch
         {
-            LoginStatus.LockedOut => StatusCode(StatusCodes.Status423Locked,
-                new { message = "الحساب مقفل مؤقتاً بسبب كثرة محاولات الدخول الفاشلة، حاول لاحقاً" }),
+            LoginStatus.LockedOut => ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status423Locked,
+                ApiErrorCodes.LockedOut,
+                "الحساب مقفل مؤقتاً بسبب كثرة محاولات الدخول الفاشلة، حاول لاحقاً"),
             LoginStatus.Success => await HandleSuccessAsync(rateKey, result.Response!, ct),
             LoginStatus.InvalidCredentials => await HandleFailureAsync(rateKey, ct),
             LoginStatus.BranchSelectionRequired => Ok(new
@@ -70,12 +77,13 @@ public class AuthController : ControllerBase
                 requiresBranchSelection = true,
                 branches = result.Branches ?? new List<LoginBranchChoiceDto>(),
             }),
-            LoginStatus.BranchRequired => BadRequest(new
-            {
+            LoginStatus.BranchRequired => ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
                 // عامة عمدًا: الحالة تشمل رئيس القسم والمحامي بلا فرع —
                 // التفصيل بحسب الدور مسجّل في التدقيق لا في رسالة المستخدم.
-                message = "الحساب غير مرتبط بفرع — تواصل مع المشرف لتعيين فرعك",
-            }),
+                "الحساب غير مرتبط بفرع — تواصل مع المشرف لتعيين فرعك"),
             _ => throw new ArgumentOutOfRangeException(nameof(result.Status), result.Status,
                 "حالة دخول غير معروفة"),
         };
@@ -96,9 +104,16 @@ public class AuthController : ControllerBase
         // التسجيل ذرّي: إن بلغ الحد خلال سباق بين الفحص المبدئي والتسجيل تُرفض المحاولة فورًا.
         var recorded = await _rateLimiter.TryRecordFailureAsync(rateKey, ct);
         if (!recorded)
-            return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { message = $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق" });
-        return Unauthorized(new { message = "اسم المستخدم أو كلمة المرور غير صحيحة" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status429TooManyRequests,
+                ApiErrorCodes.RateLimited,
+                $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق");
+        return ApiProblem.Result(
+                    HttpContext,
+                    StatusCodes.Status401Unauthorized,
+                    ApiErrorCodes.Unauthorized,
+                    "اسم المستخدم أو كلمة المرور غير صحيحة");
     }
 
     [HttpPost("logout")]
@@ -123,7 +138,12 @@ public class AuthController : ControllerBase
     {
         var ok = await _auth.ChangePasswordAsync(User.GetUserId(), request.OldPassword, request.NewPassword, ct);
         if (!ok)
-            return BadRequest(new { message = "كلمة المرور الحالية غير صحيحة" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "كلمة المرور الحالية غير صحيحة",
+                field: "oldPassword");
         return Ok(new { message = "تم تغيير كلمة المرور بنجاح" });
     }
 

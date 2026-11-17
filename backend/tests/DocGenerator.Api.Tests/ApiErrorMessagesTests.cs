@@ -88,6 +88,17 @@ public class ApiErrorMessagesTests
         Assert.Throws<ArgumentNullException>(() => ApiErrorMessages.From(null!));
     }
 
+    [Theory]
+    [InlineData("الرسالة إلزامية", "الرسالة إلزامية")]
+    [InlineData("The JSON value could not be converted to System.Int32.", ApiErrorMessages.Fallback)]
+    [InlineData("", ApiErrorMessages.Fallback)]
+    [InlineData(null, ApiErrorMessages.Fallback)]
+    public void FromText_KeepsArabicAndReplacesNonArabicFrameworkText(string? raw, string expected)
+    {
+        // رسائل ربط النموذج إنجليزية؛ لا تصل للمستخدم — البديل العربي إلزامي.
+        Assert.Equal(expected, ApiErrorMessages.FromText(raw));
+    }
+
     [Fact]
     public void ResponseSanitizer_StripsFrameworkSuffixes_ForUnhandledExceptionPath()
     {

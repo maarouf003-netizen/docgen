@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Http;
 
@@ -44,9 +45,11 @@ public sealed class CsrfMiddleware
                     || !CryptographicOperations.FixedTimeEquals(
                         Encoding.UTF8.GetBytes(cookie), Encoding.UTF8.GetBytes(header)))
                 {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsJsonAsync(
-                        new { message = "طلب مرفوض: ترويسة الحماية من النماذج المزيفة غير صحيحة" });
+                    await ApiProblem.WriteAsync(
+                        context,
+                        StatusCodes.Status403Forbidden,
+                        ApiErrorCodes.CsrfRejected,
+                        "طلب مرفوض: ترويسة الحماية من النماذج المزيفة غير صحيحة");
                     return;
                 }
             }

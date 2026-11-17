@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -45,7 +46,11 @@ public class StatisticsController : ControllerBase
         branchId = 0;
         var own = User.GetBranchId();
         if (own is null)
-            return BadRequest(new { message = "الحساب غير مرتبط بفرع" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الحساب غير مرتبط بفرع");
         branchId = own.Value;
         return null;
     }
@@ -173,7 +178,12 @@ public class StatisticsController : ControllerBase
         if (HasFullAccess)
         {
             if (branchId <= 0)
-                return BadRequest(new { message = "branchId مطلوب لجدول محامي الفرع" });
+                return ApiProblem.Result(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    ApiErrorCodes.ValidationFailed,
+                    "branchId مطلوب لجدول محامي الفرع",
+                    field: "branchId");
             return Ok(await _stats.GetManagerLawyerStatsAsync(period, branchId, year, month, quarter, ct));
         }
         var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
@@ -230,11 +240,26 @@ public class StatisticsController : ControllerBase
     private ActionResult? ValidatePeriod(StatsPeriod period, int? year, int? month, int? quarter)
     {
         if (year is < 1900 or > 2100)
-            return BadRequest(new { message = "سنة غير صالحة" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "سنة غير صالحة",
+                field: "year");
         if (period == StatsPeriod.Monthly && month is < 1 or > 12)
-            return BadRequest(new { message = "شهر غير صالح" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "شهر غير صالح",
+                field: "month");
         if (period == StatsPeriod.Quarterly && quarter is < 1 or > 4)
-            return BadRequest(new { message = "ربع غير صالح" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "ربع غير صالح",
+                field: "quarter");
         return null;
     }
 }

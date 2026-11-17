@@ -53,7 +53,11 @@ public class DelegationsController : ControllerBase
         ownerSectionId = null;
         var branch = User.GetBranchId();
         if (branch is null)
-            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على طلبات الإنابة" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.BranchRequired,
+                "الرئيس دون فرع لا يمكنه الاطلاع على طلبات الإنابة");
         branchId = branch.Value;
         if (IsSubHead)
         {
@@ -92,7 +96,11 @@ public class DelegationsController : ControllerBase
     {
         var doc = await _documents.GetAsync(documentId, ct);
         if (doc is null)
-            return NotFound(new { message = "الملف غير موجود" });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            "الملف غير موجود");
         if (!CanAccess(doc))
             return Forbid();
         try
@@ -101,7 +109,11 @@ public class DelegationsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -195,7 +207,11 @@ public class DelegationsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -213,7 +229,11 @@ public class DelegationsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -231,7 +251,11 @@ public class DelegationsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -249,7 +273,11 @@ public class DelegationsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 

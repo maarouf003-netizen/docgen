@@ -6,11 +6,53 @@ import { ContractError } from './contractError';
 const CSRF_COOKIE = 'docgen_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
 
-/// سياسة رسائل أخطاء الخادم: `‎{ message }‎` عربيًا هو **العرف** لا الضمان
-/// (`GlobalExceptionHandler` + `BadRequest(new { message })` في المتحكمات)؛
-/// واستثناءات بلا جسم قائمة: `ValidationProblemDetails` (ربط النموذج) و`403`
-/// المختصرة من الوسطاء — فغياب `message` يُترجم لرسالة عربية ثابتة حسب الحالة.
-/// حقلا `errors` و`title` الإطاريان لا يُقرآن أبدًا عمدًا (إنجليزية إطارية).
+/// سياسة رسائل أخطاء الخادم (P4-03): العقد الموحّد هو وثيقة `ApiProblem`
+/// (`application/problem+json`) بمفاتيح `status`/`code`/`message`/`traceId`،
+/// و`field`/`errors`/`warningToken` عند الحاجة. `message` عربي دائمًا، وهو
+/// المصدر الوحيد للعرض؛ وما عداه للقرار البرمجي وربط الحقول.
+///
+/// استثناءات بلا جسم باقية عمدًا: `403` من `Forbid()` وبعض `404` الفارغة —
+/// فغياب `message` يُترجم لرسالة عربية ثابتة حسب الحالة. حقلا `title` و`detail`
+/// الإطاريان لا يُقرآن أبدًا (قد يكونان إنجليزيين)، و`errors` يُقرأ للعرض فقط
+/// عند غياب `message`.
+export interface ApiProblemBody {
+  status?: number;
+  code?: string;
+  message?: string;
+  field?: string;
+  errors?: Record<string, string[]>;
+  warningToken?: string;
+  traceId?: string;
+}
+
+/// يقرأ جسم خطأ الخادم بأمان من `unknown` (بيانات axios غير موثوقة الشكل):
+/// يعيد الكائن فقط إن حمل مفتاحًا معروفًا واحدًا على الأقل بقيمة صالحة.
+export function readApiProblemBody(data: unknown): ApiProblemBody | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const raw = data as Record<string, unknown>;
+  const body: ApiProblemBody = {};
+  if (typeof raw.status === 'number') body.status = raw.status;
+  if (typeof raw.code === 'string' && raw.code.trim().length > 0) body.code = raw.code;
+  if (typeof raw.message === 'string' && raw.message.trim().length > 0) body.message = raw.message;
+  if (typeof raw.field === 'string' && raw.field.trim().length > 0) body.field = raw.field;
+  if (typeof raw.warningToken === 'string' && raw.warningToken.trim().length > 0) {
+    body.warningToken = raw.warningToken;
+  }
+  if (typeof raw.traceId === 'string' && raw.traceId.trim().length > 0) body.traceId = raw.traceId;
+  if (raw.errors && typeof raw.errors === 'object' && !Array.isArray(raw.errors)) {
+    const errors: Record<string, string[]> = {};
+    for (const [field, messages] of Object.entries(raw.errors as Record<string, unknown>)) {
+      if (!Array.isArray(messages)) continue;
+      const arabic = messages.filter(
+        (message): message is string => typeof message === 'string' && message.trim().length > 0,
+      );
+      if (arabic.length > 0) errors[field] = arabic;
+    }
+    if (Object.keys(errors).length > 0) body.errors = errors;
+  }
+  return Object.keys(body).length > 0 ? body : null;
+}
+
 export function getApiErrorMessage(error: unknown): string {
   // مخالفة عقد سلكي: الرسالة من كودنا ومصوغة للعرض، فتُعاد كما هي — بخلاف أي
   // `Error` عائم تبقى رسالته مستورة خلف النص العام أدناه.
@@ -18,10 +60,12 @@ export function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (!error.response) return 'تعذر الاتصال بالخادم. تحقق من الاتصال وأعد المحاولة';
+    // رسالة الخادم العربية تسبق رسالة الحالة الثابتة لكل الحالات — بما فيها
+    // 401/403: الردود الفارغة وحدها (`Forbid()`/جلسة منتهية بلا جسم) تسقط للثابت.
+    const body = readApiProblemBody(error.response.data);
+    if (body?.message) return body.message;
     if (status === 401) return 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً';
     if (status === 403) return 'لا تملك صلاحية تنفيذ هذا الإجراء';
-    const data = error.response.data as { message?: unknown } | undefined;
-    if (typeof data?.message === 'string' && data.message.trim().length > 0) return data.message;
     if (status === 400) return 'الطلب غير صالح — تحقق من الحقول وأعد المحاولة';
     if (status === 404) return 'العنصر المطلوب غير موجود — ربما حُذف أو نُقل';
     if (status === 409) return 'تعارض في البيانات — حدّث الصفحة وحاول مجددًا';
@@ -32,7 +76,7 @@ export function getApiErrorMessage(error: unknown): string {
 }
 
 /// استخراج رسالة خطأ طلبات التنزيل (`responseType: 'blob'`): جسم الخطأ يصل
-/// `Blob` لا `JSON` مُفسَّرًا، فيُقرأ نصًا ويُفكّ (`{ message }`) قبل السقوط
+/// `Blob` لا `JSON` مُفسَّرًا، فيُقرأ نصًا ويُفكّ (وثيقة `ApiProblem`) قبل السقوط
 /// إلى `getApiErrorMessage` — وإلا ظهرت رسالة عامة حتى مع رسالة خادم دقيقة
 /// (كـ429 حارس التصدير «لديك تصدير قيد التنفيذ…»).
 export async function getDownloadErrorMessage(error: unknown): Promise<string> {
@@ -41,10 +85,8 @@ export async function getDownloadErrorMessage(error: unknown): Promise<string> {
     if (data instanceof Blob) {
       try {
         const text = await data.text();
-        const parsed = JSON.parse(text) as { message?: unknown };
-        if (typeof parsed?.message === 'string' && parsed.message.trim().length > 0) {
-          return parsed.message;
-        }
+        const body = readApiProblemBody(JSON.parse(text) as unknown);
+        if (body?.message) return body.message;
       } catch {
         // جسم غير JSON (مقطوع/فارغ) — نسقط للرسالة العامة أدناه.
       }

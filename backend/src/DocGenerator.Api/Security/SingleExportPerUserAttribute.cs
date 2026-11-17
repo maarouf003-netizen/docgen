@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DocGenerator.Api.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -29,10 +30,11 @@ public sealed class SingleExportPerUserAttribute : Attribute, IAsyncActionFilter
         if (!guard.TryEnter(key))
         {
             http.Response.Headers.RetryAfter = "30";
-            context.Result = new JsonResult(new { message = BusyMessage })
-            {
-                StatusCode = StatusCodes.Status429TooManyRequests,
-            };
+            context.Result = ApiProblem.Result(
+                http,
+                StatusCodes.Status429TooManyRequests,
+                ApiErrorCodes.ExportBusy,
+                BusyMessage);
             return;
         }
         try

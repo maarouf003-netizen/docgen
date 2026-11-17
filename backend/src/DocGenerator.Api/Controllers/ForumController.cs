@@ -85,7 +85,11 @@ public class ForumController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -102,7 +106,11 @@ public class ForumController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -121,11 +129,19 @@ public class ForumController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -149,7 +165,11 @@ public class ForumController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status404NotFound,
+                            ApiErrorCodes.NotFound,
+                            ApiErrorMessages.From(e));
         }
     }
 

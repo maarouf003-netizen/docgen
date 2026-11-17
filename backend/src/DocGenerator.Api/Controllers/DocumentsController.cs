@@ -361,7 +361,7 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e), code = e.Code });
+            return ApiProblem.Result(HttpContext, StatusCodes.Status409Conflict, e.Code, ApiErrorMessages.From(e));
         }
     }
 
@@ -378,7 +378,7 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e), code = e.Code });
+            return ApiProblem.Result(HttpContext, StatusCodes.Status409Conflict, e.Code, ApiErrorMessages.From(e));
         }
     }
 
@@ -605,10 +605,19 @@ public class DocumentsController : ControllerBase
         // مفتاح تعطيل مؤقت: يمنع توليد Word في كل البيئات حتى تفعيله صراحةً بعد
         // توحيد النماذج المولدة. يُرجع 503 ورسالة مفهومة تعرضها الواجهة.
         if (!_generationOptions.Value.Enabled)
-            return StatusCode(503, new { message = _generationOptions.Value.DisabledMessage });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status503ServiceUnavailable,
+                ApiErrorCodes.GenerationDisabled,
+                _generationOptions.Value.DisabledMessage);
 
         if (string.IsNullOrWhiteSpace(template))
-            return BadRequest(new { message = "يرجى تحديد نوع المستند المطلوب توليده" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "يرجى تحديد نوع المستند المطلوب توليده",
+                field: "template");
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
@@ -617,7 +626,11 @@ public class DocumentsController : ControllerBase
 
         // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات عائلة وضع «منفذ عليه» لا تُولَّد.
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
-            return BadRequest(new { message = "لا يُولَّد مستند لملفات وضع «الجهة العامة منفذ عليها» و«عرض وايداع»" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.GenerationNotAllowed,
+                "لا يُولَّد مستند لملفات وضع «الجهة العامة منفذ عليها» و«عرض وايداع»");
 
         try
         {
@@ -631,7 +644,11 @@ public class DocumentsController : ControllerBase
         catch (FileNotFoundException)
         {
             // لا يُكشف مسار قالب الخادم للمستخدم؛ تُرجع رسالة عامة.
-            return StatusCode(500, new { message = "القالب غير متوفر على الخادم" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status500InternalServerError,
+                ApiErrorCodes.ServerError,
+                "القالب غير متوفر على الخادم");
         }
     }
 
@@ -688,7 +705,11 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -712,7 +733,11 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = ApiErrorMessages.From(e) });
+            return ApiProblem.Result(
+                            HttpContext,
+                            StatusCodes.Status409Conflict,
+                            ApiErrorCodes.Conflict,
+                            ApiErrorMessages.From(e));
         }
     }
 
@@ -821,7 +846,11 @@ public class DocumentsController : ControllerBase
             : null;
 
     /// <summary>`404` موحّد بالجسم العربي لعمليات الحالة (بدل جسم فارغ).</summary>
-    private NotFoundObjectResult DocumentNotFound() =>
-        NotFound(new { message = DocumentNotFoundMessage });
+    private ObjectResult DocumentNotFound() =>
+        ApiProblem.Result(
+            HttpContext,
+            StatusCodes.Status404NotFound,
+            ApiErrorCodes.NotFound,
+            DocumentNotFoundMessage);
 
 }

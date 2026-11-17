@@ -1,5 +1,6 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Filters;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -312,7 +313,12 @@ public class EntityRegistryController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         if (request.GroupId != groupId)
-            return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "تعارض معرف المجموعة في المسار",
+                field: "groupId");
         return Ok(await _registry.PreviewRenameGroupAsync(request, ct));
     }
 
@@ -323,7 +329,12 @@ public class EntityRegistryController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
         if (request.GroupId != groupId)
-            return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "تعارض معرف المجموعة في المسار",
+                field: "groupId");
         return Ok(await _registry.RenameGroupAsync(request, Actor, ct));
     }
 
