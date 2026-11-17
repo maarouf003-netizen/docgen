@@ -253,7 +253,8 @@ public class DocumentInterventionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Add_PublicEntity_AdoptsCanonicalRegistryValues()    {
+    public async Task Add_PublicEntity_AdoptsCanonicalRegistryValues()
+    {
         var (_, entry) = await SeedPublicEntityAsync();
         var request = new DocumentInterventionUpsertRequest
         {

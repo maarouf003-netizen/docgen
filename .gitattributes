@@ -1,0 +1,13 @@
+# P4-06 — توحيد نهايات الأسطر: المستودع يخزّن LF، والتحقق (`dotnet format`)
+# يفترض LF على كل المنصّات. `core.autocrlf` المحلي لا يغيّر ما يُخزَّن، لكن ضبط
+# `eol=lf` هنا يجعل checkout متطابقًا على Windows/Linux فلا تختلف بوابة التنسيق.
+* text=auto
+*.cs text eol=lf
+*.csproj text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.sln text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf

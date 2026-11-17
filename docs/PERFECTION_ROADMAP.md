@@ -568,20 +568,24 @@
 
 #### `P4-06` — أدوات الجودة
 
-- **الحالة (2026-11-16):** جزئيًا — PR
+- **الحالة (2026-11-17):** **مغلق** — PR
   [`#170`](https://github.com/maarouf003-netizen/docgen/pull/170) (squash `1884aef`): منفّذ:
   - `backend/Directory.Packages.props` (CPM): 24 حزمة بإصدار مركزي، وأُزيل `Version` من
     35 مرجعًا في 6 مشاريع؛ CPM يفرض نفسه (`NU1008` عند إصدار محلي).
   - `global.json`: SDK `10.0.100` مع `rollForward: latestFeature`.
-  - `.editorconfig`: تنسيق موحّد (إرشادي، بلا بوابة `dotnet format` في هذه الجولة).
+  - `.editorconfig`: تنسيق موحّد.
   - **`P4-06b` (2026-11-16):** `packages.lock.json` لسبعة مشاريع + `--locked-mode` في
     وظائف `backend`/`backend-postgres`/`migration-guard`/`audit`/`flake-sentinel`؛ أي
     انحراف يفشل بـ`NU1004` (تحقق سلبي موثّق). التفاصيل:
     `docs/audit/30-p4-06b-lockfiles-20261116.md`.
-  **متبقٍ:** بوابة `dotnet format --verify-no-changes` (ديون تنسيق قائمة ⇒ تجنّب PR
-  إعادة تنسيق ضخم)، وRoslynator/StyleCop (تقييم ضجيج أولًا).
+  - **`P4-06c` (2026-11-17):** بوابة `dotnet format --verify-no-changes` مثبتة في وظيفة
+    `backend` بعد البناء. القياس الأول: 69/721 ملفًا (BOM/سطر أخير/تقسيم تهيئات/إزاحة
+    عبارات المستوى الأعلى، بلا تغيير دلالي) ⇒ طُبِّع الأساس مرة واحدة (68 ملفًا تنسيقيًا)
+    وأُضيف `.gitattributes` (`eol=lf`) و`end_of_line = lf` لثبات النتيجة بين المنصّات.
+    التفاصيل: `docs/audit/47-p4-06-format-gate-20261117.md`.
+  **متبقٍ:** Roslynator/StyleCop — تقييم ضجيج مستقل قبل تفعيلهما (لم يُضافا هنا عمدًا).
 - **العمل:** `Directory.Packages.props` (CPM)، `packages.lock.json`، `global.json`، `.editorconfig`، `dotnet format --verify-no-changes`، Roslynator/StyleCop (بعد تقييم الضجيج).
-- **DoD:** إصدارات موحدة ونمط تنسيق حاجب.
+- **DoD:** إصدارات موحدة ونمط تنسيق حاجب — متحقق (البوابة ترفض أي انحراف).
 
 #### `P4-07` — ADRs/CODEOWNERS/PR template
 

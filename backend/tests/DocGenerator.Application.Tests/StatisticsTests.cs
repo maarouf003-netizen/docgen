@@ -95,7 +95,8 @@ public class StatisticsRepositoryTests : IDisposable
 
     [Fact]
     public async Task Dashboard_CountsActiveDirectly()
-    {        _db.Documents.AddRange(
+    {
+        _db.Documents.AddRange(
             new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "م", BorrowerFamily = "م", AmountNumeric = 100, ExecStatus = string.Empty },
             new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "ن", BorrowerFamily = "ن", AmountNumeric = 200, ExecStatus = "منفذ جبريا", ExecSubStatus = "منفذ جزئيا" },
             new Document { BranchId = 1, CreatedById = 1, IsDraft = true, BorrowerName = "ح", BorrowerFamily = "ح", AmountNumeric = 0, ExecStatus = "تريث" });
@@ -198,16 +199,26 @@ public class StatisticsRepositoryTests : IDisposable
         db.Documents.AddRange(
             new Document
             {
-                BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "مصرفي",
-                BorrowerFamily = "أ", ContractTypeSelector = "مصرفي",
-                AmountNumeric = 100, InclusionAmountNumeric = 50,
+                BranchId = branch.Id,
+                CreatedById = 1,
+                IsDraft = false,
+                BorrowerName = "مصرفي",
+                BorrowerFamily = "أ",
+                ContractTypeSelector = "مصرفي",
+                AmountNumeric = 100,
+                InclusionAmountNumeric = 50,
                 ExecStatus = string.Empty,
             },
             new Document
             {
-                BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "عادي",
-                BorrowerFamily = "ب", ContractTypeSelector = "عادي",
-                AmountNumeric = 60, InclusionAmountNumeric = 30,
+                BranchId = branch.Id,
+                CreatedById = 1,
+                IsDraft = false,
+                BorrowerName = "عادي",
+                BorrowerFamily = "ب",
+                ContractTypeSelector = "عادي",
+                AmountNumeric = 60,
+                InclusionAmountNumeric = 30,
                 ExecStatus = string.Empty,
             });
         db.SaveChanges();
@@ -878,7 +889,7 @@ public class StatisticsRepositoryTests : IDisposable
                 Amount2Numeric = 50,
                 Currency2 = "يورو",
                 RegistrationDate = new DocumentRegistrationDate
-                    { Date = D(today.Year, today.Month, 2), DateParsed = new DateTime(today.Year, today.Month, 2) },
+                { Date = D(today.Year, today.Month, 2), DateParsed = new DateTime(today.Year, today.Month, 2) },
             },
             new Document
             {
@@ -890,7 +901,7 @@ public class StatisticsRepositoryTests : IDisposable
                 InclusionAmountNumeric = 200,
                 InclusionCurrency = "ليرة سورية",
                 RegistrationDate = new DocumentRegistrationDate
-                    { Date = D(today.Year, today.Month, 3), DateParsed = new DateTime(today.Year, today.Month, 3) },
+                { Date = D(today.Year, today.Month, 3), DateParsed = new DateTime(today.Year, today.Month, 3) },
             },
             new Document
             {
@@ -902,7 +913,7 @@ public class StatisticsRepositoryTests : IDisposable
                 InclusionAmountNumeric = 300,
                 InclusionCurrency = "يورو",
                 RegistrationDate = new DocumentRegistrationDate
-                    { Date = D(today.Year, today.Month, 4), DateParsed = new DateTime(today.Year, today.Month, 4) },
+                { Date = D(today.Year, today.Month, 4), DateParsed = new DateTime(today.Year, today.Month, 4) },
             });
         _db.SaveChanges();
 
@@ -991,7 +1002,7 @@ public class StatisticsRepositoryTests : IDisposable
                 InclusionAmount3Numeric = 40,
                 InclusionCurrency3 = "يورو",
                 RegistrationDate = new DocumentRegistrationDate
-                    { Date = D(today.Year, today.Month, 2), DateParsed = new DateTime(today.Year, today.Month, 2) },
+                { Date = D(today.Year, today.Month, 2), DateParsed = new DateTime(today.Year, today.Month, 2) },
             });
         _db.SaveChanges();
 

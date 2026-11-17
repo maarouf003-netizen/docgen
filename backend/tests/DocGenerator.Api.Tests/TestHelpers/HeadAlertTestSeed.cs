@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;

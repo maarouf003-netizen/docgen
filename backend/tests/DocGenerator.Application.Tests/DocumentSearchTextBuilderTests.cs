@@ -17,18 +17,31 @@ public class DocumentSearchTextBuilderTests
         };
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 1, DocumentId = 1, ExecutionCircuitId = 1, Year = 2026,
-            BaseNumber = "111", CreatedById = 1,
+            Id = 1,
+            DocumentId = 1,
+            ExecutionCircuitId = 1,
+            Year = 2026,
+            BaseNumber = "111",
+            CreatedById = 1,
         });
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 2, DocumentId = 1, ExecutionCircuitId = 2, Year = 2026,
-            BaseNumber = "222", CreatedById = 1,
+            Id = 2,
+            DocumentId = 1,
+            ExecutionCircuitId = 2,
+            Year = 2026,
+            BaseNumber = "222",
+            CreatedById = 1,
         });
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 3, DocumentId = 1, ExecutionCircuitId = 1, Year = 2025,
-            BaseNumber = "333", CreatedById = 1, VoidedAt = DateTime.UtcNow,
+            Id = 3,
+            DocumentId = 1,
+            ExecutionCircuitId = 1,
+            Year = 2025,
+            BaseNumber = "333",
+            CreatedById = 1,
+            VoidedAt = DateTime.UtcNow,
         });
 
         var text = DocumentSearchTextBuilder.Build(doc);
@@ -44,8 +57,12 @@ public class DocumentSearchTextBuilderTests
         var doc = new Document { Id = 1, ExecutionCircuitId = null, BorrowerName = "مقترض" };
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 1, DocumentId = 1, ExecutionCircuitId = 9, Year = 2026,
-            BaseNumber = "999", CreatedById = 1,
+            Id = 1,
+            DocumentId = 1,
+            ExecutionCircuitId = 9,
+            Year = 2026,
+            BaseNumber = "999",
+            CreatedById = 1,
         });
 
         var text = DocumentSearchTextBuilder.Build(doc);

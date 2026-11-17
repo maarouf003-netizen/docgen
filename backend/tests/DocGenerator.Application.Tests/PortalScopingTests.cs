@@ -112,7 +112,8 @@ public class PortalScopingTests : IDisposable
         {
             doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity
             {
-                EntityName = name, EntityNature = executedLink.Value.Legal ? "legal" : "public",
+                EntityName = name,
+                EntityNature = executedLink.Value.Legal ? "legal" : "public",
                 RegistryId = executedLink.Value.RegistryId,
             });
         }
@@ -251,8 +252,11 @@ public class PortalScopingTests : IDisposable
         var normalDoc = await SeedDocumentAsync("ملف طالب متداول", applicantRegistryId: _entryAId);
         var executedDoc = new Document
         {
-            CreatedById = 1, BorrowerName = "ملف طالب منفذ", AmountNumeric = 50,
-            IsDraft = false, ExecStatus = ExecutionStatusCatalog.ExecutedBySettlement,
+            CreatedById = 1,
+            BorrowerName = "ملف طالب منفذ",
+            AmountNumeric = 50,
+            IsDraft = false,
+            ExecStatus = ExecutionStatusCatalog.ExecutedBySettlement,
             GeneralEntitySide = "applicant",
         };
         executedDoc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
@@ -335,8 +339,11 @@ public class PortalScopingTests : IDisposable
         var pendingId = pendingEntry.Id;
         var delegateEntryId = new User
         {
-            Username = "delegate_review", FullName = "مندوب مراجعة",
-            Role = UserRole.EntityManager, PasswordHash = "x", PortalEntryId = pendingId,
+            Username = "delegate_review",
+            FullName = "مندوب مراجعة",
+            Role = UserRole.EntityManager,
+            PasswordHash = "x",
+            PortalEntryId = pendingId,
         };
         _db.Users.Add(delegateEntryId);
         await _db.SaveChangesAsync();

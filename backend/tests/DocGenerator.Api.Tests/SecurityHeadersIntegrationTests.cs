@@ -110,9 +110,9 @@ public class SecurityHeadersIntegrationTests
             // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري فقط.
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-    // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
-    // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
-    builder.UseSetting("Database:AutoMigrate", "false");
+            // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
+            // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+            builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Swagger:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "production-test-secret-0123456789-0123456789-0123456789");

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;

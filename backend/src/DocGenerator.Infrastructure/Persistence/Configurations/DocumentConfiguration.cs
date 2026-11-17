@@ -166,7 +166,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.TarithDate).HasMaxLength(50);
         builder.Property(d => d.TarithRegNumber).HasMaxLength(100);
         builder.Property(d => d.TarithRegDate).HasMaxLength(50);
-builder.Property(d => d.SayerNumber).HasMaxLength(100);
+        builder.Property(d => d.SayerNumber).HasMaxLength(100);
         builder.Property(d => d.SayerDate).HasMaxLength(50);
         builder.Property(d => d.SayerRegNumber).HasMaxLength(100);
         builder.Property(d => d.SayerRegDate).HasMaxLength(50);

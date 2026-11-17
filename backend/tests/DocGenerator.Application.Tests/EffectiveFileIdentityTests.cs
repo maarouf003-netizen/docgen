@@ -62,19 +62,34 @@ public class EffectiveFileIdentityTests
         var doc = new Document { Id = 1, FileNumber = "520", FileYear = "2024", ExecutionCircuitId = 1 };
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 1, DocumentId = 1, ExecutionCircuitId = 2, Year = 2026,
-            BaseNumber = "other", CreatedAt = new DateTime(2026, 5, 1), CreatedById = 1,
+            Id = 1,
+            DocumentId = 1,
+            ExecutionCircuitId = 2,
+            Year = 2026,
+            BaseNumber = "other",
+            CreatedAt = new DateTime(2026, 5, 1),
+            CreatedById = 1,
         });
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 2, DocumentId = 1, ExecutionCircuitId = 1, Year = 2026,
-            BaseNumber = "voided", CreatedAt = new DateTime(2026, 4, 1), CreatedById = 1,
+            Id = 2,
+            DocumentId = 1,
+            ExecutionCircuitId = 1,
+            Year = 2026,
+            BaseNumber = "voided",
+            CreatedAt = new DateTime(2026, 4, 1),
+            CreatedById = 1,
             VoidedAt = DateTime.UtcNow,
         });
         doc.BaseNumbers.Add(new DocumentBaseNumber
         {
-            Id = 3, DocumentId = 1, ExecutionCircuitId = 1, Year = 2025,
-            BaseNumber = "current", CreatedAt = new DateTime(2025, 4, 1), CreatedById = 1,
+            Id = 3,
+            DocumentId = 1,
+            ExecutionCircuitId = 1,
+            Year = 2025,
+            BaseNumber = "current",
+            CreatedAt = new DateTime(2025, 4, 1),
+            CreatedById = 1,
         });
 
         Assert.Equal("current", EffectiveFileIdentity.Number(doc, 2026));

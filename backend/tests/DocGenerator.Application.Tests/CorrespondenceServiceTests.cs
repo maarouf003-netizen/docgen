@@ -740,7 +740,7 @@ public class CorrespondenceServiceTests : IDisposable
         var targets = await _service.SearchTargetsAsync(
             _delegate.Id, UserRole.EntityManager, null, "المحامي", doc.Id, default);
 
-var names = targets.Select(t => t.FullName).ToList();
+        var names = targets.Select(t => t.FullName).ToList();
         Assert.Contains("المحامي الأول", names);
         Assert.Contains("المحامي الثاني", names);
     }

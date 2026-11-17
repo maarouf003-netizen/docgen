@@ -33,9 +33,9 @@ public sealed class SwaggerDisabledFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Production");
         // ADR-0001: لا مسار SQLite إنتاجي — سلسلة Postgres شكلية للحارس، والسياق اختباري.
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
-    // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
-    // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
-    builder.UseSetting("Database:AutoMigrate", "false");
+        // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
+        // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+        builder.UseSetting("Database:AutoMigrate", "false");
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");

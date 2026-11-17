@@ -61,7 +61,8 @@ public class UserManagementServiceTests : IDisposable
             Role = role,
             BranchId = branchId,
             IsActive = isActive,
-            PasswordHash = _hasher.Hash("TestPass1234"),        };
+            PasswordHash = _hasher.Hash("TestPass1234"),
+        };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         return user;
@@ -508,8 +509,12 @@ public class UserManagementServiceTests : IDisposable
     {
         var user = new User
         {
-            Username = username, FullName = username, Role = UserRole.Head,
-            BranchId = branchId, IsActive = true, PasswordHash = "x",
+            Username = username,
+            FullName = username,
+            Role = UserRole.Head,
+            BranchId = branchId,
+            IsActive = true,
+            PasswordHash = "x",
         };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
@@ -520,8 +525,12 @@ public class UserManagementServiceTests : IDisposable
     {
         var circuit = new ExecutionCircuit
         {
-            BranchId = branchId, SectionId = sectionId, Name = name, NameNorm = name,
-            IsActive = true, CreatedById = creatorId,
+            BranchId = branchId,
+            SectionId = sectionId,
+            Name = name,
+            NameNorm = name,
+            IsActive = true,
+            CreatedById = creatorId,
         };
         _db.ExecutionCircuits.Add(circuit);
         await _db.SaveChangesAsync();
@@ -532,9 +541,13 @@ public class UserManagementServiceTests : IDisposable
     {
         _db.Documents.Add(new Document
         {
-            BranchId = branchId, CreatedById = lawyerId, ExecutionCircuitId = circuitId,
-            BorrowerName = "مقترض", GeneralEntitySide = "applicant",
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            BranchId = branchId,
+            CreatedById = lawyerId,
+            ExecutionCircuitId = circuitId,
+            BorrowerName = "مقترض",
+            GeneralEntitySide = "applicant",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
     }
@@ -791,24 +804,35 @@ public class UserManagementServiceTests : IDisposable
         var busy = await AddLawyerViaServiceAsync("محام مشغول", DamascusId, head.Id);
         _db.Documents.Add(new Document
         {
-            BranchId = DamascusId, CreatedById = busy.Id, IsDeleted = false,
-            BorrowerName = "مقترض", GeneralEntitySide = "applicant",
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            BranchId = DamascusId,
+            CreatedById = busy.Id,
+            IsDeleted = false,
+            BorrowerName = "مقترض",
+            GeneralEntitySide = "applicant",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
         // تنبيه معلق للسلف + كتاب معلق له (بلا رد).
         var recipient = new HeadAlertRecipient { HeadAlertId = 0, UserId = head.Id };
         var alert = new HeadAlert
         {
-            BranchId = DamascusId, CreatedById = head.Id, TargetType = HeadAlertTargetType.Head,
+            BranchId = DamascusId,
+            CreatedById = head.Id,
+            TargetType = HeadAlertTargetType.Head,
             Kind = HeadAlertKindCatalog.Legacy,
-            Message = "تنبيه معلق", Recipients = new List<HeadAlertRecipient> { recipient },
+            Message = "تنبيه معلق",
+            Recipients = new List<HeadAlertRecipient> { recipient },
         };
         _db.HeadAlerts.Add(alert);
         var letter = new Correspondence
         {
-            BranchId = DamascusId, Governorate = "دمشق", CreatedById = busy.Id,
-            TargetUserId = head.Id, CorrespondenceNumber = "ك-1", Importance = Correspondence.ImportanceNormal,
+            BranchId = DamascusId,
+            Governorate = "دمشق",
+            CreatedById = busy.Id,
+            TargetUserId = head.Id,
+            CorrespondenceNumber = "ك-1",
+            Importance = Correspondence.ImportanceNormal,
         };
         _db.Correspondences.Add(letter);
         await _db.SaveChangesAsync();
@@ -852,9 +876,12 @@ public class UserManagementServiceTests : IDisposable
         var head = await AddHeadWithSectionAsync("رئيس شعبة", DamascusId, sectionId);
         var alert = new HeadAlert
         {
-            BranchId = DamascusId, CreatedById = head.Id, TargetType = HeadAlertTargetType.Head,
+            BranchId = DamascusId,
+            CreatedById = head.Id,
+            TargetType = HeadAlertTargetType.Head,
             Kind = HeadAlertKindCatalog.Legacy,
-            Message = "مقروء", Recipients = new List<HeadAlertRecipient> { new() { UserId = head.Id, IsRead = true } },
+            Message = "مقروء",
+            Recipients = new List<HeadAlertRecipient> { new() { UserId = head.Id, IsRead = true } },
         };
         _db.HeadAlerts.Add(alert);
         await _db.SaveChangesAsync();
@@ -894,15 +921,24 @@ public class UserManagementServiceTests : IDisposable
         var lawyer = await AddLawyerViaServiceAsync("محام", DamascusId, head.Id);
         var letter = new Correspondence
         {
-            BranchId = DamascusId, Governorate = "دمشق", CreatedById = lawyer.Id,
-            TargetUserId = head.Id, CorrespondenceNumber = "ك-2", Importance = Correspondence.ImportanceNormal,
+            BranchId = DamascusId,
+            Governorate = "دمشق",
+            CreatedById = lawyer.Id,
+            TargetUserId = head.Id,
+            CorrespondenceNumber = "ك-2",
+            Importance = Correspondence.ImportanceNormal,
         };
         _db.Correspondences.Add(letter);
         await _db.SaveChangesAsync();
         _db.CorrespondenceMessages.Add(new CorrespondenceMessage
         {
-            CorrespondenceId = letter.Id, Kind = CorrespondenceMessage.KindReply,
-            BodyHtml = "رد", BodyPlainText = "رد", MessageNumber = "ر-1", AuthorId = head.Id, AuthorName = "رئيس",
+            CorrespondenceId = letter.Id,
+            Kind = CorrespondenceMessage.KindReply,
+            BodyHtml = "رد",
+            BodyPlainText = "رد",
+            MessageNumber = "ر-1",
+            AuthorId = head.Id,
+            AuthorName = "رئيس",
         });
         await _db.SaveChangesAsync();
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
