@@ -58,6 +58,7 @@ public class RateLimitingIntegrationTests
             new { username = $"rl_nonexistent_{Guid.NewGuid():N}", password = "wrong" });
         Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
         Assert.Contains("طلبات كثيرة", await flooded.Content.ReadAsStringAsync());
+        AssertRetryAfter(flooded, "60");
     }
 
     [Fact]
@@ -92,6 +93,7 @@ public class RateLimitingIntegrationTests
 
         var flooded = await client.GetAsync("/api/meta/current-year");
         Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
+        AssertRetryAfter(flooded, "60");
     }
 
     [Fact]
@@ -105,6 +107,7 @@ public class RateLimitingIntegrationTests
 
         var flooded = await client.GetAsync("/api/dashboard");
         Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
+        AssertRetryAfter(flooded, "60");
     }
 
     [Fact]
@@ -144,5 +147,22 @@ public class RateLimitingIntegrationTests
         Assert.Equal((HttpStatusCode)429, (await admin.GetAsync("/api/dashboard")).StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await manager.GetAsync("/api/dashboard")).StatusCode);
+    }
+
+    [Fact]
+    public void InvalidRateLimitSetting_RefusesStartup()
+    {
+        using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "0");
+
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("RateLimiting:ExpensivePerMinute", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    private static void AssertRetryAfter(HttpResponseMessage response, string expected)
+    {
+        Assert.True(response.Headers.TryGetValues("Retry-After", out var values), "missing Retry-After");
+        Assert.Equal(expected, Assert.Single(values));
     }
 }

@@ -30,4 +30,29 @@ public class RateLimitOptions
     /// عند إرسال التقرير)، فهذا الحد يمنع إغراق السجل مع سقف حجم الجسم وعدد التقارير.
     /// </summary>
     public int CspReportPerMinute { get; set; } = 60;
+
+    /// <summary>
+    /// يرفض القيم غير الصالحة عند الإقلاع بدل تمريرها إلى <c>AddRateLimiter</c> (حيث
+    /// كان <c>Math.Max(1, …)</c> يخفي الصفر/السالب بصمت فيتحول خطأ إعداد إلى حد مفعّل).
+    /// </summary>
+    public void Validate()
+    {
+        RequireRange(MaxLoginAttempts, 1, 100, "RateLimiting:MaxLoginAttempts");
+        RequireRange(WindowMinutes, 1, 60, "RateLimiting:WindowMinutes");
+        RequireRange(LoginIpPerMinute, 1, 1_000_000, "RateLimiting:LoginIpPerMinute");
+        RequireRange(GeneralAnonPerMinute, 1, 1_000_000, "RateLimiting:GeneralAnonPerMinute");
+        RequireRange(GeneralAuthPerMinute, 1, 1_000_000, "RateLimiting:GeneralAuthPerMinute");
+        RequireRange(ExpensivePerMinute, 1, 1_000_000, "RateLimiting:ExpensivePerMinute");
+        RequireRange(PasswordPerMinute, 1, 1_000_000, "RateLimiting:PasswordPerMinute");
+        RequireRange(CspReportPerMinute, 1, 1_000_000, "RateLimiting:CspReportPerMinute");
+    }
+
+    private static void RequireRange(int value, int min, int max, string key)
+    {
+        if (value < min || value > max)
+        {
+            throw new InvalidOperationException(
+                $"{key} must be between {min} and {max} (got {value}).");
+        }
+    }
 }

@@ -9,6 +9,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DocGenerator.Api.Controllers;
 
@@ -155,6 +156,7 @@ public class EntityRegistryController : ControllerBase
 
     /// <summary>معاينة النصوص التاريخية المتمايزة بعد التطبيع مع عدّادات ملفاتها.</summary>
     [HttpPost("import-preview")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> ImportPreview(CancellationToken ct)
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
@@ -165,6 +167,7 @@ public class EntityRegistryController : ControllerBase
     /// <summary>اعتماد الربط الجماعي: إنشاء هويات وقيود نهائية Final مباشرة مع الأسماء البديلة.</summary>
     [HttpPost("import-commit")]
     [SkipIdempotency]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> ImportCommit([FromBody] ImportCommitRequest request, CancellationToken ct)
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
@@ -379,6 +382,7 @@ public class EntityRegistryController : ControllerBase
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
     [HttpGet("change-events/export")]
     [SingleExportPerUser]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> ExportChangeEvents(
         [FromQuery] string? governorate,
         [FromQuery] string? actionKind,
