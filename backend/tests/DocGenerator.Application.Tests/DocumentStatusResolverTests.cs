@@ -8,7 +8,7 @@ namespace DocGenerator.Application.Tests;
 
 /// <summary>
 /// مصفوفة اشتقاق حالة العرض الموحدة — المصدر الوحيد للقواعد بعد توحيدها
- /// (كانت مكررة بين ExcelExportService ومنطق الواجهة).
+/// (كانت مكررة بين ExcelExportService ومنطق الواجهة).
 /// </summary>
 [Trait("Category", "Unit")]
 public class DocumentStatusResolverTests
@@ -19,13 +19,13 @@ public class DocumentStatusResolverTests
         string? execSubStatus = null,
         string? executedStatus = null,
         bool isDraft = false) => new()
-    {
-        GeneralEntitySide = side,
-        ExecStatus = execStatus,
-        ExecSubStatus = execSubStatus,
-        ExecutedStatus = executedStatus,
-        IsDraft = isDraft,
-    };
+        {
+            GeneralEntitySide = side,
+            ExecStatus = execStatus,
+            ExecSubStatus = execSubStatus,
+            ExecutedStatus = executedStatus,
+            IsDraft = isDraft,
+        };
 
     [Fact]
     public void ExecutedLikeFamily_MapsFromExecutedStatus()

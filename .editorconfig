@@ -1,10 +1,11 @@
-# P4-06 — تنسيق موحّد (إرشادي، بلا بوابة `dotnet format` في هذه الجولة).
+# P4-06 — تنسيق موحّد وبوابة `dotnet format --verify-no-changes` (CI: backend).
 # القاعدة: الملفات المولّدة/الهجرات تُستثنى من التنسيق اليدوي.
 
 root = true
 
 [*]
 charset = utf-8
+end_of_line = lf
 indent_style = space
 indent_size = 2
 trim_trailing_whitespace = true

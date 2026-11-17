@@ -37,7 +37,9 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         var branch = await db.Branches.FirstAsync(b => b.Code == "DAM");
         var creator = new User
         {
-            Username = "creator", FullName = "منشئ", Role = UserRole.Admin,
+            Username = "creator",
+            FullName = "منشئ",
+            Role = UserRole.Admin,
             PasswordHash = hasher.Hash("123456"),
         };
         db.Users.Add(creator);

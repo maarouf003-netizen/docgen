@@ -533,7 +533,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("المصرف التجاري", options.ExecutedEntities);
     }
 
-[Fact]
+    [Fact]
     public async Task Search_ByExecutedEntity_FiltersOnlyPublicEntities()
     {
         await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);

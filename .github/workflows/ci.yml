@@ -23,6 +23,11 @@ jobs:
         run: dotnet restore backend/DocGenerator.sln --locked-mode
       - name: Build (backend)
         run: dotnet build backend/DocGenerator.sln --no-restore --nologo -v q -warnaserror
+      # P4-06: بوابة التنسيق — `dotnet format` الداخلي (بدون محلّلات خارجية).
+      # البناء أعلاه يضمن وجود أصول الاستعادة، فيعمل `--no-restore` على CI بسرعة.
+      # المسار الكامل للملف المفتاح: .editorconfig (charset=utf-8/eol=lf) + .gitattributes.
+      - name: Format gate (dotnet format)
+        run: dotnet format backend/DocGenerator.sln --verify-no-changes --no-restore
       # P1-06: بوابة حدود المعمارية — تفشل عند أي اعتماد بين الطبقات ممنوع،
       # أو استخدام DbContext في متحكم، أو raw SQL في Application.
       - name: Test (architecture boundaries)

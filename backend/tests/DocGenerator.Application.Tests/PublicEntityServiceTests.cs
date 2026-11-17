@@ -249,8 +249,11 @@ public class PublicEntityServiceTests : IDisposable
         var final = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var pendingEntry = new PublicEntity
         {
-            GroupId = final.GroupId, Governorate = "حلب", BranchName = "فرع حلب",
-            Status = EntityStatusCatalog.Pending, CreatedById = _managerId,
+            GroupId = final.GroupId,
+            Governorate = "حلب",
+            BranchName = "فرع حلب",
+            Status = EntityStatusCatalog.Pending,
+            CreatedById = _managerId,
         };
         _db.PublicEntities.Add(pendingEntry);
         await _db.SaveChangesAsync();
@@ -374,7 +377,9 @@ public class PublicEntityServiceTests : IDisposable
         };
         executedDoc.ExecutedPublicEntities.Add(new ExecutedPublicEntity
         {
-            EntityName = "وزارة التعليم", EntityBranch = "فرع التنفيذ", EntityNature = "public",
+            EntityName = "وزارة التعليم",
+            EntityBranch = "فرع التنفيذ",
+            EntityNature = "public",
         });
         _db.Documents.Add(executedDoc);
 
@@ -739,8 +744,12 @@ public class PublicEntityServiceTests : IDisposable
         await SeedApplicantDocumentAsync("مديريه النقل", "دمشق");
         var executedDoc = new Document
         {
-            BranchId = _damascusId, CreatedById = _lawyerId, BorrowerName = "س",
-            AmountNumeric = 0, ExecStatus = string.Empty, GeneralEntitySide = "executed",
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            BorrowerName = "س",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "executed",
         };
         executedDoc.ExecutedPublicEntities.Add(new ExecutedPublicEntity
         { EntityName = "مديرية النقل", Governorate = "حلب", EntityNature = "public" });
@@ -2588,7 +2597,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("هيئة الاستثمار والتجارة", resp.Items[0].CanonicalName);
         Assert.True(resp.Items[0].Similarity >= 0.55);
     }
-    
+
     [Fact]
     public async Task ListGroups_IncludesLinkedDocumentCount()
     {

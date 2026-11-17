@@ -419,7 +419,8 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                 var existing = await _baseNumbers.FindActiveRowForYearAsync(doc.Id, circuitId, currentYear, ct);
                 if (existing is not null)
                     throw new DocumentConflictException(
-                        "يوجد رقم مسجل للسنة الحالية؛ استخدم التصحيح") { Code = "number_duplicate" };
+                        "يوجد رقم مسجل للسنة الحالية؛ استخدم التصحيح")
+                    { Code = "number_duplicate" };
 
                 var typeKey = DocumentBaseNumberPolicy.NormalizeType(doc.FileType);
                 var numberKey = DocumentBaseNumberPolicy.NormalizeNumber(number);
@@ -608,7 +609,8 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                 throw new KeyNotFoundException("لا يوجد صف تدوير فعّال لهذه السنة في دائرة الملف");
             if (rows.Any(r => r.DocumentId == documentId && r.Id != row.Id))
                 throw new DocumentConflictException(
-                    "لا يمكن التراجع: توجد هوية أخرى فعّالة لنفس السنة في دائرة الملف") { Code = "number_duplicate" };
+                    "لا يمكن التراجع: توجد هوية أخرى فعّالة لنفس السنة في دائرة الملف")
+                { Code = "number_duplicate" };
 
             Void(row, actorUserId, NumberVoidReasons.UndoRotation);
             await _uow.SaveChangesAsync(ct);

@@ -374,7 +374,8 @@ public class StatisticsRepository : IStatisticsRepository
             .ToListAsync(ct);
 
         return AggregateManagerStats(rows, period, window)
-            with { Appeals = await GetPersonalAppealsStatsAsync(userId, window.Start, window.End, ct) };
+            with
+        { Appeals = await GetPersonalAppealsStatsAsync(userId, window.Start, window.End, ct) };
     }
 
     /// <summary>

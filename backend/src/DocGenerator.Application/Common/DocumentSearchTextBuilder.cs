@@ -118,8 +118,14 @@ public static class DocumentSearchTextBuilder
     public static string BuildFullData(Document doc) =>
         JsonSerializer.Serialize(new
         {
-            doc.BorrowerName, doc.BorrowerFamily, doc.AmountNumeric, doc.Currency,
-            doc.ContractNumber, doc.Court, doc.Applicant, doc.Lawyer
+            doc.BorrowerName,
+            doc.BorrowerFamily,
+            doc.AmountNumeric,
+            doc.Currency,
+            doc.ContractNumber,
+            doc.Court,
+            doc.Applicant,
+            doc.Lawyer
         });
 
     /// <summary>

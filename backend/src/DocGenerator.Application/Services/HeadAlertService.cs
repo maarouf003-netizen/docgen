@@ -845,98 +845,98 @@ public sealed class HeadAlertService : IHeadAlertService
         switch (request.Audience)
         {
             case HeadAlertAudience.SingleLawyer:
-            {
-                var lawyerId = request.RecipientUserId ?? request.TargetLawyerId;
-                if (lawyerId is null)
-                    throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
-                if (request.RecipientUserId is not null
-                    && request.TargetLawyerId is not null
-                    && request.RecipientUserId != request.TargetLawyerId)
-                    throw new ArgumentException("المستلم المحدد يختلف عن المحامي الهدف", nameof(request));
-
-                var lawyer = await _users.GetByIdAsync(lawyerId.Value, ct);
-                if (lawyer is null || !lawyer.IsActive || lawyer.Role != UserRole.Lawyer)
                 {
-                    if (overrideApplied)
-                        throw new HeadAlertRecipientInactiveException("المحامي الخلف غير موجود أو غير فعّال");
-                    throw new HeadAlertNoRecipientsException("المحامي المستلم غير موجود أو غير فعّال");
-                }
+                    var lawyerId = request.RecipientUserId ?? request.TargetLawyerId;
+                    if (lawyerId is null)
+                        throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
+                    if (request.RecipientUserId is not null
+                        && request.TargetLawyerId is not null
+                        && request.RecipientUserId != request.TargetLawyerId)
+                        throw new ArgumentException("المستلم المحدد يختلف عن المحامي الهدف", nameof(request));
 
-                return (HeadAlertTargetType.Lawyer, new List<User> { lawyer });
-            }
+                    var lawyer = await _users.GetByIdAsync(lawyerId.Value, ct);
+                    if (lawyer is null || !lawyer.IsActive || lawyer.Role != UserRole.Lawyer)
+                    {
+                        if (overrideApplied)
+                            throw new HeadAlertRecipientInactiveException("المحامي الخلف غير موجود أو غير فعّال");
+                        throw new HeadAlertNoRecipientsException("المحامي المستلم غير موجود أو غير فعّال");
+                    }
+
+                    return (HeadAlertTargetType.Lawyer, new List<User> { lawyer });
+                }
 
             case HeadAlertAudience.SingleHead:
-            {
-                // غياب المستلم هنا ليس خطأ برمجيًا: مسارات الإنابة تُسجّل الرسالة حتى
-                // عند غياب رئيس نشط للفرع/القسم، فتُعامل حالة عمل بلا مستلمين (تخطٍّ)
-                // لا استثناءً عامًا يُعاد ثم يفشل بعد استنفاد المحاولات.
-                if (request.RecipientUserId is null)
-                    throw new HeadAlertNoRecipientsException("لا يوجد رئيس مستلم للتنبيه");
-                if (request.TargetLawyerId is not null)
-                    throw new ArgumentException("الجمهور «رئيس» لا يقبل محاميًا هدفًا", nameof(request));
-
-                var head = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
-                if (head is null || !head.IsActive || head.Role is not (UserRole.Head or UserRole.SubHead))
                 {
-                    if (overrideApplied)
-                        throw new HeadAlertRecipientInactiveException("الرئيس الخلف غير موجود أو غير فعّال");
-                    throw new HeadAlertNoRecipientsException("الرئيس المستلم غير موجود أو غير فعّال");
-                }
+                    // غياب المستلم هنا ليس خطأ برمجيًا: مسارات الإنابة تُسجّل الرسالة حتى
+                    // عند غياب رئيس نشط للفرع/القسم، فتُعامل حالة عمل بلا مستلمين (تخطٍّ)
+                    // لا استثناءً عامًا يُعاد ثم يفشل بعد استنفاد المحاولات.
+                    if (request.RecipientUserId is null)
+                        throw new HeadAlertNoRecipientsException("لا يوجد رئيس مستلم للتنبيه");
+                    if (request.TargetLawyerId is not null)
+                        throw new ArgumentException("الجمهور «رئيس» لا يقبل محاميًا هدفًا", nameof(request));
 
-                return (HeadAlertTargetType.Head, new List<User> { head });
-            }
+                    var head = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
+                    if (head is null || !head.IsActive || head.Role is not (UserRole.Head or UserRole.SubHead))
+                    {
+                        if (overrideApplied)
+                            throw new HeadAlertRecipientInactiveException("الرئيس الخلف غير موجود أو غير فعّال");
+                        throw new HeadAlertNoRecipientsException("الرئيس المستلم غير موجود أو غير فعّال");
+                    }
+
+                    return (HeadAlertTargetType.Head, new List<User> { head });
+                }
 
             case HeadAlertAudience.DocumentCreator:
-            {
-                if (request.TargetLawyerId is not null)
-                    throw new ArgumentException("الجمهور «منشئ الملف» لا يقبل محاميًا هدفًا", nameof(request));
-
-                User? creator = null;
-                if (request.RecipientUserId is not null)
                 {
-                    creator = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
-                }
-                else if (request.DocumentId is not null)
-                {
-                    var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
-                    creator = document?.CreatedBy;
-                }
-                else
-                {
-                    throw new ArgumentException(
-                        "جمهور «منشئ الملف» يحتاج مستلمًا صريحًا أو ملفًا صالحًا", nameof(request));
-                }
+                    if (request.TargetLawyerId is not null)
+                        throw new ArgumentException("الجمهور «منشئ الملف» لا يقبل محاميًا هدفًا", nameof(request));
 
-                if (creator is null || !creator.IsActive || creator.Role != UserRole.Lawyer)
-                    throw new HeadAlertNoRecipientsException("منشئ الملف غير موجود أو غير فعّال");
+                    User? creator = null;
+                    if (request.RecipientUserId is not null)
+                    {
+                        creator = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
+                    }
+                    else if (request.DocumentId is not null)
+                    {
+                        var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
+                        creator = document?.CreatedBy;
+                    }
+                    else
+                    {
+                        throw new ArgumentException(
+                            "جمهور «منشئ الملف» يحتاج مستلمًا صريحًا أو ملفًا صالحًا", nameof(request));
+                    }
 
-                if (request.DocumentId is not null && request.RecipientUserId is not null)
-                {
-                    var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
-                    if (document?.CreatedById != creator.Id)
-                        throw new ArgumentException("المستلم لا يطابق منشئ الملف", nameof(request));
+                    if (creator is null || !creator.IsActive || creator.Role != UserRole.Lawyer)
+                        throw new HeadAlertNoRecipientsException("منشئ الملف غير موجود أو غير فعّال");
+
+                    if (request.DocumentId is not null && request.RecipientUserId is not null)
+                    {
+                        var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
+                        if (document?.CreatedById != creator.Id)
+                            throw new ArgumentException("المستلم لا يطابق منشئ الملف", nameof(request));
+                    }
+
+                    return (HeadAlertTargetType.Document, new List<User> { creator });
                 }
-
-                return (HeadAlertTargetType.Document, new List<User> { creator });
-            }
 
             case HeadAlertAudience.BranchLawyers:
-            {
-                if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
-                    throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
+                {
+                    if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
+                        throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
 
-                var lawyers = await _alerts.ListActiveLawyersAsync(request.BranchId, ct);
-                return (HeadAlertTargetType.Lawyer, lawyers);
-            }
+                    var lawyers = await _alerts.ListActiveLawyersAsync(request.BranchId, ct);
+                    return (HeadAlertTargetType.Lawyer, lawyers);
+                }
 
             case HeadAlertAudience.BranchHeads:
-            {
-                if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
-                    throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
+                {
+                    if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
+                        throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
 
-                var heads = await _alerts.ListActiveHeadsAsync(request.BranchId, ct);
-                return (HeadAlertTargetType.Head, heads);
-            }
+                    var heads = await _alerts.ListActiveHeadsAsync(request.BranchId, ct);
+                    return (HeadAlertTargetType.Head, heads);
+                }
 
             default:
                 throw new ArgumentException("جمهور التنبيه غير معروف", nameof(request));
@@ -1024,32 +1024,32 @@ public sealed class HeadAlertService : IHeadAlertService
         switch (targetType)
         {
             case HeadAlertTargetType.Document:
-            {
-                if (request.DocumentId is null)
-                    throw new ArgumentException("يجب تحديد الملف المرتبط بالتنبيه");
+                {
+                    if (request.DocumentId is null)
+                        throw new ArgumentException("يجب تحديد الملف المرتبط بالتنبيه");
 
-                var doc = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
-                // رسالة واحدة للملف غير الموجود وللملف خارج الفرع (§5، `P3-5`):
-                // لا يُكشف وجود ملف فرع آخر عبر اختلاف النص.
-                if (doc is null || doc.BranchId != branchId)
-                    throw new ArgumentException("الملف غير متاح");
-                if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer || !doc.CreatedBy.IsActive)
-                    throw new ArgumentException("لا يوجد محامٍ مختص نشط لهذا الملف");
+                    var doc = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
+                    // رسالة واحدة للملف غير الموجود وللملف خارج الفرع (§5، `P3-5`):
+                    // لا يُكشف وجود ملف فرع آخر عبر اختلاف النص.
+                    if (doc is null || doc.BranchId != branchId)
+                        throw new ArgumentException("الملف غير متاح");
+                    if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer || !doc.CreatedBy.IsActive)
+                        throw new ArgumentException("لا يوجد محامٍ مختص نشط لهذا الملف");
 
-                return new List<User> { doc.CreatedBy };
-            }
+                    return new List<User> { doc.CreatedBy };
+                }
             case HeadAlertTargetType.Lawyer:
-            {
-                if (request.TargetLawyerId is null)
-                    throw new ArgumentException("يجب تحديد المحامي المستلم");
+                {
+                    if (request.TargetLawyerId is null)
+                        throw new ArgumentException("يجب تحديد المحامي المستلم");
 
-                var lawyer = await _users.GetByIdAsync(request.TargetLawyerId.Value, ct);
-                if (lawyer is null || lawyer.Role != UserRole.Lawyer
-                    || lawyer.BranchId != branchId || !lawyer.IsActive)
-                    throw new ArgumentException("المحامي غير موجود ضمن فرعك");
+                    var lawyer = await _users.GetByIdAsync(request.TargetLawyerId.Value, ct);
+                    if (lawyer is null || lawyer.Role != UserRole.Lawyer
+                        || lawyer.BranchId != branchId || !lawyer.IsActive)
+                        throw new ArgumentException("المحامي غير موجود ضمن فرعك");
 
-                return new List<User> { lawyer };
-            }
+                    return new List<User> { lawyer };
+                }
             case HeadAlertTargetType.Branch:
                 return await _alerts.ListActiveLawyersAsync(branchId, ct);
             default:

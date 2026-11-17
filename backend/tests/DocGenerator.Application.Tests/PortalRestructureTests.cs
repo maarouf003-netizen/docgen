@@ -140,13 +140,21 @@ public class PortalRestructureTests : IDisposable
             fileNumber: "99", fileYear: "2026");
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
-            DocumentId = id, Year = 2025, BaseNumber = "900", CreatedById = 1,
-            CreatedAt = new DateTime(2025, 5, 1), UpdatedAt = DateTime.UtcNow,
+            DocumentId = id,
+            Year = 2025,
+            BaseNumber = "900",
+            CreatedById = 1,
+            CreatedAt = new DateTime(2025, 5, 1),
+            UpdatedAt = DateTime.UtcNow,
         });
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
-            DocumentId = id, Year = 2026, BaseNumber = "1500", CreatedById = 1,
-            CreatedAt = new DateTime(2026, 6, 1), UpdatedAt = DateTime.UtcNow,
+            DocumentId = id,
+            Year = 2026,
+            BaseNumber = "1500",
+            CreatedById = 1,
+            CreatedAt = new DateTime(2026, 6, 1),
+            UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
 
@@ -278,9 +286,15 @@ public class PortalRestructureTests : IDisposable
         // المنيب بلا أي رابط جهة — خارج كل النطاقات عمدًا حتى لا يلوّث العدّ.
         var source = new Document
         {
-            CreatedById = 1, BorrowerName = "منيب " + borrower, IsDraft = false,
-            ExecStatus = string.Empty, AmountNumeric = amount, Currency = currency,
-            GeneralEntitySide = "applicant", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            CreatedById = 1,
+            BorrowerName = "منيب " + borrower,
+            IsDraft = false,
+            ExecStatus = string.Empty,
+            AmountNumeric = amount,
+            Currency = currency,
+            GeneralEntitySide = "applicant",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
             SearchText = string.Empty,
         };
         _db.Documents.Add(source);
@@ -378,8 +392,12 @@ public class PortalRestructureTests : IDisposable
         var futureYear = TestClock.CurrentYear + 2;
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
-            DocumentId = id, Year = futureYear, BaseNumber = "7777", CreatedById = 1,
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            DocumentId = id,
+            Year = futureYear,
+            BaseNumber = "7777",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
 
@@ -527,8 +545,14 @@ public class PortalRestructureTests : IDisposable
         var inScope = await SeedDocAsync("داخل", null, null, _entryDamascusId, null, false, "ليرة سورية", 10);
         var outScope = new Document
         {
-            CreatedById = 1, BorrowerName = "خارج", IsDraft = false, ExecStatus = string.Empty,
-            AmountNumeric = 10, GeneralEntitySide = "applicant", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            CreatedById = 1,
+            BorrowerName = "خارج",
+            IsDraft = false,
+            ExecStatus = string.Empty,
+            AmountNumeric = 10,
+            GeneralEntitySide = "applicant",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
             SearchText = "خارج",
         };
         _db.Documents.Add(outScope);

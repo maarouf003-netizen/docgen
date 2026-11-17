@@ -2641,20 +2641,29 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.Guarantors.AddRange(
             new Guarantor
             {
-                DocumentId = source.Id, GuarantorNumber = 2,
-                GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+                DocumentId = source.Id,
+                GuarantorNumber = 2,
+                GuarantorName = "محمود",
+                GuarantorFather = "سامي",
+                GuarantorFamily = "الحلبي",
                 GuarantorNature = PartyNatureCatalog.Natural,
             },
             new Guarantor
             {
-                DocumentId = source.Id, GuarantorNumber = 3,
-                GuarantorName = "علي", GuarantorFather = "حسن", GuarantorFamily = "الأمين",
+                DocumentId = source.Id,
+                GuarantorNumber = 3,
+                GuarantorName = "علي",
+                GuarantorFather = "حسن",
+                GuarantorFamily = "الأمين",
                 GuarantorNature = PartyNatureCatalog.Natural,
             });
         _db.Heirs.Add(new Heir
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            HeirName = "حسن",
+            HeirFather = "محمود",
+            HeirFamily = "الحلبي",
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
@@ -2741,15 +2750,22 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
             GuarantorNature = PartyNatureCatalog.Natural,
         });
         _db.Heirs.Add(new Heir
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
-            AddressType = "عنوان", HeirAddress = "عنوان-كفيل",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            HeirName = "حسن",
+            HeirFather = "محمود",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "عنوان-كفيل",
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
@@ -3169,8 +3185,11 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
             GuarantorNature = PartyNatureCatalog.Natural,
         });
         await _db.SaveChangesAsync();
@@ -3209,7 +3228,8 @@ public class DocumentDelegationServiceTests : IDisposable
         {
             _db.Guarantors.Add(new Guarantor
             {
-                DocumentId = source.Id, GuarantorNumber = n,
+                DocumentId = source.Id,
+                GuarantorNumber = n,
                 GuarantorName = new string('ك', 60),
                 GuarantorFather = new string('ف', 10),
                 GuarantorFamily = new string('ع', 10),
@@ -3259,7 +3279,8 @@ public class DocumentDelegationServiceTests : IDisposable
         // لا ورثة ولا ممثل (الحارس يفحص الكفلاء القائمين لا الجدد — يُمنع إضافة كفيل أصلًا).
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
             GuarantorName = "شركة الكفل",
             GuarantorNature = PartyNatureCatalog.Legal,
             GuarantorRegistrationNumber = "99",
@@ -3373,8 +3394,11 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
             GuarantorNature = PartyNatureCatalog.Natural,
         });
         await _db.SaveChangesAsync();
@@ -3443,14 +3467,20 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
             GuarantorNature = PartyNatureCatalog.Natural,
         });
         _db.Heirs.Add(new Heir
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            HeirName = "حسن",
+            HeirFather = "محمود",
+            HeirFamily = "الحلبي",
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
@@ -3600,15 +3630,24 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
-            GuarantorAddress = "عنوان-كفيل", AddressType = "عنوان", GuarantorNature = PartyNatureCatalog.Natural,
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
+            GuarantorAddress = "عنوان-كفيل",
+            AddressType = "عنوان",
+            GuarantorNature = PartyNatureCatalog.Natural,
         });
         _db.Heirs.Add(new Heir
         {
-            DocumentId = source.Id, GuarantorNumber = 2,
-            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
-            AddressType = "عنوان", HeirAddress = "عنوان-وريث",
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            HeirName = "حسن",
+            HeirFather = "محمود",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "عنوان-وريث",
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();

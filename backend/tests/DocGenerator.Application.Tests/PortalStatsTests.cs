@@ -132,8 +132,12 @@ public class PortalStatsTests : IDisposable
         // ملف مرتبط بهوية أخرى (مديرية النقل) لا يدخل إحصاء مندوب الوزارة.
         var foreign = new Document
         {
-            CreatedById = 1, BorrowerName = "خارج النطاق", IsDraft = false, ExecStatus = "",
-            AmountNumeric = 500, GeneralEntitySide = "executed",
+            CreatedById = 1,
+            BorrowerName = "خارج النطاق",
+            IsDraft = false,
+            ExecStatus = "",
+            AmountNumeric = 500,
+            GeneralEntitySide = "executed",
         };
         foreign.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "مديرية النقل", EntityNature = "public", RegistryId = _entryBId });
         _db.Documents.Add(foreign);
@@ -175,7 +179,11 @@ public class PortalStatsTests : IDisposable
         var secondEntryId = _db.PublicEntities.AsNoTracking().Single(e => e.Governorate == "حلب").Id;
         var doc = new Document
         {
-            CreatedById = 1, BorrowerName = "ملف بطرفين", IsDraft = false, ExecStatus = "", AmountNumeric = 0,
+            CreatedById = 1,
+            BorrowerName = "ملف بطرفين",
+            IsDraft = false,
+            ExecStatus = "",
+            AmountNumeric = 0,
             GeneralEntitySide = "applicant",
         };
         doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
@@ -220,7 +228,11 @@ public class PortalStatsTests : IDisposable
         var inScopeDoc = await SeedApplicantDocAsync("ملف باستئناف", null, false, DateTime.UtcNow.AddDays(-1), registryId: _entryAId);
         var outScopeDoc = new Document
         {
-            CreatedById = 1, BorrowerName = "خارج النطاق", IsDraft = false, ExecStatus = "", AmountNumeric = 0,
+            CreatedById = 1,
+            BorrowerName = "خارج النطاق",
+            IsDraft = false,
+            ExecStatus = "",
+            AmountNumeric = 0,
             GeneralEntitySide = "executed",
         };
         outScopeDoc.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "مديرية النقل", EntityNature = "public", RegistryId = _entryBId });
@@ -264,8 +276,12 @@ public class PortalStatsTests : IDisposable
     {
         var executedLike = new Document
         {
-            CreatedById = 1, BorrowerName = "ملف طالب تنفيذ اعتباري", IsDraft = false, ExecStatus = "",
-            AmountNumeric = 100, GeneralEntitySide = "executed",
+            CreatedById = 1,
+            BorrowerName = "ملف طالب تنفيذ اعتباري",
+            IsDraft = false,
+            ExecStatus = "",
+            AmountNumeric = 100,
+            GeneralEntitySide = "executed",
         };
         // قيمة تاريخية متبقية من مرحلة الربط الملغاة: لا تدخل إحصاء أي قيد.
         executedLike.ExecutionApplicants.Add(new ExecutionApplicant
@@ -279,12 +295,18 @@ public class PortalStatsTests : IDisposable
 
         var naturalLike = new Document
         {
-            CreatedById = 1, BorrowerName = "ملف طالب طبيعي", IsDraft = false, ExecStatus = "",
-            AmountNumeric = 100, GeneralEntitySide = "executed",
+            CreatedById = 1,
+            BorrowerName = "ملف طالب طبيعي",
+            IsDraft = false,
+            ExecStatus = "",
+            AmountNumeric = 100,
+            GeneralEntitySide = "executed",
         };
         naturalLike.ExecutionApplicants.Add(new ExecutionApplicant
         {
-            Name = "محمد", ApplicantNature = PartyNatureCatalog.Natural, RegistryId = null,
+            Name = "محمد",
+            ApplicantNature = PartyNatureCatalog.Natural,
+            RegistryId = null,
         });
         naturalLike.SearchText = DocumentSearchTextBuilder.Build(naturalLike);
         _db.Documents.Add(naturalLike);

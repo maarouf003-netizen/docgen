@@ -195,7 +195,8 @@ public class DocumentAppealServiceTests : IDisposable
         var appellants = await _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) })
-            with { DepositBookNumber = "K-1", DepositBookDate = "3/8/2026" },
+            with
+            { DepositBookNumber = "K-1", DepositBookDate = "3/8/2026" },
             _lawyer1.Id, "lawyer1");
         Assert.Null(appellants.DepositBookNumber);
         Assert.Null(appellants.DepositBookDate);
@@ -204,7 +205,8 @@ public class DocumentAppealServiceTests : IDisposable
         var againstUs = await _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("borrower", doc.Id) })
-            with { DepositBookNumber = "K-2", DepositBookDate = "4/8/2026" },
+            with
+            { DepositBookNumber = "K-2", DepositBookDate = "4/8/2026" },
             _lawyer1.Id, "lawyer1");
         Assert.Equal("K-2", againstUs.DepositBookNumber);
         Assert.Equal("2026-08-04", againstUs.DepositBookDate);
@@ -714,7 +716,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
     }
 
-  [Fact]
+    [Fact]
     public async Task Create_RejectsFutureBaseYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1344,7 +1346,8 @@ public class DocumentAppealServiceTests : IDisposable
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
         var request = Request(AppealDirectionCatalog.Appellants,
             new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) })
-            with { AppealedDecisionText = new string('م', 2001) };
+            with
+        { AppealedDecisionText = new string('م', 2001) };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => _service.CreateAsync(doc.Id, request, _lawyer1.Id, "lawyer1"));
@@ -1487,8 +1490,12 @@ public class DocumentAppealServiceTests : IDisposable
     {
         var circuit = new ExecutionCircuit
         {
-            BranchId = branchId, SectionId = sectionId, Name = name, NameNorm = name,
-            IsActive = true, CreatedById = creatorId,
+            BranchId = branchId,
+            SectionId = sectionId,
+            Name = name,
+            NameNorm = name,
+            IsActive = true,
+            CreatedById = creatorId,
         };
         _db.ExecutionCircuits.Add(circuit);
         await _db.SaveChangesAsync();

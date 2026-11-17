@@ -34,134 +34,134 @@ public sealed partial class PublicEntityService
         switch (request.Action)
         {
             case ActionKindCatalog.Rename:
-            {
-                var entry = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
-                if (entry is null || entry.GroupId != groupId)
                 {
-                    errors.Add("القيد غير موجود في المجموعة");
+                    var entry = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
+                    if (entry is null || entry.GroupId != groupId)
+                    {
+                        errors.Add("القيد غير موجود في المجموعة");
+                        break;
+                    }
+                    if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
+                    try
+                    {
+                        GuardNotParentEntry(entry);
+                        GuardHeadCannotEditParent(actor, entry);
+                        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
+                        var newBranch = Required(request.NewBranchName, "اسم الفرع مطلوب", 200);
+                        if (string.Equals(newBranch, entry.BranchName, StringComparison.Ordinal))
+                            errors.Add("الاسم الجديد مطابق للاسم الحالي");
+                        else
+                            await EnsureNoDuplicateEntryAsync(entry.Id, entry.Group.CanonicalName, entry.Governorate, newBranch, ct);
+                        var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
+                        targetBranch = newBranch;
+                        totalAffected = count;
+                        previewEntries.Add(new BranchPreviewEntryDto(entry.Id, entry.BranchName, entry.Governorate, count));
+                        summary = $"إعادة تسمية فرع «{entry.BranchName}» إلى «{newBranch}» — {count} ملفًا متأثرًا";
+                    }
+                    catch (ArgumentException ex) { errors.Add(ex.Message); break; }
                     break;
                 }
-                if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
-                try
-                {
-                    GuardNotParentEntry(entry);
-                    GuardHeadCannotEditParent(actor, entry);
-                    await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
-                    var newBranch = Required(request.NewBranchName, "اسم الفرع مطلوب", 200);
-                    if (string.Equals(newBranch, entry.BranchName, StringComparison.Ordinal))
-                        errors.Add("الاسم الجديد مطابق للاسم الحالي");
-                    else
-                        await EnsureNoDuplicateEntryAsync(entry.Id, entry.Group.CanonicalName, entry.Governorate, newBranch, ct);
-                    var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
-                    targetBranch = newBranch;
-                    totalAffected = count;
-                    previewEntries.Add(new BranchPreviewEntryDto(entry.Id, entry.BranchName, entry.Governorate, count));
-                    summary = $"إعادة تسمية فرع «{entry.BranchName}» إلى «{newBranch}» — {count} ملفًا متأثرًا";
-                }
-                catch (ArgumentException ex) { errors.Add(ex.Message); break; }
-                break;
-            }
             case ActionKindCatalog.Merge:
-            {
-                if (!request.TargetId.HasValue) { errors.Add("يجب تحديد الفرع الهدف"); break; }
-                var source = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
-                var target = await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct);
-                try
                 {
-                    await ValidateMergeablePairAsync(groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
-                }
-                catch (ArgumentException ex) { errors.Add(ex.Message); break; }
-                if (errors.Count == 0)
-                {
-                    var count = (await _entities.ListDocumentsLinkedToEntryAsync(request.EntryId, ct)).Count;
-                    targetBranch = target!.BranchName;
-                    totalAffected = count;
-                    previewEntries.Add(new BranchPreviewEntryDto(source!.Id, source.BranchName, source.Governorate,
-                        (await _entities.ListDocumentsLinkedToEntryAsync(source.Id, ct)).Count));
-                    previewEntries.Add(new BranchPreviewEntryDto(target.Id, target.BranchName, target.Governorate,
-                        (await _entities.ListDocumentsLinkedToEntryAsync(target.Id, ct)).Count));
-                    summary = $"دمج فرع «{source.BranchName}» في «{target.BranchName}» — {count} ملفًا متأثرًا";
-                }
-                break;
-            }
-            case ActionKindCatalog.Abolish:
-            {
-                var entry = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
-                if (entry is null || entry.GroupId != groupId) { errors.Add("القيد غير موجود في المجموعة"); break; }
-                if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
-                try
-                {
-                    GuardNotParentEntry(entry);
-                    GuardHeadCannotEditParent(actor, entry);
-                    await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
-                    var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
-                    PublicEntity? target = request.TargetId.HasValue
-                        ? await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct)
-                        : null;
-                    if (count > 0 && target is null)
+                    if (!request.TargetId.HasValue) { errors.Add("يجب تحديد الفرع الهدف"); break; }
+                    var source = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
+                    var target = await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct);
+                    try
                     {
-                        errors.Add("الفرع مرتبط بملفات ولا يمكن إلغاؤه دون فرع هدف بديل (S4)");
+                        await ValidateMergeablePairAsync(groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
                     }
-                    else if (target is not null)
-                    {
-                        await ValidateMergeablePairAsync(groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
-                    }
-                    targetBranch = target?.BranchName ?? entry.BranchName;
-                    totalAffected = count;
-                    previewEntries.Add(new BranchPreviewEntryDto(entry.Id, entry.BranchName, entry.Governorate, count));
-                    summary = count == 0
-                        ? $"إلغاء فرع «{entry.BranchName}» بلا ملفات مرتبطة (تعطيل مباشر)"
-                        : $"إلغاء فرع «{entry.BranchName}» بدمجه في «{targetBranch}» — {count} ملفًا متأثرًا";
-                }
-                catch (ArgumentException ex) { errors.Add(ex.Message); break; }
-                break;
-            }
-            case ActionKindCatalog.Unify:
-            {
-                var target = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
-                if (target is null || target.GroupId != groupId) { errors.Add("الفرع الهدف غير موجود في المجموعة"); break; }
-                var absorbed = request.AbsorbedIds?.Where(x => x != target.Id).Distinct().ToList() ?? new List<int>();
-                if (absorbed.Count == 0) { errors.Add("لا توجد فروع محددة للتوحيد (فرع واحد على الأقل غير الهدف)"); break; }
-                try
-                {
-                    GuardNotParentEntry(target);
-                    GuardHeadCannotEditParent(actor, target);
-                    await EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
-                    var absorbedDocIds = new Dictionary<int, Document>();
-                    foreach (var absorbedId in absorbed)
-                    {
-                        var ae = await _entities.GetEntryWithDetailsAsync(absorbedId, ct);
-                        await ValidateMergeablePairAsync(groupId, ae, target, target.Id, actor, ct, errors, warnings);
-                        if (errors.Count > 0) break;
-                        foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(ae!.Id, ct))
-                            absorbedDocIds[doc.Id] = doc;
-                        previewEntries.Add(new BranchPreviewEntryDto(ae.Id, ae.BranchName, ae.Governorate,
-                            (await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, ct)).Count));
-                    }
+                    catch (ArgumentException ex) { errors.Add(ex.Message); break; }
                     if (errors.Count == 0)
                     {
-                        string? finalBranch = null;
-                        if (!string.IsNullOrWhiteSpace(request.CorrectedName)
-                            && !string.Equals(request.CorrectedName.Trim(), target.BranchName, StringComparison.Ordinal))
-                        {
-                            var corrected = Required(request.CorrectedName, "اسم الفرع مطلوب", 200);
-                            try
-                            {
-                                await EnsureNoDuplicateEntryAsync(target.Id, target.Group.CanonicalName, target.Governorate, corrected, ct);
-                            }
-                            catch (ArgumentException ex) { errors.Add(ex.Message); }
-                            finalBranch = corrected;
-                            foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(target.Id, ct))
-                                absorbedDocIds[doc.Id] = doc;
-                        }
-                        targetBranch = finalBranch ?? target.BranchName;
-                        totalAffected = absorbedDocIds.Count;
-                        summary = $"توحيد {absorbed.Count} فرعًا في «{targetBranch}» — {totalAffected} ملفًا متأثرًا";
+                        var count = (await _entities.ListDocumentsLinkedToEntryAsync(request.EntryId, ct)).Count;
+                        targetBranch = target!.BranchName;
+                        totalAffected = count;
+                        previewEntries.Add(new BranchPreviewEntryDto(source!.Id, source.BranchName, source.Governorate,
+                            (await _entities.ListDocumentsLinkedToEntryAsync(source.Id, ct)).Count));
+                        previewEntries.Add(new BranchPreviewEntryDto(target.Id, target.BranchName, target.Governorate,
+                            (await _entities.ListDocumentsLinkedToEntryAsync(target.Id, ct)).Count));
+                        summary = $"دمج فرع «{source.BranchName}» في «{target.BranchName}» — {count} ملفًا متأثرًا";
                     }
+                    break;
                 }
-                catch (ArgumentException ex) { errors.Add(ex.Message); }
-                break;
-            }
+            case ActionKindCatalog.Abolish:
+                {
+                    var entry = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
+                    if (entry is null || entry.GroupId != groupId) { errors.Add("القيد غير موجود في المجموعة"); break; }
+                    if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
+                    try
+                    {
+                        GuardNotParentEntry(entry);
+                        GuardHeadCannotEditParent(actor, entry);
+                        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
+                        var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
+                        PublicEntity? target = request.TargetId.HasValue
+                            ? await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct)
+                            : null;
+                        if (count > 0 && target is null)
+                        {
+                            errors.Add("الفرع مرتبط بملفات ولا يمكن إلغاؤه دون فرع هدف بديل (S4)");
+                        }
+                        else if (target is not null)
+                        {
+                            await ValidateMergeablePairAsync(groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
+                        }
+                        targetBranch = target?.BranchName ?? entry.BranchName;
+                        totalAffected = count;
+                        previewEntries.Add(new BranchPreviewEntryDto(entry.Id, entry.BranchName, entry.Governorate, count));
+                        summary = count == 0
+                            ? $"إلغاء فرع «{entry.BranchName}» بلا ملفات مرتبطة (تعطيل مباشر)"
+                            : $"إلغاء فرع «{entry.BranchName}» بدمجه في «{targetBranch}» — {count} ملفًا متأثرًا";
+                    }
+                    catch (ArgumentException ex) { errors.Add(ex.Message); break; }
+                    break;
+                }
+            case ActionKindCatalog.Unify:
+                {
+                    var target = await _entities.GetEntryWithDetailsAsync(request.EntryId, ct);
+                    if (target is null || target.GroupId != groupId) { errors.Add("الفرع الهدف غير موجود في المجموعة"); break; }
+                    var absorbed = request.AbsorbedIds?.Where(x => x != target.Id).Distinct().ToList() ?? new List<int>();
+                    if (absorbed.Count == 0) { errors.Add("لا توجد فروع محددة للتوحيد (فرع واحد على الأقل غير الهدف)"); break; }
+                    try
+                    {
+                        GuardNotParentEntry(target);
+                        GuardHeadCannotEditParent(actor, target);
+                        await EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
+                        var absorbedDocIds = new Dictionary<int, Document>();
+                        foreach (var absorbedId in absorbed)
+                        {
+                            var ae = await _entities.GetEntryWithDetailsAsync(absorbedId, ct);
+                            await ValidateMergeablePairAsync(groupId, ae, target, target.Id, actor, ct, errors, warnings);
+                            if (errors.Count > 0) break;
+                            foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(ae!.Id, ct))
+                                absorbedDocIds[doc.Id] = doc;
+                            previewEntries.Add(new BranchPreviewEntryDto(ae.Id, ae.BranchName, ae.Governorate,
+                                (await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, ct)).Count));
+                        }
+                        if (errors.Count == 0)
+                        {
+                            string? finalBranch = null;
+                            if (!string.IsNullOrWhiteSpace(request.CorrectedName)
+                                && !string.Equals(request.CorrectedName.Trim(), target.BranchName, StringComparison.Ordinal))
+                            {
+                                var corrected = Required(request.CorrectedName, "اسم الفرع مطلوب", 200);
+                                try
+                                {
+                                    await EnsureNoDuplicateEntryAsync(target.Id, target.Group.CanonicalName, target.Governorate, corrected, ct);
+                                }
+                                catch (ArgumentException ex) { errors.Add(ex.Message); }
+                                finalBranch = corrected;
+                                foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(target.Id, ct))
+                                    absorbedDocIds[doc.Id] = doc;
+                            }
+                            targetBranch = finalBranch ?? target.BranchName;
+                            totalAffected = absorbedDocIds.Count;
+                            summary = $"توحيد {absorbed.Count} فرعًا في «{targetBranch}» — {totalAffected} ملفًا متأثرًا";
+                        }
+                    }
+                    catch (ArgumentException ex) { errors.Add(ex.Message); }
+                    break;
+                }
             default:
                 throw new ArgumentException("إجراء غير صالح: rename/merge/abolish/unify");
         }

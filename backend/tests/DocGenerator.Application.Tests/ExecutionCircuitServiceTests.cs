@@ -220,10 +220,18 @@ public class ExecutionCircuitServiceTests : IDisposable
         // رقم أساس سابق لإثبات المسح عند الإحالة.
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
-            DocumentId = docId, ExecutionCircuitId = source, CircuitName = "دائرة المصدر",
-            Year = 2025, BaseNumber = "99", NumberKey = "99", TypeKey = "صلح", FileType = "صلح",
+            DocumentId = docId,
+            ExecutionCircuitId = source,
+            CircuitName = "دائرة المصدر",
+            Year = 2025,
+            BaseNumber = "99",
+            NumberKey = "99",
+            TypeKey = "صلح",
+            FileType = "صلح",
             Source = "rotation",
-            CreatedById = _lawyer1Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            CreatedById = _lawyer1Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
 
@@ -1048,8 +1056,12 @@ public class ExecutionCircuitServiceTests : IDisposable
         var hasher = new PasswordHasher();
         var user = new User
         {
-            Username = username, FullName = username, Role = UserRole.SubHead,
-            BranchId = _branchId, SectionId = sectionId, IsActive = true,
+            Username = username,
+            FullName = username,
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            SectionId = sectionId,
+            IsActive = true,
             PasswordHash = hasher.Hash("123456"),
         };
         _db.Users.Add(user);
@@ -1137,8 +1149,13 @@ public class ExecutionCircuitServiceTests : IDisposable
         var hasher = new PasswordHasher();
         var sub = new User
         {
-            Username = "sub_noscope", FullName = "بلا شعبة", Role = UserRole.SubHead,
-            BranchId = _branchId, SectionId = null, IsActive = true, PasswordHash = hasher.Hash("123456"),
+            Username = "sub_noscope",
+            FullName = "بلا شعبة",
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            SectionId = null,
+            IsActive = true,
+            PasswordHash = hasher.Hash("123456"),
         };
         _db.Users.Add(sub);
         await _db.SaveChangesAsync();
@@ -1158,13 +1175,18 @@ public class ExecutionCircuitServiceTests : IDisposable
         // إنابة واردة معلقة + استئناف بلا إسناد على ملفات الدائرة.
         _db.DocumentDelegations.Add(new DocumentDelegation
         {
-            SourceDocumentId = docId, DelegatedCircuitId = circuitId,
-            Status = DelegationStatusCatalog.PendingHead, CreatedById = _lawyer1Id,
+            SourceDocumentId = docId,
+            DelegatedCircuitId = circuitId,
+            Status = DelegationStatusCatalog.PendingHead,
+            CreatedById = _lawyer1Id,
         });
         _db.DocumentAppeals.Add(new DocumentAppeal
         {
-            DocumentId = docId, Direction = AppealDirectionCatalog.Appellants,
-            Status = AppealStatusCatalog.Pending, AppellantsJson = "[]", AppelleesJson = "[]",
+            DocumentId = docId,
+            Direction = AppealDirectionCatalog.Appellants,
+            Status = AppealStatusCatalog.Pending,
+            AppellantsJson = "[]",
+            AppelleesJson = "[]",
             CreatedById = _lawyer1Id,
         });
         await _db.SaveChangesAsync();

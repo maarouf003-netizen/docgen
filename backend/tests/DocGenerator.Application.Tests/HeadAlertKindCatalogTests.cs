@@ -164,7 +164,8 @@ public class HeadAlertKindCatalogTests
         var audiences = HeadAlertKindCatalog.AllowedAudiences(kind);
         Assert.Contains(HeadAlertAudience.SingleLawyer, audiences);
         Assert.Contains(HeadAlertAudience.SingleHead, audiences);
-        Assert.Equal(2, audiences.Count);    }
+        Assert.Equal(2, audiences.Count);
+    }
 
     [Fact]
     public void FamilySets_AreSubsetsOfAll_WithExpectedCounts()

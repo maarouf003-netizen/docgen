@@ -45,13 +45,19 @@ public class DocumentNumberRegistryTests : IDisposable
         _circuitsRepo = circuits;
         var circuitA = new ExecutionCircuit
         {
-            Name = "دائرة أ", NameNorm = "دائره ا", BranchId = _branchId,
-            IsActive = true, CreatedById = _userId,
+            Name = "دائرة أ",
+            NameNorm = "دائره ا",
+            BranchId = _branchId,
+            IsActive = true,
+            CreatedById = _userId,
         };
         var circuitB = new ExecutionCircuit
         {
-            Name = "دائرة ب", NameNorm = "دائره ب", BranchId = _branchId,
-            IsActive = true, CreatedById = _userId,
+            Name = "دائرة ب",
+            NameNorm = "دائره ب",
+            BranchId = _branchId,
+            IsActive = true,
+            CreatedById = _userId,
         };
         _db.ExecutionCircuits.AddRange(circuitA, circuitB);
         _db.SaveChanges();
