@@ -33,6 +33,13 @@ public static partial class LogSanitizer
     [GeneratedRegex(@"(?i)Bearer\s+[A-Za-z0-9\-._~+/=]+", RegexOptions.CultureInvariant)]
     private static partial Regex BearerRegex();
 
+    // JWT عارٍ بلا `Bearer` (ثلاثة مقاطع base64url مفصولة بنقاط) — قد يظهر في
+    // رسالة/مسار/تقرير CSP بلا الترويسة، و`Bearer` وحده لا يلتقطه.
+    [GeneratedRegex(
+        @"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex JwtRegex();
+
     // بيانات شخصية موسومة فقط (P0-08): قيمة بعد مفتاح صريح — لا مطاردة أرقام مجرّدة
     // لأن المبالغ والأرقام القضائية تشخيصية.
     [GeneratedRegex(
@@ -86,6 +93,7 @@ public static partial class LogSanitizer
         // `Bearer` أولًا: وإلا ابتلعته قاعدة مفتاح=قيمة (`Authorization: Bearer` ← القيمة `Bearer`)
         // وبقي التوكن نفسه مكشوفًا.
         value = BearerRegex().Replace(value, "Bearer [محجوب]");
+        value = JwtRegex().Replace(value, "[توكن محجوب]");
         value = EmailRegex().Replace(value, RedactedEmail);
         value = CredentialRegex().Replace(value, RedactedSecret);
         value = NationalIdRegex().Replace(value, RedactedPii);
