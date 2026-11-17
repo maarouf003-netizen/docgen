@@ -825,11 +825,22 @@
 
 #### `P7-03` — Release checklist/DoD
 
+- **الحالة (2026-11-17):** **مغلق توثيقيًا** — [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md):
+  قبل النافذة (البوابات الثماني، `CHANGELOG`، نسخة احتياطية/استعادة، الهجرات وpreflight،
+  متغيّرات `P2-03`، الاعتماديات، خطة التراجع)، أثناءها (سجل الهجرات ثم التطبيق ثم النشر)،
+  بعدها (health/ready/outbox، الرؤوس والكوكيز، فحص دخاني، السجلات)، معايير التراجع،
+  وحقول التوقيع. `canary` يبقى ضمن `P5-04` (يحتاج staging).
 - **العمل:** قائمة قبل كل إصدار: gates، migrations، backup، canary، rollback، changelog.
-- **DoD:** لا إصدار بلا توقيع القائمة.
+- **DoD:** لا إصدار بلا توقيع القائمة — متحقق توثيقيًا؛ التنفيذ الفعلي مسؤولية المالك.
 
 #### `P7-04` — سياسة الاعتماديات
 
+- **الحالة (2026-11-17):** **جزئيًا** — `.github/dependabot.yml` يفعّل تحديثات أسبوعية
+  مجمّعة (NuGet في `/backend`، npm في `/frontend` بالتقسيم prod/dev، وGitHub Actions)،
+  مع `open-pull-requests-limit` و`versioning-strategy: increase` للـnpm. بوابات
+  `dependency-audit`/`npm-audit-guard`/`dependency-review` تبقى الحكم على الثغرات.
+  **متبقٍ (إعداد مستودع/مالك):** تفعيل **Dependabot security updates/alerts** من
+  Settings → Code security، ومراجعة أول دفعة PRs يدويًا (خصوصًا `packages.lock.json`).
 - **العمل:** Renovate/Dependabot أسبوعيًا؛ lock files؛ مراجعة أمنية؛ حد للإصدارات.
 - **DoD:** لا اعتماديات قديمة حرجة.
 
