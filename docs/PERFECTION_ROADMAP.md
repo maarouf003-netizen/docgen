@@ -600,7 +600,8 @@
 
 #### `P4-04` — OpenAPI + عميل TS مولّد
 
-- **الحالة (2026-11-17):** **جزئيًا — أساس العقد مثبت.** أُضيف `operationId` حتمي
+- **الحالة (2026-11-17):** **جزئيًا — أساس العقد مثبت.** PR
+  [`#196`](https://github.com/maarouf003-netizen/docgen/pull/196): أُضيف `operationId` حتمي
   (`Controller_Action`) لكل عملية، ولقطة عقد مُطبَّعة في
   `docs/openapi/docgen-v1.json` (239 عملية) يتحقق منها اختبار `OpenApiContractTests`
   عند كل تشغيل (تطابق اللقطة + `operationId` فريد + معاملات مسار معلنة + مخطط
