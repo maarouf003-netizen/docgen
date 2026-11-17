@@ -1,0 +1,21 @@
+# CODEOWNERS — مالكو المراجعة
+#
+# المالك النهائي لكل الملفات. GitHub يستخدم آخر مطابقة أدقّ، لذا تُكرَّر الأنماط
+# الحساسة صراحةً (هجرات/سير عمل/وثائق) لتظهر في طلب المراجعة دائمًا.
+# يستلزم أن يملك الحساب صلاحية Write على المستودع.
+
+*                                   @maarouf003-netizen
+
+/backend/                           @maarouf003-netizen
+/backend/src/DocGenerator.Infrastructure/Persistence/MigrationsPostgres/  @maarouf003-netizen
+/backend/src/DocGenerator.Api/      @maarouf003-netizen
+/frontend/                          @maarouf003-netizen
+/scripts/                           @maarouf003-netizen
+/.github/workflows/                 @maarouf003-netizen
+/.github/CODEOWNERS                 @maarouf003-netizen
+/AGENTS.md                          @maarouf003-netizen
+/RUN_GUIDE.md                       @maarouf003-netizen
+/SECURITY.md                        @maarouf003-netizen
+/docs/audit/                        @maarouf003-netizen
+/docs/adr/                          @maarouf003-netizen
+/render.yaml                        @maarouf003-netizen
