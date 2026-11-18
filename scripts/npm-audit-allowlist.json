@@ -1,8 +1,1 @@
-[
-  {
-    "id": "GHSA-fc5q-39xc-vjpf",
-    "package": "picomatch",
-    "reason": "ReDoS in picomatch via single-branch repeated extglobs. Reached only through the dev-only Vite/Vitest toolchain (build/test tooling, never shipped in the browser bundle). No fixed release exists yet: the latest published version 4.0.7 is itself inside the affected range (<=4.0.7); npm's suggested fix downgrades Vitest to 3.1.4 (breaking). Remove this exception as soon as a patched release lands.",
-    "expires": "2026-12-17"
-  }
-]
+[]
