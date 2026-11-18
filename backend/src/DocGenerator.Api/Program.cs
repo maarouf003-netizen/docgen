@@ -340,6 +340,10 @@ try
             description.ActionDescriptor is ControllerActionDescriptor action
                 ? $"{action.ControllerName}_{action.ActionName}"
                 : null);
+        // P6-06: اشتقاق `required` من nullability C# كي تصبح الأنواع المولَّدة صالحة
+        // للإحلال محل الأنواع اليدوية (أنواع القيم وسجلات record لا تُوسم تلقائيًا).
+        o.SupportNonNullableReferenceTypes();
+        o.SchemaFilter<DocGenerator.Api.Swagger.RequiredByNullabilitySchemaFilter>();
         o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
             Name = "Authorization",

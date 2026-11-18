@@ -84,6 +84,12 @@ jobs:
         run: npx vitest run
       - name: Build
         run: npm run build
+      # P6-06: الأنواع المولَّدة من لقطة OpenAPI يجب أن تكون مطابقة لها. توليد مختلف
+      # عن الملف المتتبَّع = إما لقطة لم تُحدَّث بعد تغيير API أو تعديل يدوي للأنواع.
+      - name: Generated API types are current
+        run: |
+          npm run generate:api
+          git diff --exit-code -- src/api/generated.ts
       # W0-CSP: فحص مخرجات Vite ضد السياسة المفروضة (سكربتات/معالجات مضمّنة، أصول خارجية،
       # eval/Function/WebAssembly). يفشل هنا لا في المتصفح بعد النشر.
       - name: CSP static guard (built dist)

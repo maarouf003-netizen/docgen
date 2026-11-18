@@ -97,6 +97,12 @@ public class OpenApiContractTests
         var authenticatedDashboard = root["paths"]?["/api/dashboard"]?["get"]?["security"]?.AsArray();
         Assert.NotNull(authenticatedDashboard);
         Assert.NotEmpty(authenticatedDashboard);
+
+        // P6-06: الفلتر يشترط الحقول غير القابلة للفراغ (أنواع القيم وسجلات record).
+        // غياب `required` هنا يعني رجوع كل الأنواع المولَّدة إلى «اختيارية».
+        var dashboardStatsRequired = root["components"]?["schemas"]?["DashboardStatsDto"]?["required"]?.AsArray();
+        Assert.NotNull(dashboardStatsRequired);
+        Assert.Equal(8, dashboardStatsRequired.Count);
     }
 
     private async Task<string> FetchRawAsync()
