@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
@@ -9,12 +10,22 @@ using DocGenerator.Infrastructure.Persistence;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class DelegationsIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class DelegationsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
+    private int _targetCircuitId;
 
-    public DelegationsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public DelegationsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public async Task InitializeAsync()
+    {
+        await _factory.ResetAsync();
+        // عند وجود دوائر، عقد الإنابة يطلب معرف الدائرة صريحًا (لا يحل النص).
+        _targetCircuitId = await _factory.EnsureCircuitAsync("DAM", "دائرة تنفيذ حلب");
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private sealed record PendingCountDto(int Count);
 
@@ -37,9 +48,10 @@ public class DelegationsIntegrationTests
         string? DelegationText,
         string? DepositBookNumber,
         string? DepositBookDate,
-        int[] AssetIds);
+        int[] AssetIds,
+        int? DelegatedCircuitId);
 
-    private static DelegationRequestBody SampleBody(int assetId) => new(
+    private DelegationRequestBody SampleBody(int assetId) => new(
         "دائرة تنفيذ حلب",
         false,
         null,
@@ -47,9 +59,10 @@ public class DelegationsIntegrationTests
         "الإنابة على العقار المذكور",
         "كتاب-1",
         "2/8/2026",
-        new[] { assetId });
+        new[] { assetId },
+        _targetCircuitId);
 
-    [Fact]
+    [PostgresFact]
     public async Task FullFlow_LawyerToHeadToTargetLawyer_ExecutesDelegation()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -132,7 +145,7 @@ public class DelegationsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AssetWithoutSeizureDate_BadRequest()
     {
         // قاعدة «لا إنابة على مالٍ بلا حجز» تُنفَّذ خلفيًا: الرفض 400 برسالة عربية صريحة.
@@ -150,7 +163,7 @@ public class DelegationsIntegrationTests
         Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", content);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_WithoutSaleCoversFullDebt_BadRequest()
     {
         // حقل تغطية البدل إلزامي عند الإتمام: غيابه يُرفض برسالة واضحة رغم صحة باقي المدخلات.
@@ -182,7 +195,7 @@ public class DelegationsIntegrationTests
         Assert.Contains("غطى كامل المديونية", content);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByNonLawyerOrOtherOwner_ForbiddenOrBadRequest()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -195,7 +208,7 @@ public class DelegationsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByLawyerNotOwner_Forbidden()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -207,7 +220,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_ByWrongBranchHead_BadRequest()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -226,7 +239,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingCount_HeadSeesOwnBranchScope_AndGuardsHold()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -248,7 +261,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await lawyer1.GetAsync("/api/delegations/pending-count")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExternalFlow_AppearsForDelegatedBranchHead_AssignsAndTargetsExternalBranch()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -256,7 +269,12 @@ public class DelegationsIntegrationTests
 
         // تسطير إنابة خارجية إلى فرع اللاذقية (محامي الملف المنيب في دمشق).
         var lawyer1 = _factory.AuthorizedClient("lawyer1");
-        var body = SampleBody(assetId) with { IsExternal = true, ExternalBranchId = latBranchId };
+        var body = SampleBody(assetId) with
+        {
+            IsExternal = true,
+            ExternalBranchId = latBranchId,
+            DelegatedCircuitId = null,
+        };
         var response = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", body);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var dto = await response.Content.ReadFromJsonAsync<DelegationDto>();
@@ -291,7 +309,7 @@ public class DelegationsIntegrationTests
         Assert.Equal("فرع اللاذقية", target.BranchName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecutedByDelegation_AfterCompletion_ClosesPartialAndPersistsTransfer()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
@@ -349,7 +367,7 @@ public class DelegationsIntegrationTests
         Assert.Contains("77/2026", occurrence.Details);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForDocument_OtherLawyersFile_IsForbidden()
     {
         // تشعبات ملف محامٍ آخر لا تُكشف لأي محامٍ آخر (نفس قاعدة الوصول على صفحة الملف).
@@ -362,7 +380,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForDocument_UnknownFile_IsNotFound()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -371,7 +389,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForDocument_SourceBranchHead_IsAllowed()
     {
         var (docId, _) = await CreateSourceWithAssetAsync();
@@ -382,7 +400,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForDocument_HeadOfAnotherBranch_IsForbidden()
     {
         var (docId, _) = await CreateSourceWithAssetAsync();
@@ -396,7 +414,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SourceWithDelegation_BadRequestWithMessage()
     {
         // حذف ملفٍ عليه إنابة (أي حالة) مرفوض 400 بالرسالة المعتمدة، والملف يبقى سليمًا.
@@ -414,7 +432,7 @@ public class DelegationsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SourceWithDecidedAppeal_BadRequestWithMessage()
     {
         // التدفق الكامل: تسطير استئناف (مستأنف علينا — المقترض) ← إسناد ← حسم ←

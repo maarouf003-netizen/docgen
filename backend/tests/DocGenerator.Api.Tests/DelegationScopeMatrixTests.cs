@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -24,15 +25,16 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public class DelegationScopeMatrixTests
 {
-    [Fact]
+    [PostgresFact]
     public async Task DelegationReadPaths_ScopeMatrix_MatchesPolicy()
     {
-        using var factory = new ApiFactory();
+        using var factory = new PostgresApiFactory();
         var ownerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var owner = factory.ClientWithToken(ownerToken);
 
         var documentId = await factory.CreateDocumentAsync(
             ownerToken, borrowerName: UniqueName("deleg_matrix"), withEstate: true, registered: true);
+        await factory.EnsureCircuitAsync("DAM", "محكمة دمشق");
 
         int assetId;
         using (var scope = factory.Services.CreateScope())
@@ -40,6 +42,7 @@ public class DelegationScopeMatrixTests
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             assetId = db.Assets.Single(a => a.DocumentId == documentId).Id;
         }
+        var circuitId = await factory.EnsureCircuitAsync("DAM", "محكمة دمشق");
 
         var created = await owner.PostAsJsonAsync($"/api/documents/{documentId}/delegations", new
         {
@@ -51,6 +54,7 @@ public class DelegationScopeMatrixTests
             depositBookNumber = "قيد-مصفوفة",
             depositBookDate = "2/8/2026",
             assetIds = new[] { assetId },
+            delegatedCircuitId = circuitId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var delegation = await created.Content.ReadFromJsonAsync<DelegationDto>();
@@ -129,6 +133,7 @@ public class DelegationScopeMatrixTests
             depositBookNumber = "قيد-مصفوفة",
             depositBookDate = "2/8/2026",
             assetIds = new[] { assetId },
+            delegatedCircuitId = circuitId,
         };
 
         foreach (var (actor, username) in new (string, string)[]
