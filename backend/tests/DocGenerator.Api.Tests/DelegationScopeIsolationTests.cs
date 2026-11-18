@@ -14,8 +14,18 @@ namespace DocGenerator.Api.Tests;
 /// الاعتماد لمالك الدائرة المنابة، والتوجيه للشعبة والتراجع، والرفض للتصحيح.
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
 /// </summary>
-public sealed class DelegationScopeIsolationTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class DelegationScopeIsolationTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public DelegationScopeIsolationTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<int> CreateCircuitAsync(string name)
     {
@@ -109,7 +119,7 @@ public sealed class DelegationScopeIsolationTests : IsolatedApiTestBase
             .Select(e => e.GetProperty("id").GetInt32()).ToList();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingAssign_SectionCircuit_SubHeadOnly()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -142,7 +152,7 @@ public sealed class DelegationScopeIsolationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.OK, (await subClient.GetAsync($"/api/documents/{targetDocId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reject_WrongCircuit_LawyerSeesReasonAndCorrects()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
