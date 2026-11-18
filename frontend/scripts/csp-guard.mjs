@@ -41,7 +41,9 @@ const DATA_SCHEME_ALLOWED_TAGS = new Set(['img', 'source']);
 
 const TAG_PATTERN = /<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 const ATTRIBUTE_PATTERN = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-const SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+// P2-06/CodeQL: نهاية وسم script قد تحمل مسافات/محارف إضافية قبل `>` (مثل
+// `</script\t\n bar>`)؛ `\s*>` وحدها تفوّتها فيمرّ سكربت مضمّن من الحارس.
+const SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
 
 /**
  * `@import` و`url(...)` في `CSS` في تعبير واحد حتى لا يُحتسب `@import url(https://…)` مرتين:

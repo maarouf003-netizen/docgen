@@ -446,7 +446,8 @@
       `--locked-mode`، SARIF إلى Code scanning، أسبوعيًا أيضًا). منذ 2026-11-18:
       `security-extended` + استثناء `obj/bin` (`security.yml` و`codeql-config.yml`)،
       وفُرزت تنبيهات `cs/log-forging` الأولى (14) كإيجابيات كاذبة موثّقة
-      (`docs/audit/62-codeql-triage-20261118.md`).
+      (`docs/audit/62-codeql-triage-20261118.md`). وأُصلح تنبيه `js/bad-tag-filter` الحقيقي
+      في `csp-guard.mjs` (نهاية `</script …>` بسمات/مسافات) — `docs/audit/63-…`.
     - **`dependency-review`** مُفعّل الآن بعد تفعيل المالك لـGitHub Dependency graph
       (كان معطّلًا بإعداد المستودع): `fail-on-severity: high` على كل `PR`.
     - **`P2-06` (تكملة، 2026-11-17):** PR
