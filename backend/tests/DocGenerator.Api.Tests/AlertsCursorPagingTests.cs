@@ -21,12 +21,16 @@ namespace DocGenerator.Api.Tests;
 /// فلا تكرار ولا فجوة عند إصدار تنبيه بين الجلبين، ويُرفض أي صيغة غير صالحة
 /// بـ<c>400</c> عربي. مسار <c>page</c> القديم يبقى مدعومًا كما هو.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class AlertsCursorPagingTests
+[Collection(PostgresApiTestCollection.Name)]
+public class AlertsCursorPagingTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public AlertsCursorPagingTests(ApiFactory factory) => _factory = factory;
+    public AlertsCursorPagingTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>مرساة زمنية ثابتة: الترتيب حتمي بلا اعتماد على ساعة التشغيل.</summary>
     private static readonly DateTime Anchor = new(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);
@@ -89,7 +93,7 @@ public class AlertsCursorPagingTests
     private static string Wire(HeadAlertSummaryDto row) =>
         AlertCursor.Format(row.LastContentChangedAt, row.Id);
 
-    [Fact]
+    [PostgresFact]
     public async Task CursorPaging_WalksAllRowsOnce_WithoutGapsOrDuplicates()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -126,7 +130,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(5, exhausted.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CursorPaging_InsertingNewerRowBetweenFetches_DoesNotShiftWindow()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -155,7 +159,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(new[] { inserted[0] }.Concat(Enumerable.Reverse(seeded).Take(1)), refreshed.Items.Select(i => i.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Cursor_TakesPrecedenceOverPageNumber_AndReportsPageOne()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -178,7 +182,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(2, byCursorWithPage.PerPage);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OffsetPaging_StillWorks_AndReportsRequestedPage()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -193,7 +197,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(5, page2.TotalCount);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("garbage")]
     [InlineData("2026-11-02T09:30:15Z")] // بلا معرّف.
     [InlineData("2026-11-02T09:30:15Z|0")] // المعرّف يبدأ من 1.
@@ -217,7 +221,7 @@ public class AlertsCursorPagingTests
         Assert.DoesNotContain("Parameter", message, StringComparison.Ordinal);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(0)]
     [InlineData(-1)]
     public async Task PageNumber_IsStillValidated_EvenThoughCursorOverridesWindow(int page)
@@ -240,7 +244,7 @@ public class AlertsCursorPagingTests
         Assert.DoesNotContain("Parameter", message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CursorPaging_WithArchivedAllAndOnly_WalksTheFilteredSet()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -288,7 +292,7 @@ public class AlertsCursorPagingTests
     /// تبني عليه الواجهة قرارها «صفحة ممتلئة ⇒ قد يوجد مزيد»: المؤشر يواصل بعد آخر
     /// صف معروض ويعيد بقية القائمة **دائمًا** حتى النهاية، ولا يعتمد على `totalCount`.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task CursorPaging_AfterArchiveBetweenFetches_StillDeliversRemainingRows()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -333,7 +337,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(seeded.Count, walked.Distinct().Count());
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(AlertPageRequest.MaxPageSize + 1)]
@@ -352,7 +356,7 @@ public class AlertsCursorPagingTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SentCursorPaging_WalksCreatorRows_AndRejectsInvalidCursor()
     {
         // فرع جديد: القيد الفريد يسمح برئيس نشط واحد لكل فرع (UserConfiguration).
@@ -388,7 +392,7 @@ public class AlertsCursorPagingTests
     /// المؤشر يعمل مع بقية الفلاتر (غير المقروء): شرط keyset يُطبَّق على النتيجة
     /// المفلترة نفسها أصلًا، و<b>قبل</b> نافذة الصفحة.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task CursorPaging_AppliesToFilteredSetOnly()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -425,7 +429,7 @@ public class AlertsCursorPagingTests
     /// مستلمين محسوبة قاعديًا، وتعمل مع المؤشر، والعدّاد الشخصي مرفوض `403`.
     /// (كان الترقيم الإشرافي بالمؤشر غير مُختبر عبر `HTTP` — كشفته مراجعة وضع الإشراف.)
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task OversightRole_ListIsSupervisionShaped_AndPagesWithCursor()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -461,7 +465,7 @@ public class AlertsCursorPagingTests
     /// بسبب مؤشر غير صالح. تحليل المؤشر في الخدمة بعد فحص الدور/الفرع هو ما يحفظ هذا
     /// (والحالة الكاملة لرئيس بلا فرع في <c>AlertsIntegrationTests</c>).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task AuthorizationPrecedesCursorShape_SoForbiddenWins()
     {
         var manager = _factory.AuthorizedClient("manager");

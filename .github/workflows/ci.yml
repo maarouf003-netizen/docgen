@@ -274,7 +274,7 @@ jobs:
         run: |
           trx=$(find . -name api-postgres.trx -print -quit)
           test -n "$trx"
-          for suite in AuthIntegrationTests PostgresApiFactoryConfigurationTests SectionsIntegrationTests BranchManagementIntegrationTests DocumentsIntegrationTests DelegationsIntegrationTests DelegationScopeMatrixTests DelegationScopeIsolationTests AppealForwardFlowTests AppealScopeMatrixTests DocumentInterventionIntegrationTests DocumentsExportIntegrationTests ExecutionCircuitsIntegrationTests CorrespondenceIntegrationTests ReviewCorrespondenceScopeTests UserManagementIntegrationTests LockoutIntegrationTests TokenRevocationIntegrationTests; do
+          for suite in AuthIntegrationTests PostgresApiFactoryConfigurationTests SectionsIntegrationTests BranchManagementIntegrationTests DocumentsIntegrationTests DelegationsIntegrationTests DelegationScopeMatrixTests DelegationScopeIsolationTests AppealForwardFlowTests AppealScopeMatrixTests DocumentInterventionIntegrationTests DocumentsExportIntegrationTests ExecutionCircuitsIntegrationTests CorrespondenceIntegrationTests ReviewCorrespondenceScopeTests UserManagementIntegrationTests LockoutIntegrationTests TokenRevocationIntegrationTests AlertsIntegrationTests AlertsCursorPagingTests AlertsUnreadScopeIntegrationTests; do
             passed=$(grep -o "testName=\"[^\"]*${suite}[^\"]*\"[^>]*outcome=\"Passed\"" "$trx" | wc -l)
             skipped=$(grep -o "testName=\"[^\"]*${suite}[^\"]*\"[^>]*outcome=\"NotExecuted\"" "$trx" | wc -l)
             echo "Passed ${suite}: $passed (skipped: $skipped)"
