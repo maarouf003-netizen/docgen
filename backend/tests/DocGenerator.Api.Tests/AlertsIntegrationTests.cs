@@ -21,12 +21,16 @@ namespace DocGenerator.Api.Tests;
 /// وتفاصيل مفردة وحدها تحمله، وقائمة مستلمين منفصلة، وصلاحيات الأدوار كما هي
 /// معرّفة في الخدمة والمتحكم (بلا تسريب وجود عبر 404).
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class AlertsIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class AlertsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public AlertsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public AlertsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static async Task<int> CreateDocumentForLawyerAsync(ApiFactory factory, string username)
     {
@@ -110,7 +114,7 @@ public class AlertsIntegrationTests
         return delegation.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAlert_NonHeadRoles_Forbidden()
     {
         foreach (var username in new[] { "manager", "admin", "lawyer1" })
@@ -127,7 +131,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAlert_HeadTarget_Rejected()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -141,7 +145,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAlert_Returns201SummaryBody_AndLocationToFullDetail()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -187,7 +191,7 @@ public class AlertsIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(created.CreatedByName));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAlert_BlankExistingDocument_UsesIdFallback_In201DetailAndSentList()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -227,7 +231,7 @@ public class AlertsIntegrationTests
         Assert.Equal(expected, Assert.Single(sent.Items, a => a.Id == created.Id).DocumentTitle);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesDocumentAlert_LawyerListIsPagedSummaryWithoutFullMessage()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -277,7 +281,7 @@ public class AlertsIntegrationTests
         Assert.False(detail.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesDocumentAlert_OutsideBranch_BadRequest()
     {
         var aleppoId = await _factory.GetBranchIdAsync("ALP");
@@ -309,7 +313,7 @@ public class AlertsIntegrationTests
         Assert.Equal(outsideBranchMessage, await ReadMessageAsync(missing));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesLawyerAlert_InactiveTarget_BadRequest()
     {
         // ف‑3: سلوك واحد لكل اختبار — محامٍ هدف معطّل ضمن الفرع نفسه.
@@ -330,7 +334,7 @@ public class AlertsIntegrationTests
         Assert.Equal("المحامي غير موجود ضمن فرعك", await ReadMessageAsync(response));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesDocumentAlert_InactiveCreator_BadRequest()
     {
         // ف‑3: سلوك واحد لكل اختبار — منشئ الملف صار معطّلًا بعد إنشاء الملف.
@@ -353,7 +357,7 @@ public class AlertsIntegrationTests
         Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", await ReadMessageAsync(response));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesLawyerAlert_OnlyTargetReceives()
     {
         var damId = await _factory.GetBranchIdAsync("DAM");
@@ -377,7 +381,7 @@ public class AlertsIntegrationTests
         Assert.DoesNotContain(otherPage.Items, a => a.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesBranchBroadcast_ReachesAllBranchLawyers_WithBaseCounters()
     {
         var branchId = await _factory.CreateBranchAsync("بث");
@@ -407,7 +411,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_ListsOnlyOwnRecipientAlerts_WithSummaryReadState()
     {
         var branchId = await _factory.CreateBranchAsync("إحصاء");
@@ -448,7 +452,7 @@ public class AlertsIntegrationTests
         Assert.Equal(1, single.UnreadCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_MarksAlertRead_UnreadCountDrops_AndSummaryReflectsIt()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -475,7 +479,7 @@ public class AlertsIntegrationTests
         Assert.True(Assert.Single(page.Items, a => a.Id == created.Id).IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_MarksOwnAlertRead_Succeeds_OthersNotFound()
     {
         var branchId = await _factory.CreateBranchAsync("قراءة رئيس");
@@ -505,7 +509,7 @@ public class AlertsIntegrationTests
         Assert.Equal(0, count!.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonHeadNonLawyer_MarkRead_Forbidden()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -513,7 +517,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnreadCount_ManagerAdmin_Forbidden_HeadAllowed()
     {
         foreach (var username in new[] { "manager", "admin" })
@@ -527,7 +531,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (await head.GetAsync("/api/alerts/unread-count")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_LawyerRecipient_ReturnsFullDetail()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -550,7 +554,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HeadAlertMessages.ManualMessage(UserRole.Head, "تنبيه للجلب"), alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_OmitsRecipientAndUnreadCounters_WhileSummaryRetainsThem()
     {
         // PR-6a: عقدان لا عقد واحد — العدّادان في الملخّص (قائمة «مرسلة») وحدهما،
@@ -587,7 +591,7 @@ public class AlertsIntegrationTests
         Assert.Equal(1, item.UnreadCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_SameBranchNonRecipientHead_NotFound()
     {
         // P3-3: رئيس الفرع نفسه ليس مستلمًا ولا منشئًا ⇒ 404 (D2) بلا تسريب وجود.
@@ -610,7 +614,7 @@ public class AlertsIntegrationTests
             (await _factory.AuthorizedClient(headName).GetAsync($"/api/alerts/{alertId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_RecipientOutsideBranch_IsAllowed_ByAbsolutePriority()
     {
         // قرار D2: المستلم بأولوية مطلقة بلا شرط فرع (تنبيهات الإنابة الخارجية).
@@ -629,7 +633,7 @@ public class AlertsIntegrationTests
         Assert.False(alert.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_LawyerNonRecipient_NotFound()
     {
         var branchId = await _factory.CreateBranchAsync("جلب");
@@ -651,7 +655,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_HeadRecipient_ReturnsIt_OthersNotFound()
     {
         var branchId = await _factory.CreateBranchAsync("جلب رئيس");
@@ -669,7 +673,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await head.GetAsync($"/api/alerts/{othersId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_HeadOfAnotherBranch_NotFound()
     {
         var branchA = await _factory.CreateBranchAsync("ألف");
@@ -692,7 +696,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MissingAlert_NotFoundBody_IsArabicMessageWithoutEnglishTitle()
     {
         // قرار المالك 2026-11-03 (ب): جسم 404 عربي موحّد لمسارات التنبيهات الثلاثة،
@@ -718,7 +722,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExistingButUnauthorizedAlert_NotFoundBody_EqualsMissingAlertBody()
     {
         // قرار المالك 2026-11-03 (ب): الرسالة نفسها للموجود غير المصرّح ولغير الموجود —
@@ -758,7 +762,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Alert_Manager_ReturnsIt_Missing_ReturnsNotFound()
     {
         // قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (المفرد والقائمة فقط).
@@ -784,7 +788,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Recipients_CreatorAndOversightSeeList_RecipientAndOutsiderGetNotFound()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -823,7 +827,7 @@ public class AlertsIntegrationTests
             (await head.GetAsync("/api/alerts/999999/recipients")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Manager_ListsAlerts_SeesCrossBranchAlert_LawyerDoesNot()
     {
         var branchId = await _factory.CreateBranchAsync("حمص-إشراف");
@@ -854,7 +858,7 @@ public class AlertsIntegrationTests
         Assert.DoesNotContain(scoped.Items, a => a.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_ListsAlerts_DoesNotSeeOthersBranchesAlerts()
     {
         var branchId = await _factory.CreateBranchAsync("حلب2");
@@ -875,7 +879,7 @@ public class AlertsIntegrationTests
         Assert.DoesNotContain(list.Items, a => a.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Sent_HeadSeesOwnIssued_PagedShape_ManagerAndAdminForbidden()
     {
         var damId = await _factory.GetBranchIdAsync("DAM");
@@ -918,7 +922,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_ManagerOrAdminUnreadOnly_BadRequest()
     {
         const string expected = "خيار «غير المقروء» غير متاح للمدير/المشرف";
@@ -937,7 +941,7 @@ public class AlertsIntegrationTests
         }
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("?page=0")]
     [InlineData("?pageSize=0")]
     [InlineData("?pageSize=101")]
@@ -950,7 +954,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, (await head.GetAsync("/api/alerts/sent" + query)).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Paging_OverflowRejected_ExtremePageWithSize1Allowed()
     {
         // R-3/P3-6: الفيضان (page=int.MaxValue × pageSize=100) كان يلتفّ في `int`
@@ -981,7 +985,7 @@ public class AlertsIntegrationTests
         Assert.Equal(1, page.PerPage);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_ArchivedFilter_AcceptsKnownValues_AndRejectsUnknown()
     {
         var created = await CreateAlertAsync(_factory.AuthorizedClient("head1"), new
@@ -1002,7 +1006,7 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ByDelegation_PartyLawyerGetsPagedShape_NonPartyAndNonLawyerForbidden()
     {
         var login = await _factory.LoginAsync("lawyer1", "123456");
@@ -1051,7 +1055,7 @@ public class AlertsIntegrationTests
                 .GetAsync($"/api/alerts/by-delegation/{delegationId}?page=0")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchlessHead_CreateIs400_AndReadsAre403()
     {
         // D11 (المرحلة 3): حارس الفرع انتقل من المتحكم إلى الخدمة، فأصبحت الحالات:

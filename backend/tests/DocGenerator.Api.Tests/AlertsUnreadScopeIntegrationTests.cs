@@ -14,12 +14,24 @@ using Microsoft.Extensions.DependencyInjection;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// نطاق عدّاد غير المقروء (`D6`/`D7`، الخطة §5/المرحلة 4) على **قاعدة معزولة لكل اختبار**،
-/// فالأعداد المطلقة حاسمة: <c>user</c> = صفوف الفاعل نفسه (الرئيس مقيّد بفرعه).
+/// نطاق عدّاد غير المقروء (`D6`/`D7`، الخطة §5/المرحلة 4) على **PostgreSQL حقيقي معاد
+/// الضبط بـ`Respawn` قبل كل اختبار**، فالأعداد المطلقة حاسمة: <c>user</c> = صفوف الفاعل
+/// نفسه (الرئيس مقيّد بفرعه).
 /// حُذف نطاق <c>received</c> في <c>PR-6a</c>، فصار <c>?scope=received</c> <c>400</c> عربيًا صريحًا.
 /// </summary>
-public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class AlertsUnreadScopeIntegrationTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public AlertsUnreadScopeIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     private sealed record UnreadCountDto(int Count);
 
     /// <summary>تنبيه مُبذور مباشرة بمستلمين صريحين — لضبط صفوف القراءة بدقة.</summary>
@@ -58,7 +70,7 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         return dto!.Count;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UserScope_IsBranchBound_AndEqualsUnreadOnlyListTotal()
     {
         var damId = await Factory.GetBranchIdAsync("DAM");
@@ -112,7 +124,7 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         Assert.Equal(0, await CountAsync(head, "user"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReceivedScope_IsRejectedAsBadRequest_ForAllRoles_WithCleanArabicMessage()
     {
         // PR-6a: `received` محذوف — 400 عربي صريح لكل دور، لا 500 ولا سقوط صامت إلى user.
@@ -141,7 +153,7 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         }
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("xxx")]
     [InlineData("branch")]
     [InlineData("1")]
