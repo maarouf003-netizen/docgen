@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
@@ -9,14 +10,18 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class UserManagementIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class UserManagementIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public UserManagementIntegrationTests(ApiFactory factory) => _factory = factory;
+    public UserManagementIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task UserManagement_NonAdminRoles_Forbidden()
     {
         // `BQ-001د` (`RF-004`): المدير يدير المستخدمين — بقي head1/lawyer1 مرفوضين.
@@ -28,7 +33,7 @@ public class UserManagementIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UserManagement_AsManager_Allowed()
     {
         // `BQ-001د` (`RF-004`): المدير يسرد المستخدمين (كان `403`).
@@ -37,7 +42,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_ListsUsers_ContainsSeeded()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -50,7 +55,7 @@ public class UserManagementIntegrationTests
         Assert.Contains(users, u => u.Username == "lawyer1");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesUser_NewUserCanLogin()
     {
         var username = UniqueName("u");
@@ -75,7 +80,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesSecondHeadSameBranch_BadRequestWithApprovedMessage()
     {
         // وحدانية الرئيس المفعّل (قرار §2.26): الثاني مرفوض `400` بالرسالة
@@ -104,7 +109,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("الفرع لا يقبل رئيسي قسم", await second.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_UpdatesUser_DeactivateInvalidatesToken()
     {
         var username = UniqueName("u");
@@ -130,7 +135,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CannotDeactivateHimself()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -148,7 +153,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesUser_InvalidRole_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -163,7 +168,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_ListsLawyers_OnlyOwnBranch()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -176,7 +181,7 @@ public class UserManagementIntegrationTests
         Assert.DoesNotContain(lawyers, l => l.BranchId != damascusId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_AddsLawyer_IgnoresForeignBranch()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -193,7 +198,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(await _factory.GetBranchIdAsync("DAM"), lawyer!.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_AddsLawyer_ToSpecifiedBranch()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -210,7 +215,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(await _factory.GetBranchIdAsync("ALP"), lawyer!.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_AddsLawyer_WithoutBranch_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -224,7 +229,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_DeactivatesForeignBranchLawyer_NotFound()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -242,7 +247,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_DeactivatesOwnLawyer_ThenLoginFails()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -265,7 +270,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesUser_ArabicTripartiteName_LoginWithEquivalentSpelling()
     {
         var name = "أحمد خالد العلي";
@@ -290,7 +295,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesUser_DuplicateTripartiteNameSameBranch_BadRequest()
     {
         var name = "سامر محمود عيد";
@@ -319,7 +324,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("نفس الفرع", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesUser_SameTripartiteNameDifferentBranch_Allowed()
     {
         var name = "نزار عادل صالح";
@@ -347,7 +352,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbConstraint_SameUsernameWithoutBranch_Rejected()
     {
         var username = UniqueName("nb");
@@ -358,7 +363,7 @@ public class UserManagementIntegrationTests
             _factory.CreateUserAsync(username, UserRole.Manager));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbConstraint_SameUsername_OneWithBranchOneWithout_Allowed()
     {
         var username = UniqueName("mix");
@@ -368,7 +373,7 @@ public class UserManagementIntegrationTests
         await _factory.CreateUserAsync(username, UserRole.Manager);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_UpdatesOwnLawyer_RenameAndResetPassword()
     {
         var username = UniqueName("l");
@@ -402,7 +407,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_UpdatesForeignBranchLawyer_NotFound()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -423,7 +428,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_UpdatesLawyer_AnyBranch()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -446,7 +451,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(await _factory.GetBranchIdAsync("ALP"), updated.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_AsLawyer_Forbidden()
     {
         var headClient = _factory.AuthorizedClient("head1");
@@ -459,7 +464,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_UpdatesOwnLawyer_NoChanges_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -483,7 +488,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("لا يوجد تغيير", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_UpdatesOwnLawyer_DuplicateName_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -513,7 +518,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("نفس الفرع", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesSubHead_WithSection_CreatedAndCanLogin()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -547,7 +552,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(0, mineDoc!.RootElement.GetArrayLength());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesSubHead_MissingSection_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -563,7 +568,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("الشعبة إلزامية", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesSubHead_OccupiedSection_BadRequest()
     {
         var branchId = await _factory.GetBranchIdAsync("DAM");
@@ -593,7 +598,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("الشعبة مشغولة برئيس مفعّل", await second.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesSubHead_ForeignSection_BadRequest()
     {
         var sectionId = await _factory.CreateSectionAsync($"شعبة حلب {Guid.NewGuid():N}"[..20], await _factory.GetBranchIdAsync("ALP"));
@@ -610,7 +615,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Manager_DeactivatesHeadWithSuccessor_FullFlow()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -676,7 +681,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, reactivate.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Manager_DeactivatesHeadWithoutSuccessor_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -708,7 +713,7 @@ public class UserManagementIntegrationTests
         Assert.Contains("خلفًا إجباريًا", await deactivate.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_UpdateUser_Forbidden()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -716,7 +721,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("manager")]
     [InlineData("admin")]
     public async Task HeadSuccession_ManagementRoles_Ok(string username)
@@ -727,7 +732,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("head1")]
     [InlineData("lawyer1")]
     public async Task HeadSuccession_NonManagementRoles_Forbidden(string username)
