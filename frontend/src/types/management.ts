@@ -1,3 +1,4 @@
+import type { components } from '../api/generated';
 import type { AppealsStatsDto } from './appeal';
 import type { Role } from './common';
 
@@ -48,16 +49,12 @@ export interface SectionDto {
   version?: number;
 }
 
-export interface DashboardStatsDto {
-  totalDocuments: number;
-  totalDrafts: number;
-  totalExecuted: number;
-  totalDeferred: number;
-  totalActive: number;
-  totalBorrowers: number;
-  totalAmount: number;
-  totalCollectedAmount: number;
-}
+/**
+ * P6-06: أول نوع مُحال إلى عقد OpenAPI المولَّد بدل تعريف يدوي.
+ * `DashboardStatsDto` في الخلفية سجل بخصائص غير قابلة للفراغ، والمولَّد يطابقه حقلًا بحقل
+ * (ثمانية أرقام مطلوبة). توسيع الإحلال لبقية الأنواع يحتاج مراجعة كل مستهلك.
+ */
+export type DashboardStatsDto = components['schemas']['DashboardStatsDto'];
 
 export interface ReminderDto {
   actionId: number;

@@ -37,6 +37,8 @@ dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj -
 
 ```bash
 cd frontend
+# P6-06: قفل الواجهة يتضمن openapi-typescript (peer TS ^5.x) — ثبّت بالعلم الصريح.
+npm ci --legacy-peer-deps
 npx oxlint src scripts
 npx tsc -b
 npx vitest run

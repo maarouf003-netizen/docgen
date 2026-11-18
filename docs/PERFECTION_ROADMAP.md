@@ -785,8 +785,24 @@
 
 #### `P6-06` — عميل API مولّد
 
+- **الحالة (2026-11-18):** **جزئيًا — التوليد وحارس الانحراف مثبتان، وأول نوع مُحال.**
+  - `RequiredByNullabilitySchemaFilter` + `SupportNonNullableReferenceTypes` في
+    `AddSwaggerGen`: يشتق `required` من nullability C# (أنواع القيم وسجلات `record`
+    كانت تُصدَّر اختيارية فيُضعف النوع المولَّد). أُعيد توليد لقطة `OpenAPI`.
+  - `openapi-typescript@7.13.0` (devDependency) + `npm run generate:api` ينتج
+    `frontend/src/api/generated.ts` (≈271KB، 239 عملية).
+  - **حارس انحراف في `CI`:** خطوة توليد ثم `git diff --exit-code` — أي تغيير API بلا
+    إعادة توليد يفشل.
+  - **أول إحلال:** `DashboardStatsDto` في `frontend/src/types/management.ts` صار
+    `components['schemas']['DashboardStatsDto']` (تطابق حقلًا بحقل).
+  - **التثبيت:** `CI`/`Dockerfile` يستخدمان `npm ci --legacy-peer-deps` لأن
+    `openapi-typescript` يعلن peer `typescript ^5.x` والمشروع على 6؛ التحقق الحقيقي هو
+    `tsc -b` (يمر). أُضيف `@testing-library/dom` صراحةً كي لا يحذفه تثبيت الـpeer legacy.
+  - **متبقٍ:** إحلال بقية `types/document.ts` (797 سطرًا) تدريجيًا، ومراجعة أي نوع
+    يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
+  - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
 - **العمل:** استبدال `types/document.ts` (797 سطرًا) بأنواع مولّدة؛ `openapi-typescript`؛ CI يفشل عند الانحراف.
-- **DoD:** عقد واحد بين الخلفية والواجهة.
+- **DoD:** عقد واحد بين الخلفية والواجهة — **جزئي** (نوع واحد + الحارس؛ البقية لاحقًا).
 - **الاعتمادية:** `P4-04`.
 
 #### `P6-07` — استراتيجية اختبار الواجهة

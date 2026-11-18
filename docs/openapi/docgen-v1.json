@@ -9,7 +9,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "aliases": {
@@ -28,30 +27,33 @@
             "type": "string"
           },
           "decreeDate": {
-            "nullable": true,
             "type": "string"
           },
           "decreeKind": {
-            "nullable": true,
             "type": "string"
           },
           "decreeNumber": {
-            "nullable": true,
             "type": "string"
           },
           "entityType": {
-            "nullable": true,
             "type": "string"
           },
           "governorate": {
-            "nullable": true,
             "type": "string"
           },
           "newCanonicalName": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "abolishedGroupIds",
+          "decreeDate",
+          "decreeKind",
+          "decreeNumber",
+          "entityType",
+          "governorate",
+          "newCanonicalName"
+        ],
         "type": "object"
       },
       "AbolishBranchRequest": {
@@ -73,10 +75,12 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           }
         },
+        "required": [
+          "abolishedGroupIds"
+        ],
         "type": "object"
       },
       "AddAppealActionRequest": {
@@ -95,7 +99,6 @@
             "type": "string"
           },
           "text": {
-            "nullable": true,
             "type": "string"
           },
           "type": {
@@ -103,16 +106,21 @@
             "type": "string"
           }
         },
+        "required": [
+          "text"
+        ],
         "type": "object"
       },
       "AddCorrespondenceAddendumRequest": {
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "bodyHtml"
+        ],
         "type": "object"
       },
       "AddExecutionActionRequest": {
@@ -131,34 +139,40 @@
             "type": "string"
           },
           "text": {
-            "nullable": true,
             "type": "string"
           },
           "type": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "text",
+          "type"
+        ],
         "type": "object"
       },
       "AddPublicEntityAliasRequest": {
         "additionalProperties": false,
         "properties": {
           "aliasText": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "aliasText"
+        ],
         "type": "object"
       },
       "AddReviewLetterAddendumRequest": {
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "bodyHtml"
+        ],
         "type": "object"
       },
       "AppealBaseNumberEntry": {
@@ -175,7 +189,6 @@
         "additionalProperties": false,
         "properties": {
           "kind": {
-            "nullable": true,
             "type": "string"
           },
           "partyId": {
@@ -183,6 +196,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "kind",
+          "partyId"
+        ],
         "type": "object"
       },
       "AppealsStatsDto": {
@@ -201,6 +218,11 @@
             "type": "integer"
           }
         },
+        "required": [
+          "decidedAgainst",
+          "decidedInFavor",
+          "pendingCount"
+        ],
         "type": "object"
       },
       "ApplicantPublicEntityDto": {
@@ -354,6 +376,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "assignedLawyerId"
+        ],
         "type": "object"
       },
       "AssignDelegationRequest": {
@@ -369,6 +394,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "assignedLawyerId"
+        ],
         "type": "object"
       },
       "AuditLogDto": {
@@ -404,6 +432,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "id",
+          "timestamp"
+        ],
         "type": "object"
       },
       "AuditLogDtoPagedResult": {
@@ -413,7 +445,6 @@
             "items": {
               "$ref": "#/components/schemas/AuditLogDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "page": {
@@ -434,6 +465,13 @@
             "type": "integer"
           }
         },
+        "required": [
+          "items",
+          "page",
+          "perPage",
+          "totalCount",
+          "totalPages"
+        ],
         "type": "object"
       },
       "BaseNumberEntry": {
@@ -448,6 +486,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "documentId"
+        ],
         "type": "object"
       },
       "BranchDto": {
@@ -458,7 +499,6 @@
             "type": "string"
           },
           "code": {
-            "nullable": true,
             "type": "string"
           },
           "documentCount": {
@@ -477,7 +517,6 @@
             "type": "boolean"
           },
           "name": {
-            "nullable": true,
             "type": "string"
           },
           "phone": {
@@ -493,6 +532,15 @@
             "type": "integer"
           }
         },
+        "required": [
+          "code",
+          "documentCount",
+          "id",
+          "isActive",
+          "name",
+          "userCount",
+          "version"
+        ],
         "type": "object"
       },
       "BranchSummaryDto": {
@@ -503,7 +551,6 @@
             "type": "integer"
           },
           "branchName": {
-            "nullable": true,
             "type": "string"
           },
           "totalAmount": {
@@ -519,20 +566,29 @@
             "type": "integer"
           }
         },
+        "required": [
+          "branchId",
+          "branchName",
+          "totalAmount",
+          "totalDocuments",
+          "totalDrafts"
+        ],
         "type": "object"
       },
       "ChangePasswordRequest": {
         "additionalProperties": false,
         "properties": {
           "newPassword": {
-            "nullable": true,
             "type": "string"
           },
           "oldPassword": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "newPassword",
+          "oldPassword"
+        ],
         "type": "object"
       },
       "ClientErrorReport": {
@@ -609,6 +665,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "documentId"
+        ],
         "type": "object"
       },
       "CompleteRegistrationsRequest": {
@@ -618,7 +677,6 @@
             "items": {
               "$ref": "#/components/schemas/CompleteRegistrationEntry"
             },
-            "nullable": true,
             "type": "array"
           },
           "warningToken": {
@@ -626,6 +684,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "entries"
+        ],
         "type": "object"
       },
       "CorrectAppealBaseNumberRequest": {
@@ -661,10 +722,12 @@
         "additionalProperties": false,
         "properties": {
           "message": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "message"
+        ],
         "type": "object"
       },
       "CreateBranchRequest": {
@@ -675,7 +738,6 @@
             "type": "string"
           },
           "code": {
-            "nullable": true,
             "type": "string"
           },
           "governorate": {
@@ -683,7 +745,6 @@
             "type": "string"
           },
           "name": {
-            "nullable": true,
             "type": "string"
           },
           "phone": {
@@ -691,13 +752,16 @@
             "type": "string"
           }
         },
+        "required": [
+          "code",
+          "name"
+        ],
         "type": "object"
       },
       "CreateCorrespondenceRequest": {
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           },
           "documentId": {
@@ -706,7 +770,6 @@
             "type": "integer"
           },
           "importance": {
-            "nullable": true,
             "type": "string"
           },
           "recipientSectionId": {
@@ -719,17 +782,20 @@
             "type": "integer"
           }
         },
+        "required": [
+          "bodyHtml",
+          "importance",
+          "targetUserId"
+        ],
         "type": "object"
       },
       "CreateDelegateRequest": {
         "additionalProperties": false,
         "properties": {
           "fullName": {
-            "nullable": true,
             "type": "string"
           },
           "password": {
-            "nullable": true,
             "type": "string"
           },
           "portalEntryId": {
@@ -743,10 +809,14 @@
             "type": "integer"
           },
           "username": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "fullName",
+          "password",
+          "username"
+        ],
         "type": "object"
       },
       "CreateHeadAlertRequest": {
@@ -758,7 +828,6 @@
             "type": "integer"
           },
           "message": {
-            "nullable": true,
             "type": "string"
           },
           "targetLawyerId": {
@@ -767,10 +836,13 @@
             "type": "integer"
           },
           "targetType": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "message",
+          "targetType"
+        ],
         "type": "object"
       },
       "CreateLawyerRequest": {
@@ -782,18 +854,20 @@
             "type": "integer"
           },
           "fullName": {
-            "nullable": true,
             "type": "string"
           },
           "password": {
-            "nullable": true,
             "type": "string"
           },
           "username": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "fullName",
+          "password",
+          "username"
+        ],
         "type": "object"
       },
       "CreatePersonalReminderRequest": {
@@ -804,7 +878,6 @@
             "type": "string"
           },
           "dueDate": {
-            "nullable": true,
             "type": "string"
           },
           "notes": {
@@ -812,7 +885,6 @@
             "type": "string"
           },
           "recurrence": {
-            "nullable": true,
             "type": "string"
           },
           "recurrenceEnd": {
@@ -820,10 +892,14 @@
             "type": "string"
           },
           "title": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "dueDate",
+          "recurrence",
+          "title"
+        ],
         "type": "object"
       },
       "CreatePublicEntityRequest": {
@@ -837,11 +913,9 @@
             "type": "array"
           },
           "branchName": {
-            "nullable": true,
             "type": "string"
           },
           "canonicalName": {
-            "nullable": true,
             "type": "string"
           },
           "citationFormula": {
@@ -853,11 +927,9 @@
             "type": "string"
           },
           "entityType": {
-            "nullable": true,
             "type": "string"
           },
           "governorate": {
-            "nullable": true,
             "type": "string"
           },
           "isParentEntity": {
@@ -865,13 +937,18 @@
             "type": "boolean"
           }
         },
+        "required": [
+          "branchName",
+          "canonicalName",
+          "entityType",
+          "governorate"
+        ],
         "type": "object"
       },
       "CreateReviewLetterRequest": {
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           },
           "documentId": {
@@ -885,6 +962,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "bodyHtml"
+        ],
         "type": "object"
       },
       "CreateSectionRequest": {
@@ -899,6 +979,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "branchId"
+        ],
         "type": "object"
       },
       "CreateUserRequest": {
@@ -910,15 +993,12 @@
             "type": "integer"
           },
           "fullName": {
-            "nullable": true,
             "type": "string"
           },
           "password": {
-            "nullable": true,
             "type": "string"
           },
           "role": {
-            "nullable": true,
             "type": "string"
           },
           "sectionId": {
@@ -927,10 +1007,15 @@
             "type": "integer"
           },
           "username": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "fullName",
+          "password",
+          "role",
+          "username"
+        ],
         "type": "object"
       },
       "CurrencyAmountDto": {
@@ -941,10 +1026,13 @@
             "type": "number"
           },
           "currency": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "amount",
+          "currency"
+        ],
         "type": "object"
       },
       "DashboardStatsDto": {
@@ -983,6 +1071,16 @@
             "type": "integer"
           }
         },
+        "required": [
+          "totalActive",
+          "totalAmount",
+          "totalBorrowers",
+          "totalCollectedAmount",
+          "totalDeferred",
+          "totalDocuments",
+          "totalDrafts",
+          "totalExecuted"
+        ],
         "type": "object"
       },
       "DecideAppealRequest": {
@@ -1019,6 +1117,10 @@
             "type": "number"
           }
         },
+        "required": [
+          "delegationAssetId",
+          "salePrice"
+        ],
         "type": "object"
       },
       "DocumentAnnexDto": {
@@ -1046,6 +1148,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sequence"
+        ],
         "type": "object"
       },
       "DocumentInterventionUpsertRequest": {
@@ -1091,7 +1196,6 @@
             "items": {
               "$ref": "#/components/schemas/HeirDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "mother": {
@@ -1173,6 +1277,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "heirs"
+        ],
         "type": "object"
       },
       "DocumentUpsertRequest": {
@@ -1220,14 +1327,12 @@
             "items": {
               "$ref": "#/components/schemas/ApplicantPublicEntityDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "assets": {
             "items": {
               "$ref": "#/components/schemas/AssetDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "borrowerAddress": {
@@ -1254,7 +1359,6 @@
             "items": {
               "$ref": "#/components/schemas/HeirDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "borrowerMother": {
@@ -1270,7 +1374,6 @@
             "type": "string"
           },
           "borrowerNature": {
-            "nullable": true,
             "type": "string"
           },
           "borrowerRegister": {
@@ -1365,7 +1468,6 @@
             "items": {
               "$ref": "#/components/schemas/ExecutedNaturalPersonDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "executedPaidAmount": {
@@ -1399,7 +1501,6 @@
             "items": {
               "$ref": "#/components/schemas/ExecutedPublicEntityDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "executedRequiredAmount": {
@@ -1437,7 +1538,6 @@
             "items": {
               "$ref": "#/components/schemas/ExecutionApplicantDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "executionCircuitId": {
@@ -1497,7 +1597,6 @@
             "items": {
               "$ref": "#/components/schemas/GuarantorDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "immediateActions": {
@@ -1543,7 +1642,6 @@
             "items": {
               "$ref": "#/components/schemas/AddExecutionActionRequest"
             },
-            "nullable": true,
             "type": "array"
           },
           "notes": {
@@ -1597,6 +1695,17 @@
             "type": "string"
           }
         },
+        "required": [
+          "applicantPublicEntities",
+          "assets",
+          "borrowerHeirs",
+          "borrowerNature",
+          "executedNaturalPersons",
+          "executedPublicEntities",
+          "executionApplicants",
+          "guarantors",
+          "initialActions"
+        ],
         "type": "object"
       },
       "ExecutedHeirDto": {
@@ -1864,7 +1973,6 @@
             "type": "string"
           },
           "status": {
-            "nullable": true,
             "type": "string"
           },
           "struckOffDate": {
@@ -1881,6 +1989,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "ExecutionApplicantDto": {
@@ -2080,6 +2191,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "guarantorNumber"
+        ],
         "type": "object"
       },
       "HeirDto": {
@@ -2148,11 +2262,9 @@
             "type": "boolean"
           },
           "branchName": {
-            "nullable": true,
             "type": "string"
           },
           "canonicalName": {
-            "nullable": true,
             "type": "string"
           },
           "citationFormula": {
@@ -2160,18 +2272,23 @@
             "type": "string"
           },
           "entityType": {
-            "nullable": true,
             "type": "string"
           },
           "governorate": {
-            "nullable": true,
             "type": "string"
           },
           "normalizedName": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "addVariantsAsAliases",
+          "branchName",
+          "canonicalName",
+          "entityType",
+          "governorate",
+          "normalizedName"
+        ],
         "type": "object"
       },
       "ImportCommitRequest": {
@@ -2181,10 +2298,12 @@
             "items": {
               "$ref": "#/components/schemas/ImportCommitItemRequest"
             },
-            "nullable": true,
             "type": "array"
           }
         },
+        "required": [
+          "items"
+        ],
         "type": "object"
       },
       "LoginRequest": {
@@ -2196,14 +2315,16 @@
             "type": "integer"
           },
           "password": {
-            "nullable": true,
             "type": "string"
           },
           "username": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "password",
+          "username"
+        ],
         "type": "object"
       },
       "ManagerContractSplitDto": {
@@ -2213,7 +2334,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "bankingCount": {
@@ -2224,7 +2344,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "ordinaryCount": {
@@ -2232,6 +2351,12 @@
             "type": "integer"
           }
         },
+        "required": [
+          "bankingAmounts",
+          "bankingCount",
+          "ordinaryAmounts",
+          "ordinaryCount"
+        ],
         "type": "object"
       },
       "ManagerLawyerStatDto": {
@@ -2242,14 +2367,12 @@
             "type": "integer"
           },
           "lawyerName": {
-            "nullable": true,
             "type": "string"
           },
           "points": {
             "items": {
               "$ref": "#/components/schemas/ManagerPeriodPointDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "totalCount": {
@@ -2257,6 +2380,12 @@
             "type": "integer"
           }
         },
+        "required": [
+          "lawyerId",
+          "lawyerName",
+          "points",
+          "totalCount"
+        ],
         "type": "object"
       },
       "ManagerPeriodPointDto": {
@@ -2279,6 +2408,12 @@
             "type": "integer"
           }
         },
+        "required": [
+          "count",
+          "fromCreatedAtCount",
+          "month",
+          "year"
+        ],
         "type": "object"
       },
       "ManagerStatsDto": {
@@ -2309,7 +2444,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "depositExecutedCount": {
@@ -2335,7 +2469,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "executedAgainstCount": {
@@ -2350,7 +2483,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "forcibleCount": {
@@ -2394,7 +2526,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "settledCount": {
@@ -2405,7 +2536,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "totalFiles": {
@@ -2416,7 +2546,6 @@
             "items": {
               "$ref": "#/components/schemas/CurrencyAmountDto"
             },
-            "nullable": true,
             "type": "array"
           },
           "tradingAgainstCount": {
@@ -2424,6 +2553,35 @@
             "type": "integer"
           }
         },
+        "required": [
+          "active",
+          "activeSplit",
+          "deferred",
+          "deferredSplit",
+          "depositExecutedAmount",
+          "depositExecutedAmounts",
+          "depositExecutedCount",
+          "depositTradingCount",
+          "drafts",
+          "draftsSplit",
+          "executedAgainstAmount",
+          "executedAgainstAmounts",
+          "executedAgainstCount",
+          "forcibleCollected",
+          "forcibleCollectedAmounts",
+          "forcibleCount",
+          "periodDateFallbackCount",
+          "periodDateFromReceiptCount",
+          "periodYear",
+          "referredToStartCount",
+          "settledCollected",
+          "settledCollectedAmounts",
+          "settledCount",
+          "totalAmounts",
+          "totalFiles",
+          "tradingAgainstAmounts",
+          "tradingAgainstCount"
+        ],
         "type": "object"
       },
       "MarkForumReadRequest": {
@@ -2434,6 +2592,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "upToMessageId"
+        ],
         "type": "object"
       },
       "MergeBranchesRequest": {
@@ -2448,6 +2609,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sourceEntryId",
+          "targetEntryId"
+        ],
         "type": "object"
       },
       "MergeCommitRequest": {
@@ -2458,19 +2623,15 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "decreeDate": {
-            "nullable": true,
             "type": "string"
           },
           "decreeKind": {
-            "nullable": true,
             "type": "string"
           },
           "decreeNumber": {
-            "nullable": true,
             "type": "string"
           },
           "newCanonicalName": {
@@ -2485,6 +2646,14 @@
             "type": "boolean"
           }
         },
+        "required": [
+          "absorbedGroupIds",
+          "decreeDate",
+          "decreeKind",
+          "decreeNumber",
+          "survivorGroupId",
+          "unifyTexts"
+        ],
         "type": "object"
       },
       "MergePreviewRequest": {
@@ -2495,7 +2664,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "survivorGroupId": {
@@ -2503,6 +2671,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "absorbedGroupIds",
+          "survivorGroupId"
+        ],
         "type": "object"
       },
       "MonthlyStatDto": {
@@ -2521,6 +2693,11 @@
             "type": "integer"
           }
         },
+        "required": [
+          "count",
+          "month",
+          "year"
+        ],
         "type": "object"
       },
       "MoveAllEntriesRequest": {
@@ -2551,6 +2728,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sourceGroupId",
+          "targetGroupId"
+        ],
         "type": "object"
       },
       "MoveEntryRequest": {
@@ -2589,7 +2770,6 @@
         "additionalProperties": false,
         "properties": {
           "body": {
-            "nullable": true,
             "type": "string"
           },
           "quotedMessageId": {
@@ -2598,6 +2778,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "body"
+        ],
         "type": "object"
       },
       "PreviewBranchActionRequest": {
@@ -2612,7 +2795,6 @@
             "type": "array"
           },
           "action": {
-            "nullable": true,
             "type": "string"
           },
           "correctedName": {
@@ -2633,6 +2815,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "action",
+          "entryId"
+        ],
         "type": "object"
       },
       "ProposeEditRequest": {
@@ -2682,6 +2868,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sectionId"
+        ],
         "type": "object"
       },
       "ReferCircuitFilesRequest": {
@@ -2692,7 +2881,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "targetCircuitId": {
@@ -2704,6 +2892,11 @@
             "type": "integer"
           }
         },
+        "required": [
+          "fileIds",
+          "targetCircuitId",
+          "targetLawyerId"
+        ],
         "type": "object"
       },
       "RegisterDelegationRequest": {
@@ -2760,7 +2953,6 @@
             "type": "integer"
           },
           "actionText": {
-            "nullable": true,
             "type": "string"
           },
           "borrowerFamily": {
@@ -2803,6 +2995,13 @@
             "type": "string"
           }
         },
+        "required": [
+          "actionId",
+          "actionText",
+          "documentId",
+          "dueDate",
+          "dueDateSuspect"
+        ],
         "type": "object"
       },
       "RenameBranchRequest": {
@@ -2813,10 +3012,12 @@
             "type": "string"
           },
           "newBranchName": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "newBranchName"
+        ],
         "type": "object"
       },
       "RenameGroupPreviewRequest": {
@@ -2827,25 +3028,25 @@
             "type": "integer"
           },
           "newCanonicalName": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "groupId",
+          "newCanonicalName"
+        ],
         "type": "object"
       },
       "RenameGroupRequest": {
         "additionalProperties": false,
         "properties": {
           "decreeDate": {
-            "nullable": true,
             "type": "string"
           },
           "decreeKind": {
-            "nullable": true,
             "type": "string"
           },
           "decreeNumber": {
-            "nullable": true,
             "type": "string"
           },
           "groupId": {
@@ -2853,10 +3054,16 @@
             "type": "integer"
           },
           "newCanonicalName": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "decreeDate",
+          "decreeKind",
+          "decreeNumber",
+          "groupId",
+          "newCanonicalName"
+        ],
         "type": "object"
       },
       "RenameSectionRequest": {
@@ -2918,20 +3125,24 @@
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "bodyHtml"
+        ],
         "type": "object"
       },
       "ReplyReviewLetterRequest": {
         "additionalProperties": false,
         "properties": {
           "bodyHtml": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "bodyHtml"
+        ],
         "type": "object"
       },
       "RescheduleActionReminderRequest": {
@@ -3011,10 +3222,12 @@
             "type": "string"
           },
           "status": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "SaveAppealBaseNumbersRequest": {
@@ -3024,10 +3237,12 @@
             "items": {
               "$ref": "#/components/schemas/AppealBaseNumberEntry"
             },
-            "nullable": true,
             "type": "array"
           }
         },
+        "required": [
+          "entries"
+        ],
         "type": "object"
       },
       "SaveBaseNumbersRequest": {
@@ -3037,7 +3252,6 @@
             "items": {
               "$ref": "#/components/schemas/BaseNumberEntry"
             },
-            "nullable": true,
             "type": "array"
           },
           "warningToken": {
@@ -3045,6 +3259,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "entries"
+        ],
         "type": "object"
       },
       "SetActionReminderRequest": {
@@ -3092,6 +3309,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "isActive"
+        ],
         "type": "object"
       },
       "SetOccurrenceRequest": {
@@ -3101,7 +3321,6 @@
             "type": "boolean"
           },
           "occurrenceDate": {
-            "nullable": true,
             "type": "string"
           },
           "version": {
@@ -3110,6 +3329,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "done",
+          "occurrenceDate"
+        ],
         "type": "object"
       },
       "SetSectionActiveRequest": {
@@ -3124,6 +3347,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "isActive"
+        ],
         "type": "object"
       },
       "SetUserActiveRequest": {
@@ -3133,6 +3359,9 @@
             "type": "boolean"
           }
         },
+        "required": [
+          "isActive"
+        ],
         "type": "object"
       },
       "StatsPeriod": {
@@ -3156,7 +3385,6 @@
             "type": "object"
           },
           "status": {
-            "nullable": true,
             "type": "string"
           },
           "version": {
@@ -3165,6 +3393,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "StrikeAppealRequest": {
@@ -3215,6 +3446,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sourceLawyerId",
+          "targetLawyerId"
+        ],
         "type": "object"
       },
       "TransferAllRequest": {
@@ -3229,6 +3464,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "sourceLawyerId",
+          "targetLawyerId"
+        ],
         "type": "object"
       },
       "TransferAppealRequest": {
@@ -3244,6 +3483,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "targetLawyerId"
+        ],
         "type": "object"
       },
       "TransferCircuitRequest": {
@@ -3270,6 +3512,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "targetLawyerId"
+        ],
         "type": "object"
       },
       "UnifyBranchesRequest": {
@@ -3280,7 +3525,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "correctedName": {
@@ -3292,6 +3536,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "absorbedEntryIds",
+          "targetEntryId"
+        ],
         "type": "object"
       },
       "UnifyNamesPreviewRequest": {
@@ -3302,7 +3550,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "targetGroupId": {
@@ -3310,6 +3557,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "absorbedGroupIds",
+          "targetGroupId"
+        ],
         "type": "object"
       },
       "UnifyNamesRequest": {
@@ -3320,7 +3571,6 @@
               "format": "int32",
               "type": "integer"
             },
-            "nullable": true,
             "type": "array"
           },
           "decreeDate": {
@@ -3340,6 +3590,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "absorbedGroupIds",
+          "targetGroupId"
+        ],
         "type": "object"
       },
       "UpdateAppealActionRequest": {
@@ -3350,7 +3604,6 @@
             "type": "string"
           },
           "text": {
-            "nullable": true,
             "type": "string"
           },
           "type": {
@@ -3358,6 +3611,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "text"
+        ],
         "type": "object"
       },
       "UpdateAppealRegistrationRequest": {
@@ -3394,7 +3650,6 @@
             "type": "string"
           },
           "code": {
-            "nullable": true,
             "type": "string"
           },
           "governorate": {
@@ -3405,7 +3660,6 @@
             "type": "boolean"
           },
           "name": {
-            "nullable": true,
             "type": "string"
           },
           "phone": {
@@ -3418,6 +3672,11 @@
             "type": "integer"
           }
         },
+        "required": [
+          "code",
+          "isActive",
+          "name"
+        ],
         "type": "object"
       },
       "UpdateDelegateRequest": {
@@ -3461,11 +3720,9 @@
             "type": "string"
           },
           "text": {
-            "nullable": true,
             "type": "string"
           },
           "type": {
-            "nullable": true,
             "type": "string"
           },
           "version": {
@@ -3474,13 +3731,16 @@
             "type": "integer"
           }
         },
+        "required": [
+          "text",
+          "type"
+        ],
         "type": "object"
       },
       "UpdateForumMessageRequest": {
         "additionalProperties": false,
         "properties": {
           "body": {
-            "nullable": true,
             "type": "string"
           },
           "version": {
@@ -3489,6 +3749,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "body"
+        ],
         "type": "object"
       },
       "UpdateLawyerRequest": {
@@ -3647,6 +3910,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "isActive"
+        ],
         "type": "object"
       },
       "UpsertAppealRequest": {
@@ -3775,6 +4041,9 @@
             "type": "boolean"
           }
         },
+        "required": [
+          "isExternal"
+        ],
         "type": "object"
       },
       "UpsertExecutionCircuitRequest": {
@@ -3800,14 +4069,17 @@
             "type": "integer"
           },
           "fullName": {
-            "nullable": true,
             "type": "string"
           },
           "username": {
-            "nullable": true,
             "type": "string"
           }
         },
+        "required": [
+          "documentCount",
+          "fullName",
+          "username"
+        ],
         "type": "object"
       }
     },
