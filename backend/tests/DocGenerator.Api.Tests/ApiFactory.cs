@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Api.Tests.TestServices;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -176,6 +177,18 @@ public class ApiFactory : WebApplicationFactory<Program>
         try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
     }
 
+    private static int? BranchIdFromToken(string token)
+    {
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+        if (!handler.CanReadToken(token))
+            return null;
+        var claim = handler.ReadJwtToken(token).Claims
+            .FirstOrDefault(c =>
+                string.Equals(c.Type, "branch_id", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "branchId", StringComparison.OrdinalIgnoreCase));
+        return int.TryParse(claim?.Value, out var branchId) ? branchId : null;
+    }
+
     /// <summary>
     /// يُسجّل الدخول على عميل جديد يحتفظ بـ Cookie المصادقة (Set-Cookie من الاستجابة) فيتولى
     /// ترويض الترويسات لاحقًا تلقائيًا — كما يفعل متصفح حقيقي مع HttpOnly + SameSite=Strict.
@@ -274,6 +287,18 @@ public class ApiFactory : WebApplicationFactory<Program>
     {
         var client = CreateClient();
         client.SetAuthCookie(token);
+        // القيد CK_Documents_FileNumberRequiresCircuit: كل مستند مرقّم في اختبارات
+        // Postgres يحتاج دائرة حقيقية، وإلا صار الطلب غير صالح (400) لا خطأ خادم.
+        int? circuitId = null;
+        if (registered && UsePostgres)
+        {
+            var branchId = BranchIdFromToken(token)
+                ?? throw new InvalidOperationException(
+                    "CreateDocumentAsync(registered: true) يتطلب رمزًا يحمل branchId.");
+            circuitId = await this.EnsureCircuitForBranchAsync(
+                branchId, string.IsNullOrWhiteSpace(court) ? "دمشق" : court);
+        }
+
         var body = JsonSerializer.Serialize(new
         {
             documentType = "بيان دعوى",
@@ -282,6 +307,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             borrowerFamily,
             applicant,
             court,
+            executionCircuitId = circuitId,
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",

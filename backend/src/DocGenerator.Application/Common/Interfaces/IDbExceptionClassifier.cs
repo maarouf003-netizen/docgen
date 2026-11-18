@@ -19,4 +19,11 @@ public interface IDbExceptionClassifier
     /// إعادة لا نهائية (الخطة §8.1).
     /// </summary>
     bool IsForeignKeyViolation(Exception ex);
+
+    /// <summary>
+    /// هل هذا الاستثناء (أو سببه الداخلي) انتهاك قيد
+    /// <c>CK_Documents_FileNumberRequiresCircuit</c> — رقم ملف بلا دائرة تنفيذ؟
+    /// يُترجم إلى <c>400</c> لا <c>500</c> (القيد حارس أخير، والخدمة لا تعرف المزوّد).
+    /// </summary>
+    bool IsMissingDocumentCircuitViolation(Exception ex);
 }

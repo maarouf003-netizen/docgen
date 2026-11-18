@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Application.Common;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,50 @@ public static class ApiFixtureExtensions
             await db.SaveChangesAsync();
         }
         return branch.Id;
+    }
+
+    /// <summary>
+    /// يضمن وجود دائرة تنفيذ نشطة باسم محدد في فرع برمزه، ويعيد معرفها.
+    /// تُستخدم لتهيئة اختبارات المستندات المرقّمة على <c>PostgreSQL</c> حيث قيد
+    /// <c>CK_Documents_FileNumberRequiresCircuit</c> يرفض رقمًا بلا دائرة.
+    /// </summary>
+    public static async Task<int> EnsureCircuitAsync(this ApiFactory factory, string branchCode, string name)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branchId = await db.Branches.AsNoTracking()
+            .Where(b => b.Code == branchCode)
+            .Select(b => b.Id)
+            .SingleAsync();
+        return await factory.EnsureCircuitForBranchAsync(branchId, name);
+    }
+
+    /// <summary>نظير <see cref="EnsureCircuitAsync"/> بمعرف الفرع مباشرة.</summary>
+    public static async Task<int> EnsureCircuitForBranchAsync(this ApiFactory factory, int branchId, string name)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var normalized = ArabicNameNormalizer.Normalize(name);
+        var existing = await db.ExecutionCircuits
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.NameNorm == normalized);
+        if (existing is not null)
+            return existing.Id;
+
+        var headId = await db.Users.AsNoTracking()
+            .Where(u => u.Username == "head1")
+            .Select(u => u.Id)
+            .SingleAsync();
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = branchId,
+            Name = name,
+            NameNorm = normalized,
+            IsActive = true,
+            CreatedById = headId,
+        };
+        db.ExecutionCircuits.Add(circuit);
+        await db.SaveChangesAsync();
+        return circuit.Id;
     }
 
     /// <summary>إنشاء شعبة عبر الـ API — العميل مشرف (`admin`) بصلاحية مؤكدة.</summary>

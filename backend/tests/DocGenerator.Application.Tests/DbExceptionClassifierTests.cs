@@ -134,6 +134,34 @@ public class DbExceptionClassifierTests : IDisposable
     }
 
     [Fact]
+    public void IsMissingDocumentCircuitViolation_PostgresCheck_True()
+    {
+        var postgres = new Npgsql.PostgresException(
+            "new row violates check constraint",
+            "ERROR",
+            "ERROR",
+            "23514",
+            constraintName: "CK_Documents_FileNumberRequiresCircuit");
+
+        Assert.True(_classifier.IsMissingDocumentCircuitViolation(
+            new DbUpdateException("فشل حفظ", postgres)));
+    }
+
+    [Fact]
+    public void IsMissingDocumentCircuitViolation_OtherCheck_False()
+    {
+        var postgres = new Npgsql.PostgresException(
+            "new row violates check constraint",
+            "ERROR",
+            "ERROR",
+            "23514",
+            constraintName: "CK_HeadAlerts_Kind_NotEmpty");
+
+        Assert.False(_classifier.IsMissingDocumentCircuitViolation(
+            new DbUpdateException("فشل حفظ", postgres)));
+    }
+
+    [Fact]
     public async Task IsConcurrencyViolation_StaleVersionSave_True()
     {
         // تعارض تزامن حقيقي على مستوى `EF` (RF-010 — لا محاكاة لمصنّف):
