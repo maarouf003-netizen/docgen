@@ -13,9 +13,19 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// تكامل الشعب (المرحلة 2أ): قراءة للجميع المصادَّق، وكتابة للمشرف والمدير
 /// (قرار §2.15) — مع عقود `400/404/409` المعتمدة.
-///
-public sealed class SectionsIntegrationTests : IsolatedApiTestBase
+/// </summary>
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class SectionsIntegrationTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public SectionsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task AttachCircuitAsync(int sectionId)
     {
@@ -37,7 +47,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
 
     private sealed record SectionDto(int Id, int BranchId, string? BranchName, string Name, bool IsActive, int CircuitCount, string? HeadName);
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("lawyer1")]
     [InlineData("head1")]
     [InlineData("manager")]
@@ -50,7 +60,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_MissingBranchId_BadRequest()
     {
         var client = Factory.AuthorizedClient("head1");
@@ -59,7 +69,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_UnknownBranch_BadRequest()
     {
         var client = Factory.AuthorizedClient("head1");
@@ -68,7 +78,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("lawyer1")]
     [InlineData("head1")]
     public async Task Create_NonManagerRoles_Forbidden(string username)
@@ -83,7 +93,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("manager")]
     [InlineData("admin")]
     public async Task Create_ManagerAndAdmin_Created(string username)
@@ -102,7 +112,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.True(created.IsActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Duplicate_BadRequest()
     {
         // الفحص الخدمي المسبق يرفض التكرار `400`؛ وظهر القاعدة (`409`) لسباق
@@ -119,7 +129,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Contains("موجودة مسبقًا", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BlankName_BadRequest()
     {
         var admin = Factory.AuthorizedClient("admin");
@@ -132,7 +142,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_Missing_NotFound()
     {
         var client = Factory.AuthorizedClient("head1");
@@ -141,7 +151,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_Manager_Ok()
     {
         var id = await Factory.CreateSectionAsync("شعبة مصياف");
@@ -153,7 +163,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal("شعبة السلمية", renamed!.Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_Head_Forbidden()
     {
         var id = await Factory.CreateSectionAsync("شعبة مصياف");
@@ -163,7 +173,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_Missing_NotFound()
     {
         var manager = Factory.AuthorizedClient("manager");
@@ -172,7 +182,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetActive_DeactivateWithCircuits_BadRequest()
     {
         var id = await Factory.CreateSectionAsync("شعبة مصياف");
@@ -184,7 +194,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Contains("انقل دوائرها", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_WithCircuits_BadRequest()
     {
         var id = await Factory.CreateSectionAsync("شعبة مصياف");
@@ -195,7 +205,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_Empty_NoContent()
     {
         var id = await Factory.CreateSectionAsync("شعبة مصياف");
@@ -205,7 +215,7 @@ public sealed class SectionsIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_Missing_NotFound()
     {
         var manager = Factory.AuthorizedClient("manager");
