@@ -2,7 +2,7 @@
 FROM node:24-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 # W0-CSP: افحص مخرجات البناء داخل الصورة نفسها (لا في CI فقط) — مخالفة CSP تفشل البناء.

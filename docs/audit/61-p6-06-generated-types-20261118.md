@@ -30,8 +30,9 @@
 
 - **تعارض peer:** `openapi-typescript@7` يعلن `typescript ^5.x` والمشروع على **6.0.3**،
   ففشل `npm install` بـ`ERESOLVE`. لم أخفض `TypeScript` ولم أستخدم `--force` عشوائيًا:
-  أُضيف `frontend/.npmrc` بـ`legacy-peer-deps=true` **مع تعليق**، والدليل على التوافق هو
-  `tsc -b` على الناتج (يمر). المولّد ينتج أنواعًا صرفة لا تعتمد على إصدار TS.
+  صار التثبيت في `CI`/`Dockerfile` بـ`npm ci --legacy-peer-deps` (سطر صريح لا ملف
+  `.npmrc` مستثنى من Git)، والمطور يثبّت محليًا بالعلم نفسه عند الحاجة. الدليل على
+  التوافق هو `tsc -b` على الناتج (يمر).
 - **`npm ci` يحذف peer اختياريًا:** بعد التثبيت، `@testing-library/dom` (peer لـ
   `@testing-library/react`) اختفى ففشل `tsc` في **ملفات اختبار قائمة**. أُضيف
   `@testing-library/dom` صراحةً كـdevDependency — لا نفترض أن legacy-peer يثبّت الأقران.
@@ -57,6 +58,8 @@
 - **إحلال نوع واحد فقط**؛ بقية `types/document.ts` (797 سطرًا) تحتاج مراجعة مستهلكين
   لكل نوع — مراحل لاحقة.
 - **ترقية كبرى للمولّد** قد تغيّر شكل الناتج؛ التثبيت في `package-lock` هو الحماية.
-- **`@testing-library/dom`** صار تبعية صريحة بسبب `.npmrc` — لا مشكلة وظيفية، لكنه أثر
-  جانبي موثّق.
+- **`@testing-library/dom`** صار تبعية صريحة بسبب تثبيت legacy-peer — لا مشكلة وظيفية،
+  لكنه أثر جانبي موثّق.
+- **`npm ci --legacy-peer-deps`** صار مطلوبًا في `CI`/`Dockerfile`؛ أي أداة/مطور يشغّل
+  `npm ci` بلا العلم سيفشل بسبب peer المولّد حتى يتوافق إصدار `openapi-typescript` مع TS6.
 - لا يغيّر `P2-06`/`P4-04`؛ لقطة العقد صارت أوسع (`required`) وهذا مقصود.
