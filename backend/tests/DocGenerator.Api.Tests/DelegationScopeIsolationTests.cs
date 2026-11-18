@@ -12,7 +12,7 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// عزل نطاق الإنابات عبر الـ API (المرحلة 6 — قرار §2.1 + §7):
 /// الاعتماد لمالك الدائرة المنابة، والتوجيه للشعبة والتراجع، والرفض للتصحيح.
-/// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
+/// قاعدة معاد ضبطها قبل كل اختبار (Respawn) — بلا تلوث متبادل.
 /// </summary>
 [Collection(PostgresApiTestCollection.Name)]
 public sealed class DelegationScopeIsolationTests : IAsyncLifetime

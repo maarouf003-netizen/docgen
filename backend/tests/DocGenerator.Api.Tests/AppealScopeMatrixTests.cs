@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
@@ -22,10 +23,10 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public class AppealScopeMatrixTests
 {
-    [Fact]
+    [PostgresFact]
     public async Task AppealReadAndWriteMatrix_MatchesPolicy()
     {
-        using var factory = new ApiFactory();
+        using var factory = new PostgresApiFactory();
         var ownerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var owner = factory.ClientWithToken(ownerToken);
 

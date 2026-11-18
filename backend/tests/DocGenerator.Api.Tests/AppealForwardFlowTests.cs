@@ -12,10 +12,20 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// تدفق الإحالة عبر الـ API (المرحلة 5ب — قرار §2.22):
 /// إحالة شعبة → قسم (رؤية القسم للاستئناف وملفه) → تراجع (استرجاع المحيل / إعادة المستلم).
-/// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل مع تدقيق `head1` المشترك.
+/// قاعدة معاد ضبطها قبل كل اختبار (Respawn) — بلا تلوث متبادل مع تدقيق `head1` المشترك.
 /// </summary>
-public sealed class AppealForwardFlowTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class AppealForwardFlowTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public AppealForwardFlowTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
     private async Task<int> CreateCircuitAsync(string name)
     {
         var head = Factory.AuthorizedClient("head1");
@@ -88,7 +98,7 @@ public sealed class AppealForwardFlowTests : IsolatedApiTestBase
         return doc!.RootElement.GetProperty("forwardState").GetString() ?? string.Empty;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ForwardFlow_HeadGainsVisibility_ThenRecallRevokesIt()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -128,7 +138,7 @@ public sealed class AppealForwardFlowTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, (await head.GetAsync($"/api/documents/{fileId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ForwardFlow_HeadReturnForward_RestoresOwned()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -156,7 +166,7 @@ public sealed class AppealForwardFlowTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, (await head.GetAsync($"/api/documents/{fileId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ForwardFlow_DecidedForwarded_HeadLosesException()
     {
         // الاستثناء القرائي حتى الحسم فقط (22′): بعد الحسم يعود العزل الدائري.
