@@ -49,6 +49,25 @@ public class DbExceptionClassifier : IDbExceptionClassifier
     }
 
     /// <summary>
+    /// انتهاك قيد <c>CK_Documents_FileNumberRequiresCircuit</c> (PostgreSQL 23514 مع
+    /// اسم القيد). SQLite لا يحمل القيد في مخطط الاختبار، فلا مطابق.
+    /// </summary>
+    public bool IsMissingDocumentCircuitViolation(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres
+                && postgres.SqlState == "23514"
+                && string.Equals(
+                    postgres.ConstraintName,
+                    "CK_Documents_FileNumberRequiresCircuit",
+                    StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// تعارض التزامن المتفائل (RF-010): `EF` ترفع `DbUpdateConcurrencyException` عند
     /// فشل `WHERE` رمز التزامن (`Document.Version`) — تُكتشَف عبر كامل السلسلة.
     /// إضافة المرحلة 9: انشغال/قفل التخزين المتزامن (SQLite `BUSY/LOCKED` وPostgres

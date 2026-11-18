@@ -53,11 +53,12 @@ public sealed class GlobalExceptionHandlerTests
             Entries.Add((logLevel, formatter(state, exception)));
     }
 
-    private sealed class StubDbErrors(bool unique = false) : IDbExceptionClassifier
+    private sealed class StubDbErrors(bool unique = false, bool missingCircuit = false) : IDbExceptionClassifier
     {
         public bool IsUniqueViolation(Exception ex) => unique;
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
+        public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;
     }
 
     [Fact]
@@ -249,6 +250,25 @@ public sealed class GlobalExceptionHandlerTests
             CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MissingDocumentCircuitViolation_MapsTo400WithActionableMessage()
+    {
+        // قيد «رقم الملف يتطلب دائرة» حارس قاعدة: طلب غير صالح = 400 لا 500.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new DbUpdateException(
+            "فشل الحفظ",
+            new InvalidOperationException("23514: CK_Documents_FileNumberRequiresCircuit"));
+
+        await Handler(new StubDbErrors(missingCircuit: true)).TryHandleAsync(
+            context, ex, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        var body = JsonDocument.Parse(await ReadBodyAsync(context)).RootElement;
+        Assert.Contains("يتطلب دائرة تنفيذ", body.GetProperty("message").GetString());
+        Assert.Equal("validation_failed", body.GetProperty("code").GetString());
     }
 
     [Fact]

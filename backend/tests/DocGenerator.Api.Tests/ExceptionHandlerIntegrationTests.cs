@@ -285,11 +285,12 @@ public class ExceptionHandlerIntegrationTests
         public IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 
-    private sealed class FakeDbErrors(bool uniqueViolation = false) : IDbExceptionClassifier
+    private sealed class FakeDbErrors(bool uniqueViolation = false, bool missingCircuit = false) : IDbExceptionClassifier
     {
         public bool IsUniqueViolation(Exception ex) => uniqueViolation;
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
+        public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;
     }
 
     private sealed class StartedResponseFeature : IHttpResponseFeature

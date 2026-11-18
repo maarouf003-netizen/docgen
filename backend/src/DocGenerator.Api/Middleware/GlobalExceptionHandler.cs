@@ -54,6 +54,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         // في فرع مستقل (رسالة «أعد التحميل» لا رسالة «قيمة مكررة»).
         var isUniqueViolation = exception is DbUpdateException dbFailure
             && _dbErrors.IsUniqueViolation(dbFailure);
+        var isMissingDocumentCircuit = exception is DbUpdateException circuitFailure
+            && _dbErrors.IsMissingDocumentCircuitViolation(circuitFailure);
 
         var statusCode = exception switch
         {
@@ -69,6 +71,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // لا عطل خادم. التصنيف من رموز المزود في `DbExceptionClassifier` (SQLite
             // 19/2067 وPostgreSQL 23505) عبر `IDbExceptionClassifier`.
             DbUpdateException when isUniqueViolation => StatusCodes.Status409Conflict,
+            // قيد «رقم الملف يتطلب دائرة» حارس أخير في القاعدة: طلب غير صالح = 400،
+            // لا 500 (كُشف على PostgreSQL لأن SQLite الاختباري لا يحمل القيد).
+            DbUpdateException when isMissingDocumentCircuit => StatusCodes.Status400BadRequest,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
             // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6 مكتمل:
             // `Portal`+`ReviewLetters`+`EntityRegistry`+`Forum`+`Correspondences`+
@@ -160,6 +165,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // W1-7: رسالة عامة لا تكشف اسم القيد/الجدول/المزود — التفاصيل في السجل أعلاه.
             DbUpdateException when isUniqueViolation =>
                 "تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا",
+            DbUpdateException when isMissingDocumentCircuit =>
+                "رقم الملف يتطلب دائرة تنفيذ — اختر دائرة أو أنشئها أولًا",
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             // حتى رسالة التطوير لا تُعكس خامًا: التسطيح/التجريد/القصّ يمنعان تزوير
@@ -174,6 +181,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             DocumentConflictException conflict when !string.IsNullOrWhiteSpace(conflict.Code) => conflict.Code,
             DbUpdateConcurrencyException => ApiErrorCodes.ConcurrencyConflict,
             DbUpdateException when isUniqueViolation => ApiErrorCodes.UniqueViolation,
+            DbUpdateException when isMissingDocumentCircuit => ApiErrorCodes.ValidationFailed,
             ArgumentException => ApiErrorCodes.ValidationFailed,
             KeyNotFoundException => ApiErrorCodes.NotFound,
             UnauthorizedAccessException => ApiErrorCodes.Forbidden,

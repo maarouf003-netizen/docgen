@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Application.Common;
@@ -10,14 +11,25 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class DocumentsIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class DocumentsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public DocumentsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public DocumentsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Theory]
+    public async Task InitializeAsync()
+    {
+        await _factory.ResetAsync();
+        // المستندات في هذه المجموعة تُنشأ بدوائر نصية؛ نُهيّئ الدائرتين المستخدمتين
+        // في الفلترة كي يحلّهما ResolveCircuitForWriteAsync بدل رفض الطلب.
+        await _factory.EnsureCircuitAsync("DAM", "دمشق");
+        await _factory.EnsureCircuitAsync("DAM", "حلب");
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresTheory]
     [InlineData("manager")]
     [InlineData("admin")]
     [InlineData("head1")]
@@ -33,7 +45,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateDocument_AsLawyer_ReturnsCreated()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -43,12 +55,55 @@ public class DocumentsIntegrationTests
             borrowerName = "مقترض اختبار",
             contractType = "تعهد",
             amountNumeric = 100,
+            court = "دمشق",
         });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
+    public async Task CreateDocument_Registered_WithCircuit_Succeeds()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+
+        var id = await _factory.CreateDocumentAsync(token, registered: true);
+        var response = await client.GetAsync($"/api/documents/{id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task Create_FileNumberWithoutCircuit_ReturnsBadRequest_NotServerError()
+    {
+        // فرع حمص بلا دوائر مهيأة: رقم ملف بلا دائرة يجب أن يُرفض 400 قبل الكتابة،
+        // لا أن يصل إلى قيد القاعدة ويُنتج 500.
+        int hmsBranchId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            hmsBranchId = db.Branches.Single(b => b.Code == "HMS").Id;
+        }
+        await _factory.CreateUserAsync("lawyer_hms", UserRole.Lawyer, hmsBranchId);
+        var token = (await _factory.LoginAsync("lawyer_hms", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            documentType = "بيان دعوى",
+            borrowerName = "مقترض بلا دائرة",
+            contractType = "تعهد",
+            amountNumeric = 10,
+            fileNumber = "321",
+            fileYear = "2026",
+            fileRegistrationDate = "1/8/2026",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("يتطلب دائرة تنفيذ", await response.Content.ReadAsStringAsync());
+    }
+
+    [PostgresFact]
     public async Task Delete_AsManagerOrHead_Forbidden_AsOwnerLawyer_NoContent()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -59,6 +114,7 @@ public class DocumentsIntegrationTests
             borrowerName = "للحذف",
             contractType = "تعهد",
             amountNumeric = 50,
+            court = "دمشق",
         });
         var doc = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
         var id = doc!.RootElement.GetProperty("id").GetInt32();
@@ -77,7 +133,7 @@ public class DocumentsIntegrationTests
         doc.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SoftDeletesDocument_ThenRestore_Works()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -108,7 +164,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, getAfter.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Restore_AsManager_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -122,7 +178,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_AsHead_ReturnsOnlyDeletedDocuments()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -141,7 +197,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(activeId, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_AsManager_Allowed()
     {
         // `BQ-001` (`RF-004`): المدير يرى المحذوفات كالمشرف (كان `403`).
@@ -151,7 +207,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Restore_AsLawyerOfAnotherBranch_Forbidden()
     {
         var damascusToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -176,7 +232,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, restored.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_Search_ByQuery_FiltersDeleted()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -196,7 +252,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(id2, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_ValidStatus_ReturnsOk()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -209,7 +265,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_InvalidStatus_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -222,7 +278,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_NegativeCollectedAmount_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -235,7 +291,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_InvalidExecSubStatus_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -248,7 +304,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_Deferred_MissingTarithNumberDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -261,7 +317,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_Settlement_MissingBaraetNumberDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -274,7 +330,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_ForcedComplete_PersistsSubStatusWithoutBaraet()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -296,7 +352,7 @@ public class DocumentsIntegrationTests
         doc.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_ForcedExecution_PersistsSubStatusAndCollectedAmount()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -318,7 +374,7 @@ public class DocumentsIntegrationTests
         doc.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_FromDraft_ForbidsForcibleExecution_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -331,6 +387,7 @@ public class DocumentsIntegrationTests
             applicant = "المدعي",
             contractType = "تعهد",
             amountNumeric = 500,
+            court = "دمشق",
         });
         using var draftBody = await draftResponse.Content.ReadFromJsonAsync<JsonDocument>();
         var draftId = draftBody!.RootElement.GetProperty("id").GetInt32();
@@ -341,7 +398,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_WithSayerFields_ReturnsToCirculating()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -360,7 +417,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(string.Empty, doc!.RootElement.GetProperty("execStatus").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnReferredToStart_FromCirculatingAdmission_ReturnsToCirculating()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -379,7 +436,7 @@ public class DocumentsIntegrationTests
         Assert.True(doc.RootElement.GetProperty("execSubStatus").ValueKind == JsonValueKind.Null);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnReferredToStart_FromPartialAdmission_RestoresForceFamily()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -404,7 +461,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(750m, doc.RootElement.GetProperty("collectedAmount").GetDecimal());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnReferredToStart_BindsFlatRenewalBody_WithRenewalAndStruckOffDate()
     {
         // يختبر عقد الربط عبر «السلك» تحديدًا: هذه النقطة تقبض جسمًا سطحيًا
@@ -432,7 +489,7 @@ public class DocumentsIntegrationTests
         Assert.StartsWith("2024-01-05", doc.RootElement.GetProperty("struckOffDate").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MainList_HidesReferredToStart_UnlessTextSearch()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -471,7 +528,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReferredToStartPage_ShowsReferred_AndExcludesOthers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -506,7 +563,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("منفذ جزئيا", partialRow.GetProperty("execSubStatus").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MainList_HidesApplicantSideStruckOff_UnlessTextSearch()
     {
         // «طالبة تنفيذ» مشطوبة تُخفى من القائمة الافتراضية، ويظهر سجلها عند البحث النصي
@@ -530,7 +587,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_ToStruckOff_ThenRestore_ApplicantSide()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -562,7 +619,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(string.Empty, restored!.RootElement.GetProperty("execStatus").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ReturnsPagedResults()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -574,7 +631,7 @@ public class DocumentsIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_UnknownStatus_ReturnsBadRequest()
     {
         // قيمة مجهولة تُرفض (400) بدل السقوط الصامت في فرع «متداول».
@@ -584,7 +641,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_RemovedReferredStatus_ReturnsBadRequest()
     {
         // «محال الى البداية» أُزيلت من القائمة قصدًا — توثيق صريح للإزالة عبر الرفض.
@@ -594,7 +651,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_UnknownStatus_ReturnsBadRequest()
     {
         // البوابة الثانية (التصدير) تشترك في التحقق نفسه عبر ApplySearchFilters.
@@ -604,7 +661,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FilterOptions_UnknownStatus_ReturnsBadRequest()
     {
         // البوابة الرابعة (خيارات الفلاتر) تشترك في التحقق نفسه عبر ApplySearchFilters.
@@ -614,7 +671,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_PaddedValidStatus_Accepted()
     {
         // القيمة المبطَّنة تُقلَّم وتُقبل بدلالتها (إصلاح العيب المبطّن: كانت تسقط في «متداول»).
@@ -624,7 +681,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("متداول")]
     [InlineData("منفذ")]
     [InlineData("تريث")]
@@ -639,7 +696,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CannotAccessOtherBranchesDocuments()
     {
         var damascusToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -657,7 +714,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAndGet_PersistsIncomingAndUnderFilingFields()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -670,6 +727,7 @@ public class DocumentsIntegrationTests
             documentType = "بيان دعوى",
             borrowerName = "مقترض فحص",
             contractType = "تعهد",
+            court = "دمشق",
             fileNumber = "220",
             fileYear = "2026",
             fileRegistrationDate = "01/03/2026",
@@ -696,7 +754,7 @@ public class DocumentsIntegrationTests
         doc.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_FiltersByMutadawalAndTahRafaa()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -707,6 +765,7 @@ public class DocumentsIntegrationTests
             borrowerName = "مرشح تحت رفع",
             contractType = "تعهد",
             amountNumeric = 10,
+            court = "دمشق",
         });
         var draft = await draftResponse.Content.ReadFromJsonAsync<JsonDocument>();
         var draftId = draft!.RootElement.GetProperty("id").GetInt32();
@@ -716,6 +775,7 @@ public class DocumentsIntegrationTests
             borrowerName = "مرشح متداول",
             contractType = "تعهد",
             amountNumeric = 20,
+            court = "دمشق",
             fileNumber = "991",
             fileYear = "2026",
             fileRegistrationDate = "01/06/2026",
@@ -743,7 +803,7 @@ public class DocumentsIntegrationTests
         activeBody.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AddingFileNumberAndYear_BecomesMutadawal()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -754,6 +814,7 @@ public class DocumentsIntegrationTests
             borrowerName = "مسودة متداول",
             contractType = "تعهد",
             amountNumeric = 200,
+            court = "دمشق",
         });
         Assert.Equal(HttpStatusCode.Created, draftResponse.StatusCode);
         var draft = await draftResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -766,6 +827,7 @@ public class DocumentsIntegrationTests
             borrowerName = "مسودة متداول",
             contractType = "تعهد",
             amountNumeric = 200,
+            court = "دمشق",
             fileNumber = "777",
             fileYear = "2026",
             fileRegistrationDate = "01/05/2026",
@@ -783,7 +845,7 @@ public class DocumentsIntegrationTests
     }
 
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_AsManager_ShowsPrintCounter()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -799,7 +861,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(1, doc!.RootElement.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_AsLawyer_HidesPrintCounter()
     {
         // المحامي يولّد ملفه فيزيد عدّاد الطباعة فعليًا، ثم يُعقَّم في استجابة التفاصيل.
@@ -816,7 +878,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, doc!.RootElement.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_AsLawyer_HidesPrintCounter()
     {
         // نفس التعقيم على مسار القوائم (OkSanitized) لا التفاصيل فقط.
@@ -837,7 +899,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, item.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetStruckOff_AsLawyer_HidesPrintCounter()
     {
         // تعقيم القوائم يشمل «المشطوبة» أيضًا (OkSanitized على المسار نفسه)، لا البحث فقط.
@@ -859,7 +921,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, item.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetExecuted_AsLawyer_HidesPrintCounter()
     {
         // صفحة «المنفذة» مسار قوائم خامس يُعقَّم بالمساعد نفسه: المحامي يرى صفرًا.
@@ -901,7 +963,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(1, managerItem.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_AsLawyer_HidesPrintCounter()
     {
         // تعقيم قائمة المحذوفات أيضًا: المحامي لا يرى عدّاد الطباعة في أي مسار قوائم.
@@ -923,7 +985,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, item.GetProperty("printCount").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_AsLawyer_ReturnsActionAndPersists()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -944,7 +1006,7 @@ public class DocumentsIntegrationTests
         list.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_AsManager_Forbidden()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -956,7 +1018,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_EmptyText_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -968,7 +1030,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_AsLawyerOnOthersDocument_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -988,7 +1050,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetActions_IsEmptyInitially()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1001,7 +1063,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, list!.RootElement.GetArrayLength());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_IncludesExecutionActions()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1021,7 +1083,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("إجراء في القائمة", actions[0].GetProperty("text").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddNote_WithoutDate_DefaultsToToday()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1039,7 +1101,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(damascusToday, action.RootElement.GetProperty("actionDate").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_WithoutDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1051,7 +1113,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_AsLawyer_ReturnsUpdatedAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1070,7 +1132,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("ملاحظة محدثة", updated.RootElement.GetProperty("text").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_AsManager_Forbidden()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -1087,7 +1149,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteAction_AsLawyer_RemovesAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1106,7 +1168,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(0, list!.RootElement.GetArrayLength());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteAction_AsManager_Forbidden()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -1122,7 +1184,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClearReminder_AsLawyer_RemovesReminderKeepsAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1144,7 +1206,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(JsonValueKind.Null, action.GetProperty("reminderColor").ValueKind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClearReminder_AsManager_Forbidden()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -1160,7 +1222,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RescheduleReminder_AsLawyer_MovesReminderWithoutTouchingActionDate()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1181,7 +1243,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("أحمر", rescheduled.RootElement.GetProperty("reminderColor").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RescheduleReminder_AsManager_Forbidden()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -1198,7 +1260,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RescheduleReminder_InvalidDate_ReturnsFriendlyBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1216,7 +1278,7 @@ public class DocumentsIntegrationTests
         Assert.Contains("اليوم الجديد", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByApplicantFilter_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1232,7 +1294,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(id2, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByCourtFilter_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1248,7 +1310,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(id1, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsApplicantsAndCourts()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1264,7 +1326,7 @@ public class DocumentsIntegrationTests
         Assert.Contains("دمشق", courts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByPublicEntityBranch_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1281,7 +1343,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(plainId, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsPublicEntityBranches()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1295,7 +1357,7 @@ public class DocumentsIntegrationTests
         Assert.Contains("فرع المزة", branches);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByLawyerFilter_AsLawyer_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1305,7 +1367,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByLawyerFilter_AsHead_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1325,7 +1387,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(id2, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_AsManager_ReturnsLawyers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1339,7 +1401,7 @@ public class DocumentsIntegrationTests
         Assert.Contains("محامي دمشق", lawyers);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ReturnsAdministrativeBranchName_AsManager()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1354,7 +1416,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("الفرع الرئيسي - دمشق", doc.GetProperty("administrativeBranchName").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByTripleName_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1368,7 +1430,7 @@ public class DocumentsIntegrationTests
         Assert.Contains(items, i => i.GetProperty("id").GetInt32() == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByBorrowerHeirName_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1397,7 +1459,7 @@ public class DocumentsIntegrationTests
         Assert.Contains(items, i => i.GetProperty("id").GetInt32() == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithRepresentativesAndHeirCapacity_RoundTrips()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1462,7 +1524,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("موطن مختار", heir.GetProperty("addressType").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WithRepresentativeAndCombinedCapacity_RoundTrips()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1540,7 +1602,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("حلب", person.GetProperty("representativeAddress").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AssetCaseNumberAndRightType_RoundTrips()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1597,7 +1659,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(JsonValueKind.Null, vehicle.GetProperty("caseNumber").ValueKind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_AllowsRepresentativeWithEstateAndHeirs()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1665,7 +1727,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("وريث", person.GetProperty("heirs")[0].GetProperty("heirName").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetStatus_AsHeadOrManager_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1682,7 +1744,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, managerForbidden.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AsHeadOrManager_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1699,7 +1761,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, managerForbidden.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_AsLawyer_ReturnsOwnDeletedDocuments()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1726,7 +1788,7 @@ public class DocumentsIntegrationTests
         Assert.DoesNotContain(otherId, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BaseNumbersHistory_AfterRotation_ReturnsYearsAndDisplayFileNumber()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1759,9 +1821,12 @@ public class DocumentsIntegrationTests
         var historyResponse = await client.GetAsync($"/api/documents/{id}/base-numbers");
         Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
         var history = await historyResponse.Content.ReadFromJsonAsync<List<BaseNumberYearDto>>();
-        var entry = Assert.Single(history!);
-        Assert.Equal(ApiTestClock.Today.Year, entry.Year);
-        Assert.Equal("1500", entry.BaseNumber);
+        // سجلان: رقم القيد السابق (520 لسنة القيد) + رقم الأساس المدوَّر (1500 للسنة الحالية).
+        Assert.Equal(2, history!.Count);
+        Assert.Contains(history, h =>
+            h.Year == ApiTestClock.Today.Year && h.BaseNumber == "1500");
+        Assert.Contains(history, h =>
+            h.Year == previousYear && h.BaseNumber == "520");
 
         // الرقم الفعّال في العرض التفصيلي يحل محل رقم الملف، والأصلي يبقى للتاريخ.
         var detail = await client.GetAsync($"/api/documents/{id}");
@@ -1771,7 +1836,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("520", detailJson.RootElement.GetProperty("fileNumber").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BaseNumbersHistory_AnotherLawyer_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1790,7 +1855,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_ExcludesFilesRegisteredInCurrentYear()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1834,7 +1899,7 @@ public class DocumentsIntegrationTests
         Assert.Contains(previousRegistered, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_FileRegisteredInCurrentYear_Rejected()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -1865,7 +1930,10 @@ public class DocumentsIntegrationTests
         var historyResponse = await client.GetAsync($"/api/documents/{id}/base-numbers");
         Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
         var history = await historyResponse.Content.ReadFromJsonAsync<List<BaseNumberYearDto>>();
-        Assert.Empty(history!);
+        // لا رقم أساس مدوَّر؛ يبقى رقم القيد الأصلي لسنة القيد الحالية.
+        var entry = Assert.Single(history!);
+        Assert.Equal(currentYear, entry.Year);
+        Assert.Equal("70", entry.BaseNumber);
     }
 
 
@@ -1975,7 +2043,7 @@ public class DocumentsIntegrationTests
         return body!.RootElement.GetProperty("id").GetInt32();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedSide_FromExecuted_IsTerminal()
     {
         // صفة «الجهة العامة منفذ عليها»: حالة «منفذ» نهائية؛ لا إرجاع إلى متداول ولا شطب.
@@ -1993,7 +2061,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("منفذ", doc!.RootElement.GetProperty("executedStatus").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Deposit_FromExecutedToStruckOff_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2005,7 +2073,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, toStruckOff.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Deposit_FromExecutedToCirculating_RequiresSayerAndKeepsAmount()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2042,7 +2110,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("2/8/2026", doc.RootElement.GetProperty("sayerRegDate").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedSide_Create_ThenStrikeOff_ThenRestore_AndSearch()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2055,7 +2123,7 @@ public class DocumentsIntegrationTests
         using var createdBody = await created.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.Equal("الجهة العامة منفذ عليها", createdBody!.RootElement.GetProperty("generalEntitySideLabel").GetString());
         Assert.Equal("المصرف العقاري", createdBody.RootElement.GetProperty("executedPublicEntities")[0].GetProperty("entityName").GetString());
-        Assert.Equal(1000, createdBody.RootElement.GetProperty("executedRequiredAmount").GetInt32());
+        Assert.Equal(1000m, createdBody.RootElement.GetProperty("executedRequiredAmount").GetDecimal());
 
         // ظاهر في البحث العام قبل الشطب.
         var before = await client.GetAsync("/api/documents?q=المصرف العقاري");
@@ -2103,7 +2171,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("2026/555", restoredBody.RootElement.GetProperty("displayFileNumber").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_WithoutRenewalFileNumber_BadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2116,7 +2184,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, restore.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedPage_ListExecutedLike_FullyExecuted_WithExecutionDate()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2143,7 +2211,7 @@ public class DocumentsIntegrationTests
         Assert.NotNull(mine.GetProperty("executedExecutionDate").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedPage_ExcludesTradingAndStruckOff()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2164,7 +2232,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MainList_HidesExecutedFamily_UnlessTextSearch()
     {
         // عائلة «منفذ عليها/عرض وايداع» بحالة «منفذ» تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
@@ -2186,7 +2254,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MainList_HidesApplicantSideExecuted_UnlessTextSearch()
     {
         // «طالبة تنفيذ» منفذة (بالتسوية) تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
@@ -2212,7 +2280,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Annexes_MultipleRoundTripAndAreSearchable()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2252,7 +2320,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Annexes_MoreThanFive_BadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2278,7 +2346,7 @@ public class DocumentsIntegrationTests
         Assert.Contains("الحد الأقصى", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Annex_ForBankingDocument_RoundTripsAndIsSearchable()
     {
         // ملحق العقد (للعقد المصرفي): يُحفظ ويُعاد عرضه، ويمكن البحث برقمه (مُضمّن في SearchText).
@@ -2316,7 +2384,7 @@ public class DocumentsIntegrationTests
             .Select(i => i.GetProperty("id").GetInt32()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_ForExecutedSideDocument_Rejected()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -2328,7 +2396,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StruckOff_Page_AsManager_Allowed()
     {
         // الملفات المشطوبة بنفس صلاحيات المحذوفات: المدير يراها (`BQ-001`, كان `403`).
@@ -2337,7 +2405,7 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Occurrences_ManualEndpoints_Removed_Return404()
     {
         // إلغاء محرر الوقوعات اليدوي: نقاط (POST/PUT/DELETE /occurrences) لم تعد موجودة — عقد
