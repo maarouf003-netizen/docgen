@@ -231,7 +231,7 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
-- **الحالة (2026-11-18):** **جزئيًا — الشرائح `1a`–`1e` منفذة.**
+- **الحالة (2026-11-18):** **جزئيًا — الشرائح `1a`–`1f` منفذة.**
   - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
     مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
   - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
@@ -244,7 +244,9 @@
     `DocumentsIntegrationTests` (105) + `DelegationsIntegrationTests` (15) +
     `DelegationScopeMatrixTests` (1) + `DelegationScopeIsolationTests` (2) +
     `AppealForwardFlowTests` (3) + `AppealScopeMatrixTests` (1) +
-    `DocumentInterventionIntegrationTests` (5) + `DocumentsExportIntegrationTests` (8)
+    `DocumentInterventionIntegrationTests` (5) + `DocumentsExportIntegrationTests` (8) +
+    `ExecutionCircuitsIntegrationTests` (16) + `CorrespondenceIntegrationTests` (16) +
+    `ReviewCorrespondenceScopeTests` (5)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
     `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
   - **عقد الإنابة:** عند وجود دوائر، `DelegatedCircuitId` مطلوب صريحًا ولا يُحل
@@ -260,9 +262,10 @@
     `docs/audit/65-p1-01b-admin-suites-20261118.md`،
     `docs/audit/66-p1-01c-documents-postgres-20261118.md`،
     `docs/audit/67-p1-01d-delegations-postgres-20261118.md`،
-    `docs/audit/68-p1-01e-appeals-postgres-20261118.md`.
-  - **متبقٍ:** نقل بقية المجموعات (التنبيهات/المراسلات/الدوائر/إدارة المستخدمين/
-    البوابة/الجهات)، ثم `P1-08` لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
+    `docs/audit/68-p1-01e-appeals-postgres-20261118.md`،
+    `docs/audit/69-p1-01f-circuits-correspondence-20261118.md`.
+  - **متبقٍ:** نقل بقية المجموعات (التنبيهات/إدارة المستخدمين/البوابة/الجهات)،
+    ثم `P1-08` لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.
 - **DoD:** الاختبارات الحرجة تعمل على Postgres في CI؛ `SQLite` للوحدات فقط.
@@ -470,6 +473,9 @@
     بلا إصدار مُصلَح (أحدث إصدار 4.0.7 داخل المدى)، وإصلاح `npm` المقترح يخفض `vitest`
     لإصدار أقدم. الاستثناء ينتهي 2026-12-17. التفاصيل:
     `docs/audit/56-npm-audit-allowlist-20261117.md`.
+    **تحديث (2026-11-18):** لم يعد الاستثناء مطلوبًا — `npm audit` بعد `npm ci` يعيد
+    **0 ثغرات**، فحُذف من `scripts/npm-audit-allowlist.json` (حارس الاستثناءات القديمة
+    يرفض بقاءه). لم تُحرَّر اللقطة التاريخية `56`.
   - SBOM (CycloneDX 6.3.1 للخلفية، `@cyclonedx/cyclonedx-npm` للواجهة) يُرفع كأثر
     `sbom` في وظيفة `audit` (30 يومًا).
   - **`P2-06` (تكملة، 2026-11-17):** PR

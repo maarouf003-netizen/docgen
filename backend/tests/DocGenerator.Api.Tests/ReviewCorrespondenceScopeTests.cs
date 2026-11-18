@@ -14,8 +14,18 @@ namespace DocGenerator.Api.Tests;
 /// توجيه المستلم، والرؤية والرد والعدّاد بالنطاق.
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
 /// </summary>
-public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public ReviewCorrespondenceScopeTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<(string Token, int Id)> CreateSubHeadAsync(int sectionId)
     {
@@ -85,7 +95,7 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
         return doc!.RootElement.GetProperty("count").GetInt32();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LetterFlow_OwnedBySection_SubReplies_HeadDenied()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -122,7 +132,7 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, headReply.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LetterFlow_GeneralWithSection_SubSees_HeadDoesNot()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -149,7 +159,7 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, (await head.GetAsync($"/api/review-letters/{letterId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CorrespondenceFlow_GeneralToSectionHead_VisibleToSub()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -184,7 +194,7 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
     /// P4-03: عقد دلالة الأخطاء للمطالعات — المفقود `404` (KeyNotFound) لا `400`،
     /// والتحقق `400` لا `404` (كان `catch (ArgumentException) ⇒ NotFound` يخلط بينهما).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Letter_ErrorSemantics_MissingIs404_AndValidationIs400()
     {
         var (_, lawyerToken) = await Factory.NewLawyerAsync();
@@ -220,7 +230,7 @@ public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
     }
 
     /// <summary>P4-03: المراسلة المفقودة `404` (مثبتة؛ لا تُحوَّل إلى `400`).</summary>
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_ErrorSemantics_MissingIs404()
     {
         var (_, lawyerToken) = await Factory.NewLawyerAsync();

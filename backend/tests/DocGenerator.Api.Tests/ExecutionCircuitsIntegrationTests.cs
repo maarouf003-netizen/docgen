@@ -16,7 +16,7 @@ namespace DocGenerator.Api.Tests;
 /// واختبارات المجموعة المشتركة تفترض سجلًا فارغًا، لذا تُقلع هذه الفئة قاعدتها الخاصة.
 /// </summary>
 [CollectionDefinition("execution-circuits-integration")]
-public sealed class ExecutionCircuitsCollection : ICollectionFixture<ApiFactory>
+public sealed class ExecutionCircuitsCollection : ICollectionFixture<PostgresApiFactory>
 {
 }
 
@@ -27,11 +27,15 @@ public sealed class ExecutionCircuitsCollection : ICollectionFixture<ApiFactory>
 /// عزل الأسماء/الأرقام بـ GUID فريد احتياطًا رغم العزل.
 /// </summary>
 [Collection("execution-circuits-integration")]
-public class ExecutionCircuitsIntegrationTests
+public class ExecutionCircuitsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public ExecutionCircuitsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public ExecutionCircuitsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     // مستثنى من R1-1 عمدًا: `HeadBranchIdAsync` يُثبّت `Governorate` كأثر جانبي
     // تعتمد عليه `NewSectionHeadAsync` (تستدعيه للتحضير لا للقيمة)، و`BranchIdOfHeadAsync`
@@ -90,7 +94,7 @@ public class ExecutionCircuitsIntegrationTests
         return await client.SendAsync(request);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FullFlow_CreateReferCompleteDelete_Succeeds()
     {
         var branchId = await HeadBranchIdAsync();
@@ -132,7 +136,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Contains(targetName, await stats.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_IdempotentReplay_ReturnsStoredBody()
     {
         await HeadBranchIdAsync();
@@ -164,7 +168,7 @@ public class ExecutionCircuitsIntegrationTests
             .CountAsync(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_PendingAlertFollowsNewOwner()
     {
         await HeadBranchIdAsync();
@@ -204,7 +208,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.DoesNotContain(targetName, await oldAlerts.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_PendingAlertFollowsNewOwner()
     {
         await HeadBranchIdAsync();
@@ -241,7 +245,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.DoesNotContain(targetName, await oldAlerts.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_WithCompletedDelegation_DetachesAndSucceeds()
     {
         await HeadBranchIdAsync();
@@ -285,7 +289,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Equal(courtName, delegation.DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ByManager_MovesOwnership()
     {
         await HeadBranchIdAsync();
@@ -310,7 +314,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Equal(sectionId, (await db.ExecutionCircuits.FindAsync(circuitId))!.SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ByHead_Forbidden()
     {
         await HeadBranchIdAsync();
@@ -323,7 +327,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, transfer.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_MissingCircuit_BadRequest()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -366,7 +370,7 @@ public class ExecutionCircuitsIntegrationTests
         return (sectionId, _factory.ClientWithToken(token));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Mine_SubHeadSeesOwnSectionOnly_AndCreatesAutoTagged()
     {
         await HeadBranchIdAsync();
@@ -395,7 +399,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.DoesNotContain(subCircuit, headIds);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_ForeignScope_BadRequest()
     {
         await HeadBranchIdAsync();
@@ -410,7 +414,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Contains("ليست ضمن نطاقك", await rename.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_OwnScope_SubHead_Ok()
     {
         // المسار الموجب عبر السياسة والنطاق: رئيس الشعبة يسمّي دائرته (200).
@@ -424,7 +428,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, rename.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_ForeignScope_BadRequest()
     {
         await HeadBranchIdAsync();
@@ -440,7 +444,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Contains("ليست ضمن نطاقك", await delete.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_HeadSeesDivisionOnly()
     {
         await HeadBranchIdAsync();
@@ -459,7 +463,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.DoesNotContain(subCircuit, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ForLawyer_LawyerSeesAll_HeadSeesOwn()
     {
         await HeadBranchIdAsync();
@@ -484,7 +488,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.DoesNotContain(subCircuit, ownIds);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFiles_ReturnsMirrorHiddenBySearch()
     {
         // العطل A (معالج الإفراغ كان يمرّ بفلتر البحث العام): ملف بحالة «منفذ إنابة»
@@ -531,7 +535,7 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Contains("ليست ضمن نطاقك", await intruder.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_PurgesSoftDeletedFiles_EndToEnd()
     {
         // تعديل البند 41: حذف منطقي عبر API ثم حذف الدائرة — الصف غائب فيزيائيًا من القاعدة.

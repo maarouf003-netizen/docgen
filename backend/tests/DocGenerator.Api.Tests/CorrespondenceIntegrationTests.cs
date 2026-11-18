@@ -18,8 +18,17 @@ namespace DocGenerator.Api.Tests;
 /// صراحةً أو تلقائيًا بالرد مع انطفاء عدّاد غير المؤكَّد المشاهدة (بأي أهمية) —
 /// ويثبت تركيب حقن الخدمة الجديدة في حاوية الإنتاج.
 /// </summary>
-public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public CorrespondenceIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     private int _branchId;
     private int _lawyerId;
     private int _lawyer2Id;
@@ -27,8 +36,9 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
     private int _delegateId;
     private int _documentId;
 
-    public override async Task InitializeAsync()
+    public async Task InitializeAsync()
     {
+        await Factory.ResetAsync();
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
@@ -81,10 +91,24 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         del.PortalEntryId = entryId;
         await db.SaveChangesAsync();
 
+        // القيد CK_Documents_FileNumberRequiresCircuit: وثيقة البذر تحمل رقمًا،
+        // فتحتاج دائرة فعلية (كانت تُنشأ بلا دائرة على SQLite المتسامح).
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = branch.Id,
+            Name = "دائرة تنفيذ دمشق",
+            NameNorm = ArabicNameNormalizer.Normalize("دائرة تنفيذ دمشق"),
+            IsActive = true,
+            CreatedById = head.Id,
+        };
+        db.ExecutionCircuits.Add(circuit);
+        await db.SaveChangesAsync();
+
         var document = new Document
         {
             BranchId = branch.Id,
             CreatedById = lawyer.Id,
+            ExecutionCircuitId = circuit.Id,
             IsDraft = false,
             BorrowerName = "سعيد",
             BorrowerFather = "خالد",
@@ -153,7 +177,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
     private static List<string> SortedKeys(JsonElement obj)
         => obj.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
 
-    [Fact]
+    [PostgresFact]
     public async Task WireContract_DetailKeysMatchSharedManifest()
     {
         // أي حقل جديد/محذوف/مُعاد تسميته في `CorrespondenceDto` يُفشل هنا حتى
@@ -173,7 +197,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(expected, SortedKeys(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WireContract_ListItemKeysMatchSharedManifest()
     {
         var create = await Lawyer().PostAsync("/api/correspondence", Json(new
@@ -195,7 +219,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(expected, SortedKeys(row));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CreatesUrgentGeneralCorrespondence_ReturnsCreatedWithNumber()
     {
         var response = await Lawyer().PostAsync("/api/correspondence", Json(new
@@ -217,7 +241,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.False(body.GetProperty("canReply").GetBoolean());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntityManager_OnMainCorrespondencePaths_IsForbiddenByGuard()
     {
         var post = await Delegate().PostAsync("/api/correspondence", Json(new
@@ -233,7 +257,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, get.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntityManager_CreatesRepliesAndMarksSeen_ViaPortal()
     {
         // الفرق لا القيمة المطلقة: قاعدة الاختبار مشتركة بين الفئات فقد تحمل
@@ -286,7 +310,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(unseenBeforeCreate, await ReadCount(Lawyer(), "/api/correspondence/unseen-count"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegate_UnseenCount_ViaPortal_CountsNormalImportance()
     {
         // الشارة تشمل كل الأهميات لا العاجل وحده — مراسلة عادية تُحتسب فورًا.
@@ -323,7 +347,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         return document.RootElement.GetProperty("count").GetInt32();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonPartyHead_CannotReply_ButHeadOfGovernorate_CanView()
     {
         var create = await Lawyer().PostAsync("/api/correspondence", Json(new
@@ -343,7 +367,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.OK, view.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Addendum_OverLimit_ReturnsBadRequest_NotNotFound()
     {
         // رسالة التحقق (تجاوز الحد) تُردّ 400 لا 404 — الفصل المقصود في F1.
@@ -364,7 +388,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Contains("الحد", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_OverLimit_ReturnsBadRequest_OnPortalPath()
     {
         var create = await Lawyer().PostAsync("/api/correspondence", Json(new
@@ -384,7 +408,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Contains("الحد", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_MissingLetter_ReturnsNotFound()
     {
         // غير-الموجود يُردّ 404 (عبر `KeyNotFoundException`) لا 400.
@@ -393,14 +417,14 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Anonymous_CannotAccessCorrespondence()
     {
         var response = await Factory.CreateClient().GetAsync("/api/correspondence");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegate_OnFileLinked_TargetsUninvolvedLawyer_ReturnsBadRequest()
     {
         var response = await Delegate().PostAsync("/api/portal/correspondence", Json(new
@@ -414,7 +438,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_OnFileLinked_TargetsHead_ReturnsBadRequest()
     {
         var response = await Lawyer().PostAsync("/api/correspondence", Json(new
@@ -428,7 +452,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegate_OnFileLinked_TargetsOwnerLawyer_ReturnsCreated()
     {
         var response = await Delegate().PostAsync("/api/portal/correspondence", Json(new
@@ -445,7 +469,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(_lawyerId, body.GetProperty("targetUserId").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkSeen_ForCreatorOrHead_ReturnsForbidden_AndTargetSucceeds()
     {
         // عقد `mark-seen` على السلك: المستلم فقط 403 لغيره، مع بقاء الحالة
@@ -496,7 +520,7 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         Assert.Equal(1, detailAfter.GetProperty("receipts").GetArrayLength());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TargetsEndpoint_WithDocumentId_ReturnsScopeDelegatesOnly()
     {
         var response = await Lawyer().GetAsync(
