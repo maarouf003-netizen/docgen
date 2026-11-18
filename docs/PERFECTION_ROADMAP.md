@@ -231,7 +231,7 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
-- **الحالة (2026-11-18):** **جزئيًا — الشرائح `1a`–`1f` منفذة.**
+- **الحالة (2026-11-18):** **جزئيًا — الشرائح `1a`–`1g` منفذة.**
   - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
     مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
   - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
@@ -246,7 +246,8 @@
     `AppealForwardFlowTests` (3) + `AppealScopeMatrixTests` (1) +
     `DocumentInterventionIntegrationTests` (5) + `DocumentsExportIntegrationTests` (8) +
     `ExecutionCircuitsIntegrationTests` (16) + `CorrespondenceIntegrationTests` (16) +
-    `ReviewCorrespondenceScopeTests` (5)
+    `ReviewCorrespondenceScopeTests` (5) + `UserManagementIntegrationTests` (34) +
+    `LockoutIntegrationTests` (8) + `TokenRevocationIntegrationTests` (2)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
     `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
   - **عقد الإنابة:** عند وجود دوائر، `DelegatedCircuitId` مطلوب صريحًا ولا يُحل
@@ -263,9 +264,10 @@
     `docs/audit/66-p1-01c-documents-postgres-20261118.md`،
     `docs/audit/67-p1-01d-delegations-postgres-20261118.md`،
     `docs/audit/68-p1-01e-appeals-postgres-20261118.md`،
-    `docs/audit/69-p1-01f-circuits-correspondence-20261118.md`.
-  - **متبقٍ:** نقل بقية المجموعات (التنبيهات/إدارة المستخدمين/البوابة/الجهات)،
-    ثم `P1-08` لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
+    `docs/audit/69-p1-01f-circuits-correspondence-20261118.md`،
+    `docs/audit/70-p1-01g-users-sessions-20261118.md`.
+  - **متبقٍ:** نقل التنبيهات (51) والبوابة/الجهات، ثم `P1-08` لإزالة `SQLite` من
+    الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.
 - **DoD:** الاختبارات الحرجة تعمل على Postgres في CI؛ `SQLite` للوحدات فقط.

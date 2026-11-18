@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -8,12 +9,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class LockoutIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class LockoutIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public LockoutIntegrationTests(ApiFactory factory) => _factory = factory;
+    public LockoutIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>
     /// نسخة من المصنع تشترك بنفس ملف القاعدة لكن برفع سقف محدد IP+username
@@ -36,7 +41,7 @@ public class LockoutIntegrationTests
         return ((int)response.StatusCode, token);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RepeatedFailures_EventuallyLockAccount_Return423()
     {
         var username = $"lk_{Guid.NewGuid():N}"[..16];
@@ -59,7 +64,7 @@ public class LockoutIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LockedAccount_CorrectPassword_Returns423()
     {
         var username = $"l2_{Guid.NewGuid():N}"[..16];
@@ -73,7 +78,7 @@ public class LockoutIntegrationTests
         Assert.Equal((int)HttpStatusCode.Locked, result.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AfterLockoutExpires_CorrectPasswordSucceeds()
     {
         var username = $"l3_{Guid.NewGuid():N}"[..16];
@@ -97,7 +102,7 @@ public class LockoutIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(result.Token));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuccessfulLogin_ResetsFailedAttempts()
     {
         var username = $"l4_{Guid.NewGuid():N}"[..16];
@@ -121,7 +126,7 @@ public class LockoutIntegrationTests
     /// التراجع الأسّي (S6): قفل متتالٍ دون نجاح بينهما يضاعف المدة (15 ← 30)،
     /// والنجاح بين القفلين يعيد المستوى إلى الأساس.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task RepeatedLockouts_BackoffDoublesDuration()
     {
         var username = $"lb_{Guid.NewGuid():N}"[..16];
@@ -137,7 +142,7 @@ public class LockoutIntegrationTests
         Assert.Equal(30, await LockoutMinutesRemainingAsync(factory, username), 1);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuccessfulLogin_BetweenLockouts_ResetsBackoffLevel()
     {
         var username = $"lr_{Guid.NewGuid():N}"[..16];
@@ -186,7 +191,7 @@ public class LockoutIntegrationTests
     /// إشارة القفل للهويات متعددة الفروع (R1): إن كانت كل الحسابات المرشحة مقفلة يُرجع
     /// `423` مباشرة بدل منتقي فرع لحسابات لا يقبل أيٌّ منها الدخول.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task AllCandidatesLocked_Returns423InsteadOfBranchSelection()
     {
         var username = $"ml_{Guid.NewGuid():N}"[..16];
@@ -209,7 +214,7 @@ public class LockoutIntegrationTests
         Assert.Equal((int)HttpStatusCode.Locked, locked.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MixedLockState_ReturnsBranchSelection()
     {
         var username = $"mx_{Guid.NewGuid():N}"[..16];

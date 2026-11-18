@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -7,15 +8,19 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class TokenRevocationIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class TokenRevocationIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public TokenRevocationIntegrationTests(ApiFactory factory) => _factory = factory;
+    public TokenRevocationIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"rev_{Guid.NewGuid():N}"[..16];
@@ -42,7 +47,7 @@ public class TokenRevocationIntegrationTests
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivatedAccount_TokensBecomeInvalid()
     {
         var username = $"deact_{Guid.NewGuid():N}"[..16];
