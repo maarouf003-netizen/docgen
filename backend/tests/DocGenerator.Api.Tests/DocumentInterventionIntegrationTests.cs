@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,12 +12,16 @@ namespace DocGenerator.Api.Tests;
 /// عقد مسارات «المتدخلين» عبر الـAPI الحقيقي: الحفظ الفوري، الوقعة البنفسجية،
 /// تعديلها/حذفها، وحراسة الصلاحيات (المحامي المالك فقط) وتحقق المدخلات.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class DocumentInterventionIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class DocumentInterventionIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public DocumentInterventionIntegrationTests(ApiFactory factory) => _factory = factory;
+    public DocumentInterventionIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<(HttpClient Client, int DocumentId)> CreateDocAsync()
     {
@@ -46,7 +51,7 @@ public class DocumentInterventionIntegrationTests
         heirs = Array.Empty<object>(),
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_ThenDocumentReflectsInterventionAndOccurrence()
     {
         var (client, documentId) = await CreateDocAsync();
@@ -69,7 +74,7 @@ public class DocumentInterventionIntegrationTests
         Assert.Equal("طلب تدخل", occurrence.OccurrenceTypeLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ThenDelete_SyncedOccurrenceAndPartyList()
     {
         var (client, documentId) = await CreateDocAsync();
@@ -103,7 +108,7 @@ public class DocumentInterventionIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, deleteAgain.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_WithoutReceiptDate_ReturnsBadRequestWithArabicMessage()
     {
         var (client, documentId) = await CreateDocAsync();
@@ -121,7 +126,7 @@ public class DocumentInterventionIntegrationTests
         Assert.Contains("تاريخ ورود طلب التدخل", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CannotAddIntervention()
     {
         var (_, documentId) = await CreateDocAsync();
@@ -133,7 +138,7 @@ public class DocumentInterventionIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OtherLawyer_CannotAddIntervention()
     {
         var (_, documentId) = await CreateDocAsync();

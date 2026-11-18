@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DocGenerator.Api.Security;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Infrastructure.Persistence;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -11,16 +12,25 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class DocumentsExportIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class DocumentsExportIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public DocumentsExportIntegrationTests(ApiFactory factory) => _factory = factory;
+    public DocumentsExportIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public async Task InitializeAsync()
+    {
+        await _factory.ResetAsync();
+        // المسارات المباشرة تُرسل court نصيًا؛ عند وجود دوائر يجب أن تطابقه.
+        await _factory.EnsureCircuitAsync("DAM", "دمشق");
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static int ExportNumberSeq;
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_AsLawyer_ReturnsXlsxWithHeaders()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -41,7 +51,7 @@ public class DocumentsExportIntegrationTests
         Assert.Equal('K', (char)bytes[1]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_ProducesOpenableWorkbookWithValidAutoFilterReference()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -74,7 +84,7 @@ public class DocumentsExportIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(autoFilter!.Reference?.Value));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_FilteredByLawyer_ForbiddenForLawyerRole()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -82,7 +92,7 @@ public class DocumentsExportIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_AsManager_OkAndForbiddenForAnonymous()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -94,7 +104,7 @@ public class DocumentsExportIntegrationTests
         Assert.Equal(HttpStatusCode.Unauthorized, forbidden.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_IncludesAnnexNumberInItsColumn()
     {
         // عمود «ملحق العقد» في التصدير يعرض رقم الملحق للمصرفي.
@@ -105,6 +115,7 @@ public class DocumentsExportIntegrationTests
             generalEntitySide = "applicant",
             borrowerName = "مقترض تصدير ملحق",
             applicant = "المصرف",
+            court = "دمشق",
             contractType = "تعهد",
             contractTypeSelector = "مصرفي",
             annexNumber = "A-12345",
@@ -133,7 +144,7 @@ public class DocumentsExportIntegrationTests
         Assert.Contains(dataRows, row => row.Count > annexCol && row[annexCol] == "A-12345");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_DefaultExcludesReferred_AndTextSearchIncludesIt()
     {
         // التصدير يمر عبر نفس الحجب المشروط بالبحث: الافتراضي يستبعد المحال، ومع نص بحث
@@ -176,7 +187,7 @@ public class DocumentsExportIntegrationTests
         Assert.Contains(searchedRows, row => row.Count > 1 && row[1] == "محال الى البداية");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_RowProjection_ValuesMatch()
     {
         // الإسقاط العمودي: قيم الخلايا مطابقة لمسار الكيان الكامل
@@ -202,7 +213,7 @@ public class DocumentsExportIntegrationTests
         Assert.Equal("إجراء متابعة صريح", row[11]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_WhileSlotHeld_Returns429ThenSucceedsAfterRelease()
     {
         // حتمي بلا سباق: نحجز خانة المستخدم يدويًا بنفس صيغة مفتاح الفلتر،
