@@ -15,12 +15,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// WebApplicationFactory بقاعدة SQLite مؤقتة معزولة لكل مجموعة اختبارات،
+/// WebApplicationFactory الافتراضي بقاعدة SQLite مؤقتة معزولة لكل مجموعة اختبارات،
 /// مع إعدادات صريحة (Secret، RateLimiting، Swagger) — تطبيق حقيقي من Program.cs.
+/// المشتق <see cref="PostgresApiFactory"/> يبقي التطبيق على PostgreSQL حقيقي.
 /// يُستبدل مشتّق كلمات المرور الثقيل (PBKDF2-SHA256 بـ600k تكرار حاليًا) بنسخة سريعة مكافئة للسلوك
 /// (<see cref="FastTestPasswordHasher"/>) لأن تكلفته تُدفع عند كل تسجيل دخول/إنشاء مستخدم.
 /// </summary>
-public sealed class ApiFactory : WebApplicationFactory<Program>
+public class ApiFactory : WebApplicationFactory<Program>
 {
     /// <summary>
     /// ثوابت سكّ التوكن الاختباري — مطابقة حرفيًا لإعدادات المصنع (`Jwt:Secret`
@@ -41,10 +42,22 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// فلا تلتقط استمراريات <c>Program.cs</c> الداخلية سياق xUnit المتوازي (سبب قفل ميت
     /// موثّق عندما تعمل عدة مصانع مستقلة بالتوازي على عدّاء ضعيف الأنوية).
     /// </summary>
-    public ApiFactory()
+    public ApiFactory() : this(usePostgres: false)
     {
+    }
+
+    /// <summary>
+    /// المصانع المشتقة تختار المزوّد قبل بناء المضيف. الافتراضي (SQLite) يبقى مسار كل
+    /// الاختبارات القائمة؛ و<see cref="PostgresApiFactory"/> يمرّر <c>true</c>.
+    /// </summary>
+    protected ApiFactory(bool usePostgres)
+    {
+        UsePostgres = usePostgres;
         _ = Task.Run(() => Services).GetAwaiter().GetResult();
     }
+
+    /// <summary>هل يبني هذا المصنع قاعدة <c>PostgreSQL</c> حقيقية بدل SQLite المؤقتة؟</summary>
+    protected bool UsePostgres { get; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -52,15 +65,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // الحارس H-02 (Program.cs) يشترط راية صريحة لبيئة Development. المصنع تطويري مقصود
         // (قاعدة SQLite مؤقتة + بذر اختباري)، فتُعلَن الراية هنا بدل تعطيل الحارس.
         builder.UseSetting("Security:AllowDevelopmentEnvironment", "true");
-        // ADR-0001: لا مسار SQLite إنتاجي؛ سلسلة Postgres شكلية لتجاوز حارس الإقلاع،
-        // ثم يُستبدل السياق بـSQLite داخل ConfigureTestServices (حيز اختبار فقط).
-        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+        // ADR-0001: لا مسار SQLite إنتاجي. الافتراضي سلسلة Postgres شكلية لتجاوز حارس
+        // الإقلاع ثم يُستبدل السياق بـSQLite داخل ConfigureTestServices؛ والمصنع
+        // المشتق PostgresApiFactory يضبط سلسلة قاعدة حقيقية هنا.
+        ConfigureDatabaseSettings(builder);
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-        // المخطط يُبنى في حيز الاختبار عبر EnsureCreated (TestDatabase +
-        // EnsureCreatedDatabaseInitializer). الترحيل التلقائي معطَّل عمدًا: لا هجرات
-        // SQLite بعد P0-02، وهجرة PostgreSQL Baseline للإنتاج فقط.
-        builder.UseSetting("Database:AutoMigrate", "false");
         // توليد المستندات معطَّل افتراضيًا في الإنتاج (`appsettings.json`)؛ اختبارات
         // التوليد تحتاج تفعيله صراحةً في المصنع الاختباري.
         builder.UseSetting("DocumentGeneration:Enabled", "true");
@@ -71,8 +81,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // احتفاظ المنتدى معطَّل: تمريرة الإقلاع الفورية كانت تكتب على قاعدة SQLite
         // بالتوازي مع تهيئة الاختبار، فتُنتج `database is locked` متقلبًا (مراجعة المرحلة 6).
         builder.UseSetting("Forum:RetentionMonths", "0");
-        // تجاوز كلمة بذر التطوير بقيمة اختبارية ثابتة (RF-006): القاعدة هنا ملف SQLite مؤقت
-        // معزول يُحذَف في Dispose، فلا يصل هذا التجاوز لأي بيئة حقيقية.
+        // تجاوز كلمة بذر التطوير بقيمة اختبارية ثابتة (RF-006): القاعدة هنا معزولة
+        // (SQLite مؤقتة أو قاعدة Postgres فريدة) وتُحذَف في Dispose، فلا يصل هذا
+        // التجاوز لأي بيئة حقيقية.
         builder.UseSetting("Bootstrap:DevSeedPassword", "123456");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
@@ -112,7 +123,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // ADR-0001: السياق الفعلي للاختبار SQLite مؤقت — بعد تسجيل Npgsql في Program.
         builder.ConfigureTestServices(services =>
         {
-            TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30");
+            ConfigureDatabaseServices(services);
 
             // P1-02b: التحقق من عمر التوكن يستخدم الساعة الثابتة نفسها التي يسكّ بها
             // `TokenService` التوكن؛ وإلا صار التوكن منتهيًا فور إقلاع المصنع.
@@ -134,12 +145,33 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         });
     }
 
+    /// <summary>
+    /// يضبط مزوّد قاعدة الاختبار قبل بناء المضيف. الافتراضي: سلسلة شكلية +
+    /// <c>AutoMigrate=false</c> ثم استبدال السياق بـSQLite. المصنع المشتق
+    /// <see cref="PostgresApiFactory"/> يستبدل هذا بالكامل بقاعدة حقيقية وهجرات.
+    /// </summary>
+    protected virtual void ConfigureDatabaseSettings(IWebHostBuilder builder)
+    {
+        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+        builder.UseSetting("Database:AutoMigrate", "false");
+    }
+
+    /// <summary>
+    /// يستبدل تسجيلات السياق/المهيّئ في حيز الاختبار. الافتراضي: SQLite مع
+    /// <c>EnsureCreated</c>؛ والمشتق Postgres لا يستبدل شيئًا (يبقي السياق الحقيقي).
+    /// </summary>
+    protected virtual void ConfigureDatabaseServices(IServiceCollection services)
+        => TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30");
+
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        foreach (var suffix in new[] { "", "-shm", "-wal" })
+        if (!UsePostgres)
         {
-            try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
+            foreach (var suffix in new[] { "", "-shm", "-wal" })
+            {
+                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
+            }
         }
         try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
     }

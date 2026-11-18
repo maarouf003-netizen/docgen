@@ -231,6 +231,21 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
+- **الحالة (2026-11-18):** **جزئيًا — الشريحة الأولى منفذة.**
+  - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
+    مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
+  - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
+    (`Database:AutoMigrate=true` لا `EnsureCreated`)، وبذر التطوير نفسه.
+  - `Respawn 7.0.0`: `ResetAsync` يفرّغ الجداول مع إبقاء `__EFMigrationsHistory`
+    ويعيد البذر؛ اختبار حارس يثبت المحو وإعادة البذر وبقاء سجل الهجرات.
+  - **أول مجموعة منقولة:** `AuthIntegrationTests` (17) + حارس
+    `PostgresApiFactoryConfigurationTests` (2) تعمل على `PostgreSQL` حقيقي في
+    وظيفة `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
+  - تخطٍّ محلي نظيف عند غياب `DOCGEN_TEST_POSTGRES`، وفشل صريح عند
+    `DOCGEN_REQUIRE_POSTGRES=1` (تحقق سلبي موثّق).
+  - التفاصيل: `docs/audit/64-p1-01-postgres-harness-20261118.md`.
+  - **متبقٍ:** نقل بقية المجموعات (المستندات/الإنابة/الاستئناف/الحالة/البوابة/الجهات)،
+    ثم `P1-08` لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.
 - **DoD:** الاختبارات الحرجة تعمل على Postgres في CI؛ `SQLite` للوحدات فقط.
