@@ -33,7 +33,8 @@ internal static class PostgresTestDatabase
         await using var connection = new NpgsqlConnection(maintenance.ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\"";
+        // FORCE (PostgreSQL 13+): يقطع أي اتصال متبقٍّ بدل فشل التنظيف بعد المضيف.
+        command.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)";
         await command.ExecuteNonQueryAsync();
     }
 }

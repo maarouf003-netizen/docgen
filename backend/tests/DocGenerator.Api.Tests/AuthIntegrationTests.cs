@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -11,13 +12,21 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class AuthIntegrationTests : IClassFixture<ApiFactory>
+public class AuthIntegrationTests : IClassFixture<PostgresApiFactory>, IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public AuthIntegrationTests(ApiFactory factory) => _factory = factory;
+    public AuthIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    /// <summary>
+    /// كل اختبار يبدأ من قاعدة معاد ضبطها عبر Respawn (جداول فارغة + بذر ثابت)،
+    /// فلا تعتمد النتائج على ترتيب التنفيذ أو بقايا اختبار سابق.
+    /// </summary>
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task Login_WithValidCredentials_ReturnsTokenWithLowercaseRole()
     {
         var result = await _factory.LoginAsync("manager", "123456");
@@ -32,7 +41,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal("manager", role);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WithWrongPassword_ReturnsUnauthorized()
     {
         var result = await _factory.LoginAsync("lawyer1", "wrong-password");
@@ -45,7 +54,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     // (قرار الخدمة بمستودع مزيف) و`AuthControllerBranchRequiredTests` (الترجمة
     // إلى 400 والرسالة العامة) — والدخول الشرعي بفرع مغطى أدناه وفي كل الاختبارات.
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_AfterMaxFailedAttempts_ReturnsTooManyRequests()
     {
         var username = $"rl_{Guid.NewGuid():N}"[..16];
@@ -62,7 +71,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal((int)HttpStatusCode.TooManyRequests, statuses[5]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_FullFlow_Works()
     {
         var username = $"cp_{Guid.NewGuid():N}"[..16];
@@ -81,7 +90,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_EntityManager_FullFlow_Works()
     {
         // M-08 (2026-10-17): مسار تغيير الكلمة مفتوح للمندوب عبر حارس البوابة —
@@ -104,7 +113,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_WithShortPassword_ReturnsBadRequest()
     {
         var client = _factory.AuthorizedClient("head1");
@@ -115,7 +124,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MutatingRequest_WithoutCsrfHeader_ReturnsForbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -129,7 +138,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MutatingRequest_WithMismatchedCsrfHeader_ReturnsForbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -143,7 +152,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_SetsCsrfCookie_WithSameLifetimeAsAuthCookie()
     {
         // كان الـ CSRF Cookie جلسةً قصيرة تُحذف عند إغلاق المتصفح بينما يبقى Cookie الجلسة ساريًا،
@@ -163,7 +172,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(authMaxAge, csrfMaxAge);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Me_WithValidToken_ReturnsUser()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -174,7 +183,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal("lawyer1", doc.RootElement.GetProperty("username").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProtectedEndpoints_WithoutToken_ReturnUnauthorized()
     {
         var client = _factory.CreateClient();
@@ -183,7 +192,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateTripartiteNameAcrossBranches_ReturnsBranchSelection()
     {
         var branch1 = await _factory.GetBranchIdAsync("DAM");
@@ -204,7 +213,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(new[] { branch1, branch2 }, branches);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateTripartiteName_SelectingBranch_LogsIntoCalledBranch()
     {
         var branch1 = await _factory.GetBranchIdAsync("DAM");
@@ -221,7 +230,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(branch2, root.GetProperty("user").GetProperty("branchId").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateTripartiteName_WrongBranch_ReturnsUnauthorized()
     {
         var branch1 = await _factory.GetBranchIdAsync("DAM");
@@ -233,7 +242,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal((int)HttpStatusCode.Unauthorized, result!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateNameWithInactiveAccount_NoBranchSelectionNeeded()
     {
         var branch1 = await _factory.GetBranchIdAsync("DAM");
@@ -250,7 +259,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(branch1, root.GetProperty("user").GetProperty("branchId").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WithLegacyUnsaltedSha256_UpgradeHashTransparently()
     {
         var username = $"lg_{Guid.NewGuid():N}"[..16];
@@ -290,7 +299,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)secondLogin!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WithCanonicalFormat_DoesNotRehash()
     {
         var username = $"cn_{Guid.NewGuid():N}"[..16];

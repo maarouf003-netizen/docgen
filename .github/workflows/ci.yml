@@ -268,3 +268,16 @@ jobs:
           count=$(grep -o 'testName="[^"]*HeadAlertSummaryPostgresTests[^"]*"[^>]*outcome="Passed"' "$trx" | wc -l)
           echo "Passed HeadAlertSummaryPostgresTests: $count"
           test "$count" -gt 0
+      # P1-01: مجموعة المصادقة صارت تعمل على PostgreSQL حقيقي. هذا الحارس يمنع
+      # عودة تخطيها الصامت (Skip) في CI فيبقى المسار «أخضر» دون تنفيذ فعلي.
+      - name: Assert Postgres auth integration suite actually executed
+        run: |
+          trx=$(find . -name api-postgres.trx -print -quit)
+          test -n "$trx"
+          for suite in AuthIntegrationTests PostgresApiFactoryConfigurationTests; do
+            passed=$(grep -o "testName=\"[^\"]*${suite}[^\"]*\"[^>]*outcome=\"Passed\"" "$trx" | wc -l)
+            skipped=$(grep -o "testName=\"[^\"]*${suite}[^\"]*\"[^>]*outcome=\"NotExecuted\"" "$trx" | wc -l)
+            echo "Passed ${suite}: $passed (skipped: $skipped)"
+            test "$passed" -gt 0
+            test "$skipped" -eq 0
+          done

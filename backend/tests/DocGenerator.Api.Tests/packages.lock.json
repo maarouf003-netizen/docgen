@@ -29,6 +29,12 @@
           "Microsoft.TestPlatform.TestHost": "17.8.0"
         }
       },
+      "Respawn": {
+        "type": "Direct",
+        "requested": "[7.0.0, )",
+        "resolved": "7.0.0",
+        "contentHash": "AyWlducZGOnmlEVz4PaL3Qv8wcY3ClPZS9CrlDnSVahGd/E9tTEgSFiC8yoV/F6o6P6IYm8xnHFa/vmWT8tfcw=="
+      },
       "xunit": {
         "type": "Direct",
         "requested": "[2.5.3, )",
