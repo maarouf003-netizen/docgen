@@ -1,0 +1,15 @@
+name: "CodeQL — security only"
+
+# P2-06: الفحص الأمني فقط (security-extended) بدل security-and-quality الذي يولّد
+# مئات اقتراحات الجودة (disposable/useless assignment) في الاختبارات، فتغرق تبويب
+# الأمان بضجيج غير حاجب. التنبيهات الأمنية الحقيقية تبقى (log-forging وغيرها، وتُراجع
+# وتُوثّق فرديًا بدل إسكات القاعدة).
+queries:
+  - uses: security-extended
+
+# مخرجات البناء ليست كودًا مصدريًا: Regex source generator يكتب ملفات .g.cs في obj/
+# وكانت تظهر كتنبيهات جودة.
+paths-ignore:
+  - "**/obj/**"
+  - "**/bin/**"
+  - "**/*.Designer.cs"
