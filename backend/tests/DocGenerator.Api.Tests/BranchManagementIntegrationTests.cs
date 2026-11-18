@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Infrastructure.Persistence;
@@ -7,15 +8,18 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class BranchManagementIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class BranchManagementIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public BranchManagementIntegrationTests(ApiFactory factory) => _factory = factory;
+    public BranchManagementIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
+    public Task InitializeAsync() => _factory.ResetAsync();
 
-    [Fact]
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task AnyRole_ListsBranches()
     {
         foreach (var username in new[] { "admin", "manager", "head1", "lawyer1" })
@@ -30,7 +34,7 @@ public class BranchManagementIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchManagement_HeadAndLawyer_Forbidden()
     {
         // القرار §2.15 يوسّع الإدارة للمشرف والمدير — الرئيس والمحامي مرفوضون.
@@ -61,7 +65,7 @@ public class BranchManagementIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchManagement_Manager_FullLifecycle()
     {
         // قرار §2.15 (توسيع مقصود): المدير يدير الفروع كالمشرف — إنشاء وتعديل
@@ -95,7 +99,7 @@ public class BranchManagementIntegrationTests
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesBranch_ReturnsCreatedWithDetails()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -123,7 +127,7 @@ public class BranchManagementIntegrationTests
         Assert.Contains($"/api/branches/{branch.Id}", location);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesBranch_DuplicateCode_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -138,7 +142,7 @@ public class BranchManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_CreatesBranch_WithoutGovernorate_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -156,7 +160,7 @@ public class BranchManagementIntegrationTests
         Assert.Null(db.Branches.FirstOrDefault(b => b.Code == "NGO"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_UpdatesBranch_Deactivates()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -181,7 +185,7 @@ public class BranchManagementIntegrationTests
         Assert.False(branch.IsActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_UpdatesBranch_NotFound()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -196,7 +200,7 @@ public class BranchManagementIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_DeletesUnusedBranch_NoContent()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -218,7 +222,7 @@ public class BranchManagementIntegrationTests
         Assert.Null(db.Branches.Find(branch.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_DeletesBranchInUse_BadRequest()
     {
         // فرع دمشق فيه مستخدمون (head1/lawyer1) — يُرفض الحذف.
@@ -233,7 +237,7 @@ public class BranchManagementIntegrationTests
         Assert.NotNull(db.Branches.Find(id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_DeletesBranch_NotFound()
     {
         var admin = _factory.AuthorizedClient("admin");
