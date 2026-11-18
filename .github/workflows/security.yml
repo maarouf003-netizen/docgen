@@ -44,9 +44,8 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          # security-and-quality يضيف قواعد جودة فوق الأمن؛ لا يفشل على النتائج،
-          # بل يرفعها إلى Code scanning (SARIF).
-          queries: security-and-quality
+          # P2-06: الفحص الأمني فقط + استثناء مخرجات البناء (انظر ملف الإعداد).
+          config-file: ./.github/codeql/codeql-config.yml
 
       # CodeQL للـC# يحتاج بناءً فعليًا ليستخرج النموذج الدلالي؛
       # javascript-typescript لا يحتاج خطوة بناء.
