@@ -34,11 +34,12 @@ public sealed class RequiredByNullabilitySchemaFilter : ISchemaFilter
 
         schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var property in context.Type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (property.GetIndexParameters().Length > 0)
-                continue;
+        var properties = context.Type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.GetIndexParameters().Length == 0);
 
+        foreach (var property in properties)
+        {
             var name = JsonNamingPolicy.CamelCase.ConvertName(property.Name);
             if (!schema.Properties.ContainsKey(name))
                 continue;
