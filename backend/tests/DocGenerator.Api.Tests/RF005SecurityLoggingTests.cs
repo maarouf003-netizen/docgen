@@ -4,6 +4,7 @@ using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -11,12 +12,16 @@ namespace DocGenerator.Api.Tests;
 /// اختبارات إظهار RF-005 (SEC-006/SEC-007): الأحداث الأمنية الصامتة يجب أن تُدوَّن.
 /// تفشل قبل الإصلاح (لا صف) وتخضر بعده. الاستعلام من AuditLogs مباشرة عبر نطاق.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF005SecurityLoggingTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF005SecurityLoggingTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF005SecurityLoggingTests(ApiFactory factory) => _factory = factory;
+    public RF005SecurityLoggingTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
     private Task<bool> HasAuditRowAsync(string actionType, string userName)
@@ -26,7 +31,7 @@ public class RF005SecurityLoggingTests
         return Task.FromResult(db.AuditLogs.Any(a => a.ActionType == actionType && a.UserName == userName));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GuardRejection_WritesPortalForbiddenRow()
     {
         var username = UniqueName("em_sec");
@@ -39,7 +44,7 @@ public class RF005SecurityLoggingTests
         Assert.True(await HasAuditRowAsync("portal_forbidden", username));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LockedRetry_WritesLockedRetryRow()
     {
         var username = UniqueName("lock_sec");
@@ -60,7 +65,7 @@ public class RF005SecurityLoggingTests
         Assert.True(await HasAuditRowAsync("login_locked_retry", username));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchSelection_WritesBranchChoicesRow()
     {
         var username = UniqueName("brsel_sec");

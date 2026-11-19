@@ -6,6 +6,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -15,12 +16,16 @@ namespace DocGenerator.Api.Tests;
 /// هذه الاختبارات تثبت السلوك الحالي وتغلق NOT VERIFIED (أو تولّد وحدة إصلاح دقيقة).
 /// (SEC-017 مغطى أصلًا في EntityRegistryHeadScopeIntegrationTests — لا تكرار هنا.)
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF003AuthzProofTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF003AuthzProofTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF003AuthzProofTests(ApiFactory factory) => _factory = factory;
+    public RF003AuthzProofTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
     private async Task<(int DocId, int AppealId)> CreateAppealAsync(HttpClient lawyer, string token)
@@ -48,9 +53,13 @@ public class RF003AuthzProofTests
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             assetId = db.Assets.Single(a => a.DocumentId == docId).Id;
         }
+        // P1-01d: عند وجود دوائر، الدائرة المنابة مطلوبة صريحًا؛ ننشئها في فرع المصدر
+        // (نفس المحافظة) بدل الاعتماد على مطابقة نص المحكمة.
+        var delegatedCircuitId = await _factory.EnsureCircuitAsync("DAM", "دائرة تنفيذ دمشق");
         var created = await lawyer.PostAsJsonAsync($"/api/documents/{docId}/delegations", new
         {
             delegatedCourt = "دائرة تنفيذ حلب",
+            delegatedCircuitId = delegatedCircuitId,
             isExternal = false,
             externalBranchId = (int?)null,
             delegationDate = "1/8/2026",
@@ -64,7 +73,7 @@ public class RF003AuthzProofTests
         return (docId, delegation!.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task T1a_CrossOwner_AppealUpdate_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -90,7 +99,7 @@ public class RF003AuthzProofTests
             body!.RootElement.GetProperty("appealedDecisionText").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task T1b_CrossOwner_AppealDelete_Rejected_AndExists()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -107,7 +116,7 @@ public class RF003AuthzProofTests
         Assert.Equal(HttpStatusCode.OK, (await lawyer1.GetAsync($"/api/appeals/{appealId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task T1c_CrossOwner_DelegationMutations_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -144,7 +153,7 @@ public class RF003AuthzProofTests
         Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task T4_LoginWithoutBranch_ReturnsBranchChoices_CurrentBehavior()
     {
         // السلوك الحالي: تعداد أسماء الفروع قبل كلمة المرور (SEC-006) — يُثبَّت هنا، وتقييمه لاحقًا.
@@ -160,7 +169,7 @@ public class RF003AuthzProofTests
         Assert.Equal(2, body.RootElement.GetProperty("branches").GetArrayLength());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task T5_StaleToken_AfterBranchMove_Rejected()
     {
         // نقل المحامي يبطل توكنه القديم عبر TokenVersion — النافذة مغلقة خدميًا.

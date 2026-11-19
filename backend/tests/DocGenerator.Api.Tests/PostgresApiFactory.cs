@@ -2,6 +2,7 @@ using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
@@ -78,6 +79,14 @@ public sealed class PostgresApiFactory : ApiFactory
             WithReseed = true,
         });
         await respawner.ResetAsync(connection);
+
+        // `Respawn` يمسح القاعدة وحدها؛ ذاكرة التطبيق (`IMemoryCache`) تبقى حيّة بين
+        // الاختبارات، فمُخنِّقات مبنية على هوية مستخدم (مثل تخنيق تدقيق
+        // `portal_forbidden` كل 5 دقائق) تتسرب بين اختبارات متتالية بعد إعادة البذر
+        // لأن معرفات المستخدمين تعود للبداية. تفريغها يجعل `ResetAsync` فعلاً
+        // «حالة معروفة» لا «قاعدة معروفة فقط».
+        if (Services.GetService<IMemoryCache>() is MemoryCache cache)
+            cache.Clear();
 
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();

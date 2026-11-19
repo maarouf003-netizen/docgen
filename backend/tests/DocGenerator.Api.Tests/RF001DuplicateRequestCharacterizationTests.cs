@@ -5,6 +5,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -12,12 +13,16 @@ namespace DocGenerator.Api.Tests;
 /// اختبارات توصيف RF-001 للسلوك الحالي لإعادة الإرسال (INT-007): لا مفاتيح عدم تكرار،
 /// فإعادة الطلب تُكرر الأثر. خضراء على الكود الحالي عمدًا — توثّق الواقع الذي ستغيّره RF-011.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF001DuplicateRequestCharacterizationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF001DuplicateRequestCharacterizationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF001DuplicateRequestCharacterizationTests(ApiFactory factory) => _factory = factory;
+    public RF001DuplicateRequestCharacterizationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>
     /// فرع معزول برئيسه الوحيد (قرار §2.26 + عزل صفوف التدقيق عن `head1` المشترك —
@@ -51,7 +56,7 @@ public class RF001DuplicateRequestCharacterizationTests
 
     private sealed record TransferAllResponse(int TransferredCount);
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateDocument_SamePayloadTwice_CreatesTwoFiles_CurrentBehavior()
     {
         // السلوك الحالي (INT-007): بلا بصمة طلب — الإرسال المكرر ملفٌ ثانٍ.
@@ -74,7 +79,7 @@ public class RF001DuplicateRequestCharacterizationTests
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_TwiceInARow_SecondTransfersZero_CurrentBehavior()
     {
         // النقل الجماعي آمن نسبيًا اليوم: التنفيذ الثاني يجد المصدر فارغًا فيعيد صفرًا

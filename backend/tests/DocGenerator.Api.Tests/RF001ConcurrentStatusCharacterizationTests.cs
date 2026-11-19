@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -10,12 +11,16 @@ namespace DocGenerator.Api.Tests;
 /// ملاحظة حتمية: الانتقالان المتوازيان قد يُسلسَلا (الثاني 400) أو يتداخلا (كلاهما 200) حسب
 /// توقيت الالتزام — لذلك يؤكَّد هنا الثابت فقط: لا 500 أبدًا، والحالة النهائية متسقة.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF001ConcurrentStatusCharacterizationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF001ConcurrentStatusCharacterizationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF001ConcurrentStatusCharacterizationTests(ApiFactory factory) => _factory = factory;
+    public RF001ConcurrentStatusCharacterizationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static object DeferralPayload(string number) => new
     {
@@ -30,7 +35,7 @@ public class RF001ConcurrentStatusCharacterizationTests
         return prop.ValueKind == JsonValueKind.Null ? null : prop.GetString();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SequentialDeferralTwice_SecondRejected_CurrentBehavior()
     {
         // الآلة مطبَّقة خدميًا اليوم: تريث → تريث مرفوض (AllowedStatusChanges/CanRevert).
@@ -47,7 +52,7 @@ public class RF001ConcurrentStatusCharacterizationTests
         Assert.Equal("تريث", await FinalStatusAsync(client, id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ParallelDeferrals_Never500_FinalStateConsistent_CurrentBehavior()
     {
         // السلوك الحالي (INT-012): بلا قفل متفائل — الفائز الأخير يكتب (أو يُرفَض الثاني إن تسلسلا).

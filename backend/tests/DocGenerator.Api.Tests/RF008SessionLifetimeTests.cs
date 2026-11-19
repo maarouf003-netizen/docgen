@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -6,14 +7,18 @@ namespace DocGenerator.Api.Tests;
 /// اختبار تثبيت RF-008 (SEC-011 + قرار BQ-022): عمر الجلسة 4 ساعات.
 /// يفشل قبل الإصلاح (480) ويخضر بعده (240). قراءة exp-iat من الحمولة فقط.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF008SessionLifetimeTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF008SessionLifetimeTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF008SessionLifetimeTests(ApiFactory factory) => _factory = factory;
+    public RF008SessionLifetimeTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task Login_TokenLifetime_IsFourHours()
     {
         var login = await _factory.LoginAsync("lawyer1", "123456");
