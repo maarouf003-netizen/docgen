@@ -231,7 +231,7 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
-- **الحالة (2026-11-18):** **جزئيًا — الشرائح `1a`–`1h` منفذة.**
+- **الحالة (2026-11-19):** **جزئيًا — الشرائح `1a`–`1h` و`1i/a` منفذة.**
   - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
     مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
   - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
@@ -249,9 +249,14 @@
     `ReviewCorrespondenceScopeTests` (5) + `UserManagementIntegrationTests` (34) +
     `LockoutIntegrationTests` (8) + `TokenRevocationIntegrationTests` (2) +
     `AlertsIntegrationTests` (35) + `AlertsCursorPagingTests` (13) +
-    `AlertsUnreadScopeIntegrationTests` (3)
+    `AlertsUnreadScopeIntegrationTests` (3) + `EntityRegistryHeadScopeIntegrationTests` (5) +
+    `PortalScopeMatrixTests` (1)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
     `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
+  - **متانة تنظيف قواعد الاختبار:** `PostgresTestDatabase.DropAsync` صار بمهلة `120s`
+    لأن `DROP DATABASE ... WITH (FORCE)` يفرض checkpoint قد يتجاوز المهلة الافتراضية
+    (‏`30s`) على قرص بطيء — بلا هذا كان اختبار ناجح يُفشل الجولة في التنظيف
+    (`docs/audit/72-p1-01ia-entities-portal-20261119.md`).
   - **عقد الإنابة:** عند وجود دوائر، `DelegatedCircuitId` مطلوب صريحًا ولا يُحل
     النص وحده؛ عُدّلت بيانات اختبارات الإنابة، مع إبقاء المسار الخارجي بلا معرف
     (`docs/audit/67-p1-01d-delegations-postgres-20261118.md`).
@@ -268,8 +273,9 @@
     `docs/audit/68-p1-01e-appeals-postgres-20261118.md`،
     `docs/audit/69-p1-01f-circuits-correspondence-20261118.md`،
     `docs/audit/70-p1-01g-users-sessions-20261118.md`،
-    `docs/audit/71-p1-01h-alerts-20261118.md`.
-  - **متبقٍ:** نقل البوابة/الجهات وبقايا الإحصاءات/التصدير/`RF`، ثم `P1-08` لإزالة
+    `docs/audit/71-p1-01h-alerts-20261118.md`،
+    `docs/audit/72-p1-01ia-entities-portal-20261119.md`.
+  - **متبقٍ:** بقية `P1-01i` (الإحصاءات/التدقيق ثم عائلة `RF`)، ثم `P1-08` لإزالة
     `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.

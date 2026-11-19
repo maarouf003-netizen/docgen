@@ -35,6 +35,10 @@ internal static class PostgresTestDatabase
         await using var command = connection.CreateCommand();
         // FORCE (PostgreSQL 13+): يقطع أي اتصال متبقٍّ بدل فشل التنظيف بعد المضيف.
         command.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)";
+        // `DROP DATABASE` يفرض checkpoint فوريًا قبل الإسقاط؛ على أقراص بطيئة (Windows +
+        // فحص فيروسات) يتجاوز المهلة الافتراضية 30s فيُلغى الأمر ويُفشل الاختبار رغم
+        // نجاحه — القياس في docs/audit/72-p1-01ia-entities-portal-20261119.md.
+        command.CommandTimeout = 120;
         await command.ExecuteNonQueryAsync();
     }
 }

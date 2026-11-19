@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -17,12 +18,16 @@ namespace DocGenerator.Api.Tests;
 /// — عمليات المجموعات (rename/unify/abolish على مستوى الهوية) لا تزال HasFullAccess.
 /// — مراجعة/سحب اقتراحات الأم بموجب حراس الأدوار (review=الإدارة، withdraw=المالك الرئيس).
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class EntityRegistryHeadScopeIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class EntityRegistryHeadScopeIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public EntityRegistryHeadScopeIntegrationTests(ApiFactory factory) => _factory = factory;
+    public EntityRegistryHeadScopeIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     #region تهيئة بيانات معزولة
 
@@ -83,7 +88,6 @@ public class EntityRegistryHeadScopeIntegrationTests
         await db.SaveChangesAsync();
 
         var damBranch = db.Branches.Single(b => b.Code == "DAM");
-        var savedDamGov = damBranch.Governorate;
         damBranch.Governorate = "دمشق";
 
         var group = new PublicEntityGroup { CanonicalName = $"مصرف النطاق {Guid.NewGuid():N}".Trim(), EntityType = PublicEntityTypeCatalog.Company };
@@ -123,7 +127,7 @@ public class EntityRegistryHeadScopeIntegrationTests
 
     #endregion
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingReviewCount_ScopesToHeadBranch_AndGuardsHold()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -156,7 +160,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await lawyer.GetAsync("/api/entity-registry/pending-review-count")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeEvents_HeadAndManagement_Allowed_LawyerForbidden()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -170,7 +174,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await lawyer.GetAsync("/api/entity-registry/change-events")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_ScopesBranchOperationsToOwnGovernorate()
     {
         var seeded = await SeedGroupWithCrossGovernorateEntriesAsync();
@@ -213,7 +217,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         Assert.DoesNotContain(forcedEntries, e => e.BranchName == seeded.AleppoBranch);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GroupLevelOperations_RemainHasFullAccess()
     {
         var seeded = await SeedGroupWithCrossGovernorateEntriesAsync();
@@ -253,7 +257,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         Assert.NotEqual(HttpStatusCode.Forbidden, managerRename.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ParentSuggestions_GuardMatrix()
     {
         var head = _factory.AuthorizedClient("head1");
