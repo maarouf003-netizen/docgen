@@ -250,7 +250,7 @@
     `LockoutIntegrationTests` (8) + `TokenRevocationIntegrationTests` (2) +
     `AlertsIntegrationTests` (35) + `AlertsCursorPagingTests` (13) +
     `AlertsUnreadScopeIntegrationTests` (3) + `EntityRegistryHeadScopeIntegrationTests` (5) +
-    `PortalScopeMatrixTests` (1) + `AuditIntegrationTests` (6) + `StatisticsIntegrationTests` (7) +
+    `PortalScopeMatrixTests` (1) + `AuditIntegrationTests` (6) + `StatisticsIntegrationTests` (5) +
     `ManagerStatsIntegrationTests` (13) + `StatisticsHeadScopeIntegrationTests` (6) +
     `StatsScopeTests` (5)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
