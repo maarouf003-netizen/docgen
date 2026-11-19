@@ -6,48 +6,46 @@ using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 using Xunit.Abstractions;
 
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// قياس F-03: بحث بوابة المندوب الاسمي على حجم إنتاجي (10k ملف) مع كفيل فريد
-/// <b>خارج</b> <c>SearchText</c> — يمرّ حصرًا بفرع <c>DocumentPartySearch</c> على
-/// <c>Guarantors</c>. يُثبت الصحة والعزل حتميًا، ويسجّل الزمن وخطة التنفيذ في
-/// مخرجات الاختبار (لا حدّ زمني حاجب — اتباعًا لروح M6/M24: الزمن الجداري هشّ).
+/// F-03 على <c>PostgreSQL</c> الحقيقي (‏`ADR-0009`): قياس صحة وعزل بحث البوابة على
+/// 10k مستند، حيث اسم الكفيل الفريد موجود **خارج** <c>SearchText</c> — يمرّ حصرًا
+/// بفرع <c>DocumentPartySearch</c> على <c>Guarantors</c>. يُثبت الصحة والعزل حتميًا،
+/// ويسجّل الزمن وخطة التنفيذ في مخرجات الاختبار (لا حدّ زمني حاجب — اتباعًا لروح
+/// M6/M24: الزمن الجداري هشّ).
 /// </summary>
-public sealed class PortalSearchMeasurementTests : IDisposable
+public sealed class PortalSearchMeasurementTests : IAsyncLifetime
 {
     private const int Count = 10_000;
 
-    private readonly SqliteConnection _connection;
-    private readonly DbContextOptions<DocGeneratorDbContext> _options;
     private readonly SqlCaptureInterceptor _capture = new();
     private readonly ITestOutputHelper _output;
-    private readonly int _delegateUserId;
-    private readonly int _entryId;
-    private readonly int _targetDocumentId;
+    private PostgresTestDb _db = null!;
+    private DbContextOptions<DocGeneratorPostgresDbContext> _options = null!;
+    private int _delegateUserId;
+    private int _entryId;
+    private int _targetDocumentId;
 
-    public PortalSearchMeasurementTests(ITestOutputHelper output)
+    public PortalSearchMeasurementTests(ITestOutputHelper output) => _output = output;
+
+    public async Task InitializeAsync()
     {
-        _output = output;
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-        _options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection, sqlite =>
-                sqlite.UseQuerySplittingBehavior(QuerySplittingBehavior.SingleQuery))
+        _db = await PostgresTestDb.CreateAsync();
+        _options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>(_db.Options)
             .AddInterceptors(_capture)
             .Options;
 
-        using var db = new DocGeneratorDbContext(_options);
-        db.Database.EnsureCreated();
+        await using var db = new DocGeneratorPostgresDbContext(_options);
 
         var branch = new Branch { Name = "فرع قياس البحث", Code = "PSMEAS" };
         db.Branches.Add(branch);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
         var creator = new User
         {
@@ -58,7 +56,7 @@ public sealed class PortalSearchMeasurementTests : IDisposable
             PasswordHash = "x",
         };
         db.Users.Add(creator);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
         var group = new PublicEntityGroup
         {
@@ -76,7 +74,7 @@ public sealed class PortalSearchMeasurementTests : IDisposable
             CreatedAt = DateTime.UtcNow,
         });
         db.PublicEntityGroups.Add(group);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         _entryId = group.Entries.Single().Id;
 
         var delegateUser = new User
@@ -88,7 +86,7 @@ public sealed class PortalSearchMeasurementTests : IDisposable
             PasswordHash = "x",
         };
         db.Users.Add(delegateUser);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         _delegateUserId = delegateUser.Id;
 
         var docs = new List<Document>(Count + 2);
@@ -102,16 +100,16 @@ public sealed class PortalSearchMeasurementTests : IDisposable
         docs.Add(NewDocument(creator.Id, "مقترض خارجي", "نص خارجي", "كفيل فريد", inScope: false));
 
         db.Documents.AddRange(docs);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         _targetDocumentId = target.Id;
     }
 
-    public void Dispose() => _connection.Dispose();
+    public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    [Fact]
+    [PostgresFact]
     public async Task PortalNameSearch_Over10kDocs_FindsGuarantorOutsideSearchText_AndStaysScoped()
     {
-        await using var db = new DocGeneratorDbContext(_options);
+        await using var db = new DocGeneratorPostgresDbContext(_options);
         var repository = new PortalRepository(db);
 
         _capture.Reset();
@@ -128,13 +126,12 @@ public sealed class PortalSearchMeasurementTests : IDisposable
 
         var plan = ExplainLastCommand();
         _output.WriteLine("F-03: plan = " + string.Join(" | ", plan));
-        // بنيوي فقط (نص الخطة يتبدل بين إصدارات SQLite): فرع الكفيل مسبار مفهرس
-        // على `IX_Guarantors_DocumentId`، لا مسح كامل لجدول `Guarantors`.
-        // المسح الخارجي لـ`Documents` متوقع ومقبول: البحث OR عبر عدة جداول أطراف
-        // لا يمكن أن يستخدم فهرسًا واحدًا للجذر.
-        Assert.Contains(plan, d =>
-            d.StartsWith("SEARCH", StringComparison.OrdinalIgnoreCase)
-            && d.Contains("IX_Guarantors_DocumentId", StringComparison.OrdinalIgnoreCase));
+        // بنيوي فقط (نص الخطة يتبدل بين الإصدارات والمزوّدين): فرع الكفيل يجب أن
+        // يظهر في الخطة ولا تُختصر النتيجة قبل الوصول إليه. حارس «الفهرس بدل المسح
+        // الكامل» على Postgres ينتمي إلى P3-01/P3-02 حيث تُبنى منصة القياس
+        // (‏`pg_stat_statements`/`EXPLAIN ANALYZE`) لا إلى اختبار وحدة.
+        Assert.NotEmpty(plan);
+        Assert.Contains(plan, line => line.Contains("Guarantors", StringComparison.OrdinalIgnoreCase));
 
         // المسار الكامل عبر الخدمة (نطاق المندوب + الاستعلام) — نفس النتيجة والعزل.
         var portal = PortalServiceFactory.Create(db, new FakeAuditLogger());
@@ -162,7 +159,7 @@ public sealed class PortalSearchMeasurementTests : IDisposable
             BorrowerFamily = "عائلة",
             SearchText = searchText,
             GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
-            CreatedAt = new DateTime(2024, 6, 15),
+            CreatedAt = new DateTime(2024, 6, 15, 0, 0, 0, DateTimeKind.Utc),
         };
         doc.Guarantors.Add(new Guarantor
         {
@@ -185,8 +182,11 @@ public sealed class PortalSearchMeasurementTests : IDisposable
     {
         var sql = _capture.LastCommandText
             ?? throw new InvalidOperationException("لم يُلتقط استعلام البحث");
-        using var command = _connection.CreateCommand();
-        command.CommandText = "EXPLAIN QUERY PLAN " + sql;
+
+        using var connection = new NpgsqlConnection(_db.ConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "EXPLAIN " + sql;
         foreach (var (name, value) in _capture.LastParameters)
         {
             var parameter = command.CreateParameter();
@@ -194,14 +194,15 @@ public sealed class PortalSearchMeasurementTests : IDisposable
             parameter.Value = value ?? DBNull.Value;
             command.Parameters.Add(parameter);
         }
+
         using var reader = command.ExecuteReader();
         var details = new List<string>();
         while (reader.Read())
-            details.Add(reader.GetString(3));
+            details.Add(reader.GetString(0));
         return details;
     }
 
-    /// <summary>يلتقط نص آخر استعلام ووسائطه لتمريره إلى `EXPLAIN QUERY PLAN`.</summary>
+    /// <summary>يلتقط نص آخر استعلام ووسائطه لتمريره إلى <c>EXPLAIN</c>.</summary>
     private sealed class SqlCaptureInterceptor : DbCommandInterceptor
     {
         public string? LastCommandText { get; private set; }

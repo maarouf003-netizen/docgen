@@ -383,6 +383,11 @@
   - **`8a/1`:** 4 أصناف (10 حالات) في `Application.Tests` تعمل الآن على
     `PostgreSQL` بدل `SQLite`: المعاملات/إعادة المحاولة/الوحدة/مالك المستند
     (`docs/audit/75-p1-08a1-test-support-20261119.md`).
+  - **`8a/2` + قياس `8a/3`:** حارسا المخطط (`SchemaIntegrityTests`) صارا على
+    `information_schema`/`pg_indexes` وبـEF بدل SQL خام، و`PortalSearchMeasurementTests`
+    على `Postgres` مع `EXPLAIN`؛ وأول قياس حقيقي لبحث البوابة: ~11.8s بارد/~467ms دافئ
+    على 10k مع `Seq Scan` — دليل رقمي لـ`P3-02`
+    (`docs/audit/76-p1-08a2-schema-search-20261119.md`).
   - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
     `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
     أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.

@@ -1,171 +1,171 @@
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
-using Xunit;
 
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// حارس سلامة المخطط: يبني مخطط SQLite من النموذج (<c>EnsureCreated</c>) بعد إزالة
-/// هجرات SQLite في P0-02، ثم يقارن أعمدةَ كل جدولٍ بالحقول المعيّنة في النموذج؛
-/// فأي حقل كيان يُضاف في الكود دون عمود في قاعدة البيانات يفشل هذا الاختبار فورًا.
+/// حارس سلامة المخطط على <c>PostgreSQL</c> الفعلي (‏`ADR-0009`): يبني القالب
+/// من النموذج (<c>EnsureCreated</c>) ثم يقارن كل خاصية معيّنة بعمودها في
+/// <c>information_schema</c>، ويتحقق من فهرس <c>ReviewedById</c> عبر <c>pg_indexes</c>،
+/// ويثبت عمليًا أن صفّين يمكن أن يتشاركا المراجع نفسه (فهرس غير فريد).
 /// </summary>
-public class SchemaIntegrityTests
+public class SchemaIntegrityTests : IAsyncLifetime
 {
-    private static DocGeneratorDbContext CreateMigratedDb()
-    {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
-        connection.Open();
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var db = new DocGeneratorDbContext(options);
-        db.Database.EnsureCreated();
-        return db;
-    }
+    private PostgresTestDb _db = null!;
 
-    private static Dictionary<string, HashSet<string>> ReadTableColumns(DocGeneratorDbContext db)
+    public async Task InitializeAsync() => _db = await PostgresTestDb.CreateAsync();
+
+    public async Task DisposeAsync() => await _db.DisposeAsync();
+
+    private static async Task<Dictionary<string, HashSet<string>>> ReadTableColumnsAsync(
+        DocGeneratorDbContext db)
     {
         var schema = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        using (var cmd = db.Database.GetDbConnection().CreateCommand())
+        await db.Database.OpenConnectionAsync();
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = """
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            """;
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            cmd.CommandText =
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                + "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__EFMigrations%'";
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                schema[reader.GetString(0)] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var table = reader.GetString(0);
+            if (!schema.TryGetValue(table, out var columns))
+            {
+                columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                schema[table] = columns;
+            }
+
+            columns.Add(reader.GetString(1));
         }
-        foreach (var table in schema.Keys.ToArray())
-        {
-            using var cmd = db.Database.GetDbConnection().CreateCommand();
-            cmd.CommandText = $"PRAGMA table_info(\"{table.Replace("\"", "\"\"", StringComparison.Ordinal)}\")";
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                schema[table].Add(reader.GetString(1));
-        }
+
         return schema;
     }
 
-    [Fact]
-    public void EveryMappedEntityProperty_HasColumnInMigratedSchema()
+    [PostgresFact]
+    public async Task EveryMappedEntityProperty_HasColumnInPhysicalSchema()
     {
-        var db = CreateMigratedDb();
-        try
+        await using var db = _db.CreateContext();
+        var schema = await ReadTableColumnsAsync(db);
+        var missing = new List<string>();
+
+        foreach (var entity in db.Model.GetEntityTypes())
         {
-            var schema = ReadTableColumns(db);
-            var missing = new List<string>();
+            var table = entity.GetTableName();
+            if (table is null)
+                continue;
 
-            foreach (var entity in db.Model.GetEntityTypes())
+            if (!schema.ContainsKey(table))
             {
-                var table = entity.GetTableName();
-                if (table is null)
-                    continue;
-
-                if (!schema.ContainsKey(table))
-                {
-                    missing.Add($"جدول مفقود: {table}");
-                    continue;
-                }
-
-                foreach (var prop in entity.GetProperties())
-                {
-                    var column = prop.GetColumnName();
-                    if (column is null)
-                        continue;
-                    if (!schema[table].Contains(column))
-                        missing.Add($"العمود {table}.{column} (الحقل {entity.ClrType.Name}.{prop.Name})");
-                }
+                missing.Add($"جدول مفقود: {table}");
+                continue;
             }
 
-            Assert.True(missing.Count == 0,
-                "حقول معيّنة بلا أعمدة في مخطط قاعدة البيانات الفعلي:\n" + string.Join("\n", missing));
+            foreach (var prop in entity.GetProperties())
+            {
+                var column = prop.GetColumnName();
+                if (column is null)
+                    continue;
+                if (!schema[table].Contains(column))
+                    missing.Add($"عمود مفقود {table}.{column} (خاصية {entity.ClrType.Name}.{prop.Name})");
+            }
         }
-        finally
-        {
-            db.Dispose();
-        }
+
+        Assert.True(missing.Count == 0,
+            "خصائص النموذج بلا أعمدة في المخطط الفعلي:\n" + string.Join("\n", missing));
     }
 
     /// <summary>
-    /// ارتدادية العلة: كانت هجرة <c>AddEntityRegistryReview</c> تنشئ عدة <c>IX_PublicEntities_ReviewedById</c>
-    /// فريدة (unique: true) بالخطأ، فلا يستطيع رئيس القسم اعتماد/تعديل قيدٍ ثانٍ لأنه يُسند ReviewedById
-    /// لمستخدمه نفسه في كل مرة فيرفضه القيد بخطأ الحفظ. يجب أن يكون الفهرس غير فريد — المراجع الواحد
-    /// يراجع أكثر من قيد.
+    /// حارس الفهرس: <c>AddEntityRegistryReview</c> أنشأ <c>IX_PublicEntities_ReviewedById</c>
+    /// (‏unique: true) ثم أُلغي لأن مراجعة/اعتماد رئيس قسم محافظة واحدة قد يشمل قيدين
+    /// متلاحقين للمراجع نفسه. أي عودة للفريدية تفشل هنا على القاعدة الحقيقية.
     /// </summary>
-    [Fact]
-    public void ReviewedByIdIndex_IsNotUniqueInMigratedSchema()
+    [PostgresFact]
+    public async Task ReviewedByIdIndex_IsNotUniqueInPhysicalSchema()
     {
-        var db = CreateMigratedDb();
-        try
-        {
-            using var cmd = db.Database.GetDbConnection().CreateCommand();
-            cmd.CommandText =
-                "SELECT sql FROM sqlite_master WHERE type='index' AND name='IX_PublicEntities_ReviewedById'";
-            using var reader = cmd.ExecuteReader();
-            Assert.True(reader.Read(), "فهرس IX_PublicEntities_ReviewedById مفقود من المخطط المهاجر");
-            var sql = reader.GetString(0);
+        await using var db = _db.CreateContext();
+        await db.Database.OpenConnectionAsync();
 
-            Assert.DoesNotContain("UNIQUE", sql, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            db.Dispose();
-        }
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'IX_PublicEntities_ReviewedById'
+            """;
+
+        var definition = (string?)await cmd.ExecuteScalarAsync();
+        Assert.False(string.IsNullOrEmpty(definition),
+            "فهرس IX_PublicEntities_ReviewedById مفقود من المخطط الفعلي");
+
+        Assert.DoesNotContain("UNIQUE", definition, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
     /// ارتدادية وظيفية على مستوى القاعدة: قيدان مُراجعان من المستخدم نفسه يجب أن يُحفظا معًا
     /// دون انفجار قيد فريد — تمامًا كاعتماد رئيس القسم قيدين متلاحقين.
     /// </summary>
-    [Fact]
-    public void TwoRows_CanShareSameReviewedById_InMigratedSchema()
+    [PostgresFact]
+    public async Task TwoRows_CanShareSameReviewedById_InPhysicalSchema()
     {
-        var db = CreateMigratedDb();
-        try
-        {
-            using var cmd = db.Database.GetDbConnection().CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO Users (Id, Username, FullName, PasswordHash, Role, IsActive, TokenVersion, FailedLoginCount, CreatedAt, UpdatedAt, Version)
-                VALUES (9001, 'reviewer9001', 'مُراجع', 'x', 4, 1, 1, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 0);
-                INSERT INTO PublicEntityGroups (Id, CanonicalName, EntityType, IsActive, CreatedAt, Version)
-                VALUES (9001, 'جهة اختبار', 'ministry', 1, '2026-01-01 00:00:00', 0);
-                INSERT INTO PublicEntities (Id, GroupId, Governorate, BranchName, CitationFormula, Status, CreatedById, CreatedAt, NeedsReview, ReviewedById, IsActive, IsParentEntity, Version)
-                VALUES (9001, 9001, 'دمشق', 'الفرع أ', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0, 0),
-                       (9002, 9001, 'دمشق', 'الفرع ب', 'add-to-job', 'final', 9001, '2026-01-01 00:00:00', 0, 9001, 1, 0, 0);
-            ";
-            var inserted = cmd.ExecuteNonQuery();
+        await using var db = _db.CreateContext();
 
-            Assert.Equal(4, inserted);
-        }
-        finally
+        var reviewer = new User
         {
-            db.Dispose();
-        }
+            Username = "reviewer_pg",
+            FullName = "مُراجع",
+            Role = UserRole.Admin,
+            PasswordHash = "x",
+        };
+        db.Users.Add(reviewer);
+
+        var group = new PublicEntityGroup
+        {
+            CanonicalName = "جهة اختبار المراجعة",
+            EntityType = PublicEntityTypeCatalog.Ministry,
+        };
+        group.Entries.Add(new PublicEntity
+        {
+            Governorate = "دمشق",
+            BranchName = "الفرع أ",
+            Status = EntityStatusCatalog.Final,
+            CreatedBy = reviewer,
+            ReviewedBy = reviewer,
+        });
+        group.Entries.Add(new PublicEntity
+        {
+            Governorate = "دمشق",
+            BranchName = "الفرع ب",
+            Status = EntityStatusCatalog.Final,
+            CreatedBy = reviewer,
+            ReviewedBy = reviewer,
+        });
+        db.PublicEntityGroups.Add(group);
+
+        await db.SaveChangesAsync();
+
+        Assert.Equal(2, await db.PublicEntities.CountAsync(e => e.ReviewedById == reviewer.Id));
     }
 
     /// <summary>
     /// حارس النموذج: أي عودة لفريدية الفهرس في <c>PublicEntityConfiguration</c> تُفشل هذا الاختبار
     /// حتى قبل توليد هجرة.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public void ReviewedByIdIndexInModel_IsNotUnique()
     {
-        var db = CreateMigratedDb();
-        try
-        {
-            var entity = db.Model.FindEntityType(typeof(PublicEntity))
-                ?? throw new InvalidOperationException("كيان PublicEntity غير معيّن في النموذج");
-            var index = entity.GetIndexes().Single(i =>
-                i.Properties.Count == 1 && i.Properties[0].Name == nameof(PublicEntity.ReviewedById));
+        using var db = _db.CreateContext();
 
-            Assert.False(index.IsUnique);
-        }
-        finally
-        {
-            db.Dispose();
-        }
+        var entity = db.Model.FindEntityType(typeof(PublicEntity))
+            ?? throw new InvalidOperationException("كيان PublicEntity غير معيّن في النموذج");
+        var index = entity.GetIndexes().Single(i =>
+            i.Properties.Count == 1 && i.Properties[0].Name == nameof(PublicEntity.ReviewedById));
+
+        Assert.False(index.IsUnique);
     }
 }
