@@ -3,6 +3,7 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -11,12 +12,16 @@ namespace DocGenerator.Api.Tests;
 /// تفشل قبل الإصلاح (التعديل/الحذف المباشر ينجح) وتخضر بعده.
 /// القاعدة مهاجَرة عند الإقلاع (`MigrateAsync`) فتحمل المشغّلات بعد الإصلاح.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF019AppendOnlyTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF019AppendOnlyTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF019AppendOnlyTests(ApiFactory factory) => _factory = factory;
+    public RF019AppendOnlyTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task SeedFieldChangeAsync(string token)
     {
@@ -29,7 +34,7 @@ public class RF019AppendOnlyTests
         update.EnsureSuccessStatusCode();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAuditLog_Throws()
     {
         await _factory.LoginAsync("lawyer1", "123456");
@@ -43,7 +48,7 @@ public class RF019AppendOnlyTests
         Assert.Contains("إلحاق", ex.ToString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteAuditLog_Throws()
     {
         await _factory.LoginAsync("lawyer1", "123456");
@@ -55,7 +60,7 @@ public class RF019AppendOnlyTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateFieldChange_Throws()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -69,7 +74,7 @@ public class RF019AppendOnlyTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteFieldChange_Throws()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -82,7 +87,7 @@ public class RF019AppendOnlyTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InsertAuditLog_StillWorks()
     {
         // توصيف (يخضر قبل/بعد): الإدخال والقراءة العاديان لا يمسّهما المنع.

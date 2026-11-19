@@ -11,23 +11,28 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
 /// اختبارات RF-004 (`ARC-002` + `BQ-001…007`): تضييق إعلاني + تثبيت المصفوفة.
 /// تفشل سطور التغيير قبل الإصلاح (`403`/غياب القيد) وتخضر بعده؛ التثبيت أخضر دائمًا.
-/// عزل الأسماء: مستخدمون وكيانات بأسماء فريدة (عرف `ApiTestCollection`).
+/// عزل الأسماء: مستخدمون وكيانات بأسماء فريدة (عرف `PostgresApiTestCollection`).
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF004AuthzTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF004AuthzTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF004AuthzTests(ApiFactory factory) => _factory = factory;
+    public RF004AuthzTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerDeleted_SeesDeleted()
     {
         // `BQ-001`: المدير يرى المحذوفات (كان `403`).
@@ -44,7 +49,7 @@ public class RF004AuthzTests
             e => e.GetProperty("id").GetInt32() == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerSuggestions_SeesAll()
     {
         // `BQ-001`: المدير يرى كل الاقتراحات (كان يرى ملكه فقط).
@@ -59,7 +64,7 @@ public class RF004AuthzTests
         Assert.Contains(message, await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerSuggestions_MarkRead()
     {
         // `BQ-001`: المدير يعلّم الاقتراح مقروءًا (كان `403`).
@@ -74,7 +79,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerCreateLawyer_Allowed()
     {
         // `BQ-001د`: المدير يدير المستخدمين عدا دور المشرف (كان `403`).
@@ -91,7 +96,7 @@ public class RF004AuthzTests
             $"unexpected {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerCreateAdmin_Forbidden()
     {
         // حد المشرف: إنشاء مشرف مشرف فقط (قبل/بعد `403` — تثبيت الحد).
@@ -107,7 +112,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerUpdateAdmin_Forbidden()
     {
         // حد المشرف: تعديل حساب مشرف مشرف فقط (قبل/بعد `403` — تثبيت الحد).
@@ -129,7 +134,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HeadDelegateCrossGovernorate_Forbidden()
     {
         // `BQ-002`: رئيس دمشق لا يدير مندوبي حلب (كان يُنشأ بلا قيد).
@@ -146,7 +151,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HeadDelegateOwnGovernorate_Allowed()
     {
         // `BQ-002`: رئيس دمشق يدير مندوبي دمشق (قبل/بعد نجاح — تثبيت عدم الكسر).
@@ -163,7 +168,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public void NoBareAuthorizeOnApiControllers()
     {
         // حارس الفشل المغلق: كل أكشن يُصرَّح بأدوار صريحة أو سياسة مسماة (من
@@ -215,7 +220,7 @@ public class RF004AuthzTests
         Assert.True(bare.Count == 0, "نقاط عارية:\n" + string.Join("\n", bare));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LawyerCreate_Unaffected()
     {
         // تثبيت: إنشاء المحامي يعمل قبل/بعد (لا تضييق زائد).
@@ -233,7 +238,7 @@ public class RF004AuthzTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntityManagerDocuments_Blocked()
     {
         // تثبيت: المندوب محجوب عن نقاط المستندات قبل/بعد.
@@ -287,7 +292,7 @@ public class RF004AuthzTests
         return entry.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public void HeadImpliesSubHead_OnApiControllers()
     {
         // حارس مصفوفة التخويل (المرحلة 9 — بند 1): أي سمة فعّالة تذكر `head`

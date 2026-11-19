@@ -6,6 +6,7 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -14,12 +15,16 @@ namespace DocGenerator.Api.Tests;
 /// الصامتة يجب أن تُدوَّن. تفشل قبل الإصلاح (لا صف) وتخضر بعده.
 /// هوية فريدة لكل اختبار (لا تصادم مع القاعدة المشتركة)؛ الاستعلام من AuditLogs مباشرة.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF017SilentWriteAuditTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF017SilentWriteAuditTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF017SilentWriteAuditTests(ApiFactory factory) => _factory = factory;
+    public RF017SilentWriteAuditTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
     private Task<bool> HasAuditRowAsync(string actionType, string userName, string? detailsContains = null, int? documentId = null)
@@ -33,7 +38,7 @@ public class RF017SilentWriteAuditTests
             && (documentId == null || a.DocumentId == documentId)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_WritesGenerateDocumentRow()
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_gen"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -47,7 +52,7 @@ public class RF017SilentWriteAuditTests
         Assert.True(await HasAuditRowAsync("generate_document", user.Username, "004", docId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_WritesExportDocumentsRow()
     {
         var admin = await _factory.CreateUserAsync(UniqueName("admin_exp"), UserRole.Admin);
@@ -59,7 +64,7 @@ public class RF017SilentWriteAuditTests
         Assert.True(await HasAuditRowAsync("export_documents", admin.Username));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Logout_WritesLogoutRow()
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_out"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -72,7 +77,7 @@ public class RF017SilentWriteAuditTests
         Assert.True(await HasAuditRowAsync("logout", user.Username));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkSuggestionRead_WritesReadRow()
     {
         var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_sug"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -90,7 +95,7 @@ public class RF017SilentWriteAuditTests
         Assert.True(await HasAuditRowAsync("app-suggestion.read", admin.Username));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CompleteDelegation_AuditDetailsContainSalePrice()
     {
         var source = await _factory.CreateUserAsync(UniqueName("lawyer_src"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -105,9 +110,12 @@ public class RF017SilentWriteAuditTests
             assetId = db.Assets.Single(a => a.DocumentId == docId).Id;
         }
 
+        // P1-01d: الدائرة المنابة مطلوبة صريحًا عند وجود دوائر مسجّلة في الفرع.
+        var delegatedCircuitId = await _factory.EnsureCircuitAsync("DAM", "دائرة تنفيذ دمشق");
         var created = await sourceClient.PostAsJsonAsync($"/api/documents/{docId}/delegations", new
         {
             delegatedCourt = "دائرة تنفيذ حلب",
+            delegatedCircuitId = delegatedCircuitId,
             isExternal = false,
             externalBranchId = (int?)null,
             delegationDate = "1/8/2026",

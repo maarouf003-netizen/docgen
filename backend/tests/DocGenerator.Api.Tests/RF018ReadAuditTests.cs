@@ -5,6 +5,7 @@ using System.Text.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -12,12 +13,16 @@ namespace DocGenerator.Api.Tests;
 /// اختبارات إظهار RF-018 (SEC-003 + قرار BQ-021): فتح التفاصيل يُدوَّن، والقوائم لا.
 /// تفشل قبل الإصلاح (لا صف) وتخضر بعده.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF018ReadAuditTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF018ReadAuditTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF018ReadAuditTests(ApiFactory factory) => _factory = factory;
+    public RF018ReadAuditTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
     private Task<int> CountViewRowsAsync(string userName, int documentId)
@@ -28,7 +33,7 @@ public class RF018ReadAuditTests
             a.ActionType == "view_document" && a.UserName == userName && a.DocumentId == documentId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDetail_WritesViewRow()
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_rd"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -42,7 +47,7 @@ public class RF018ReadAuditTests
         Assert.Equal(1, await CountViewRowsAsync(user.Username, docId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchList_WritesNoViewRows()
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_sr"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));

@@ -231,7 +231,7 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
-- **الحالة (2026-11-19):** **جزئيًا — الشرائح `1a`–`1h` و`1i/a`–`1i/b` منفذة.**
+- **الحالة (2026-11-19):** **جزئيًا — الشرائح `1a`–`1h` و`1i/a`–`1i/c` منفذة.**
   - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
     مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
   - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
@@ -252,9 +252,20 @@
     `AlertsUnreadScopeIntegrationTests` (3) + `EntityRegistryHeadScopeIntegrationTests` (5) +
     `PortalScopeMatrixTests` (1) + `AuditIntegrationTests` (6) + `StatisticsIntegrationTests` (5) +
     `ManagerStatsIntegrationTests` (13) + `StatisticsHeadScopeIntegrationTests` (6) +
-    `StatsScopeTests` (5)
+    `StatsScopeTests` (5) + `ForbiddenShapeContractTests` (6) + `RF001ConcurrentStatusCharacterizationTests` (2) +
+    `RF001DuplicateRequestCharacterizationTests` (2) + `RF001NumberingCharacterizationTests` (2) +
+    `RF003AuthzProofTests` (5) + `RF004AuthzTests` (12) + `RF005SecurityLoggingTests` (3) +
+    `RF007AuditScopeTests` (2) + `RF008SessionLifetimeTests` (1) + `RF009NumberingTests` (2) +
+    `RF010ConcurrencyTests` (6) + `RF011IdempotencyTests` (5) + `RF017SilentWriteAuditTests` (5) +
+    `RF018ReadAuditTests` (2) + `RF019AppendOnlyTests` (5)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
     `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
+  - **حارس `trx` مولَّد لا يدوي (‏`1i/c`):** `scripts/postgres-suite-guard.mjs`
+    يكتشف المجموعات من المصدر — خاصية المجموعة المشتركة، أو `IClassFixture<PostgresApiFactory>`،
+    أو تجميعة معرَّفة بمصنع `PostgresApiFactory`، أو صنف ينشئ المصنع بنفسه — ثم يتحقق
+    من `trx` أن كل مجموعة نُفِّذت بلا تخطٍّ ولا فشل، **وأنه لا `NotExecuted` خارج
+    المجموعات المكتشفة** (شبكة أمان للاختبارات المستقلة). له اختبار ذاتي في وظيفة `guards`،
+    **وأُلغيت القائمة اليدوية** (‏28 اسمًا سابقًا) لئلا تدخل مجموعة جديدة بلا حارس.
   - **متانة تنظيف قواعد الاختبار:** `PostgresTestDatabase.DropAsync` صار بمهلة `120s`
     لأن `DROP DATABASE ... WITH (FORCE)` يفرض checkpoint قد يتجاوز المهلة الافتراضية
     (‏`30s`) على قرص بطيء — بلا هذا كان اختبار ناجح يُفشل الجولة في التنظيف
@@ -277,9 +288,9 @@
     `docs/audit/70-p1-01g-users-sessions-20261118.md`،
     `docs/audit/71-p1-01h-alerts-20261118.md`،
     `docs/audit/72-p1-01ia-entities-portal-20261119.md`،
-    `docs/audit/73-p1-01ib-stats-audit-20261119.md`.
-  - **متبقٍ:** بقية `P1-01i` (عائلة `RF` + `ForbiddenShapeContractTests`)، ثم `P1-08`
-    لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
+    `docs/audit/73-p1-01ib-stats-audit-20261119.md`،
+    `docs/audit/74-p1-01ic-rf-contracts-20261119.md`.
+  - **متبقٍ:** `P1-08` لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.
 - **DoD:** الاختبارات الحرجة تعمل على Postgres في CI؛ `SQLite` للوحدات فقط.

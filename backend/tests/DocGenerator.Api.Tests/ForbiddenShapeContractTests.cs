@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -15,15 +16,20 @@ namespace DocGenerator.Api.Tests;
 /// `Forbid()` الفارغ): رفض النطاق المتوقع يُرد 403 مع جسم JSON يحمل رسالة
 /// غير فارغة — مثبت هنا ضد انزلاق الشكل مستقبلًا.
 /// </summary>
+[Collection(PostgresApiTestCollection.Name)]
 public sealed class ForbiddenShapeContractTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory = new();
+    private readonly PostgresApiFactory _factory;
+
+    public ForbiddenShapeContractTests(PostgresApiFactory factory) => _factory = factory;
     private string _lawyer1 = string.Empty;
     private string _lawyer2 = string.Empty;
     private string _delegate = string.Empty;
 
     public async Task InitializeAsync()
     {
+        await _factory.ResetAsync();
+
         var lawyer1 = UniqueName("law1");
         var lawyer2 = UniqueName("law2");
         var del = UniqueName("del");
@@ -57,11 +63,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
         _delegate = del;
     }
 
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static async Task<string> ReadMessageAsync(HttpResponseMessage response)
     {
@@ -69,7 +71,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
         return doc!.RootElement.GetProperty("message").GetString() ?? string.Empty;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Portal_Files_WithOutOfScopeEntryId_Returns403WithMessage()
     {
         var client = _factory.AuthorizedClient(_delegate);
@@ -80,7 +82,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
         Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewLetters_Create_OnForeignDocument_Returns403WithMessage()
     {
         var token1 = (await _factory.LoginAsync(_lawyer1, "123456"))!.Token!;
@@ -102,7 +104,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
     /// محامي حلب — يبلغ مسار الخدمة الرامي (`EnsureHeadScopeAsync`) لا الحارس
     /// الاستباقي، فيُرد 403 بجسم `{ message }` غير فارغ من المعالج العام.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task EntityRegistry_PreviewBranch_OutOfScope_Returns403WithMessage()
     {
         var damId = await _factory.GetDamascusIdAsync();
@@ -164,7 +166,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
     /// (`تعديل الرسالة متاح لكاتبها فقط`) لا الحارس الاستباقي، فيُرد 403 بجسم
     /// `{ message }` غير فارغ.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Forum_Update_ByNonAuthor_Returns403WithMessage()
     {
         var author = _factory.AuthorizedClient(_lawyer1);
@@ -184,7 +186,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
     /// عقد الدفعة B — مراسلات: اطلاع محامٍ ثالث (لا منشئ ولا مستلم) على مراسلة
     /// خاصة يبلغ `CanViewAsync` الرامي (`لا تملك صلاحية الاطلاع`)، فيُرد 403 بجسم.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Get_ByThirdParty_Returns403WithMessage()
     {
         var lawyer3 = UniqueName("law3");
@@ -220,7 +222,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
     /// عقد الدفعة B — إدارة المستخدمين: إنشاء المدير لحساب مشرف يبلغ حد
     /// (`BQ-001د` — `حسابات المشرف يديرها مشرف فقط`)، فيُرد 403 بجسم.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task UserManagement_ManagerCreateAdmin_Returns403WithMessage()
     {
         var manager = _factory.AuthorizedClient("manager");

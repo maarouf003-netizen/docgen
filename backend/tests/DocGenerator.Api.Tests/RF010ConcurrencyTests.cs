@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -9,12 +10,16 @@ namespace DocGenerator.Api.Tests;
 /// تفشل قبل الإصلاح (نجاح ماحٍ `200`) وتخضر بعده.
 /// التوافق: غياب `version` يُقبل (عملاء قدامى)؛ النوع المخالف `400`.
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF010ConcurrencyTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF010ConcurrencyTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF010ConcurrencyTests(ApiFactory factory) => _factory = factory;
+    public RF010ConcurrencyTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static async Task<long?> GetVersionAsync(HttpClient client, int id)
     {
@@ -26,7 +31,7 @@ public class RF010ConcurrencyTests
         return null;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FreshEdit_Succeeds()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -42,7 +47,7 @@ public class RF010ConcurrencyTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FreshEdit_BumpsVersion()
     {
         // الحفظ الناجح يزيد العدّاد — فتُكشَف القراءة القديمة لاحقًا.
@@ -63,7 +68,7 @@ public class RF010ConcurrencyTests
         Assert.True(after > (before ?? -1), $"expected bump, was {before} now {after}");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StaleEdit_SecondPut_Conflict()
     {
         // قراءتان لنفس الملف → حفظ الأول → إعادة حفظ الثاني بالنسخة القديمة.
@@ -89,7 +94,7 @@ public class RF010ConcurrencyTests
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StaleStatus_SecondPost_Conflict()
     {
         // «تسوية» صالحة من متداول ومن تريث معًا — فيعزل الفحصُ الإصدارَ عن الآلة:
@@ -117,7 +122,7 @@ public class RF010ConcurrencyTests
         Assert.Equal(HttpStatusCode.Conflict, settled.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MissingVersion_Accepted_BackwardCompatible()
     {
         // عملاء قدامى بلا الحقل: يُقبلون قبل الإصلاح وبعده (لا كسر).
@@ -132,7 +137,7 @@ public class RF010ConcurrencyTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MalformedVersion_BadRequest()
     {
         // نوع مخالف للعدّاد → `400` (اليوم: يُتجاهل فينجح `200`).

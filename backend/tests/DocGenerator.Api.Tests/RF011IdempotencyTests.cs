@@ -7,21 +7,26 @@ using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
 /// اختبارات RF-011 (INT-007): مفتاح عدم التكرار — الإرسال المزدوج بنفس المفتاح
 /// أثر واحد ونتيجة مخزنة. تفشل قبل الإصلاح (أثر مكرر/نتائج مختلفة) وتخضر بعده.
-/// عزل الاسماء: مستخدمون بأسماء `GUID` فريدة (عرف `ApiTestCollection`) فلا تتداخل
+/// عزل الاسماء: مستخدمون بأسماء `GUID` فريدة (عرف `PostgresApiTestCollection`) فلا تتداخل
 /// صفوف التدقيق مع فلاتر الفئات الأخرى (فاعل مشترك = تلوث Count).
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF011IdempotencyTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF011IdempotencyTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF011IdempotencyTests(ApiFactory factory) => _factory = factory;
+    public RF011IdempotencyTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private static async Task<HttpResponseMessage> PostWithKeyAsync(
         HttpClient client, string url, object body, string? key)
@@ -45,7 +50,7 @@ public class RF011IdempotencyTests
         amountNumeric = 100,
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task DoubleCreate_SameKey_SingleDocument()
     {
         // نقرة مزدوجة بنفس المفتاح: اليوم ملفّان؛ بعد RF-011 ملف واحد والثانية `200` بنفس الجسم.
@@ -71,7 +76,7 @@ public class RF011IdempotencyTests
         Assert.Equal(1, await db.Documents.CountAsync(d => d.BorrowerName == name));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SameKey_DifferentPayload_ExecutesFresh()
     {
         // مفتاح مستعمل لحمولة مختلفة (تصحيح-ثم-إعادة-إرسال): نية جديدة تُنفَّذ
@@ -90,7 +95,7 @@ public class RF011IdempotencyTests
         Assert.NotEqual(text1, text2);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MissingKey_LegacyDoubleCreate()
     {
         // توصيف (يخضر قبل/بعد): بلا مفتاح يبقى السلوك القديم — ملفّان.
@@ -108,7 +113,7 @@ public class RF011IdempotencyTests
         Assert.Equal(2, await db.Documents.CountAsync(d => d.BorrowerName == name));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DoubleTransferAll_SameKey_SameCount()
     {
         // النقل الثاني اليوم يعيد `0`؛ بعد RF-011 يعيد العدد المخزن نفسه.
@@ -137,7 +142,7 @@ public class RF011IdempotencyTests
         Assert.Equal(text1, text2);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DoubleMerge_SameKey_SameResult()
     {
         // الدمج الثاني اليوم `400` (غير نشطة)؛ بعد RF-011 يعيد نتيجة الدمج المخزنة.

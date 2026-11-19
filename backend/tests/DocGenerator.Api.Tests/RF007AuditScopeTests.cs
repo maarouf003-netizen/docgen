@@ -5,6 +5,7 @@ using System.Text.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
@@ -13,12 +14,16 @@ namespace DocGenerator.Api.Tests;
 /// تفشل قبل الإصلاح (يرى فرعًا آخر) وتخضر بعده. الترشيح عبر userName دقيق
 /// (أسماء فريدة لكل تشغيل — بلا تصادم مع القاعدة المشتركة).
 /// </summary>
-[Collection(ApiTestCollection.Name)]
-public class RF007AuditScopeTests
+[Collection(PostgresApiTestCollection.Name)]
+public class RF007AuditScopeTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public RF007AuditScopeTests(ApiFactory factory) => _factory = factory;
+    public RF007AuditScopeTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
 
     private async Task<string> LawyerWithDocumentAsync(string branchCode)
@@ -37,7 +42,7 @@ public class RF007AuditScopeTests
         return body!.RootElement.GetProperty("totalCount").GetInt32();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HeadSeesOwnBranchAudit_NotOtherBranches()
     {
         var damLawyer = await LawyerWithDocumentAsync("DAM");
@@ -48,7 +53,7 @@ public class RF007AuditScopeTests
         Assert.Equal(0, await TotalForAsync(head, alpLawyer));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStillSeesAllBranches()
     {
         var damLawyer = await LawyerWithDocumentAsync("DAM");
