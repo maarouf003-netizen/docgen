@@ -1,19 +1,24 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class ManagerStatsIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class ManagerStatsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public ManagerStatsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public ManagerStatsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task ManagerStats_Endpoints_ForbiddenForLawyer()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -25,7 +30,7 @@ public class ManagerStatsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, lawyers.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_Head_SeesOwnBranchStatsAndLawyers()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -42,7 +47,7 @@ public class ManagerStatsIntegrationTests
         Assert.NotNull(lawyers);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_SpecificMonth_ReturnsSelectedPeriod()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -56,7 +61,7 @@ public class ManagerStatsIntegrationTests
         Assert.Null(stats.PeriodQuarter);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_SpecificQuarter_ReturnsSelectedQuarter()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -70,7 +75,7 @@ public class ManagerStatsIntegrationTests
         Assert.Null(stats.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_InvalidPeriodParams_ReturnBadRequest()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -80,7 +85,7 @@ public class ManagerStatsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, (await manager.GetAsync("/api/stats/manager?period=quarterly&quarter=5")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PersonalStats_Lawyer_SeesOwnStatsForSelectedPeriod()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -93,7 +98,7 @@ public class ManagerStatsIntegrationTests
         Assert.Equal(5, stats.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_ReturnsMonthsWithRegisteredFiles()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -111,7 +116,7 @@ public class ManagerStatsIntegrationTests
 
     // رئيس بفرع: نجاح فقط — إثبات النطاق (عدم التسريب) في
     // `StatisticsTests.AvailablePeriods_ScopesByBranch` على مستوى الخدمة.
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_HeadWithBranch_Succeeds()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -122,7 +127,7 @@ public class ManagerStatsIntegrationTests
         Assert.NotNull(periods);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_CountsRegisteredDocumentsInCurrentMonth()
     {
         var today = ApiTestClock.Today;
@@ -149,7 +154,7 @@ public class ManagerStatsIntegrationTests
         Assert.True(stats.TotalFiles >= 1);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_WireContract_ExposesFallbackSourceKeys()
     {
         // يثبت اسمي مفتاحي وسم المصدر سلكيًا (camelCase) — فالواجهة تقرأهما حرفيًا، وأي
@@ -164,7 +169,7 @@ public class ManagerStatsIntegrationTests
         Assert.True(doc.RootElement.TryGetProperty("periodDateFromReceiptCount", out _));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_InvalidPeriod_ReturnsBadRequest()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -172,7 +177,7 @@ public class ManagerStatsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_RequiresBranchId()
     {
         var manager = _factory.AuthorizedClient("manager");
@@ -180,7 +185,7 @@ public class ManagerStatsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_ReturnsBranchLawyers()
     {
         var manager = _factory.AuthorizedClient("manager");

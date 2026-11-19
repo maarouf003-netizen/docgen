@@ -231,7 +231,7 @@
 
 #### `P1-01` — منصة اختبار `PostgreSQL` حقيقية
 
-- **الحالة (2026-11-19):** **جزئيًا — الشرائح `1a`–`1h` و`1i/a` منفذة.**
+- **الحالة (2026-11-19):** **جزئيًا — الشرائح `1a`–`1h` و`1i/a`–`1i/b` منفذة.**
   - `ApiFactory` صار قابلًا للتوسّع (`ConfigureDatabaseSettings`/`ConfigureDatabaseServices`)
     مع بقاء `SQLite` افتراضيًا لكل الاختبارات القائمة.
   - `PostgresApiFactory`: قاعدة فريدة لكل مصنع، هجرات `EF` الحقيقية
@@ -250,7 +250,9 @@
     `LockoutIntegrationTests` (8) + `TokenRevocationIntegrationTests` (2) +
     `AlertsIntegrationTests` (35) + `AlertsCursorPagingTests` (13) +
     `AlertsUnreadScopeIntegrationTests` (3) + `EntityRegistryHeadScopeIntegrationTests` (5) +
-    `PortalScopeMatrixTests` (1)
+    `PortalScopeMatrixTests` (1) + `AuditIntegrationTests` (6) + `StatisticsIntegrationTests` (7) +
+    `ManagerStatsIntegrationTests` (13) + `StatisticsHeadScopeIntegrationTests` (6) +
+    `StatsScopeTests` (5)
     عبر `PostgresApiTestCollection` المشتركة/مصانع مستقلة. كلها في وظيفة
     `backend-postgres`، مع حارس `trx` يمنع تخطيها الصامت.
   - **متانة تنظيف قواعد الاختبار:** `PostgresTestDatabase.DropAsync` صار بمهلة `120s`
@@ -274,9 +276,10 @@
     `docs/audit/69-p1-01f-circuits-correspondence-20261118.md`،
     `docs/audit/70-p1-01g-users-sessions-20261118.md`،
     `docs/audit/71-p1-01h-alerts-20261118.md`،
-    `docs/audit/72-p1-01ia-entities-portal-20261119.md`.
-  - **متبقٍ:** بقية `P1-01i` (الإحصاءات/التدقيق ثم عائلة `RF`)، ثم `P1-08` لإزالة
-    `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
+    `docs/audit/72-p1-01ia-entities-portal-20261119.md`،
+    `docs/audit/73-p1-01ib-stats-audit-20261119.md`.
+  - **متبقٍ:** بقية `P1-01i` (عائلة `RF` + `ForbiddenShapeContractTests`)، ثم `P1-08`
+    لإزالة `SQLite` من الاختبارات. `CI` الحالي على `postgres:15`.
 - **العمل:** `Testcontainers.PostgreSql` محليًا، وخدمة `postgres:16` في CI؛ `Respawn` لإعادة الضبط؛ `WebApplicationFactory` بسلسلة اتصال Postgres؛ تطبيق الهجرات لا `EnsureCreated`.
 - **الاختبارات:** نقل اختبارات المستندات/المتدخلين/الإنابة/الاستئناف/الحالة/البوابة/المصادقة.
 - **DoD:** الاختبارات الحرجة تعمل على Postgres في CI؛ `SQLite` للوحدات فقط.

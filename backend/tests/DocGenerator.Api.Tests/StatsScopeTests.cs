@@ -15,10 +15,21 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// نطاق الإحصاءات والتصدير والتنبيهات عبر الـ API (المرحلة 8 — قرارات 20/27/29):
 /// القسم لقسمه، والشعبة لشعبتها، والإدارة للكل، وقراءة التنبيهات بالمستلم.
-/// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
+/// قاعدة `PostgreSQL` حقيقية معاد ضبطها بـ`Respawn` قبل كل اختبار — بلا تلوث متبادل.
 /// </summary>
-public sealed class StatsScopeTests : IsolatedApiTestBase
+[Collection(PostgresApiTestCollection.Name)]
+public sealed class StatsScopeTests : IAsyncLifetime
 {
+    private readonly PostgresApiFactory _factory;
+
+    public StatsScopeTests(PostgresApiFactory factory) => _factory = factory;
+
+    private PostgresApiFactory Factory => _factory;
+
+    public Task InitializeAsync() => Factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     /// <summary>سقف أمان لحلقة الصفحات: أي `totalPages` أكبر منه انحراف يوقف الاختبار لا يُغرقه.</summary>
     private const int MaxAlertPages = 50;
 
@@ -130,7 +141,7 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         return ids;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitPickers_SubHeadAllowed_HeadScoped()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -144,7 +155,7 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.OK, (await subClient.GetAsync("/api/execution-circuits/for-delegation")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_HeadDivision_SubSection_ManagerAll()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -165,7 +176,7 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         Assert.Equal(2, await ManagerTotalAsync(manager));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_CarriesSection_AndExportsIt()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -195,7 +206,7 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
             headers);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentsExport_HasSectionColumn_WithDivisionDefault()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
@@ -213,7 +224,7 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         Assert.Contains("القسم", XlsxColumn(bytes, sectionIndex));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Alerts_HeadAndSub_SeeOnlyOwn()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
