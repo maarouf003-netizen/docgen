@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="DocGenerator.Testing" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DocGenerator.Api\DocGenerator.Api.csproj" />
+    <ProjectReference Include="..\DocGenerator.TestSupport\DocGenerator.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,6 @@
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,35 +12,34 @@ namespace DocGenerator.Application.Tests;
 /// يحقن فشلًا عابرًا بعد <c>SaveChanges</c> في المحاولتين الأولى والثانية،
 /// ويتحقق من أن المحاولة الثالثة وحدها تُثبَّت — لا صفوف مكررة ولا كتابة جزئية.
 /// </summary>
-public sealed class UnitOfWorkFactoryTests : IDisposable
+public sealed class UnitOfWorkFactoryTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection;
-    private readonly ServiceProvider _provider;
+    private PostgresTestDb _db = null!;
+    private ServiceProvider _provider = null!;
 
-    public UnitOfWorkFactoryTests()
+    public async Task InitializeAsync()
     {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
+        _db = await PostgresTestDb.CreateAsync();
 
         var services = new ServiceCollection();
-        services.AddDbContext<DocGeneratorDbContext>(options => options
-            .UseSqlite(_connection)
+        services.AddDbContext<DocGeneratorPostgresDbContext>(options => options
+            .UseNpgsql(_db.ConnectionString)
             .ReplaceService<IExecutionStrategyFactory, RetryTwiceExecutionStrategyFactory>());
+        // الخدمات تطلب النوع الأساس؛ نُعيد نفس السياق المزوّد بإعدادات Postgres.
+        services.AddScoped<DocGeneratorDbContext>(
+            sp => sp.GetRequiredService<DocGeneratorPostgresDbContext>());
         services.AddScoped<IUnitOfWork, TestUnitOfWork>();
         services.AddScoped<IUnitOfWorkFactory, UnitOfWorkFactory>();
         _provider = services.BuildServiceProvider();
-
-        using var scope = _provider.CreateScope();
-        scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>().Database.EnsureCreated();
     }
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
-        _provider.Dispose();
-        _connection.Dispose();
+        await _provider.DisposeAsync();
+        await _db.DisposeAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Retryable_OnTransientFailures_UsesFreshScope_AndCommitsOnce()
     {
         using var scope = _provider.CreateScope();
@@ -73,7 +71,7 @@ public sealed class UnitOfWorkFactoryTests : IDisposable
         Assert.Equal(1, await db.Branches.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonRetryable_DoesNotRetry_AndRollsBack()
     {
         using var scope = _provider.CreateScope();

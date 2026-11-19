@@ -153,22 +153,25 @@ public class UtcDateTimeConverterTests
         Assert.All(rows, r => Assert.Equal(DateTimeKind.Utc, r.AttemptedAtUtc.Kind));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Postgres_RoundTrip_PreservesUtcKind()
     {
-        // بوابة حية (M1): يلزم خادم Postgres حقيقي؛ تُشغَّل فقط عند تعريف:
-        //   DOCGEN_TEST_POSTGRES="Host=...;Port=5432;Database=...;Username=...;Password=..."
-        var connectionString = Environment.GetEnvironmentVariable("DOCGEN_TEST_POSTGRES");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        // بوابة حية (M1): قاعدة معزولة تُهاجَر فعليًا ثم تُسقط — لا لمس لقاعدة
+        // الاختبار المشتركة (كان الاختبار يسقط القاعدة الأساس ويُهاجرها، فيصطدم
+        // بأي اختبار/قالب متوازٍ على الخادم نفسه).
+        var baseConnectionString = PostgresTestEnvironment.RequireOrSkip();
+        if (baseConnectionString is null)
             return;
 
+        var databaseName = "docgen_utckind_" + Guid.NewGuid().ToString("N")[..12];
+        var connectionString = await PostgresTestDatabase.CreateAsync(
+            baseConnectionString, databaseName);
         var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
             .UseNpgsql(connectionString)
             .Options;
         await using var db = new DocGeneratorPostgresDbContext(options);
         try
         {
-            await db.Database.EnsureDeletedAsync();
             await db.Database.MigrateAsync();
 
             // Unspecified تقويمية + لحظة Utc: كلتاهما تُحفظان وتُقرآن بـ Kind=Utc دون تغيير Ticks.
@@ -182,7 +185,7 @@ public class UtcDateTimeConverterTests
         }
         finally
         {
-            await db.Database.EnsureDeletedAsync();
+            await PostgresTestDatabase.DropAsync(baseConnectionString, databaseName);
         }
     }
 }

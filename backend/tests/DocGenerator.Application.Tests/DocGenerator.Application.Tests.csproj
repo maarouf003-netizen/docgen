@@ -20,11 +20,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="DocGenerator.Testing" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DocGenerator.Application\DocGenerator.Application.csproj" />
     <ProjectReference Include="..\..\src\DocGenerator.Infrastructure\DocGenerator.Infrastructure.csproj" />
+    <ProjectReference Include="..\DocGenerator.TestSupport\DocGenerator.TestSupport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

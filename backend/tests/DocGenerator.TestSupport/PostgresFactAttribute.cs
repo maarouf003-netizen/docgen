@@ -1,4 +1,6 @@
-namespace DocGenerator.Api.Tests.TestHelpers;
+using Xunit;
+
+namespace DocGenerator.Testing;
 
 /// <summary>
 /// اختبار حقيقي على <c>PostgreSQL</c>: يُتخطّى محليًا عند غياب
@@ -18,7 +20,7 @@ public sealed class PostgresFactAttribute : FactAttribute
             Skip = SkipReason;
     }
 
-    internal const string SkipReason =
+    public const string SkipReason =
         "PostgreSQL غير متاح: عيّن DOCGEN_TEST_POSTGRES لقاعدة اختبار حيّة "
         + "(Docker أو PostgreSQL محمول).";
 }
