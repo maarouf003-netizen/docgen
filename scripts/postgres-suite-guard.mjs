@@ -36,6 +36,56 @@ const POSTGRES_FIXTURE = 'PostgresApiFactory';
 const SHARED_COLLECTION = 'PostgresApiTestCollection.Name';
 
 /**
+ * يستخرج أصناف الملف مع سماتها وفئة وراثتها، بتحليل سطري خطّي (بلا regex متداخل
+ * قد يتفجّر — تجنّب `ReDoS`).
+ *
+ * @param {string} text
+ * @returns {{ name: string, bases: string, attributes: string[] }[]}
+ */
+export function parseClasses(text) {
+  const lines = text.split(/\r?\n/);
+  /** @type {{ name: string, bases: string, attributes: string[] }[]} */
+  const classes = [];
+  /** @type {string[]} */
+  let attributes = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      attributes.push(trimmed);
+      continue;
+    }
+
+    const declaration = /^(?:public|internal)\s+(?:(?:sealed|abstract|static)\s+)*class\s+(\w+)(.*)$/.exec(
+      trimmed,
+    );
+    if (declaration) {
+      let bases = declaration[2];
+      let end = i;
+      while (!bases.includes('{') && end + 1 < lines.length) {
+        end += 1;
+        bases += ` ${lines[end].trim()}`;
+      }
+      classes.push({ name: declaration[1], bases, attributes });
+      attributes = [];
+      i = end;
+      continue;
+    }
+
+    if (trimmed === '' || trimmed.startsWith('///') || trimmed.startsWith('//')
+      || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+      if (trimmed === '') attributes = [];
+      continue;
+    }
+
+    attributes = [];
+  }
+
+  return classes;
+}
+
+/**
  * يقرأ أصناف الاختبار من مجلد ويصنّف أيها يعمل على `PostgreSQL`.
  *
  * @param {string} testsDir
@@ -61,22 +111,20 @@ export function discoverSuites(testsDir) {
 
     const ownsFactory = /new\s+PostgresApiFactory\s*\(/.test(text);
 
-    const classPattern = /((?:\[[^\]]*\]\s*\r?\n\s*)*)(?:public|internal)\s+(?:sealed\s+|abstract\s+|static\s+)*class\s+(\w+)([^{]*)\{/g;
-    for (const match of text.matchAll(classPattern)) {
-      const attributes = match[1] ?? '';
-      const className = match[2];
-      const bases = match[3] ?? '';
+    for (const parsed of parseClasses(text)) {
+      const attributeText = parsed.attributes.join('\n');
+      if (attributeText.includes('[CollectionDefinition(')) continue;
+      if (/\b(abstract|static)\b/.test(parsed.bases)) continue;
 
-      if (/\[CollectionDefinition\(/.test(attributes)) continue;
-      if (/\b(abstract|static)\b/.test(bases)) continue;
-
-      const shared = attributes.includes(SHARED_COLLECTION);
-      const classFixture = new RegExp(`IClassFixture\\s*<\\s*${POSTGRES_FIXTURE}\\s*>`).test(bases);
-      const customCollection = [...attributes.matchAll(/\[Collection\(\s*"([^"]+)"\s*\)\]/g)]
-        .some((m) => collectionFixtures.get(m[1]) === POSTGRES_FIXTURE);
+      const shared = attributeText.includes(SHARED_COLLECTION);
+      const classFixture = new RegExp(`IClassFixture\\s*<\\s*${POSTGRES_FIXTURE}\\s*>`).test(parsed.bases);
+      const customCollection = parsed.attributes
+        .map((attribute) => /\[Collection\(\s*"([^"]+)"\s*\)\]/.exec(attribute))
+        .filter(Boolean)
+        .some((match) => collectionFixtures.get(match[1]) === POSTGRES_FIXTURE);
 
       if (shared || classFixture || customCollection || ownsFactory) {
-        suites.push({ name: className, file });
+        suites.push({ name: parsed.name, file });
       }
     }
   }
