@@ -1,17 +1,22 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class AuditIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class AuditIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public AuditIntegrationTests(ApiFactory factory) => _factory = factory;
+    public AuditIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task AuditLogs_ForLawyer_Forbidden_ForManager_Ok()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -23,7 +28,7 @@ public class AuditIntegrationTests
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuditLogs_ContainsLoginEvent_AfterLogin()
     {
         await _factory.LoginAsync("admin", "123456");
@@ -40,7 +45,7 @@ public class AuditIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuditLogs_ContainsCreateEvent_AfterCreatingDocument()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -58,7 +63,7 @@ public class AuditIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuditLogs_CreateEvent_MentionsActorFullName()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -80,7 +85,7 @@ public class AuditIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuditLogs_Timestamps_CarryExplicitUtcOffset()
     {
         // انحدار السلك (خطة timezone-fix-plan §5): كل timestamp يُسلَّل بإزاحة صريحة (ينتهي بـ Z)
@@ -104,7 +109,7 @@ public class AuditIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WireDates_CarryExplicitUtcOffset_AcrossRepresentativeEndpoints()
     {
         // مراجعة نقدية (NE): العقد أوسع من سجل التدقيق — أي DateTime في الاستجابات يُسلَّل الآن
@@ -152,14 +157,18 @@ public class AuditIntegrationTests
     }
 }
 
-[Collection(ApiTestCollection.Name)]
-public class StatisticsIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class StatisticsIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public StatisticsIntegrationTests(ApiFactory factory) => _factory = factory;
+    public StatisticsIntegrationTests(PostgresApiFactory factory) => _factory = factory;
 
-    [Fact]
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task Dashboard_ReturnsStats()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -171,7 +180,7 @@ public class StatisticsIntegrationTests
         body.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchesSummary_ForLawyer_Forbidden()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -180,7 +189,7 @@ public class StatisticsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UserActivity_ForManager_Ok()
     {
         var client = _factory.AuthorizedClient("manager");
@@ -189,7 +198,7 @@ public class StatisticsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_ForLawyer_Ok()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -198,7 +207,7 @@ public class StatisticsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("head1")]
     [InlineData("manager")]
     [InlineData("admin")]

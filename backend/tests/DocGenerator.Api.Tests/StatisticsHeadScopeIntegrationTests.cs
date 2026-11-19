@@ -1,14 +1,19 @@
 using System.Net;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
 
-[Collection(ApiTestCollection.Name)]
-public class StatisticsHeadScopeIntegrationTests
+[Collection(PostgresApiTestCollection.Name)]
+public class StatisticsHeadScopeIntegrationTests : IAsyncLifetime
 {
-    private readonly ApiFactory _factory;
+    private readonly PostgresApiFactory _factory;
 
-    public StatisticsHeadScopeIntegrationTests(ApiFactory factory) => _factory = factory;
+    public StatisticsHeadScopeIntegrationTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     // ملاحظة طبقية: تجسيد «رئيس/محامٍ بلا فرع» عبر EF أصبح مستحيلًا (قيد
     // القاعدة يرفض الإدراج)، فانتقلت تغطية حراس النقاط (`RequireOwnBranch`)
@@ -19,7 +24,7 @@ public class StatisticsHeadScopeIntegrationTests
     // (`HeadBranchTransfer_InvalidatesPreviouslyIssuedTokens` يثبت
     // `/api/dashboard` بـ 200 قبل النقل و401 بعده).
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_EntityManager_Forbidden()
     {
         // مندوب الجهة بلا فرع بالتصميم وله بوابة إحصاءاته (`/api/portal/stats`) —
@@ -31,7 +36,7 @@ public class StatisticsHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MonthlyStats_EntityManager_Forbidden()
     {
         var portalUser = await _factory.CreateUserAsync("portal_monthly", UserRole.EntityManager, branchId: null);
@@ -41,7 +46,7 @@ public class StatisticsHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_LawyerWithBranch_Succeeds()
     {
         // الضابط الإيجابي لقيد الدور: المحامي داخل قائمة الأدوار المسماة
@@ -52,7 +57,7 @@ public class StatisticsHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MonthlyStats_LawyerWithBranch_Succeeds()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -61,7 +66,7 @@ public class StatisticsHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_EntityManager_Forbidden()
     {
         // كالنقطتين أعلاه: فترات كل الفروع ليست لمندوب الجهة
@@ -73,7 +78,7 @@ public class StatisticsHeadScopeIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_LawyerWithBranch_Succeeds()
     {
         // الضابط الإيجابي: المحامي داخل القائمة فيرى فترات ملفاته.
