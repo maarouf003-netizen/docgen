@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,15 +20,24 @@ namespace DocGenerator.Api.Tests;
 /// والزائر بـ<code>401</code>.
 /// </para>
 /// </summary>
-public class PortalScopeMatrixTests
+[Collection(PostgresApiTestCollection.Name)]
+public class PortalScopeMatrixTests : IAsyncLifetime
 {
     private const string EntryABranch = "مديرية ألف";
     private const string EntryBBranch = "مديرية باء";
 
-    [Fact]
+    private readonly PostgresApiFactory _factory;
+
+    public PortalScopeMatrixTests(PostgresApiFactory factory) => _factory = factory;
+
+    public Task InitializeAsync() => _factory.ResetAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [PostgresFact]
     public async Task PortalScope_IsolationMatrix_MatchesPolicy()
     {
-        using var factory = new ApiFactory();
+        var factory = _factory;
         var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
 
         int entryAId;
