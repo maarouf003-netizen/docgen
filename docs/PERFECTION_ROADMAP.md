@@ -388,6 +388,9 @@
     على `Postgres` مع `EXPLAIN`؛ وأول قياس حقيقي لبحث البوابة: ~11.8s بارد/~467ms دافئ
     على 10k مع `Seq Scan` — دليل رقمي لـ`P3-02`
     (`docs/audit/76-p1-08a2-schema-search-20261119.md`).
+  - **`8a/4a`:** `OptimisticConcurrencyTests` + `TransferConcurrencyTests` (25 حالة)
+    على `Postgres` بجلسات سياقات متعددة على قاعدة واحدة
+    (`docs/audit/77-p1-08a4a-optimistic-transfer-20261119.md`).
   - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
     `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
     أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.

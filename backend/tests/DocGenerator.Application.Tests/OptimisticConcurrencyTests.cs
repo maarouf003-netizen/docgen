@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
@@ -14,11 +13,22 @@ namespace DocGenerator.Application.Tests;
 /// (3) تحديث انطلاقًا من نسخة قديمة يُرفض بـ<c>DbUpdateConcurrencyException</c> (409)؛
 /// (4) الحارس المبكر يرفض النسخة القديمة برسالة ودية، ويقبل الغياب (توافق خلفي).
 /// </summary>
-public class OptimisticConcurrencyTests : IDisposable
+public class OptimisticConcurrencyTests : IAsyncLifetime
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
+    private PostgresTestDb _pg = null!;
+    private DocGeneratorPostgresDbContext _db = null!;
 
-    public void Dispose() => _db.Dispose();
+    public async Task InitializeAsync()
+    {
+        _pg = await PostgresTestDb.CreateAsync();
+        _db = _pg.CreateContext();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _db.DisposeAsync();
+        await _pg.DisposeAsync();
+    }
 
     private Branch SeedBranch(string code = "DAM", string name = "دمشق")
     {
@@ -28,7 +38,7 @@ public class OptimisticConcurrencyTests : IDisposable
         return branch;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ModifiedVersionedRow_GetsVersionIncremented_BySaveChanges()
     {
         var branch = SeedBranch();
@@ -43,7 +53,7 @@ public class OptimisticConcurrencyTests : IDisposable
         Assert.Equal(1, stored.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsecutiveWrites_KeepIncrementingVersion()
     {
         var branch = SeedBranch();
@@ -56,7 +66,7 @@ public class OptimisticConcurrencyTests : IDisposable
         Assert.Equal(2, branch.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExplicitVersionByWriter_IsNotDoubled()
     {
         var branch = SeedBranch();
@@ -69,22 +79,19 @@ public class OptimisticConcurrencyTests : IDisposable
         Assert.Equal(7, branch.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StaleUpdate_ThrowsConcurrencyException()
     {
-        await using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        var options = TestDb.CreateOptions(connection);
+        var options = _pg.Options;
 
-        await using (var seed = new DocGeneratorDbContext(options))
+        await using (var seed = new DocGeneratorPostgresDbContext(options))
         {
-            await seed.Database.EnsureCreatedAsync();
             seed.Branches.Add(new Branch { Name = "حمص", Code = "HMS", Governorate = "حمص" });
             await seed.SaveChangesAsync();
         }
 
-        await using var first = new DocGeneratorDbContext(options);
-        await using var second = new DocGeneratorDbContext(options);
+        await using var first = new DocGeneratorPostgresDbContext(options);
+        await using var second = new DocGeneratorPostgresDbContext(options);
 
         var winner = await first.Branches.SingleAsync(b => b.Code == "HMS");
         var loser = await second.Branches.SingleAsync(b => b.Code == "HMS");
@@ -98,7 +105,7 @@ public class OptimisticConcurrencyTests : IDisposable
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public void Guard_RejectsStaleVersion_WithDocumentConflict()
     {
         var branch = new Branch { Id = 1, Version = 3 };
@@ -109,7 +116,7 @@ public class OptimisticConcurrencyTests : IDisposable
         Assert.Contains("أعد التحميل", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public void Guard_AcceptsMatchingOrAbsentVersion()
     {
         var branch = new Branch { Id = 1, Version = 3 };
@@ -118,7 +125,7 @@ public class OptimisticConcurrencyTests : IDisposable
         OptimisticConcurrencyGuard.EnsureCurrent(branch, null, "الفرع");
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(typeof(Document))]
     [InlineData(typeof(DocumentAppeal))]
     [InlineData(typeof(DocumentDelegation))]
@@ -144,7 +151,7 @@ public class OptimisticConcurrencyTests : IDisposable
         Assert.False(property.IsNullable);
     }
 
-    [Fact]
+    [PostgresFact]
     public void VersionedEntities_ImplementTheSharedContract()
     {
         Assert.True(typeof(IVersionedEntity).IsAssignableFrom(typeof(Branch)));

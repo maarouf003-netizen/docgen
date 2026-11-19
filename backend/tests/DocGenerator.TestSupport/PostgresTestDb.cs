@@ -34,7 +34,10 @@ public sealed class PostgresTestDb : IAsyncDisposable
         ConnectionString = connectionString;
         _databaseName = databaseName;
         Options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
-            .UseNpgsql(connectionString)
+            // مهلة أوامر أوسع في قاعدة الاختبار فقط: بذور القياس (10k) والاستعلامات
+            // الثقيلة تتجاوز الافتراضي 30s تحت توازي التشغيل الكامل، فيتحول نجاح
+            // الحالة إلى فشل توقيت كاذب. ليست مهلة إنتاجية.
+            .UseNpgsql(connectionString, npgsql => npgsql.CommandTimeout(180))
             .Options;
     }
 
@@ -82,7 +85,7 @@ public sealed class PostgresTestDb : IAsyncDisposable
                 baseConnectionString, templateName);
 
             var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
-                .UseNpgsql(connectionString)
+                .UseNpgsql(connectionString, npgsql => npgsql.CommandTimeout(180))
                 .Options;
             await using (var template = new DocGeneratorPostgresDbContext(options))
             {
