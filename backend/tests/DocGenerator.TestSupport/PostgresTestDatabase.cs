@@ -1,15 +1,14 @@
 using Npgsql;
 
-namespace DocGenerator.Api.Tests.TestHelpers;
+namespace DocGenerator.Testing;
 
 /// <summary>
 /// قاعدة <c>PostgreSQL</c> معزولة لاختبار حيّ واحد: إنشاء باسم عشوائي ثم إسقاط.
 ///
 /// <para><c>Pooling=false</c> مقصود: إسقاط القاعدة في النهاية يتطلب ألا تبقى
-/// اتصالات خاملة مفتوحة، وبديله <c>NpgsqlConnection.ClearAllPools()</c> يمسّ
-/// مجمّعات <b>كل</b> الاختبارات المتوازية — أثر عام غير مقبول.</para>
+/// اتصالات خاملة مفتوحة.</para>
 /// </summary>
-internal static class PostgresTestDatabase
+public static class PostgresTestDatabase
 {
     public static async Task<string> CreateAsync(string baseConnectionString, string databaseName)
     {
@@ -20,6 +19,25 @@ internal static class PostgresTestDatabase
             await connection.OpenAsync();
             await using var command = connection.CreateCommand();
             command.CommandText = $"CREATE DATABASE \"{databaseName}\"";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        builder.Database = databaseName;
+        return builder.ConnectionString;
+    }
+
+    /// <summary>يستنسخ قاعدة من قالب قائم (أسرع من الترحيل/الإنشاء لكل اختبار).</summary>
+    public static async Task<string> CloneAsync(
+        string baseConnectionString, string templateDatabase, string databaseName)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString) { Pooling = false };
+        var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" };
+        await using (var connection = new NpgsqlConnection(maintenance.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                $"CREATE DATABASE \"{databaseName}\" TEMPLATE \"{templateDatabase}\"";
             await command.ExecuteNonQueryAsync();
         }
 

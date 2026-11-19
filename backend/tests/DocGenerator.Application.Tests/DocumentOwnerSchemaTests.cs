@@ -1,48 +1,46 @@
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// التحقق من تقوية "المحامي المختص الإلزامي": عمود CreatedById يجب أن يكون
-/// NOT NULL في مخطط القاعدة، والعلاقة في النموذج إلزامية — فلا وجود للملفات اليتيمة.
+/// حارس دلالة "المالك مسؤول عن الملف": عمود <c>CreatedById</c> غير قابل للفراغ في
+/// مخطط <c>PostgreSQL</c> الفعلي، والنموذج يعلن العلاقة مطلوبة — فلا يُنشأ ملف بلا مالك.
 /// </summary>
-public class DocumentOwnerSchemaTests
+public class DocumentOwnerSchemaTests : IAsyncLifetime
 {
-    [Fact]
+    private PostgresTestDb _db = null!;
+
+    public async Task InitializeAsync() => _db = await PostgresTestDb.CreateAsync();
+
+    public async Task DisposeAsync() => await _db.DisposeAsync();
+
+    [PostgresFact]
     public async Task CreatedById_Column_IsNotNullableInSchema()
     {
-        await using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(connection).Options;
-        await using var db = new DocGeneratorDbContext(options);
-        db.Database.EnsureCreated();
+        await using var db = _db.CreateContext();
 
-        var cmd = db.Database.GetDbConnection().CreateCommand();
-        cmd.CommandText = "PRAGMA table_info('Documents')";
-        await using var reader = await cmd.ExecuteReaderAsync();
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = """
+            SELECT is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'Documents'
+              AND column_name = 'CreatedById'
+            """;
 
-        var found = false;
-        while (await reader.ReadAsync())
-        {
-            if (reader.GetString(1) == "CreatedById")
-            {
-                found = true;
-                Assert.Equal(1L, reader.GetInt64(3));
-            }
-        }
+        await db.Database.OpenConnectionAsync();
+        var value = (string?)await cmd.ExecuteScalarAsync();
 
-        Assert.True(found, "العمود CreatedById غير موجود في جدول Documents");
+        Assert.False(string.IsNullOrEmpty(value), "العمود CreatedById مفقود من جدول Documents");
+        Assert.Equal("NO", value);
     }
 
-    [Fact]
+    [PostgresFact]
     public void CreatedBy_Relationship_IsRequiredInModel()
     {
-        using var db = new DocGeneratorDbContext(
-            new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite("DataSource=:memory:").Options);
+        using var db = new DocGeneratorPostgresDbContext(_db.Options);
 
         var property = db.Model.FindEntityType(typeof(Document))!.FindProperty("CreatedById");
         Assert.NotNull(property);

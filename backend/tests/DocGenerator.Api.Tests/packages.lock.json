@@ -719,6 +719,15 @@
           "SQLitePCLRaw.bundle_e_sqlite3": "[3.0.5, )"
         }
       },
+      "docgenerator.testsupport": {
+        "type": "Project",
+        "dependencies": {
+          "DocGenerator.Infrastructure": "[1.0.0, )",
+          "Microsoft.EntityFrameworkCore": "(, )",
+          "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "xunit": "[2.5.3, )"
+        }
+      },
       "AngleSharp": {
         "type": "CentralTransitive",
         "requested": "[1.7.1, )",

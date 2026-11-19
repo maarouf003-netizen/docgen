@@ -1,5 +1,4 @@
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -9,15 +8,15 @@ namespace DocGenerator.Application.Tests;
 /// P0-03a: الإستراتيجية الواعية بالمعاملة تختار غير المعيدة **عند التنفيذ**
 /// داخل <c>CurrentTransaction</c>، حتى لو كان المزوّد مضبوطًا على إعادة المحاولة.
 /// </summary>
-public sealed class TransactionAwareExecutionStrategyTests : IDisposable
+public sealed class TransactionAwareExecutionStrategyTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private PostgresTestDb _db = null!;
 
-    public TransactionAwareExecutionStrategyTests() => _connection.Open();
+    public async Task InitializeAsync() => _db = await PostgresTestDb.CreateAsync();
 
-    public void Dispose() => _connection.Dispose();
+    public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    [Fact]
+    [PostgresFact]
     public async Task OutsideTransaction_UsesRetryingStrategy()
     {
         using var db = NewContext();
@@ -38,7 +37,7 @@ public sealed class TransactionAwareExecutionStrategyTests : IDisposable
         Assert.Equal(42, result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InsideTransaction_DoesNotRetry()
     {
         using var db = NewContext();
@@ -58,13 +57,12 @@ public sealed class TransactionAwareExecutionStrategyTests : IDisposable
         Assert.Equal(1, attempts);
     }
 
-    private DocGeneratorDbContext NewContext()
+    private DocGeneratorPostgresDbContext NewContext()
     {
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection)
+        var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>(_db.Options)
             .ReplaceService<IExecutionStrategyFactory, RetryEnabledFactory>()
             .Options;
-        return new DocGeneratorDbContext(options);
+        return new DocGeneratorPostgresDbContext(options);
     }
 
     /// <summary>يفرض إعدادات إعادة المحاولة دون تغيير الحالة العامة في اختبارات أخرى.</summary>

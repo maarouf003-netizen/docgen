@@ -1,6 +1,6 @@
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
+using DocGenerator.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -12,27 +12,24 @@ namespace DocGenerator.Application.Tests;
 /// تعيد المحاولة مرة واحدة عند استثناء عابر محقون، ويثبت أن الـdelegate يُنفَّذ مرة
 /// واحدة فقط وأن الفشل يظهر للمستخدم مع تراجع كامل — لا إدراج مكرر ولا كتابة جزئية.
 /// </summary>
-public sealed class TransactionRunnerRetryTests : IDisposable
+public sealed class TransactionRunnerRetryTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection;
+    private PostgresTestDb _db = null!;
 
-    public TransactionRunnerRetryTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-    }
+    public async Task InitializeAsync() => _db = await PostgresTestDb.CreateAsync();
 
-    public void Dispose() => _connection.Dispose();
+    public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    [Fact]
-    public async Task RunAsync_WithRetryingStrategyConfigured_DoesNotRetryTheDelegate()
-    {
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection)
+    /// <summary>خيارات قاعدة الاختبار نفسها مع إستراتيجية معيدة محقونة.</summary>
+    private DbContextOptions<DocGeneratorPostgresDbContext> RetryOptions()
+        => new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>(_db.Options)
             .ReplaceService<IExecutionStrategyFactory, RetryOnceExecutionStrategyFactory>()
             .Options;
-        await using var db = new DocGeneratorDbContext(options);
-        await db.Database.EnsureCreatedAsync();
+
+    [PostgresFact]
+    public async Task RunAsync_WithRetryingStrategyConfigured_DoesNotRetryTheDelegate()
+    {
+        await using var db = new DocGeneratorPostgresDbContext(RetryOptions());
         var tx = new TransactionRunner(db);
         var attempts = 0;
 
@@ -51,15 +48,10 @@ public sealed class TransactionRunnerRetryTests : IDisposable
         Assert.Empty(await db.Branches.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_WithRetryingStrategyConfigured_DoesNotRetryBeforeAnyWrite()
     {
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection)
-            .ReplaceService<IExecutionStrategyFactory, RetryOnceExecutionStrategyFactory>()
-            .Options;
-        await using var db = new DocGeneratorDbContext(options);
-        await db.Database.EnsureCreatedAsync();
+        await using var db = new DocGeneratorPostgresDbContext(RetryOptions());
         var tx = new TransactionRunner(db);
         var attempts = 0;
 
@@ -78,15 +70,10 @@ public sealed class TransactionRunnerRetryTests : IDisposable
         Assert.Empty(await db.Branches.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OutboxExecuteInTransaction_WithRetryingStrategyConfigured_DoesNotRetry()
     {
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection)
-            .ReplaceService<IExecutionStrategyFactory, RetryOnceExecutionStrategyFactory>()
-            .Options;
-        await using var db = new DocGeneratorDbContext(options);
-        await db.Database.EnsureCreatedAsync();
+        await using var db = new DocGeneratorPostgresDbContext(RetryOptions());
         var store = new HeadAlertOutboxStore(db);
         var attempts = 0;
 
@@ -106,15 +93,10 @@ public sealed class TransactionRunnerRetryTests : IDisposable
         Assert.Empty(await db.Branches.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_WithRetryingStrategyConfigured_CommitsOnFirstAttempt()
     {
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite(_connection)
-            .ReplaceService<IExecutionStrategyFactory, RetryOnceExecutionStrategyFactory>()
-            .Options;
-        await using var db = new DocGeneratorDbContext(options);
-        await db.Database.EnsureCreatedAsync();
+        await using var db = new DocGeneratorPostgresDbContext(RetryOptions());
         var tx = new TransactionRunner(db);
         var attempts = 0;
 

@@ -372,6 +372,22 @@
 
 #### `P1-08` — إزالة `SQLite` من الاختبارات
 
+- **الحالة (2026-11-19):** **جزئيًا — `ADR-0009` + البنية المشتركة + `8a/1` منفذة.**
+  - القرار: [ADR-0009](adr/0009-postgres-only-tests.md) — قاعدة اختبار واحدة
+    (`PostgreSQL`)، بلا `EF InMemory`، والخطة المرحلية في
+    [`P1-08-SQLITE-REMOVAL-PLAN.md`](P1-08-SQLITE-REMOVAL-PLAN.md).
+  - **بنية مشتركة:** `backend/tests/DocGenerator.TestSupport` يحوي
+    `PostgresTestEnvironment`/`PostgresTestDatabase`/`PostgresFact`/`PostgresTheory`
+    و`PostgresTestDb` (قالب واحد لكل تشغيل + استنساخ لكل اختبار)، ويستهلكه
+    `Api.Tests` (حُذفت نسخه المحلية) و`Application.Tests`.
+  - **`8a/1`:** 4 أصناف (10 حالات) في `Application.Tests` تعمل الآن على
+    `PostgreSQL` بدل `SQLite`: المعاملات/إعادة المحاولة/الوحدة/مالك المستند
+    (`docs/audit/75-p1-08a1-test-support-20261119.md`).
+  - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
+    `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
+    أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.
+  - **المتبقي:** مراحل `8a/2`–`8a/5` (حارسا المخطط، القياس، التزامن، `TestDb`
+    المركزي)، ثم `8b` (‏`Api.Tests` و`ApiFactory`)، ثم `8c` (حذف الحزم).
 - **العمل:** بعد `P1-01`، حذف `Microsoft.EntityFrameworkCore.Sqlite`، `TestDb`، وكل `UseSqlite` من الاختبارات.
 - **DoD:** لا مرجع لـSQLite في `src` أو `tests`.
 
