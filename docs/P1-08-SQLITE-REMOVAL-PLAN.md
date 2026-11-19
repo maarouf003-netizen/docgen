@@ -36,9 +36,9 @@
 | المرحلة | النطاق | الحالة |
 |---|---|---|
 | `8a/1` | البنية المشتركة + دفعة المعاملات/الوحدة/مالك المستند في `Application.Tests` | ✅ |
-| `8a/2` | إعادة كتابة `SchemaIntegrityTests` على `information_schema`/`pg_indexes` | ⏳ |
-| `8a/3` | `PortalSearchMeasurementTests` + `SecurityTests` (تزامن على `Postgres`) | ⏳ |
-| `8a/4` | مجموعات التزامن الثمانية المتبقية (ملفات `SQLite` → نُسخ `Postgres`) | ⏳ |
+| `8a/2` | إعادة كتابة `SchemaIntegrityTests` على `information_schema`/`pg_indexes` | ✅ |
+| `8a/3` | `PortalSearchMeasurementTests` على `Postgres` (‏`EXPLAIN`)؛ `SecurityTests` مع دفعة التزامن | ✅ (القياس) |
+| `8a/4` | `SecurityTests` + مجموعات التزامن الثمانية (ملفات `SQLite` → نُسخ `Postgres`) | ⏳ |
 | `8a/5` | `TestDb` المركزي (~80 ملفًا) → `PostgresTestDb`، وتخطّي صريح للاختبارات | ⏳ |
 | `8b/1` | `ApiFactory` على `Postgres` فقط + المجموعات الـ29 والـ3 والمصنعان | ⏳ |
 | `8b/2` | مصانع المضيف السبعة (`TestDatabase`) + حذف `TestDatabase` | ⏳ |
