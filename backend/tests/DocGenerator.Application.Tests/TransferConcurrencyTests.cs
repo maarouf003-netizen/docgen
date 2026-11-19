@@ -1,7 +1,6 @@
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
@@ -9,19 +8,18 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// اختبارات حارس التفاؤلية في النقل المتزامن (TransferOwnerAsync):
 /// يفشل التحديث الشرطي إذا تغيّر المحامي المختص بين القراءة والتحديث.
-/// تُحاكى الجلسات المتزامنة بمُـDbContextـَين يشتركان في نفس اتصال SQLite.
+/// تُحاكى الجلسات المتزامنة بمُـDbContextـَين على قاعدة <c>PostgreSQL</c> واحدة.
 /// </summary>
 public class TransferConcurrencyTests
 {
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferOwner_WhenOwnerIsFresh_SucceedsAndMovesDocument()
     {
-        await using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        Seed(TestDb.CreateOptions(connection));
+        await using var pg = await PostgresTestDb.CreateAsync();
+        Seed(pg.Options);
 
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
+        await using var db = new DocGeneratorPostgresDbContext(pg.Options);
         var repo = new DocumentRepository(db);
 
         var transferred = await repo.TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
@@ -34,15 +32,14 @@ public class TransferConcurrencyTests
         Assert.NotNull(transferred.ReferredAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferOwner_WhenOwnerChangedConcurrently_Fails()
     {
-        await using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        Seed(TestDb.CreateOptions(connection));
+        await using var pg = await PostgresTestDb.CreateAsync();
+        Seed(pg.Options);
 
         // أول نقل (جلسة أ): المحامي المختص الحالي 1 ما زال متوقعاً → ينجح.
-        await using (var dbA = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
+        await using (var dbA = new DocGeneratorPostgresDbContext(pg.Options))
         {
             var transferred = await new DocumentRepository(dbA)
                 .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
@@ -50,7 +47,7 @@ public class TransferConcurrencyTests
         }
 
         // نقل ثانٍ (جلسة ب) بنفس التوقع القديم 1: المحامي المختص أصبح 2 → يفشل (تعارض).
-        await using (var dbB = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
+        await using (var dbB = new DocGeneratorPostgresDbContext(pg.Options))
         {
             var transferred = await new DocumentRepository(dbB)
                 .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 3, "خالد", "سامر");
@@ -58,7 +55,7 @@ public class TransferConcurrencyTests
         }
 
         // التحقق من أن القيمة الفعلية في القاعدة بقيت من النقل الناجح الأول.
-        await using (var verify = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
+        await using (var verify = new DocGeneratorPostgresDbContext(pg.Options))
         {
             var doc = await verify.Documents.SingleAsync();
             Assert.Equal(2, doc.CreatedById);
@@ -66,10 +63,9 @@ public class TransferConcurrencyTests
         }
     }
 
-    private static void Seed(DbContextOptions<DocGeneratorDbContext> options)
+    private static void Seed(DbContextOptions<DocGeneratorPostgresDbContext> options)
     {
-        using var db = new DocGeneratorDbContext(options);
-        db.Database.EnsureCreated();
+        using var db = new DocGeneratorPostgresDbContext(options);
         db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         db.SaveChanges();
         db.Users.AddRange(
