@@ -25,12 +25,23 @@ public class DbExceptionClassifierTests
         Assert.True(_classifier.IsUniqueViolation(ex));
     }
 
-    [Fact]
-    public void IsUniqueViolation_NonUniqueDbError_False()
+    [Theory]
+    [InlineData("23503")] // foreign_key_violation
+    [InlineData("23502")] // not_null_violation
+    [InlineData("23514")] // check_violation
+    public void IsUniqueViolation_OtherConstraintCodes_False(string sqlState)
     {
-        // خرق FK/NOT NULL/CHECK لا يُصنَّف تفردًا وإلا تحوّل عطل بيانات حقيقي إلى
-        // 409 «قيمة مكررة» في المعالج العام.
-        var ex = new DbUpdateException("فشل حفظ", Postgres("23503"));
+        // رمز 23xxx غير 23505 (FK/NOT NULL/CHECK) لا يجوز أن يُصنَّف تفردًا وإلا تحوّل
+        // عطل بيانات حقيقي إلى 409 «قيمة مكررة» في المعالج العام.
+        var ex = new DbUpdateException("فشل حفظ", Postgres(sqlState));
+        Assert.False(_classifier.IsUniqueViolation(ex));
+    }
+
+    [Fact]
+    public void IsUniqueViolation_UnknownSqlState_False()
+    {
+        // Fail-safe: خطأ مزوّد برمز لا نعرفه (أو بلا 23505) يبقى 500 لا 409.
+        var ex = new DbUpdateException("فشل حفظ", Postgres("XX000", "IX_Users_Username"));
         Assert.False(_classifier.IsUniqueViolation(ex));
     }
 

@@ -11,8 +11,9 @@
    (مع تفريغ `IMemoryCache` وإعادة البذر). أُزيل `_dbPath` وراية `usePostgres`
    واستبدال السياق بـ`SQLite`. وبقي `PostgresApiFactory` غلافًا للتوافق حتى لا تتغيّر
    أسماء المجموعات/الأصناف.
-2. **تبويب API:** 37 ملفًا حُوّل إلى `[PostgresFact]`/`[PostgresTheory]`؛ فبلا
-   `DOCGEN_TEST_POSTGRES` تُتخطّى صراحةً (909 ناجحة/590 متخطّاة آنذاك) بدل فشل المصنع.
+2. **تبويب API:** **41** ملفًا اكتسب `[PostgresFact]`/`[PostgresTheory]` في هذه الجولة
+   (المشروع كله صار **83** ملفًا مبوَّبًا)؛ فبلا `DOCGEN_TEST_POSTGRES` تُتخطّى صراحةً
+   (901 ناجحة/600 متخطّاة) بدل فشل المصنع.
 3. **مصانع المضيف السبعة:** `PostgresHostDatabase` جديدة (نسخة من قالب مهاجَر + إسقاط،
    أو قاعدة فارغة عند `migrate: false`) استُخدمت في
    `AllowedHosts`/`SecurityHeaders`/`Swagger`/`ProductionSpa`/حارس الإنتاج،
@@ -97,17 +98,48 @@
 على `max_connections=100` يُنتج `53300 too many clients`؛ لذلك البوابة الرسمية تبقى
 تسلسلية كما في `CI`، والمشغّل المتوازي `scripts/test-backend-local.sh` موثَّق بشرط ≥300.
 
-## 4. التحقق
+## 4. مراجعة نقدية بعد أول تشغيل أخضر (نتائجها وما أُصلح)
+
+1. **نقص تغطية مُخفى في عدّ الاختبارات:** `Application.Tests` نزل من **2489** إلى
+   **2484**. السبب ليس حذفًا عشوائيًا: حالتان (`Theory` بستّ حالات) كانتا تختبران رموز
+   `SQLite` الموسّعة، فاستُبدلتا بحالتين فقط. النقص يعني ضياع تأكيد أن `23502`
+   (‏NOT NULL) و`23514` (‏CHECK) **ليستا** تفردًا، وأن الرمز غير المعروف يبقى 500.
+   أُعيدت التغطية بصيغة `Postgres`: `[Theory]` لـ`23503`/`23502`/`23514` + حالة
+   `XX000` (‏fail-safe) ⇒ العدّ يعود **2487**. الفارق المتبقي (-2 عن 2489) مقصود: رمزا
+   `SQLITE_CONSTRAINT_PRIMARYKEY/ROWID` لا مقابل لهما في `PostgreSQL` (التفرد كله
+   `23505`)، وحالة «رمز 19 بلا رمز موسّع» يقابلها `XX000`.
+2. **فرع مزوّد ثالث يُسقط قفلًا (لم يُرصد في الجولة الأولى):**
+   `HeadAlertOutboxStore.ClaimCandidateAsync` كان يقرأ بلا `FOR UPDATE SKIP LOCKED` إن
+   لم يكن المزوّد `Npgsql` — أي مسار «التقاط مزدوج» صامت لو غاب المزوّد. أُزيل الفرع،
+   وصار الاستعلام الوحيد هو ذا `SKIP LOCKED`.
+3. **دقّة نوع:** `PostgresTestDb` كان يملك `Dispose()` عامًّا بلا تطبيق `IDisposable`
+   (يعمل مع `await using` فقط). أُضيف الواجهة صريحًا كي لا يُستعمل النمط الخطأ لاحقًا.
+
+**فجوات مقبولة وموثّقة (لا تُغلق في هذه المرحلة):**
+
+- `DatabaseInitializer.GetInvalidRegistryYearIdsAsync` يحتفظ بفرع C# بديل (تحقق قراءة
+  فقط، لا قفل ولا كتابة) غير قابل للوصول بعد `P1-08`؛ إزالته تنظيف مستقل لا يغيّر سلوك
+  `PostgreSQL` — تُترك لتجنّب لمس منطق تحقّق المخطط في جولة إعادة هيكلة.
+- `postgres-suite-guard` يكتشف المجموعات عبر `PostgresApiFactory`/`Collection`/`new
+  PostgresApiFactory`، ولا يكتشف صنفًا مُبوَّبًا بـ`[PostgresFact]` وحده
+  (مثل `PostgresTestDbDisposeTests`). شبكة الأمان تغطي التخطّي (`NotExecuted`) لا
+  «غياب الصنف من `trx`». الفجوة قديمة، وموثّقة هنا لتُعالج في توسيع الحارس.
+- `Application.Tests` يبني قالبه بـ`EnsureCreated` (‏`docs/audit/79` §5): لا مشغّلات
+  هجرة ولا `CK_Documents_FileNumberRequiresCircuit` هناك، ولا اختبار فيه يعتمد عليها؛
+  طبقة القاعدة الحقيقية تُغطَّى في `Api.Tests` بمصنع مهاجَر.
+
+## 5. التحقق
 
 | البوابة | النتيجة |
 |---|---|
 | `dotnet build -warnaserror` | 0 تحذير / 0 خطأ |
 | `dotnet format --verify-no-changes` | نظيف (`format=0`) |
-| `Application` / `PostgreSQL` | **2484/2484** · 0 فشل · 0 تخطٍّ · 16m28s |
+| `Application` / `PostgreSQL` | **2487/2487** · 0 فشل · 0 تخطٍّ · 12m21s (بعد استعادة تغطية المصنّف) |
 | `Api` / `PostgreSQL` (متوازية) | **1548/1548** · 0 فشل · 0 تخطٍّ |
 | `Api` / `PostgreSQL` (`Sequential`) | **5/5** · 0 فشل |
-| `Application` بلا `PostgreSQL` | 739 ناجحة · **1645 متخطّاة** · 0 فشل |
-| `Api` بلا `PostgreSQL` | 901 ناجحة · **600 متخطّاة** · 0 فشل |
+| `Api` بعد إصلاحات المراجعة (‏`HeadAlert`/`Outbox`/حارس التنظيف/المعالج) | 35/35 |
+| `Application` بلا `PostgreSQL` | 742 ناجحة · 1645 متخطّاة · 0 فشل |
+| `Api` بلا `PostgreSQL` | 901 ناجحة · 600 متخطّاة · 0 فشل |
 | `Architecture` | 29/29 |
 | حارس الجمود `PostgresTestDbDisposeTests` | 1/1 |
 | الحراس الثمانية (‏`subhead`/`determinism`/`migration-watchlist`/`migration-safety`/`secrets`/`postgres-suite`/`test-report`/`npm-audit`) | نظيفة |
@@ -122,7 +154,7 @@
 ولا مرور صامت؛ وفي `CI` يمنع `DOCGEN_REQUIRE_POSTGRES=1` أي تخطٍّ داخل
 `backend-postgres` (حارس `postgres-suite-guard.mjs` يتحقق من تنفيذ كل مجموعة).
 
-## 5. الحدود
+## 6. الحدود
 
 - `P1-08` مكتملة: لا `TestDb`/`TestDatabase`، ولا `UseSqlite`/`SqliteException` في
   `src`/`tests`، ولا فرع مزوّد بديل في `src`؛ وبقيت إشارات تاريخية في تعليقات توضيحية

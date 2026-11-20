@@ -22,7 +22,7 @@ namespace DocGenerator.Testing;
 /// <para>يفترض أن يستدعيه اختبار مُعلَّم بـ<see cref="PostgresFactAttribute"/>؛
 /// ويُرمى استثناء صريح إن غابت السلسلة كي لا يمرّ اختبار غير مُبوَّب صامتًا.</para>
 /// </summary>
-public sealed class PostgresTestDb : IAsyncDisposable
+public sealed class PostgresTestDb : IAsyncDisposable, IDisposable
 {
     private static readonly object TemplateGate = new();
     private static readonly object CleanupGate = new();

@@ -54,7 +54,10 @@ public sealed class PostgresHostDatabase : IDisposable
                 + "لقاعدة اختبار حيّة — لا تُشغَّل هذه المجموعة على SQLite.");
 
         var databaseName = "docgen_host_" + Guid.NewGuid().ToString("N")[..16];
-        var connectionString = PostgresTestDatabase.Create(baseConnectionString, databaseName);
+        // بلا تجميع كما كان في المسار غير المتزامن السابق: القاعدة فارغة ومؤقتة
+        // وتُسقط في النهاية، فلا فائدة من إبقاء اتصالات خاملة عليها.
+        var connectionString = PostgresTestDatabase.Create(
+            baseConnectionString, databaseName, pooling: false);
 
         return new PostgresHostDatabase(baseConnectionString, databaseName, connectionString);
     }
