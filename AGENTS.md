@@ -26,9 +26,12 @@
 
 - **النموذج (Frontend)**: حقل نص عادي (`type="text"`) مع `placeholder="مثال: 1/8/2026"`، وتمرّ القيمة عند الإرسال عبر `normalizeArabicDigits(...).trim()` في `DocumentForm` قبل بناء الـ payload.
 - **العقد (DTO)**: يُرسَل ويُعاد كـ `string?` (وليس `DateTime?`) في الطلب والاستجابة.
-- **الخلفية (Service)**: كل تاريخ يُفسَّر عبر `ParseDateTime(value, "اسم الحقل")` (في `DocumentService`) الذي يحوّله إلى `DateTime?` باستخدام `ActionDateParser` بصيغه السبع: `d/M/yyyy`, `dd/MM/yyyy`, `d-M-yyyy`, `dd-MM-yyyy`, `yyyy-MM-dd`, `d/M/yy`, `dd/MM/yy` + بديل مرن `TryParse`.
+- **الخلفية (Service)**: كل تاريخ يُفسَّر عبر `DocumentValidator.ParseDateTime(value, "اسم الحقل")` (الذي يفوّض إلى `FreeDateParser.Parse` ← `ActionDateParser.TryParse`) فيحوّله إلى `DateTime?`. الصيغ المعتمدة **خمس فقط**، حتمية وبلا بديل مرن: `d/M/yyyy`, `dd/MM/yyyy`, `d-M-yyyy`, `dd-MM-yyyy`, `yyyy-MM-dd` (قرار المالك `RF-014`).
   - الترتيب **يوم/شهر/سنة** دائمًا (الرقم الأول يوم والثاني شهر): `1/8/2026` = 1 آب 2026.
+  - **السنة بأربع خانات إلزامية**: `1/8/26` مرفوض (لا عتبة `TwoDigitYearMax` صامتة تجعل `30` = 1930)، وأي نص خارج الصيغ الخمس مرفوض (`1.8.2026`، `August 1, 2026`، `01/13/2026`)، وبلا بديل مرن يعتمد على ثقافة الخادم أو يتجاهل المسافات.
+  - الأرقام العربية/الفارسية تُطبَّع إلى `ASCII` قبل التحليل (`ArabicDigitNormalizer`)، فـ `١/٨/٢٠٢٦` صالحة.
   - الفارغ/الأبيض → `null`؛ والقيمة غير الصالحة (غير الفارغة) تُرفض برسالة: `"{اسم الحقل} غير صالح — استخدم مثال: 1/8/2026"`.
+  - المراجع الحاكمة: `ActionDateParserTests` و`RF014DateAcceptanceTests` و`docs/audit/units/RF-014.md`.
 - **التخزين (Entity/DB)**: يُخزَّن `DateTime?`؛ والاستجابة تنسّقه `"yyyy-MM-dd"` (InvariantCulture) ليُعرض نصًا، وتُقبل الصيغة ISO عند إعادة الإرسال.
 - **حالات لا يتغير فيها الكيان**: إذا كان التخزين الحالي `DateTime?` فلا حاجة لهجرة، إلا إذا تغيّر نوع العمود نفسه.
 - **مثال مرجعي مطبّق**: `RegistrationDate` (المتجر المسجل) و`LicenseDate` (المتجر غير المسجل) في `AssetDto` و`ApplicantSideSections.tsx`.
