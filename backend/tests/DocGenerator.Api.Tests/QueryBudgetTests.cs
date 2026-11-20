@@ -48,7 +48,7 @@ public class QueryBudgetTests
     /// <summary>سقف قائمة البوابة (15 صفًا): القياس 14 + هامش 4.</summary>
     private const int PortalListBudgetForFifteenRows = 18;
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentsList_PageOfFifteen_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -71,7 +71,7 @@ public class QueryBudgetTests
             $"تجاوزت قائمة المستندات ميزانية الاستعلامات: {counter.Count} > {ListBudgetForFifteenRows}");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentDetail_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -90,7 +90,7 @@ public class QueryBudgetTests
             $"تجاوزت تفاصيل المستند ميزانية الاستعلامات: {counter.Count} > {DetailBudget}");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentsExport_WithFifteenRows_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -114,7 +114,7 @@ public class QueryBudgetTests
     }
 
     /// <summary>سجل التدقيق (15 صفًا): العدد لا ينمو مع الصفوف.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task AuditLog_PageOfFifteen_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -145,7 +145,7 @@ public class QueryBudgetTests
     }
 
     /// <summary>سجل تغييرات مستند (مجموعات + حقول): بلا استعلام لكل مجموعة/حقل.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task DocumentChanges_StayWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -186,7 +186,7 @@ public class QueryBudgetTests
     }
 
     /// <summary>إحصاءات الدوائر (15 دائرة): استعلامات تجميعية ثابتة لا دائرية.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_WithFifteenCircuits_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();
@@ -218,7 +218,7 @@ public class QueryBudgetTests
     }
 
     /// <summary>قائمة البوابة (15 ملفًا): النطاق يُحسب مرة، والصفوف لا تضيف استعلامات.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task PortalFiles_PageOfFifteen_StaysWithinQueryBudget()
     {
         using var factory = new ApiFactory();

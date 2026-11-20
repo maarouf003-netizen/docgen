@@ -43,7 +43,7 @@ public class SecurityHeadersIntegrationTests
         return Assert.Single(values);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AnonymousEndpoint_CarriesSecurityHeaders()
     {
         var client = _factory.CreateClient();
@@ -52,7 +52,7 @@ public class SecurityHeadersIntegrationTests
         AssertSecurityHeaders(response);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuthenticatedEndpoint_CarriesSecurityHeaders()
     {
         var client = _factory.AuthorizedClient("admin");
@@ -61,7 +61,7 @@ public class SecurityHeadersIntegrationTests
         AssertSecurityHeaders(response);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApiResponse_IsNotCacheable()
     {
         var client = _factory.CreateClient();
@@ -71,7 +71,7 @@ public class SecurityHeadersIntegrationTests
         Assert.Equal("no-store", Single(response, "Cache-Control"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Development_AllowsViteOrigin()
     {
         var client = _factory.CreateClient();
@@ -82,7 +82,7 @@ public class SecurityHeadersIntegrationTests
         Assert.Equal("http://localhost:5173", Single(response, "Access-Control-Allow-Origin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Production_RejectsViteOrigin()
     {
         using var prod = new ProductionFactory();

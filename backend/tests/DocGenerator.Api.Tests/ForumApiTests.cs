@@ -29,14 +29,14 @@ public class ForumApiTests
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)
         => JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 
-    [Fact]
+    [PostgresFact]
     public async Task AnonymousList_Returns401()
     {
         var response = await _factory.CreateClient().GetAsync("/api/forum/messages");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DelegateList_Returns403()
     {
         var gate = await NewUserAsync("fdel", UserRole.EntityManager, null);
@@ -44,7 +44,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LawyerPost_ThenListContainsIt_WithUtcTimestamp()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -65,7 +65,7 @@ public class ForumApiTests
         Assert.Contains("تحية المنتدى", await list.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PostEmptyBody_Returns400WithArabicMessage()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -74,7 +74,7 @@ public class ForumApiTests
         Assert.Contains("نص الرسالة مطلوب", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PostMissingQuote_Returns400()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -83,7 +83,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UsersLookup_ReturnsIdentityParts_DelegateForbidden_AnonymousUnauthorized()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -108,7 +108,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PostMentionEndToEnd_CanonicalizesAndValidates()
     {
         var author = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -131,7 +131,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readers_OwnerSees_OthersForbidden()
     {
         var author = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -155,7 +155,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.Forbidden, foreign.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_LawyerForbidden_AdminSucceeds()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -176,7 +176,7 @@ public class ForumApiTests
         Assert.Contains("ثبّتني", await pinned.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAndDelete_OthersForbidden()
     {
         var author = await NewUserAsync("flaw", UserRole.Lawyer);
@@ -192,7 +192,7 @@ public class ForumApiTests
         Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnreadCount_ShapeAndDecrement()
     {
         var author = await NewUserAsync("flaw", UserRole.Lawyer);

@@ -14,7 +14,7 @@ public class MetaControllerTests : IClassFixture<ApiFactory>
 
     public MetaControllerTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task CurrentYear_AnonymousRequest_ReturnsOkWithYear()
     {
         using var client = _factory.CreateClient();
@@ -27,7 +27,7 @@ public class MetaControllerTests : IClassFixture<ApiFactory>
         Assert.InRange(currentYear, 2020, 2100);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CurrentYear_MatchesServerClockInConfiguredZone()
     {
         using var client = _factory.CreateClient();
@@ -41,7 +41,7 @@ public class MetaControllerTests : IClassFixture<ApiFactory>
         Assert.Equal(expected, currentYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CurrentYear_EntityManagerUser_IsAllowedThroughPortalGuard()
     {
         var user = await _factory.CreateUserAsync("meta_entitymanager", UserRole.EntityManager);

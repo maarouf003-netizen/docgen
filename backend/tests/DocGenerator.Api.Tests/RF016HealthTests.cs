@@ -6,7 +6,7 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public class RF016HealthTests
 {
-    [Fact]
+    [PostgresFact]
     public async Task Healthz_WithoutAuth_ReturnsHealthy()
     {
         using var factory = new ApiFactory();
@@ -18,7 +18,7 @@ public class RF016HealthTests
         Assert.Contains("Healthy", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readyz_WithReachableDatabaseAndEmptyOutbox_ReturnsHealthy()
     {
         using var factory = new ApiFactory();
@@ -30,7 +30,7 @@ public class RF016HealthTests
         Assert.Contains("Healthy", await response.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OutboxHealthz_WithEmptyOutbox_ReturnsHealthy()
     {
         using var factory = new ApiFactory();

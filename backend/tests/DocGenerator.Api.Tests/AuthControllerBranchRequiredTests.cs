@@ -63,7 +63,7 @@ public sealed class AuthControllerBranchRequiredTests
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_BranchRequired_ReturnsBadRequestWithGeneralMessage()
     {
         var controller = new AuthController(

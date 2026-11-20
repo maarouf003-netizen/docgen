@@ -45,7 +45,7 @@ public class ClientErrorsIntegrationTests
         return login!.Client;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Anonymous_WithValidCsrfPair_Returns401()
     {
         var client = AnonymousClientWithCsrfPair(_factory);
@@ -56,7 +56,7 @@ public class ClientErrorsIntegrationTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Authenticated_ValidReport_Returns202WithoutEcho()
     {
         var client = await FreshUserClientAsync();
@@ -69,7 +69,7 @@ public class ClientErrorsIntegrationTests
         Assert.DoesNotContain("عطل عرض", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MultilineMessageWithStack_Returns202WithoutEcho()
     {
         var client = await FreshUserClientAsync();
@@ -89,7 +89,7 @@ public class ClientErrorsIntegrationTests
         Assert.DoesNotContain("secret", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReportWithSecrets_Returns202WithoutEcho()
     {
         // `SEC-012`: حمولة تحمل بريدًا واعتمادًا تُقبل (`202` بلا صدى) — التجريد
@@ -111,7 +111,7 @@ public class ClientErrorsIntegrationTests
         Assert.DoesNotContain("Secret123", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OversizedMessage_Returns400()
     {
         var client = await FreshUserClientAsync();
@@ -122,7 +122,7 @@ public class ClientErrorsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FloodBeyondPerMinuteLimit_Returns429()
     {
         var client = await FreshUserClientAsync();
@@ -140,7 +140,7 @@ public class ClientErrorsIntegrationTests
         last.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntityManager_CanReport_Returns202()
     {
         var client = await FreshUserClientAsync(UserRole.EntityManager);

@@ -26,7 +26,7 @@ public class OpenApiContractTests
 
     public OpenApiContractTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task SwaggerDocument_MatchesTheCommittedContract()
     {
         var actual = await FetchCanonicalAsync();
@@ -45,7 +45,7 @@ public class OpenApiContractTests
         Assert.Equal(File.ReadAllText(snapshotPath).TrimEnd('\n'), actual);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SwaggerDocument_HoldsUniqueOperationIdsAndDeclaredPathParameters()
     {
         var root = JsonNode.Parse(await FetchRawAsync())!;

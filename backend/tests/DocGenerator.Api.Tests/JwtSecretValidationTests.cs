@@ -11,7 +11,7 @@ public class JwtSecretValidationTests
 
     public JwtSecretValidationTests(ApiFactory factory) => _factory = factory;
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("")]
     [InlineData("short")]
     [InlineData("1234567890123456789012345678901")]

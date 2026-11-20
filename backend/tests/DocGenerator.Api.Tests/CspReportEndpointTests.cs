@@ -18,7 +18,7 @@ public class CspReportEndpointTests
     private static StringContent CspBody(string json) =>
         new(json, Encoding.UTF8, "application/csp-report");
 
-    [Fact]
+    [PostgresFact]
     public async Task LegacyReport_AnonymousPostWithoutCsrf_Returns204()
     {
         var client = _factory.CreateClient();
@@ -40,7 +40,7 @@ public class CspReportEndpointTests
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReportingApiBatch_Returns204()
     {
         var client = _factory.CreateClient();
@@ -68,7 +68,7 @@ public class CspReportEndpointTests
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MalformedJson_Returns400WithArabicMessage()
     {
         var client = _factory.CreateClient();
@@ -85,7 +85,7 @@ public class CspReportEndpointTests
             json.RootElement.GetProperty("message").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnsupportedContentType_Returns415()
     {
         var client = _factory.CreateClient();
@@ -97,7 +97,7 @@ public class CspReportEndpointTests
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuthenticatedEntityManager_CanPostReport()
     {
         // حارس مندوب الجهة لا يجوز أن يحجب الجامع العام (M-1).
@@ -110,7 +110,7 @@ public class CspReportEndpointTests
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("/api/csp-reportXYZ")]
     [InlineData("/api/csp-report/extra")]
     [InlineData("/api/other")]

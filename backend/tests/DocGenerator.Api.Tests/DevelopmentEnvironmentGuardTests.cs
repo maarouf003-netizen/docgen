@@ -16,7 +16,7 @@ namespace DocGenerator.Api.Tests;
 [Collection(ApiTestCollection.Name)]
 public class DevelopmentEnvironmentGuardTests
 {
-    [Fact]
+    [PostgresFact]
     public void DevelopmentWithoutExplicitFlag_RefusesToStart()
     {
         using var factory = new UnflaggedDevelopmentFactory();

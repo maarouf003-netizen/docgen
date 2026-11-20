@@ -83,7 +83,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
             .Select(e => e.GetProperty("id").GetInt32()).ToList();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_HeadSeesDivisionAndNull_SubHeadSeesOwnOnly()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
@@ -109,7 +109,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         Assert.DoesNotContain(fNull, subIds);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Get_SingleDoc_CrossScope_Forbidden_ForwardException_AllowsHead()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
@@ -146,7 +146,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.OK, (await head.GetAsync($"/api/documents/{fileId}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_Single_OutOfScope_Forbidden()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
@@ -163,7 +163,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, transfer.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_Intersection_PreviewMatchesMoved()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
@@ -208,7 +208,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
             .Select(e => e.GetProperty("username").GetString() ?? string.Empty).ToList();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyers_MineMode_UnionRule_ViaHttp()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
@@ -237,7 +237,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         Assert.DoesNotContain(aUsername, subNames);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyers_BranchMode_FullList_BadMode_Rejected()
     {
         var head = Factory.AuthorizedClient("head1");
@@ -294,7 +294,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         return delegation.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegations_SubHeadSeesOwnDocCard_WithLiveTargetFields()
     {
         // البطاقة (§5.7): ملخص المناب الحي داخل عرض المنيب — قراءة بلا ملاحة.
@@ -320,7 +320,7 @@ public sealed class DocumentScopeIsolationTests : IsolatedApiTestBase
         Assert.NotNull(item.GetProperty("targetBranchName").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegations_CrossSection_Forbidden()
     {
         var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة-أ"));

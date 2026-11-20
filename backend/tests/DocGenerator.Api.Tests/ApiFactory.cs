@@ -11,14 +11,19 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using Respawn;
+using Respawn.Graph;
 
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// WebApplicationFactory الافتراضي بقاعدة SQLite مؤقتة معزولة لكل مجموعة اختبارات،
+/// WebApplicationFactory الافتراضي بقاعدة <c>PostgreSQL</c> فريدة لكل مجموعة اختبارات
+/// (هجرات EF الحقيقية + بذر التطوير + <see cref="ResetAsync"/> عبر <c>Respawn</c>)،
 /// مع إعدادات صريحة (Secret، RateLimiting، Swagger) — تطبيق حقيقي من Program.cs.
-/// المشتق <see cref="PostgresApiFactory"/> يبقي التطبيق على PostgreSQL حقيقي.
 /// يُستبدل مشتّق كلمات المرور الثقيل (PBKDF2-SHA256 بـ600k تكرار حاليًا) بنسخة سريعة مكافئة للسلوك
 /// (<see cref="FastTestPasswordHasher"/>) لأن تكلفته تُدفع عند كل تسجيل دخول/إنشاء مستخدم.
 /// </summary>
@@ -33,42 +38,34 @@ public class ApiFactory : WebApplicationFactory<Program>
     public const string TestJwtIssuer = "DocGenerator";
     public const string TestJwtAudience = "DocGeneratorClients";
 
-    private readonly string _dbPath = Path.Combine(
-        Path.GetTempPath(), $"docgen_it_{Guid.NewGuid():N}.db");
     private readonly string _logDir = Path.Combine(
         Path.GetTempPath(), $"docgen_it_logs_{Guid.NewGuid():N}");
+
+    private string? _baseConnectionString;
+    private string? _connectionString;
+    private string? _databaseName;
 
     /// <summary>
     /// يبني المضيف (الترحيلات + البذر) فورًا على خيط بلا <see cref="SynchronizationContext"/>،
     /// فلا تلتقط استمراريات <c>Program.cs</c> الداخلية سياق xUnit المتوازي (سبب قفل ميت
     /// موثّق عندما تعمل عدة مصانع مستقلة بالتوازي على عدّاء ضعيف الأنوية).
     /// </summary>
-    public ApiFactory() : this(usePostgres: false)
+    public ApiFactory()
     {
-    }
-
-    /// <summary>
-    /// المصانع المشتقة تختار المزوّد قبل بناء المضيف. الافتراضي (SQLite) يبقى مسار كل
-    /// الاختبارات القائمة؛ و<see cref="PostgresApiFactory"/> يمرّر <c>true</c>.
-    /// </summary>
-    protected ApiFactory(bool usePostgres)
-    {
-        UsePostgres = usePostgres;
         _ = Task.Run(() => Services).GetAwaiter().GetResult();
     }
 
-    /// <summary>هل يبني هذا المصنع قاعدة <c>PostgreSQL</c> حقيقية بدل SQLite المؤقتة؟</summary>
-    protected bool UsePostgres { get; }
+    /// <summary>سلسلة اتصال القاعدة المعزولة لهذا المصنع (بعد بناء المضيف).</summary>
+    public string ConnectionString =>
+        _connectionString
+        ?? throw new InvalidOperationException("لم تُهيَّأ قاعدة Postgres بعد.");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
         // الحارس H-02 (Program.cs) يشترط راية صريحة لبيئة Development. المصنع تطويري مقصود
-        // (قاعدة SQLite مؤقتة + بذر اختباري)، فتُعلَن الراية هنا بدل تعطيل الحارس.
+        // (قاعدة اختبار معزولة + بذر اختباري)، فتُعلَن الراية هنا بدل تعطيل الحارس.
         builder.UseSetting("Security:AllowDevelopmentEnvironment", "true");
-        // ADR-0001: لا مسار SQLite إنتاجي. الافتراضي سلسلة Postgres شكلية لتجاوز حارس
-        // الإقلاع ثم يُستبدل السياق بـSQLite داخل ConfigureTestServices؛ والمصنع
-        // المشتق PostgresApiFactory يضبط سلسلة قاعدة حقيقية هنا.
         ConfigureDatabaseSettings(builder);
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
@@ -76,15 +73,13 @@ public class ApiFactory : WebApplicationFactory<Program>
         // التوليد تحتاج تفعيله صراحةً في المصنع الاختباري.
         builder.UseSetting("DocumentGeneration:Enabled", "true");
         // مشغّل صندوق الصادر معطَّل في اختبارات التكامل: يعمل على القاعدة نفسها
-        // فيتنافس مع معاملات الاختبار على قفل SQLite (تشويش/تذبذب)، ومشغّله
-        // مغطّى باختبارات وحدة مستقلة.
+        // فيتنافس مع معاملات الاختبار على الصفوف، ومشغّله مغطّى باختبارات وحدة مستقلة.
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
-        // احتفاظ المنتدى معطَّل: تمريرة الإقلاع الفورية كانت تكتب على قاعدة SQLite
-        // بالتوازي مع تهيئة الاختبار، فتُنتج `database is locked` متقلبًا (مراجعة المرحلة 6).
+        // احتفاظ المنتدى معطَّل: تمريرة الإقلاع الفورية كانت تكتب على القاعدة
+        // بالتوازي مع تهيئة الاختبار، فتُنتج تذبذبًا في العدّادات (مراجعة المرحلة 6).
         builder.UseSetting("Forum:RetentionMonths", "0");
         // تجاوز كلمة بذر التطوير بقيمة اختبارية ثابتة (RF-006): القاعدة هنا معزولة
-        // (SQLite مؤقتة أو قاعدة Postgres فريدة) وتُحذَف في Dispose، فلا يصل هذا
-        // التجاوز لأي بيئة حقيقية.
+        // (قاعدة Postgres فريدة) وتُحذَف في Dispose، فلا يصل هذا التجاوز لأي بيئة حقيقية.
         builder.UseSetting("Bootstrap:DevSeedPassword", "123456");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
@@ -121,7 +116,8 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(ApiTestClock.Provider);
         });
 
-        // ADR-0001: السياق الفعلي للاختبار SQLite مؤقت — بعد تسجيل Npgsql في Program.
+        // P1-02b: التحقق من عمر التوكن يستخدم الساعة الثابتة نفسها التي يسكّ بها
+        // `TokenService` التوكن؛ وإلا صار التوكن منتهيًا فور إقلاع المصنع.
         builder.ConfigureTestServices(services =>
         {
             ConfigureDatabaseServices(services);
@@ -147,34 +143,112 @@ public class ApiFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
-    /// يضبط مزوّد قاعدة الاختبار قبل بناء المضيف. الافتراضي: سلسلة شكلية +
-    /// <c>AutoMigrate=false</c> ثم استبدال السياق بـSQLite. المصنع المشتق
-    /// <see cref="PostgresApiFactory"/> يستبدل هذا بالكامل بقاعدة حقيقية وهجرات.
+    /// ينشئ قاعدة <c>PostgreSQL</c> فريدة لهذا المصنع ويشغّل هجرات EF الحقيقية ثم البذر
+    /// (عبر <c>DatabaseInitializer</c> في Startup). إعادة البناء (‏`WithWebHostBuilder`)
+    /// تُعيد استخدام القاعدة نفسها بدل إنشاء قاعدة جديدة في كل نداء.
     /// </summary>
     protected virtual void ConfigureDatabaseSettings(IWebHostBuilder builder)
     {
-        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
-        builder.UseSetting("Database:AutoMigrate", "false");
+        if (_connectionString is not null)
+        {
+            builder.UseSetting("ConnectionStrings:DefaultConnection", _connectionString);
+            builder.UseSetting("Database:AutoMigrate", "true");
+            return;
+        }
+
+        _baseConnectionString = PostgresTestEnvironment.RequireOrSkip()
+            ?? throw new InvalidOperationException(
+                $"ApiFactory يتطلب {PostgresTestEnvironment.ConnectionStringVariable} "
+                + "لقاعدة اختبار حيّة — لا تُشغَّل هذه المجموعة على SQLite.");
+
+        _databaseName = "docgen_it_" + Guid.NewGuid().ToString("N")[..12];
+        _connectionString = PostgresTestDatabase
+            .CreateAsync(_baseConnectionString, _databaseName)
+            .GetAwaiter().GetResult();
+
+        builder.UseSetting("ConnectionStrings:DefaultConnection", _connectionString);
+        // الهجرات الحقيقية مقصودة: هذا المسار يختبر مخطط الإنتاج لا EnsureCreated.
+        builder.UseSetting("Database:AutoMigrate", "true");
     }
 
     /// <summary>
-    /// يستبدل تسجيلات السياق/المهيّئ في حيز الاختبار. الافتراضي: SQLite مع
-    /// <c>EnsureCreated</c>؛ والمشتق Postgres لا يستبدل شيئًا (يبقي السياق الحقيقي).
+    /// يعيد تسجيل السياق الحقيقي مع اعتراض <see cref="QueryCounter"/> (حارس N+1):
+    /// يبقى مزوّد `PostgreSQL` والهجرات كما هي، ويُحقن العدّاد في خيارات السياق
+    /// لقياس عدد الأوامر لكل طلب من الاختبار. Singleton لأنه يُقرأ بعد الطلب.
     /// </summary>
     protected virtual void ConfigureDatabaseServices(IServiceCollection services)
-        => TestDatabase.UseSqlite(services, $"Data Source={_dbPath};Default Timeout=30");
+    {
+        var queryCounter = new QueryCounter();
+        services.AddSingleton(queryCounter);
+
+        for (var i = services.Count - 1; i >= 0; i--)
+        {
+            var serviceType = services[i].ServiceType;
+            if (serviceType == typeof(DocGeneratorDbContext)
+                || serviceType == typeof(DocGeneratorPostgresDbContext)
+                || serviceType == typeof(DbContextOptions)
+                || serviceType == typeof(DbContextOptions<DocGeneratorDbContext>)
+                || serviceType == typeof(DbContextOptions<DocGeneratorPostgresDbContext>))
+            {
+                services.RemoveAt(i);
+            }
+        }
+
+        services.AddDbContext<DocGeneratorDbContext, DocGeneratorPostgresDbContext>((sp, options) =>
+            options
+                .UseNpgsql(ConnectionString, npgsql => npgsql.CommandTimeout(180))
+                .AddInterceptors(sp.GetRequiredService<QueryCounter>()));
+    }
+
+    /// <summary>
+    /// يفرّغ كل الجداول (عدا سجل الهجرات) عبر <c>Respawn</c> ثم يعيد بذر بيانات
+    /// التطوير الثابتة، فيبدأ كل اختبار من حالة معروفة بلا الاعتماد على ترتيب التنفيذ.
+    /// </summary>
+    public async Task ResetAsync()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        var respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
+        {
+            DbAdapter = DbAdapter.Postgres,
+            TablesToIgnore = [new Table("public", "__EFMigrationsHistory")],
+            WithReseed = true,
+        });
+        await respawner.ResetAsync(connection);
+
+        // `Respawn` يمسح القاعدة وحدها؛ ذاكرة التطبيق (`IMemoryCache`) تبقى حيّة بين
+        // الاختبارات، فمُخنِّقات مبنية على هوية مستخدم تتسرب بين اختبارات متتالية بعد
+        // إعادة البذر لأن معرفات المستخدمين تعود للبداية. تفريغها يجعل `ResetAsync` فعلًا
+        // «حالة معروفة» لا «قاعدة معروفة فقط».
+        if (Services.GetService<IMemoryCache>() is MemoryCache cache)
+            cache.Clear();
+
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        await DbSeeder.SeedAsync(db, hasher, devPassword: "123456");
+    }
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (!UsePostgres)
+        if (!disposing || _databaseName is null || _baseConnectionString is null)
+            return;
+
+        try
         {
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-            }
+            PostgresTestDatabase.DropAsync(_baseConnectionString, _databaseName)
+                .GetAwaiter().GetResult();
         }
-        try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
+        catch
+        {
+            // لا تُفشل جولة الاختبار بسبب تنظيف قاعدة مؤقتة.
+        }
+        finally
+        {
+            try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
+        }
     }
 
     private static int? BranchIdFromToken(string token)
@@ -290,7 +364,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         // القيد CK_Documents_FileNumberRequiresCircuit: كل مستند مرقّم في اختبارات
         // Postgres يحتاج دائرة حقيقية، وإلا صار الطلب غير صالح (400) لا خطأ خادم.
         int? circuitId = null;
-        if (registered && UsePostgres)
+        if (registered)
         {
             var branchId = BranchIdFromToken(token)
                 ?? throw new InvalidOperationException(

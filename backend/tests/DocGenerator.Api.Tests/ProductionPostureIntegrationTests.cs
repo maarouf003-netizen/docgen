@@ -14,7 +14,7 @@ public class ProductionPostureIntegrationTests : IClassFixture<ProductionSpaFact
 
     public ProductionPostureIntegrationTests(ProductionSpaFactory factory) => _factory = factory;
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("Security:HstsEnabled", "false")]
     [InlineData("Security:HttpsRedirectionEnabled", "false")]
     [InlineData("Security:CspReportOnly", "true")]
@@ -30,7 +30,7 @@ public class ProductionPostureIntegrationTests : IClassFixture<ProductionSpaFact
         Assert.Contains(key, exception.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public void CompliantProductionSettings_StartHost()
     {
         // المصنع مهيّأ أصلًا بوضع آمن (HSTS/إعادة توجيه/CSP صارم/مضيفون/بروكسي موثوق).
@@ -39,7 +39,7 @@ public class ProductionPostureIntegrationTests : IClassFixture<ProductionSpaFact
         Assert.NotNull(client);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Production_DoesNotAllowLocalhostCors()
     {
         // P2-03: سياسة `Vite` (localhost + credentials) للتطوير فقط؛ الإنتاج يخدم SPA

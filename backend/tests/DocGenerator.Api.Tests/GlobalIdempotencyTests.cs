@@ -45,7 +45,7 @@ public sealed class GlobalIdempotencyTests
         return await client.SendAsync(request);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DoubleCreate_SameKey_Replays201BodyAndLocation_WithoutSecondRow()
     {
         var client = _factory.AuthorizedClient("admin");
@@ -70,7 +70,7 @@ public sealed class GlobalIdempotencyTests
         Assert.Equal(1, await db.Branches.CountAsync(b => b.Code == code));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SameKey_DifferentBody_ExecutesFresh_PreservingRf011Contract()
     {
         var client = _factory.AuthorizedClient("admin");
@@ -92,7 +92,7 @@ public sealed class GlobalIdempotencyTests
         Assert.Equal(1, await db.Branches.CountAsync(b => b.Code == code2));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingReservation_SameFingerprint_ReturnsConflict()
     {
         var adminId = await _factory.UserIdAsync("admin");
@@ -113,7 +113,7 @@ public sealed class GlobalIdempotencyTests
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConcurrentSameKey_ExecutesAtMostOnce()
     {
         var client = _factory.AuthorizedClient("admin");
@@ -136,7 +136,7 @@ public sealed class GlobalIdempotencyTests
         Assert.Equal(1, await db.Branches.CountAsync(b => b.Code == code));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InvalidKey_ReturnsBadRequest_AndDoesNotCreate()
     {
         var code = $"ID_{Guid.NewGuid():N}"[..12].ToUpperInvariant();

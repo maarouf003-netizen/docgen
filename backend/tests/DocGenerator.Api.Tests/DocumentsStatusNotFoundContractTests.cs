@@ -25,7 +25,7 @@ public class DocumentsStatusNotFoundContractTests
 
     public DocumentsStatusNotFoundContractTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusEndpoints_ServiceReturnsFalse_Return404WithArabicMessageBody()
     {
         var login = await _factory.LoginAsync("lawyer1", "123456");

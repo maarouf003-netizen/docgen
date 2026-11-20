@@ -20,7 +20,7 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
 
     public CspProductionIntegrationTests(ProductionSpaFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task SpaDocument_CarriesEnforcedCspWithoutUpgradeDirective()
     {
         var client = _factory.CreateClient();
@@ -37,7 +37,7 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.False(response.Headers.Contains("Content-Security-Policy-Report-Only"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SpaDocument_StillCarriesBaselineSecurityHeaders()
     {
         var client = _factory.CreateClient();
@@ -57,7 +57,7 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Equal("no-cache", Assert.Single(response.Headers.GetValues("Pragma")));
     }
 
-    [Fact]
+    [PostgresFact]
     public void InvalidCspReportUri_FailsHostStartup()
     {
         using var factory = WithSettings(
@@ -69,7 +69,7 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Contains("Security:CspReportUri", exception.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public void TypoInCspReportUri_FailsHostStartup()
     {
         using var factory = WithSettings(
@@ -81,7 +81,7 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Contains("Security:CspReportUri", exception.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConfiguredCollector_AddsReportingHeadersToDocument()
     {
         using var factory = WithSettings(

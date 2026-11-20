@@ -138,7 +138,7 @@ public class WordGenerationIntegrationTests
         return await reader.ReadToEndAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_SeizureTemplate_ReturnsValidDocxWithFilledPlaceholders()
     {
         var token = await LoginLawyerAsync();
@@ -172,7 +172,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains($"{number} أساس", xml.Replace("&#10;", "\n"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_MissingTemplateParam_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
@@ -185,7 +185,7 @@ public class WordGenerationIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_UnknownTemplateCode_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
@@ -198,7 +198,7 @@ public class WordGenerationIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_NotFoundDocument_ReturnsNotFound()
     {
         var token = await LoginLawyerAsync();
@@ -210,7 +210,7 @@ public class WordGenerationIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_ByLawyerFromAnotherBranch_ReturnsForbidden()
     {
         var token = await LoginLawyerAsync();
@@ -225,7 +225,7 @@ public class WordGenerationIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_GuarantorNotice_WithRecipient_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -243,7 +243,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("سمير حسن علي", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_PropertySale_WithoutEstate_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
@@ -256,7 +256,7 @@ public class WordGenerationIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_PropertySale_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -275,7 +275,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("تمام عقارك رقم 12 من المنطقة العقارية المزة", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_PropertySalePaper_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -294,7 +294,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("تمام عقارك رقم 12 من المنطقة العقارية المزة", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_NoticePaper_WithRecipient_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -312,7 +312,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("أحمد", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_HeirNotice_WithHeirId_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -331,7 +331,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("عنوانه المزة", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_PropertySaleHeir_WithHeirId_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -349,7 +349,7 @@ public class WordGenerationIntegrationTests
         Assert.Contains("محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_HeirPaperNotice_WithHeirId_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
@@ -368,7 +368,7 @@ public class WordGenerationIntegrationTests
         Assert.DoesNotContain("عنوانه المزة", xml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Generate_PropertySeizure_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();

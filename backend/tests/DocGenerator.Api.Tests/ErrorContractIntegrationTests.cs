@@ -18,7 +18,7 @@ public class ErrorContractIntegrationTests
 
     public ErrorContractIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task InvalidModelState_ReturnsUnifiedProblemWithFieldErrors()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -42,7 +42,7 @@ public class ErrorContractIntegrationTests
         Assert.False(root.TryGetProperty("detail", out _));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MalformedJson_ReturnsUnifiedProblemWithArabicMessage()
     {
         var client = _factory.AuthorizedClient("lawyer1");
@@ -62,7 +62,7 @@ public class ErrorContractIntegrationTests
         Assert.False(root.TryGetProperty("title", out _));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ControllerNotFound_ReturnsUnifiedProblem()
     {
         var client = _factory.AuthorizedClient("lawyer1");

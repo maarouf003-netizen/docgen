@@ -40,7 +40,7 @@ public class RateLimitingIntegrationTests
         return authed;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LoginIpPolicy_BlocksFloodWith429()
     {
         using var factory = IsolatedFactory("RateLimiting:LoginIpPerMinute", "2");
@@ -61,7 +61,7 @@ public class RateLimitingIntegrationTests
         AssertRetryAfter(flooded, "60");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CspReportPolicy_BlocksFloodWith429()
     {
         using var factory = IsolatedFactory("RateLimiting:CspReportPerMinute", "2");
@@ -82,7 +82,7 @@ public class RateLimitingIntegrationTests
         Assert.Contains("طلبات كثيرة", await flooded.Content.ReadAsStringAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GlobalAnonLimiter_BlocksFloodWith429()
     {
         using var factory = IsolatedFactory("RateLimiting:GeneralAnonPerMinute", "2");
@@ -96,7 +96,7 @@ public class RateLimitingIntegrationTests
         AssertRetryAfter(flooded, "60");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExpensivePolicy_BlocksFloodWith429()
     {
         using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "2");
@@ -110,7 +110,7 @@ public class RateLimitingIntegrationTests
         AssertRetryAfter(flooded, "60");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PasswordPolicy_BlocksFloodWith429()
     {
         var username = $"rl_pwd_{Guid.NewGuid():N}"[..16];
@@ -135,7 +135,7 @@ public class RateLimitingIntegrationTests
     /// التقسيم لكل مستخدم حقيقي (لا IP مشترك): استنفاد مستخدم لدلوه لا يمسّ دلو مستخدم آخر
     /// على نفس عنوان الخادم الاختباري — يفشل هذا الاختبار إن وُضع <c>UseRateLimiter</c> قبل المصادقة.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task ExpensivePolicy_PartitionsPerUser()
     {
         using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "2");
@@ -149,7 +149,7 @@ public class RateLimitingIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (await manager.GetAsync("/api/dashboard")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public void InvalidRateLimitSetting_RefusesStartup()
     {
         using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "0");

@@ -31,20 +31,20 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
         return response.StatusCode;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListedHost_IsServed()
     {
         Assert.Equal(HttpStatusCode.OK, await GetHealthAsync("docgen.test"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HealthCheckHostWithPort_IsServed_WhenBareAddressIsListed()
     {
         // جوهر البند: بلا هذه المطابقة ينكسر فحص الصحة لحظة تحويل حركة الوكيل.
         Assert.Equal(HttpStatusCode.OK, await GetHealthAsync("127.0.0.1:8080"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnknownHost_IsRejected()
     {
         Assert.Equal(HttpStatusCode.BadRequest, await GetHealthAsync("evil.example"));

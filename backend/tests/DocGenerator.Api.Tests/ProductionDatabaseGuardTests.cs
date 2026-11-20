@@ -36,7 +36,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public void Production_WithoutPostgresConnection_RefusesToStart()
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -53,7 +53,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         Assert.Contains("PostgreSQL connection string is required", ex.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public void Production_OnSqliteConnectionString_RefusesToStart()
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -70,7 +70,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         Assert.Contains("SQLite is not supported", ex.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Production_InfraEndpointsStayAnonymous()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"docgen_guard_{Guid.NewGuid():N}.db");
