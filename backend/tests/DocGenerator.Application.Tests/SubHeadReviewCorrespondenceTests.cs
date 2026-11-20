@@ -14,11 +14,10 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// نطاق المطالعات والمراسلات لرئيس الشعبة (§10 + قرارات 12/24/28):
 /// توجيه المستلم التلقائي/بالمنسدل، والرؤية والرد والعدّاد بالنطاق.
-/// قاعدة كل اختبار جديدة (TestDb) — بلا تلوث متبادل.
+/// قاعدة كل حالة مُصفَّرة (‏`PostgresDbTest`) — بلا تلوث متبادل.
 /// </summary>
-public class SubHeadReviewCorrespondenceTests : IDisposable
+public class SubHeadReviewCorrespondenceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IReviewLetterService _letters;
     private readonly ICorrespondenceService _correspondences;
     private readonly FakeAuditLogger _audit = new();
@@ -31,7 +30,6 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
 
     public SubHeadReviewCorrespondenceTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _otherBranch = new Branch { Name = "حلب", Code = "ALP", Governorate = "حلب" };
@@ -80,7 +78,6 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             new Repository<ExecutionCircuit>(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -160,7 +157,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
 
     // ── المطالعات ──────────────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_Create_LinkedFile_AutoRoutesToCircuitOwner()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -181,7 +178,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Null(divisionLetter.RecipientSectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_Create_General_ValidatesSectionChoice()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -209,7 +206,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_Create_NumberRace_RetriesWithFreshNumberAndSucceeds()
     {
         // سباق الترقيم: أول حفظ يصطدم بالقيد الفريد فيُعاد التوليد بدل 500.
@@ -269,39 +266,43 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
 
         private static DbUpdateException BuildRealUniqueViolation()
         {
-            var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-                .UseSqlite("DataSource=:memory:")
-                .Options;
-            using var db = new DocGeneratorDbContext(options);
-            db.Database.OpenConnection();
-            db.Database.EnsureCreated();
-            var damascus = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
-            db.SaveChanges();
-            var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
-            db.Users.Add(maker);
-            db.SaveChanges();
-            var duplicate = () => new ReviewLetter
-            {
-                BranchId = damascus.Id,
-                CreatedById = maker.Id,
-                LetterNumber = "CNF-2026-0001",
-            };
-            db.ReviewLetters.Add(duplicate());
-            db.SaveChanges();
-            db.ReviewLetters.Add(duplicate());
+            // قاعدة معزولة: الصفوف المتسابقة لا تُلوّث قاعدة الحالة الجارية.
+            var pg = PostgresTestDb.Create();
             try
             {
+                using var db = pg.CreateContext();
+                var damascus = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
                 db.SaveChanges();
+                var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
+                db.Users.Add(maker);
+                db.SaveChanges();
+                var duplicate = () => new ReviewLetter
+                {
+                    BranchId = damascus.Id,
+                    CreatedById = maker.Id,
+                    LetterNumber = "CNF-2026-0001",
+                };
+                db.ReviewLetters.Add(duplicate());
+                db.SaveChanges();
+                db.ReviewLetters.Add(duplicate());
+                try
+                {
+                    db.SaveChanges();
+                }
+                catch (DbUpdateException ex)
+                {
+                    return ex;
+                }
+                throw new InvalidOperationException("تعذّر توليد تعارض فريد حقيقي من المزود");
             }
-            catch (DbUpdateException ex)
+            finally
             {
-                return ex;
+                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            throw new InvalidOperationException("تعذّر توليد تعارض فريد حقيقي من المزود");
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_ListByDocument_OtherBranchHeadDeniedOnBranchlessFile()
     {
         // ملف إرثي بلا فرع: رئيس فرع آخر مرفوض (لا تسريب عبر الفراغ).
@@ -329,7 +330,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             _letters.ListByDocumentAsync(legacy.Id, otherHead.Id, UserRole.Head, _otherBranch.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_ListByDocument_SubDeniedOnBranchlessFile()
     {
         // رئيس شعبة فرعٍ ما × ملف إرثي بلا فرع: مرفوض (نطاق الشعبة فرعٌ ودائرة).
@@ -355,7 +356,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             _correspondences.ListByDocumentAsync(legacy.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_SubHead_CanWriteGeneral_NotFileLinked()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -374,7 +375,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             sub.Id, "sub", UserRole.SubHead, _branch.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingScope_HeadExcludesSection_SubSeesOwnOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -403,7 +404,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             _letters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_Reply_OwnerOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -435,7 +436,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             sub.Id, "sub", _branch.Id, default, UserRole.SubHead, null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_PendingCount_Scoped()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -451,7 +452,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Equal(1, await _letters.CountPendingForHeadAsync(_branch.Id, sectionId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Letter_ListByDocument_Scoped()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -476,7 +477,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
 
     // ── المراسلات ────────────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Create_General_ToSectionHead_FreezesTarget()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -491,7 +492,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Equal(sectionId, stored.RecipientSectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Create_General_ToHeadDefault_RequiresBranchHead()
     {
         // الافتراضي رئيس قسم فرع المنشئ.
@@ -511,7 +512,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Contains("يجب اختيار المستلم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Create_General_ToSubHead_DerivesSectionFromAccount()
     {
         // مستلم الشعبة المسمّى بالاسم: تُشتق شعبته من حسابه (قرار 24) بلا منسدل إضافي.
@@ -534,7 +535,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Contains("يجب اختيار المستلم", exSub.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_SearchTargets_General_IncludesSubHead()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -546,7 +547,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Contains(targets, t => t.FullName == "sub_masyaf");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Create_General_ToLawyer_WithSection_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -558,7 +559,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
         Assert.Contains("للمستلم الرئيس فقط", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_Search_SubHead_Scope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -584,7 +585,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             sub.Id, UserRole.SubHead, _branch.Id, null, null, null, 1, 20, default, null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_GetById_SubHead_Scope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -605,7 +606,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             headLetter.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correspondence_ListByDocument_SubHead_Scope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);

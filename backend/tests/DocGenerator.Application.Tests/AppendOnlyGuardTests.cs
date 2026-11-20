@@ -8,11 +8,8 @@ namespace DocGenerator.Application.Tests;
 /// P0-08 — إلحاق-only على مستوى التطبيق: أي تعديل/حذف لسجل تدقيق أو تغيّر حقلي
 /// يُرفض قبل الوصول لقاعدة البيانات (`DbUpdateException`)، وتبقى مشغّلات القاعدة طبقة ثانية.
 /// </summary>
-public class AppendOnlyGuardTests : IDisposable
+public class AppendOnlyGuardTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
-
-    public void Dispose() => _db.Dispose();
 
     private AuditLog SeedLog()
     {
@@ -36,7 +33,7 @@ public class AppendOnlyGuardTests : IDisposable
         return log;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ModifiedAuditLog_IsRejectedBeforeDatabase()
     {
         var log = SeedLog();
@@ -46,7 +43,7 @@ public class AppendOnlyGuardTests : IDisposable
         Assert.Contains("إلحاق", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeletedAuditLog_IsRejectedBeforeDatabase()
     {
         var log = SeedLog();
@@ -56,7 +53,7 @@ public class AppendOnlyGuardTests : IDisposable
         Assert.Contains("إلحاق", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ModifiedFieldChange_IsRejectedBeforeDatabase()
     {
         SeedLog();

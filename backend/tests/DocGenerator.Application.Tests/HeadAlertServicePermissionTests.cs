@@ -15,9 +15,8 @@ namespace DocGenerator.Application.Tests;
 /// القوائم بحسب الدور، والصادر للرئيس/الشعبة فقط، وتفاصيل المستلم بأولوية مطلقة
 /// (بلا شرط فرع)، ثم المنشئ، ثم الإشراف، وعدمه 404 (قيمة <c>null</c>) بلا تسريب وجود.
 /// </summary>
-public class HeadAlertServicePermissionTests : IDisposable
+public class HeadAlertServicePermissionTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IHeadAlertService _service;
     private readonly int _branchA;
     private readonly int _branchB;
@@ -37,7 +36,6 @@ public class HeadAlertServicePermissionTests : IDisposable
 
     public HeadAlertServicePermissionTests()
     {
-        _db = TestDb.Create();
 
         var branchA = new Branch { Name = "دمشق", Code = "DAM" };
         var branchB = new Branch { Name = "حلب", Code = "ALP" };
@@ -84,9 +82,8 @@ public class HeadAlertServicePermissionTests : IDisposable
             new FakeAuditLogger());
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task ReceivedLists_FollowRoleScope_BranchScopedForHeads_BranchlessForLawyers()
     {
         // محامي: استلامه الشخصي عبر الفرعين (A وB) ولا يرى تنبيه غيره.
@@ -127,7 +124,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(2, lawyerUnread.TotalCount);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]
     public async Task ReceivedList_RejectsUnreadOnly_ForOversightRoles(UserRole role)
@@ -137,7 +134,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             actor, new HeadAlertListQuery { UnreadOnly = true, Page = FullPage() }));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Lawyer, false)]
     [InlineData(UserRole.Head, true)]
     [InlineData(UserRole.SubHead, true)]
@@ -159,7 +156,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.All(page.Items, i => Assert.Equal(_headA.FullName, i.CreatedByName));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Head)]
     [InlineData(UserRole.SubHead)]
     [InlineData(UserRole.Manager)]
@@ -172,7 +169,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.ListByDelegationAsync(88, actor, FullPage()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ByDelegation_LawyerMustBeParty_AndMissingDelegationIsRejected()
     {
         // 77 مالك مصدرها headA ⇒ محامي دمشق ليس طرفًا: الرفض من الخدمة لا من المتحكم
@@ -190,7 +187,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(0, page.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Details_RecipientHasAbsolutePriority_ThenCreator_ThenOversight_ElseNull()
     {
         // المستلم: داخل الفرع...
@@ -229,7 +226,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Null(await _service.GetDetailsAsync(int.MaxValue, ActorFor(_manager)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Recipients_OnlyCreatorOrOversight_OthersGetNull()
     {
         var creator = await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_headA));
@@ -249,7 +246,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Null(await _service.GetRecipientsAsync(int.MaxValue, ActorFor(_manager)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchlessHead_IsRejectedOnBranchScopedLists()
     {
         var actor = new HeadAlertActor(_headA.Id, UserRole.Head, null);
@@ -263,7 +260,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Null(await _service.GetDetailsAsync(_alertB.Id, actor));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(0, 50)]
     [InlineData(1, 0)]
     [InlineData(1, 101)]
@@ -280,7 +277,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InvalidPaging_RejectsHugePage()
     {
         // P3-6: فيضان الإزاحة رفض صريح من العقد برسالة عربية نظيفة، لا التفاف
@@ -298,7 +295,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Paging_ExtremePageWithSize1_IsAllowed()
     {
         // السقف يرفض الفيضان لا كِبَر رقم الصفحة: الإزاحة 2,147,483,646 ≤ int.MaxValue.
@@ -311,7 +308,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(1, page.PerPage);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Lawyer)]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]
@@ -325,7 +322,7 @@ public class HeadAlertServicePermissionTests : IDisposable
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "actor"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BranchlessHead_IsArgumentError_NotAuthorization()
     {
         // D11: الكتابة بلا فرع 400 (عقد POST القائم) لا 403.
@@ -336,7 +333,7 @@ public class HeadAlertServicePermissionTests : IDisposable
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "head_a"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DatabaseRoleMismatch_IsRejected_AsDefenseInDepth()
     {
         // رمز بدور رئيس لحساب صار محاميًا في القاعدة (تعديل مباشر بلا رفع TokenVersion):
@@ -348,7 +345,7 @@ public class HeadAlertServicePermissionTests : IDisposable
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "law_a"));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]
     public async Task MarkRead_OversightRoles_AreRejected(UserRole role)
@@ -359,14 +356,14 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.MarkReadAsync(_alertA.Id, actor));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_NonRecipientInRecipientRole_ReturnsFalse()
     {
         // دور يملك استلامًا لكنه ليس مستلم هذا الصف ⇒ false (يُترجم 404)، لا استثناء.
         Assert.False(await _service.MarkReadAsync(_alertOther.Id, ActorFor(_lawyerA)));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]
     public async Task CountUnread_OversightRoles_AreRejected(UserRole role)
@@ -377,7 +374,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.CountUnreadAsync(actor, AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_BranchlessHead_IsRejected()
     {
         // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403.
@@ -386,14 +383,14 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.CountUnreadAsync(branchlessHead, AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_LawyerIsBranchless()
     {
         // المحامي بلا قيد فرع أصلًا: تنبيهان غير مقروءين له في الفرعين.
         Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_lawyerA), AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_UserScope_EqualsUnreadOnlyListTotal_ForHead()
     {
         // D7 + ح‑19: الثبات الحقيقي هو «العدّاد = TotalCount لقائمة غير المقروء»
@@ -408,7 +405,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(1, count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_UserScope_ExcludesReadRow_WhileListStillContainsIt()
     {
         // ح‑19: العدّاد «غير المقروء» لا «طول القائمة» — القائمة تبقى بطولها بعد القراءة.
@@ -424,7 +421,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_HeadMarkingOwnRowRead_DecrementsUserScope()
     {
         // ح‑21: قراءة الرئيس صفّه تخفض `user` بمقدار واحد.
@@ -438,7 +435,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_UserScope_IsAvailableToSubHead_InHisBranch()
     {
         // ح‑21: الشعبة دور مستقل بعقد قراءة — النطاق متاح لها داخل فرعها.
@@ -448,7 +445,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_UndefinedScope_IsRejected_FailClosed()
     {
         // ح‑22: قيمة enum غير معروفة (مستدعٍ داخلي) تُرفض 400 ولا تسقط صامتةً إلى `user`.
@@ -456,7 +453,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.CountUnreadAsync(ActorFor(_lawyerA), (AlertUnreadScope)42));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_ArchivedAndOtherBranch_AreExcluded()
     {
         // مؤرشف في فرعه ومستلم فيه: لو حُسب لأضاف 1 إلى `user`.

@@ -16,15 +16,13 @@ namespace DocGenerator.Application.Tests;
 /// تخزين الطبيعة والحقول الاعتبارية، وتصفير حقول الهوية الطبيعية عند الاعتباري،
 /// والاعتباري في وضع «منفذ عليه» (جهة عامة/شخص اعتباري)، والتخزين ذهابًا وإيابًا.
 /// </summary>
-public class PartyNatureTests : IDisposable
+public class PartyNatureTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
 
     public PartyNatureTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -46,7 +44,6 @@ public class PartyNatureTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest ApplicantSample() => new()
     {
@@ -81,7 +78,7 @@ public class PartyNatureTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LegalBorrower_StoresLegalNatureAndClearsNaturalIdentity()
     {
         var req = ApplicantSample();
@@ -114,7 +111,7 @@ public class PartyNatureTests : IDisposable
         Assert.Contains("12345", stored.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NaturalBorrower_ClearsLegalFields()
     {
         var req = ApplicantSample();
@@ -129,7 +126,7 @@ public class PartyNatureTests : IDisposable
         Assert.Null(loaded.BorrowerRepresentedBy);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LegalGuarantor_StoresLegalNatureAndClearsNaturalIdentity()
     {
         var req = ApplicantSample();
@@ -165,7 +162,7 @@ public class PartyNatureTests : IDisposable
         Assert.Null(g.RepresentativeName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LegalApplicant_StoresLegalFieldsAndClearsNaturalIdentity()
     {
         var req = ExecutedSample();
@@ -202,7 +199,7 @@ public class PartyNatureTests : IDisposable
         Assert.Empty(a.Heirs ?? new());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LegalEntity_StoresLegalFieldsAndClearsBranch()
     {
         var req = ExecutedSample();
@@ -235,7 +232,7 @@ public class PartyNatureTests : IDisposable
         Assert.Contains("حلب", stored.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PublicEntity_StoresGovernorateAndIncludesItInSearch()
     {
         var req = ExecutedSample();
@@ -257,7 +254,7 @@ public class PartyNatureTests : IDisposable
         Assert.Contains("دمشق", stored.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PublicEntity_DefaultsToPublicAndKeepsBranch()
     {
         var req = ExecutedSample();
@@ -276,7 +273,7 @@ public class PartyNatureTests : IDisposable
         Assert.Equal(string.Empty, e.Governorate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InvalidNature_DefaultsToNatural()
     {
         var req = ApplicantSample();

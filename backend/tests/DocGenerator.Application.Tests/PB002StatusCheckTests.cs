@@ -12,11 +12,8 @@ namespace DocGenerator.Application.Tests;
 /// القيمة اليتيمة تُرفَض عند الحفظ. تفشل قبل الإصلاح (نجاح صامت) وتخضر بعده.
 /// مباشر `DbContext` حتمي (القيد قاعدي لا خدمي).
 /// </summary>
-public class PB002StatusCheckTests : IDisposable
+public class PB002StatusCheckTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
-
-    public void Dispose() => _db.Dispose();
 
     private async Task<int> SeedUserAsync()
     {
@@ -30,7 +27,7 @@ public class PB002StatusCheckTests : IDisposable
         return user.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Document_OrphanStatuses_Rejected()
     {
         var uid = await SeedUserAsync();
@@ -42,7 +39,7 @@ public class PB002StatusCheckTests : IDisposable
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Document_ValidStatuses_Accepted()
     {
         var uid = await SeedUserAsync();
@@ -58,7 +55,7 @@ public class PB002StatusCheckTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public void GeneralEntitySide_Constraint_UsesDeterministicOrder()
     {
         // C-08: النص لا يعتمد على ترتيب HashSet غير الحتمي، بل على OrderedSides الصريح.
@@ -76,7 +73,7 @@ public class PB002StatusCheckTests : IDisposable
             GeneralEntitySideCatalog.OrderedSides);
     }
 
-    [Fact]
+    [PostgresFact]
     public void CheckConstraints_UseDeterministicOrderedLists()
     {
         // C-08 (كصنف): كل قيود CHECK المبنية من كتالوجات يجب أن تكون مرتبة صراحةً،
@@ -130,7 +127,7 @@ public class PB002StatusCheckTests : IDisposable
             HeadSuccessionEventCatalog.OrderedEvents);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegation_OrphanStatus_Rejected()
     {
         var uid = await SeedUserAsync();
@@ -142,7 +139,7 @@ public class PB002StatusCheckTests : IDisposable
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegation_ValidStatuses_Accepted()
     {
         var uid = await SeedUserAsync();
@@ -155,7 +152,7 @@ public class PB002StatusCheckTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Appeal_OrphanStatus_Rejected()
     {
         var uid = await SeedUserAsync();
@@ -167,7 +164,7 @@ public class PB002StatusCheckTests : IDisposable
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Appeal_ValidStatuses_Accepted()
     {
         var uid = await SeedUserAsync();

@@ -13,16 +13,14 @@ namespace DocGenerator.Application.Tests;
 /// حراسة فحص المراجع قبل الإدراج (الخطة §8.1): كل نوع مرجع مفقود يُكتشف قبل إنشاء
 /// التنبيه، ووجود المراجع كلها يعيد <c>null</c>.
 /// </summary>
-public class HeadAlertRepositoryReferenceTests : IDisposable
+public class HeadAlertRepositoryReferenceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly HeadAlertRepository _repository;
     private readonly int _branchId;
     private readonly User _user;
 
     public HeadAlertRepositoryReferenceTests()
     {
-        _db = TestDb.Create();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
@@ -36,7 +34,6 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
         _repository = new HeadAlertRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private CreateSystemHeadAlertRequest BaseRequest() => new(
         HeadAlertKindCatalog.DelegationPendingApproval,
@@ -46,7 +43,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
         _user.Id,
         RecipientUserId: _user.Id);
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingBranch_ReturnsBranch()
     {
         var request = BaseRequest() with { BranchId = 9999 };
@@ -56,7 +53,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingDocument_ReturnsDocument()
     {
         var request = BaseRequest() with { DocumentId = 9999 };
@@ -66,7 +63,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingDelegation_ReturnsDelegation()
     {
         var request = BaseRequest() with { DelegationId = 9999 };
@@ -76,7 +73,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingAppeal_ReturnsAppeal()
     {
         var request = BaseRequest() with { AppealId = 9999 };
@@ -86,7 +83,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingReviewLetter_ReturnsReviewLetter()
     {
         var request = BaseRequest() with { ReviewLetterId = 9999 };
@@ -96,7 +93,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingPublicEntity_ReturnsPublicEntity()
     {
         var request = BaseRequest() with { PublicEntityId = 9999 };
@@ -106,7 +103,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_MissingExecutionCircuit_ReturnsExecutionCircuit()
     {
         var request = BaseRequest() with { ExecutionCircuitId = 9999 };
@@ -116,7 +113,7 @@ public class HeadAlertRepositoryReferenceTests : IDisposable
             await _repository.FindMissingReferenceAsync(request));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindMissingReferenceAsync_AllReferencesPresent_ReturnsNull()
     {
         var document = new Document

@@ -14,9 +14,8 @@ namespace DocGenerator.Application.Tests;
 /// اعتماد بيانات الجهة العامة من السجل المرجعي، ومزامنة وقعة «طلب تدخل»
 /// (إنشاءً وتعديلًا وحذفًا) وإعادة بناء نص البحث — كل ذلك في القاعدة.
 /// </summary>
-public class DocumentInterventionServiceTests : IDisposable
+public class DocumentInterventionServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly DocumentInterventionService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -24,7 +23,6 @@ public class DocumentInterventionServiceTests : IDisposable
 
     public DocumentInterventionServiceTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -61,7 +59,6 @@ public class DocumentInterventionServiceTests : IDisposable
             _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentInterventionUpsertRequest NaturalRequest() => new()
     {
@@ -121,7 +118,7 @@ public class DocumentInterventionServiceTests : IDisposable
         return (group, entry);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_NaturalWithHeirs_PersistsAndCreatesInterventionOccurrence()
     {
         var request = NaturalRequest();
@@ -166,7 +163,7 @@ public class DocumentInterventionServiceTests : IDisposable
 
     private const string InterventionOccurrenceLabel = "طلب تدخل";
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_NormalizesReceiptNumberDigits()
     {
         var request = NaturalRequest();
@@ -177,7 +174,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Equal("ورود 123", dto.ReceiptNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_FindsDocumentByInterventionName_EvenWithStaleSearchText()
     {
         var request = NaturalRequest();
@@ -197,7 +194,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains(page.Items, item => item.Id == _document.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_PublicEntity_KeepsSameRegistryAfterDeactivation()
     {
         var (group, entry) = await SeedPublicEntityAsync();
@@ -235,7 +232,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Equal("تعديل لاحق", updated.Notes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_PublicEntity_WithoutClientName_AdoptsRegistryName()
     {
         var (_, entry) = await SeedPublicEntityAsync();
@@ -252,7 +249,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Equal("وزارة العدل مديرية التنفيذ", dto.DisplayName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_PublicEntity_AdoptsCanonicalRegistryValues()
     {
         var (_, entry) = await SeedPublicEntityAsync();
@@ -276,7 +273,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Equal(entry.Id, dto.RegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_PublicEntity_WithoutRegistry_Throws()
     {
         var request = new DocumentInterventionUpsertRequest
@@ -291,7 +288,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("السجل المرجعي", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_PublicEntity_InactiveRegistry_Throws()
     {
         var (_, entry) = await SeedPublicEntityAsync(active: false);
@@ -307,7 +304,7 @@ public class DocumentInterventionServiceTests : IDisposable
             () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_WithoutReceiptDate_Throws()
     {
         var request = NaturalRequest();
@@ -318,7 +315,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("تاريخ ورود طلب التدخل مطلوب", ex.Message);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("10/8/2026")] // بعد الورود
     [InlineData("1/8/2026")]  // في يوم الورود نفسه
     public async Task Add_AcceptanceNotBeforeReceipt_Throws(string acceptanceDate)
@@ -331,7 +328,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("يجب أن يسبق تاريخ الورود", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_RepresentativeWithHeirs_Throws()
     {
         var request = NaturalRequest();
@@ -344,7 +341,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("لا يجتمع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_Representative_ClearsPartyAddress()
     {
         var request = NaturalRequest();
@@ -365,7 +362,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Equal("ولي", dto.RepresentativeCapacity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_LegalWithoutEntityName_Throws()
     {
         var request = LegalRequest();
@@ -376,7 +373,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("اسم الشخص الاعتباري مطلوب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_DepositSide_Throws()
     {
         _document.GeneralEntitySide = GeneralEntitySideCatalog.Deposit;
@@ -387,7 +384,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.Contains("عرض وايداع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_SyncsOccurrenceAndSearchText()
     {
         var dto = await _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
@@ -414,7 +411,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.DoesNotContain("سامر محمود", refreshed.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_RemovesInterventionHeirsAndOccurrence()
     {
         var request = NaturalRequest();
@@ -432,7 +429,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.DoesNotContain("سامر", refreshed.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateOrDelete_InterventionOfAnotherDocument_ReturnsNotFound()
     {
         var dto = await _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
@@ -451,7 +448,7 @@ public class DocumentInterventionServiceTests : IDisposable
         Assert.False(await _service.DeleteAsync(other.Id, dto.Id, "المحامي الأول"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_AboveDocumentLimit_Throws()
     {
         for (var i = 0; i < InterventionLimitsCatalog.MaxPerDocument; i++)

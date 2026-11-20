@@ -16,9 +16,8 @@ namespace DocGenerator.Application.Tests;
 /// ما يُدخله المحامي يُعتمد فورًا ويبقى «بحاجة مراجعة» مع تنبيه رئيس محافظته،
 /// والاعتماد يقفل المراجعة بصمت، والتعديل — وتغيير التسمية تحديدًا — يبلّغ المُدخِل.
 /// </summary>
-public class PublicEntityServiceTests : IDisposable
+public class PublicEntityServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPublicEntityService _service;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
@@ -32,7 +31,6 @@ public class PublicEntityServiceTests : IDisposable
 
     public PublicEntityServiceTests()
     {
-        _db = TestDb.Create();
         _db.Branches.AddRange(
             new Branch { Name = "الفرع الرئيسي - دمشق", Code = "DAM", Governorate = "دمشق" },
             new Branch { Name = "فرع حلب", Code = "ALP", Governorate = "حلب" });
@@ -74,7 +72,6 @@ public class PublicEntityServiceTests : IDisposable
             new AppealRepository(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
@@ -112,7 +109,7 @@ public class PublicEntityServiceTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BuildsGroupAndFinalEntry_WithAliasesAndAudit()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -130,21 +127,21 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة التعليم", stored.Group.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreatePublicEntityRequest(" ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InvalidEntityType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreatePublicEntityRequest("هيئة جديدة", "union", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("foundation")]
     [InlineData("company")]
     [InlineData("directorate")]
@@ -162,7 +159,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(entityType, dto.EntityType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RejectsNearMissEntityType_NotInCatalog()
     {
         // رمز شبيه بالأسماء الجديدة لكنه خارج الكتالوج النهائي — يُرفض (حماية من كتالوج ناقص).
@@ -170,7 +167,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.CreateAsync(new CreatePublicEntityRequest("جهة تجريبية", "secretariat", "دمشق", ""), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateSameGovernorateAndBranch_Throws()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -179,7 +176,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AllowsSameEntity_InDifferentGovernorates()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -188,7 +185,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(second.Id > 0);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DefaultsBranchName_WhenMissing()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("مديرية النقل", "administration", "حمص", ""), ManagerActor());
@@ -197,7 +194,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(dto.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LawyerExplicitIsParentEntity_ThrowsUnauthorized()
     {
         var beforeGroups = await _db.PublicEntityGroups.CountAsync();
@@ -213,7 +210,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(beforeEntries, await _db.PublicEntities.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LawyerDefaultBranchName_DerivesBranch_AndKeepsNeedsReview()
     {
         // حوكمة S1: إنشاء المحامي بالاسم الافتراضي لا يولِّد «جهة أم» — يبقى فرعًا،
@@ -230,7 +227,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(stored.NeedsReview);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LawyerExplicitFalse_Accepted_AsRegularBranch()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -243,7 +240,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.False(stored.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_HidesPending_ByDefault_AndFiltersByGovernorate()
     {
         var final = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -268,7 +265,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(EntityStatusCatalog.Pending, pendingOnly.Items[0].Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_MatchesNormalizedArabicSpelling()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("الإدارة العامة للكتابة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -279,7 +276,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ExcludesInactiveEntries_SoTheyCannotBeLinkedOrBound()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة معايير قديمة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -293,7 +290,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, managementView.TotalCount);  // شاشة الإدارة ترى الموقوف أيضًا
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_FiltersByExactBranchName()
     {
         // الجهة الأم تُبقي ظاهرة عند فلترة الفرع (تغطي كل المحافظات)، لكن الفرع الآخر غير المطابق يُستثنى.
@@ -316,7 +313,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(3, all.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_MainBranch_IsReachableAcrossGovernorates_ForFundamentalEntity()
     {
         // الجهة الأم (بلا فرع — تغطي كل المحافظات) تُخزَّن في محافظة ما لكنها تمثل كيانًا عامًا؛
@@ -332,7 +329,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(main.Items[0].IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_IncludesParentEntity_AcrossAnyGovernorateFilter()
     {
         // الجهة الأم تخزَّن في محافظة واحدة لكنها تمثل كل المحافظات؛ فلتر المحافظة يجب أن يبقيها ظاهرة.
@@ -347,7 +344,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(aleppoFiltered.Items, i => i.Governorate == "حلب" && !i.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_IncludesParentEntity_WhenFilteringByBranch()
     {
         // فلتر الفرع يضيّق على فرع محدد لكنه يُبقي الجهة الأم ظاهرة (تغطي كل المحافظات) لاختيارها.
@@ -362,7 +359,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(branchFiltered.Items, i => i.BranchName == "فرع حلب" && !i.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RenameByManager_SyncsBothSides_AndLogsFieldChanges()
     {
         var applicantDoc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق", "applicant");
@@ -469,7 +466,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("rename_public_entity", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Rename_PreservesUnrelatedSearchTokens_AndRebuildsOncePerDocument()
     {
         var doc = new Document
@@ -518,7 +515,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(syncLog.Changes, c => c.FieldKey == "__Col_ExecutedPublicEntities");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RenameByHead_OfOtherGovernorate_IsForbidden()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
@@ -532,7 +529,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة النقل", unchanged.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RenameByHeadWithinHisGovernorate_Succeeds()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -545,7 +542,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة المواصلات", updated.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RenameToExistingCanonical_Throws()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الداخلية", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -556,7 +553,7 @@ public class PublicEntityServiceTests : IDisposable
                 new UpdatePublicEntityRequest("وزارة الداخلية", null, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAlias_RejectsNormalizedDuplicate_ButAcceptsNew()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -572,7 +569,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── نموذج الحوكمة الجديد: دخول فوري + مراجعة لاحقة ──
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByLawyer_IsFinalImmediately_NeedsReview_WithoutReviewAlert()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -591,7 +588,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByLawyer_InAnotherGovernorate_KeepsNeedsReviewWithoutReviewAlert()
     {
         // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب — تبقى بحاجة مراجعة بلا تنبيه مراجعة (R1 متقاعد).
@@ -603,7 +600,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApproveReview_ClearsFlagSilently_NoAlertToCreator()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -625,7 +622,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("approve_entity_review", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApproveReview_ByHead_OfAnotherBranchesLawyer_IsForbidden()
     {
         // جهة في محافظة دمشق أدخلها محامٍ من فرع دمشق — رئيس حلب لا يملكها
@@ -639,7 +636,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.ApproveReviewAsync(dto.Id, headAleppo));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApproveReview_ByHead_OfHisBranchLawyer_InAnotherGovernorate_Succeeds()
     {
         // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب (قد يقيم ملفًا تنفيذيًا عليها):
@@ -658,7 +655,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(_headDamascusId, stored.ReviewedById);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ByHead_OfHisBranchLawyer_InAnotherGovernorate_Succeeds()
     {
         // السيناريو المبلّغ: رئيس قسم دمشق يعدّل جهة أضافها محامٍ من فرعه
@@ -675,7 +672,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("هيئة الري المحدثة", updated.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameDuringReview_ByHead_NotifiesCreatorLawyer_WithOldAndNewNames_AndClosesReview()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -705,7 +702,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("هيئة السوق المركزية", notice.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewQueue_HeadSeesHisBranchesLawyersEntries_ManagerSeesAll()
     {
         // محامٍ واحد من فرع دمشق أدخل جهة في محافظته وجهة في محافظة أخرى:
@@ -727,7 +724,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(forManager, i => Assert.Equal("محامي دمشق", i.CreatedByName));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByManager_DoesNotNeedReview()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة إدارية", "authority", "دمشق", "الفرع الرئيسي"),
@@ -737,7 +734,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, await _db.HeadAlerts.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ImportPreview_GroupsNormalizedVariants_WithCounts()
     {
         await SeedApplicantDocumentAsync("مديرية النقل", "دمشق");
@@ -766,7 +763,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(3, item.Variants.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ImportCommit_CreatesFinalEntriesWithAliases_AndSkipsReCommit()
     {
         await SeedApplicantDocumentAsync("مديرية الاقتصاد الوطني", "دمشق");
@@ -805,7 +802,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, await _db.PublicEntities.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ImportCommit_UnknownNormalizedName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -852,7 +849,7 @@ public class PublicEntityServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_ModeA_ReassignsGroupId()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -870,7 +867,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(e1, changeEvent.EntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_FoldInto_MigratesRegistryLinksAndDeactivatesSource()
     {
         var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
@@ -908,7 +905,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("move_entity_registry", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_NeedsReview_Throws()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -920,7 +917,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_ConflictInTargetGroup_Throws()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -930,7 +927,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_NoTarget_Throws()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -938,7 +935,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveEntryAsync(e1, new MoveEntryRequest(null, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_SendsHeadAlert()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -950,7 +947,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_ModeA_TransfersAllEntries()
     {
         var (g1, e1, g2, e2) = await SeedTwoGroupsForMoveAsync();
@@ -966,7 +963,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("move_all_entity_registry", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_ConflictInTarget_Throws()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -976,7 +973,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_SelfMoveFold_Throws()
     {
         var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
@@ -984,14 +981,14 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e1, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_NonExistentEntry_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.MoveEntryAsync(9999, new MoveEntryRequest(1, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_SameGroup_Throws()
     {
         var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
@@ -999,7 +996,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveEntryAsync(e1, new MoveEntryRequest(g1, null, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_SameGroup_Throws()
     {
         var (g1, _, _, _) = await SeedTwoGroupsForMoveAsync();
@@ -1007,7 +1004,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g1, null, null, null, null), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_FoldParentEntry_Throws_AndLeavesParentUntouched()
     {
         // مصدر «جهة أم» يُطوى إلى قيد مطابق — الحارس يمنع قبل أي أثر.
@@ -1026,7 +1023,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, await _db.PublicEntityChangeEvents.CountAsync(e => e.ActionKind == ActionKindCatalog.Move));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_ReassignParentEntry_Throws_AndKeepsGroupId()
     {
         // نقل أمّ إلى هوية أخرى (وضع أ) — الحارس يمنع؛ لا «أمّين» في مجموعة ولا مجموعة بلا أمّ.
@@ -1043,7 +1040,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(entry.GroupId, stored.GroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_FoldBranchIntoParentTarget_StillAllowed()
     {
         // حدّية الحارس على المصدر فقط: طيّ فرع عادي إلى قيد «جهة أم» هدف يبقى مباحًا.
@@ -1062,7 +1059,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("move_entity_registry", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithCoverageLabel_StoresLabel()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -1073,7 +1070,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("تغطية دمشق", stored!.CoverageLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_CoverageLabelExceeds150_Throws()
     {
         var longLabel = new string('أ', 151);
@@ -1082,7 +1079,7 @@ public class PublicEntityServiceTests : IDisposable
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: longLabel), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_CoverageLabelMatchesGovernorate_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1090,7 +1087,7 @@ public class PublicEntityServiceTests : IDisposable
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "دمشق"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_CoverageLabel_StoresLabel()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -1100,7 +1097,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("تغطية دمشق", updated!.CoverageLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_CoverageLabelMatchesGovernorate_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -1110,7 +1107,7 @@ public class PublicEntityServiceTests : IDisposable
                 null, null, null, null, null, null, null, CoverageLabel: "دمشق"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_CoverageLabelWithArabicDigits_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1118,7 +1115,7 @@ public class PublicEntityServiceTests : IDisposable
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "تغطية ١٢٣"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_CoverageLabelTrimmed()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -1126,7 +1123,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("تغطية ثقافة", dto.CoverageLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_Fold_CreatesDocumentOccurrence()
     {
         var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
@@ -1143,7 +1140,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("نقل", occ.Details!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_Fold_MigratesEntryDelegates()
     {
         var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
@@ -1166,7 +1163,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Null(groupDel.PortalEntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_ModeA_CreatesDocumentOccurrence()
     {
         var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
@@ -1182,7 +1179,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("نقل", occ.Details!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_OccurrenceDto_ExposesNarrativeAsDetailsText()
     {
         // انحدار الفجوة ب: السرد العربي المخزون نصًا حرًا يجب أن يصل الواجهة عبر
@@ -1204,7 +1201,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("123", occ.DetailsText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_CreatesChangeEvent()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -1220,7 +1217,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("ملاحظة", payload.GetProperty("note").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_CreatesChangeEvent()
     {
         var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -1232,7 +1229,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("نقل جماعي", payload.GetProperty("note").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_DecreeDate_ParsesDayFirst_FreeText()
     {
         // انحدار: «1/8/2026» يجب أن تُفسَّر 1 آب (يوم/شهر) لا 8 كانون الثاني —
@@ -1244,7 +1241,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_DecreeDate_ParsesDayFirst_FreeText()
     {
         var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -1267,7 +1264,7 @@ public class PublicEntityServiceTests : IDisposable
         return (survivor.GroupId, absorbed1.GroupId, absorbed2.GroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewMerge_ShowsCorrectBranchMapping()
     {
         var (sg, ag1, ag2) = await SeedThreeGroupsForMergeAsync();
@@ -1278,7 +1275,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(preview.TotalAffectedDocuments >= 0);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewMerge_SurvivorNotFound_Throws()
     {
         var (_, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1286,7 +1283,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.PreviewMergeAsync(new MergePreviewRequest(9999, new[] { ag1 })));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewMerge_SelfMerge_Throws()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1294,7 +1291,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { sg })));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewMerge_EmptyAbsorbed_Throws()
     {
         var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
@@ -1302,7 +1299,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.PreviewMergeAsync(new MergePreviewRequest(sg, Array.Empty<int>())));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MigratesAndDeactivates()
     {
         var (sg, ag1, ag2) = await SeedThreeGroupsForMergeAsync();
@@ -1333,7 +1330,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("merge_entity_registry", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_CreatesChangeEvent()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1348,7 +1345,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, payload.GetProperty("entriesMigrated").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_SendsHeadAlert()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1361,7 +1358,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(alerts, a => a.Message.Contains("دمج"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_CreatesDocumentOccurrences()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1380,7 +1377,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("دمج", occ.Details!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_AddsAliases()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1400,7 +1397,7 @@ public class PublicEntityServiceTests : IDisposable
             a => a.AliasText == absorbedGroup!.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MigratesPriorAliasesOfAbsorbedEntry_ToSurvivor()
     {
         // جهة ممتصة قيدها يحمل اسمًا بديلًا سابقًا إضافه المستخدمون (يُحفظ حجّة للبحث).
@@ -1422,7 +1419,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(survivorEntry.Aliases, a => a.AliasText == "مديرية الصحة");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_TotalAffectedDocs_CountsUnionOfNameMatchedAndRegistryMigrated()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1455,7 +1452,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(result.TotalAffectedDocuments >= 1);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MissingDecree_Throws()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1464,7 +1461,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("نوع المرجع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_WithNewName_RenamesSurvivor()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1485,7 +1482,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة الصحة والسكان", payload.GetProperty("newCanonical").GetString());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MigratesDelegates()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1508,7 +1505,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(sg, updated.PortalGroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_WithNewName_SyncsSurvivorOwnDocs_ToNewName()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1549,7 +1546,7 @@ public class PublicEntityServiceTests : IDisposable
             .Contains("وزارة الصحة -", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_WithNewName_SyncsAbsorbedDocs_ToNewName()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1589,7 +1586,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("مديريه الصحه", after.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MigratesEntryLevelDelegates()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1636,7 +1633,7 @@ public class PublicEntityServiceTests : IDisposable
         return (survivor.GroupId, absorbed.GroupId, sD.Id, sA.Id, aD.Id, aA.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_MigratesEntryDelegatesByBranchMatch()
     {
         var (sg, ag, sD, sA, aD, aA) = await SeedTwoBranchMergeAsync();
@@ -1671,7 +1668,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(sg, a.PortalGroupId);
         Assert.Equal(sA, a.PortalEntryId);
     }
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_EntryLevelDelegate_FallsBackToFirst_WhenNoBranchMatch()
     {
         // الممتصة فيها قيد (اللاذقية) بلا نظير في الناجية؛ فيسقط المندوب على أول قيد ناجٍ
@@ -1701,7 +1698,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(survivorEntry.Id, updated.PortalEntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_GroupLevelDelegate_UnaffectedByBranchMapping()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1724,7 +1721,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(sg, updated.PortalGroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_SelfMerge_Throws()
     {
         var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
@@ -1734,7 +1731,7 @@ public class PublicEntityServiceTests : IDisposable
                     DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_NeedsReviewOnAbsorbed_Throws()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1749,7 +1746,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("مراجعة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_NeedsReviewOnSurvivor_Throws()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1766,7 +1763,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── سجل تغييرات الجهات (د5 §7) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_FiltersByActionKindAndGovernorate()
     {
         var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1777,7 +1774,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(paged.Items, i => Assert.Equal("move", i.ActionKind));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_PaginationWorks()
     {
         var a1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1793,7 +1790,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.NotEqual(p1.Items[0].Id, p2.Items[0].Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_FilterByActorAndPeriod()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ج1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1807,7 +1804,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, byOther.TotalCount);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("ليس تاريخا", null)]
     [InlineData(null, "32/13/2026")]
     [InlineData("غدًا", "أمس")]
@@ -1819,7 +1816,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("غير صالح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_ActorFilterNormalizingToEmpty_MatchesNothing()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ط1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1835,7 +1832,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, none.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_ExportProducesWorkbook()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1846,7 +1843,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal((byte)'K', bytes[1]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_Export_WritesSheetNameHeadersRowsAndAutoFilter()
     {
         // حارس محتوى حقيقي لمسار التصدير بعد مشاركته محرّك `WriteWorkbook` مع
@@ -1879,7 +1876,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── سجل التغييرات: الملخّص العربي القابل للعرض (إصلاح عرض PayloadJson الخام) ──
 
-    [Fact]
+    [PostgresFact]
     public void ChangeLog_DtoExposesNoRawPayload()
     {
         // عقد أمني: الحمل الخام لا يغادر الخادم — أي إعادة لإضافة الحقل تكسر هذا الاختبار عمدًا.
@@ -1898,7 +1895,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("payload", json, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeEvents_AllWrittenKindsAreCatalogValid()
     {
         // نقطة الخنق TrackChangeEventAsync ترفض أي صنف خارج الكتالوج — هذا الاختبار
@@ -1915,7 +1912,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(kinds, k => Assert.True(ActionKindCatalog.IsValid(k), $"kind: {k}"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_SummaryShowsArabicMoveDetails_NotRawJson()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -1936,7 +1933,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("\\u", item.SummaryAr);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_RenameSummaryShowsBeforeAfterAndDecree()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التسمية القديمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -1953,7 +1950,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("بموجب قرار رقم 77 بتاريخ 2026-08-01", item.SummaryAr);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_MergeSummaryShowsSurvivorAndAbsorbed()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -1972,7 +1969,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("بموجب قرار رقم 123", item.SummaryAr);
     }
 
-    [Fact]
+    [PostgresFact]
     public void ChangeLog_SummaryDecodesEscapedUnicodePayload()
     {
         // يحاكي صفًّا مخزّنًا بالمُرمِّز الافتراضي (هروب \uXXXX): الملخّص يعرض عربيًا صريحًا.
@@ -1991,7 +1988,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("\\u", summary.Summary);
     }
 
-    [Fact]
+    [PostgresFact]
     public void ChangeLog_SummaryFallsBackToLabelOnCorruptPayload()
     {
         // التالف/الناقص موسوم التدهور؛ الفارغ تطبيع لا تدهور (لا تفاصيل متوقعة).
@@ -2012,7 +2009,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(unknownKind.IsDegraded);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_ExportDetailsAreReadableArabic()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -2029,7 +2026,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("{", dataRow[6]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_FilterByActorNameMatchesFullName()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الاسم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -2043,7 +2040,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(paged.Items, i => Assert.Equal(_managerId, i.ActorUserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_FilterByActorNameMatchesUsername()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الدخول أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -2057,7 +2054,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(paged.Items, i => Assert.Equal(_managerId, i.ActorUserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_UnknownActorNameReturnsEmpty()
     {
         var paged = await _service.ListChangeEventsAsync(
@@ -2066,7 +2063,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, paged.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeLog_ArabicDigitsActorIdIsAccepted()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الرقم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -2083,7 +2080,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── قائمة المجموعات وتوحيد التسمية N←1 (المدير/المشرف) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_ReturnsGroupsOrderedWithCountsAndGovernorates()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2100,7 +2097,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("حمص", groupA.Governorates);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_FiltersByQueryAndGovernorate()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2114,7 +2111,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(govPaged.Items, g => Assert.Contains("حلب", g.Governorates));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_HeadSeesOnlyHisGovernorate()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة دمشق فقط", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2128,7 +2125,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.All(alpPaged.Items, g => Assert.Contains("حلب", g.Governorates));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_PaginationWorks()
     {
         for (int i = 0; i < 5; i++)
@@ -2142,7 +2139,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(5, p1.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_IncludeIdsForcesTargetGroupIntoPageRegardlessOfOrder()
     {
         // تُنبأ 5 جهات تُفرز أبجديًا: «جهة ترقيم 4» هي آخرها أبجديًا (كأعلى رقم) — أي خارج
@@ -2162,7 +2159,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(page.TotalCount, forced.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_IncludeIdsIgnoresNonExistentOrInactiveIds()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة نشطة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2178,7 +2175,7 @@ public class PublicEntityServiceTests : IDisposable
         return (target.GroupId, absorbed.GroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewUnify_ShowsTotalEntriesAndWarnings()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2188,7 +2185,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, preview.TotalEntriesToMove);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewUnify_ListsFoldsWithCounts()
     {
         // قيد مطابق حرفيًا (المحافظة/الفرع) في الهدف ← يُعرض كطي لا تعارضًا.
@@ -2227,21 +2224,21 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(second.GroupId, fold2.AbsorbedGroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewUnify_SelfUnify_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { target })));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewUnify_EmptyAbsorbed_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, Array.Empty<int>())));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_MovesEntriesAndDeactivatesGroupsAndLogsEvent()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2266,7 +2263,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("unify_entity_names", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_KeepsOldNamesAsSearchOnlyAliases()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2278,7 +2275,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(movedEntry.Aliases, a => a.AliasText == "الجهة الممتصة");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_MatchingBranch_FoldsOntoSurvivor()
     {
         var target = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -2328,7 +2325,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Single(payloadEl.GetProperty("folds").EnumerateArray());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_Fold_RepointsDocumentsAndDelegates()
     {
         var target = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -2414,7 +2411,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("unify_entity_names", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_TwoAbsorbedSameKey_MovesFirstFoldsSecond()
     {
         // الهدف بلا قيود نشطة: بركة الناجين تبدأ فارغة، فأول ممتصة (حسب ترتيب Distinct) تُنقل
@@ -2460,7 +2457,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(survivor2.Aliases, a => a.AliasText == "الهوية الثالثة");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_NeedsReview_Throws()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2471,14 +2468,14 @@ public class PublicEntityServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_SelfUnify_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { target }), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListEntriesByGroup_HeadSeesOnlyHisGovernorate()
     {
         var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "دمشق", "فرع دمشق 1"), ManagerActor());
@@ -2492,7 +2489,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(2, managerEntries.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithDecree_SucceedsAndStoresDecree()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2506,7 +2503,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate!.Value.Date);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithInvalidDecreeDate_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم 2", "ministry", "دمشق", "فرع 2"), ManagerActor());
@@ -2514,7 +2511,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("تاريخ المرسوم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_WithDecree_SucceedsAndStoresDecree()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2526,7 +2523,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.NotNull(evt.DecreeDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_WithInvalidDecreeDate_Throws()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2534,7 +2531,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("تاريخ المرسوم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_WithArabicDigitsDecreeDate_Succeeds()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2545,7 +2542,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.NotNull(evt.DecreeDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Unify_NameSync_CreatesOccurrencesForAffectedDocuments()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
@@ -2585,7 +2582,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("الجهة الموحدة الهدف - محافظة حلب", after.Applicant);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FindSimilarToGroup_ReturnsFunctionalWordSuggestions()
     {
         var target = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2598,7 +2595,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(resp.Items[0].Similarity >= 0.55);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListGroups_IncludesLinkedDocumentCount()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بعداد", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2626,7 +2623,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(1, item.LinkedDocumentCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_ByLawyer_SucceedsWithoutAlert()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2641,14 +2638,14 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_ByNonLawyer_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أخرى", "ministry", "دمشق", "فرع 2"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "تعديل"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_DuplicateBranch_Throws()
     {
         var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
@@ -2656,7 +2653,7 @@ public class PublicEntityServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_LawyerExplicitIsParentEntity_Throws_AndLeavesEntryUntouched()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ثابتة", "ministry", "دمشق", "فرع المزة"), ManagerActor());
@@ -2673,7 +2670,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, await _db.PublicEntityChangeEvents.CountAsync(e => e.ActionKind == ActionKindCatalog.Propose));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_LawyerRenameToDefaultBranchName_KeepsParentFlagFalse()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تغيير فرع", "ministry", "دمشق", "فرع المزة"), ManagerActor());
@@ -2693,7 +2690,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(dto.Id, evt.EntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProposeEdit_OnParentEntry_WithoutFlag_Succeeds_AndKeepsParent()
     {
         // حدّية: اقتراح على قيد أمّ (دون طلب تغيير الوضع) مقبول، ويبقى قيدًا أمًّا
@@ -2713,7 +2710,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── إعادة تسمية هوية أم (أ2) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_RenamesAndSyncsTexts()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2737,7 +2734,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("rename_public_entity_group", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_SavesOldNameAsAlias()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("الهيئة العامة للطيران", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2748,7 +2745,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(entries.SelectMany(e => e.Aliases), a => a.AliasText == "الهيئة العامة للطيران");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_MissingDecree_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بدون مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2757,7 +2754,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("نوع المرجع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_ByHead_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحوكمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2765,7 +2762,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم محظور", "قرار", "1", "1/1/2026"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_NeedsReview_Throws()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بانتظار المراجعة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2780,7 +2777,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── الحلول: الإلغاء والاستبدال (أ4) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_CreatesNewAndMovesLinks()
     {
         var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2814,7 +2811,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("abolish_and_replace_entity", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_MissingDecree_Throws()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2824,7 +2821,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("نوع المرجع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_ByHead_Throws()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل ب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2834,7 +2831,7 @@ public class PublicEntityServiceTests : IDisposable
                     DecreeKind: "قرار", DecreeNumber: "1", DecreeDate: "1/1/2026"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_MigratesDelegates()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2857,7 +2854,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(result.NewGroupId, updated.PortalGroupId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_MigratesEntryLevelDelegates()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2884,7 +2881,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.NotNull(updated.PortalEntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishPreview_CountsEntryLevelDelegates()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة العدادة قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -2925,7 +2922,7 @@ public class PublicEntityServiceTests : IDisposable
     private static AppealPartyDto EntityParty(string kind, int partyId, string name)
         => new(kind, partyId, name);
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_UpdatesFileAndAppealSnapshots()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -2960,7 +2957,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_CorruptedAppealSnapshot_SkipsSyncWithAuditAndKeepsOriginal()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -2996,7 +2993,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("appeal_entity_sync_skipped", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_NameSnapshot_DifferingFromCanonical()
     {
         // الثغرة: اسم اللقطة المخزَّن يختلف عن الاسم المعياري المُلغى — يجب أن يُحدَّث مباشرة
@@ -3029,7 +3026,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("الهيئة الضريبية الوطنية", parties[0].Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_SingleGroup_IsAllowedAndMovesLinks()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3052,7 +3049,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(newEntry.Id, updatedRow!.RegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_AppealEmptyJson_StaysUnchanged()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3079,7 +3076,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_AppealNoMatch_StaysUnchanged()
     {
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3109,7 +3106,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_UpdatesAppealSnapshots()
     {
         var group = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3134,7 +3131,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_DecidedAppeal_StaysHistorical()
     {
         var group = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3160,7 +3157,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_ExecutedParty_UpdatesAppealSnapshots()
     {
         var group = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3198,7 +3195,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("appeal_entity_sync", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroup_DoesNotRenameFreeLegalExecutionApplicant()
     {
         var group = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -3251,7 +3248,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── ApplicantRegistryId = EntryId (لا GroupId) — إصلاح المواضع الخمسة في PublicEntityService ──
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_Fold_ApplicantRegistryId_IsEntryId_NotGroupId()
     {
         var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
@@ -3277,7 +3274,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(after.ApplicantPublicEntities, a => a.RegistryId == e2);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_ModeA_ApplicantRegistryId_IsEntryId_NotGroupId()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -3295,7 +3292,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains(after.ApplicantPublicEntities, a => a.RegistryId == e1);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveAllEntries_ApplicantRegistryId_IsEntryId_NotGroupId()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -3315,7 +3312,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(e1, after.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CommitMerge_ApplicantRegistryId_RederivedAsEntryId()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
@@ -3335,7 +3332,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(survivorEntry.Id, after.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishAndReplace_ApplicantRegistryId_IsNewParentEntryId()
     {
         var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3358,7 +3355,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(newEntry.Id, after.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MoveEntry_DocumentWithoutApplicantLink_ApplicantRegistryId_StaysNull()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -3406,7 +3403,7 @@ public class PublicEntityServiceTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameBranch_HeadInScope_SyncsBranchLabelsAndWritesEvent()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3437,7 +3434,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameBranch_HeadOutOfScope_Throws()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3445,7 +3442,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("اسم آخر"), HeadAleppoActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameBranch_SameName_Throws()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3453,7 +3450,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameBranch_DuplicateBranchName_Throws()
     {
         var a1 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3462,7 +3459,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.RenameBranchAsync(a1.GroupId, a2.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MergeBranches_HeadInScope_MergesAndFolds()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3493,7 +3490,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("merge_branches", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MergeBranches_DifferentGovernorate_Throws()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3502,7 +3499,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MergeBranches_NeedsReview_Throws()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3516,7 +3513,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("مراجعة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MergeBranches_HeadOutOfScope_Throws()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3525,7 +3522,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadAleppoActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishBranch_LinkedDocs_NoTarget_Throws()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3537,7 +3534,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("فرع هدف بديل", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishBranch_NoLinks_DirectDeactivate()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3554,7 +3551,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("abolish_branch", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishBranch_WithTarget_ImplicitMerge()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3578,7 +3575,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AbolishBranch_LastActiveEntry_Throws()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3587,7 +3584,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("آخر فرع نشط", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnifyBranches_UnifiesIntoSurvivorWithCorrectedName()
     {
         var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3623,7 +3620,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("unify_branches", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewBranchAction_Rename_ReportsAffectedWithoutWriting()
     {
         var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3642,7 +3639,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("الفرع الرئيسي", entry.BranchName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewBranchAction_Merge_OutOfGovernorateScope_Forbidden()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3654,7 +3651,7 @@ public class PublicEntityServiceTests : IDisposable
                 HeadAleppoActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewBranchAction_Merge_CanceledToken_ThrowsOperationCanceled()
     {
         // انحدار R0-1: مسار المعاينة (بما فيه ValidateMergeablePairAsync) يجب أن
@@ -3671,7 +3668,7 @@ public class PublicEntityServiceTests : IDisposable
                 cts.Token));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewBranchAction_Merge_NeedsReview_ReportsError()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -3699,7 +3696,7 @@ public class PublicEntityServiceTests : IDisposable
         return dto.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuggestParentEdit_Head_CreatesPendingSuggestionAndEvent()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3724,7 +3721,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("suggest_parent_edit", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuggestParentEdit_NonHead_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3740,7 +3737,7 @@ public class PublicEntityServiceTests : IDisposable
         return new EntityRegistryActor(sub.Id, "رئيس شعبة دمشق", UserRole.SubHead, _damascusId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuggestParentEdit_SubHead_ParityWithHead()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3756,7 +3753,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest(Reason: "سبب"), sub));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListSuggestions_SubHead_SeesOwnOnly()
     {
         var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3770,7 +3767,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("اقتراح الشعبة", subView.Items[0].ProposedCanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WithdrawParentEditSuggestion_SubHead_OwnOnly()
     {
         var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3785,7 +3782,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Registry_SubHead_ScopedLikeHead_AndParentBanned()
     {
         await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3804,7 +3801,7 @@ public class PublicEntityServiceTests : IDisposable
             sub, default));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuggestParentEdit_DuplicatePendingPerBranch_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3813,7 +3810,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الثاني", Reason: "سبب"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SuggestParentEdit_NoActiveBranchInHeadGovernorate_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "حلب", "فرع حلب");
@@ -3821,7 +3818,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListSuggestions_ManagerSeesAll_HeadSeesOwn()
     {
         var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3841,7 +3838,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(2, pendingFilter.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewSuggestion_Head_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3851,7 +3848,7 @@ public class PublicEntityServiceTests : IDisposable
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewSuggestion_ManagerApprove_FlipsStatus()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3869,7 +3866,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("review_parent_edit_suggestion", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewSuggestion_ManagerReject_WithoutReason_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3879,7 +3876,7 @@ public class PublicEntityServiceTests : IDisposable
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewSuggestion_Twice_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3891,7 +3888,7 @@ public class PublicEntityServiceTests : IDisposable
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WithdrawSuggestion_HeadCreator_FlipsWithdrawn()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3906,7 +3903,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("withdraw_parent_edit_suggestion", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WithdrawSuggestion_NotOwner_Throws()
     {
         var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3917,7 +3914,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.WithdrawParentEditSuggestionAsync(damSuggestion.Id, HeadAleppoActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task WithdrawSuggestion_AfterReview_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -3951,7 +3948,7 @@ public class PublicEntityServiceTests : IDisposable
         return e;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeEvents_GroupLevelEvent_VisibleToHeadOfMemberGovernorate()
     {
         // مجموعة تضم فرعًا في محافظة الرئيس (دمشق) — حدث المجموعة يُعرض لرئيس عضو بمحافظته.
@@ -3969,7 +3966,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("وزارة النقل", shown.CanonicalName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeEvents_GroupLevelEvent_HiddenFromGovernorateWithoutMembers()
     {
         // مجموعة بفروع دمشق فقط — حدث المجموعة لا يظهر لرئيس محافظة بلا عضو في المجموعة.
@@ -3983,7 +3980,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain(result.Items, e => e.Id == evt.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangeEvents_EntryLevelEvent_HiddenFromOtherMemberGovernorate()
     {
         // أحداث مستوى القيد (بها EntryId) تُنطاق بمحافظة القيد وحدها: حدث إعادة تسمية فرع دمشق
@@ -4002,7 +3999,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // البند 2: إغلاق ترقية فرع→أم على رئيس القسم (صراحةً + الاشتقاق الضمني).
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_HeadExplicitIsParentEntity_ThrowsUnauthorized()
     {
         var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -4010,7 +4007,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.UpdateAsync(created.Id, new UpdatePublicEntityRequest(IsParentEntity: true), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_HeadRenameToDefaultBranchName_KeepsIsParentEntityFalse()
     {
         var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -4021,14 +4018,14 @@ public class PublicEntityServiceTests : IDisposable
         Assert.False(stored.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_HeadExplicitIsParentEntity_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "عشوائي", IsParentEntity: true), HeadDamascusActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_HeadDefaultBranchName_DerivesIsParentEntityFalse()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), HeadDamascusActor());
@@ -4036,7 +4033,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.False(stored.IsParentEntity);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ManagerIsParentEntity_StillAllowed()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
@@ -4046,7 +4043,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // البند 3: منع استهداف قيد «الجهة الأم» في عمليات الفروع (منع صريح للجميع).
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchOp_OnParentEntry_Throws_ForManager()
     {
         var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -4056,7 +4053,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("للفروع فقط", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Preview_BranchOp_OnParentEntry_ReportsError()
     {
         var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -4071,7 +4068,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Empty(preview.Entries);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewMerge_OnParentEntry_ReportsError()
     {
         // معاينة الدمج على قيد أم: خطأ ضمن Errors (200) لا استثناء مرمي (400) — تناسق مع باقي العمليات.
@@ -4090,7 +4087,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // البند 4: لا اعتماد اسم مقترح لم يُطبَّق بعد؛ اقتراح بلا اسم غير متأثر.
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewApprove_WithoutAppliedRename_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -4105,7 +4102,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, stored.Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewApprove_AfterAppliedRename_Accepts()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -4124,7 +4121,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(ParentEditSuggestionStatusCatalog.Approved, reviewed.Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReviewApprove_WithoutProposedName_Accepts()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
@@ -4139,7 +4136,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // البند 5: معاينة الإلغاء بهدف تعرض اسم الهدف الحقيقي في الملخص والحقل.
 
-    [Fact]
+    [PostgresFact]
     public async Task PreviewAbolish_WithTarget_ShowsTargetBranchName()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
@@ -4156,7 +4153,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.DoesNotContain(preview.Errors, e => e.Contains("للفروع فقط"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountNeedsReview_BranchlessHead_ReturnsZero()
     {
         // رئيس بلا فرع: صفر بلا نطاق (الحالة الشاذة لا تُحتسب) — يُختبر على مستوى
@@ -4166,7 +4163,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, await _service.CountNeedsReviewAsync(branchlessHead));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RenameGroupPreview_ShowsOldNewAndCountsWithoutWriting()
     {
         // توصيف `RF-022`: المعاينة تعرض القديم/الجديد وعدد الملفات والفروع بلا أي كتابة.
@@ -4187,7 +4184,7 @@ public class PublicEntityServiceTests : IDisposable
 
     // ── F3: تماثل إشعار الجهات العامة لرؤساء الشعب (قرار أ — بالنطاق حسب الاستعلام) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByLawyer_DoesNotCreateReviewAlert_ForAnyHead()
     {
         var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
@@ -4203,7 +4200,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListActiveHeadsByGovernorate_IncludesSubHeads_OfSameGovernorateOnly()
     {
         var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };

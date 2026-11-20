@@ -14,9 +14,8 @@ namespace DocGenerator.Application.Tests;
 /// مستقل عن الصفحة، والترتيب حتمي عند تساوي <c>LastContentChangedAt</c>،
 /// والفلاتر (الأرشفة/الفرع/غير المقروء/الإنابة) تعمل على الاستعلام نفسه.
 /// </summary>
-public class HeadAlertRepositorySummaryTests : IDisposable
+public class HeadAlertRepositorySummaryTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IHeadAlertRepository _repository;
     private readonly int _branchA;
     private readonly int _branchB;
@@ -27,7 +26,6 @@ public class HeadAlertRepositorySummaryTests : IDisposable
 
     public HeadAlertRepositorySummaryTests()
     {
-        _db = TestDb.Create();
 
         var branchA = new Branch { Name = "دمشق", Code = "DAM" };
         var branchB = new Branch { Name = "حلب", Code = "ALP" };
@@ -46,9 +44,8 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         _repository = new HeadAlertRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task Oversight_PreviewIsCodePointSafe_AndLengthMatchesUnicodeCount()
     {
         // 600 إيموجي = 600 نقطة Unicode لكن 1200 وحدة UTF-16: أي قصّ بوحدات UTF-16
@@ -78,7 +75,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Equal(exact, exactItem.MessagePreview);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Oversight_TotalCountIndependentOfPage_AndOrderIsStableByIdOnEqualTimestamp()
     {
         // نفس الطابع الزمني للثلاثة: الترتيب الحتمي ThenByDescending(Id).
@@ -106,7 +103,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
                 AlertArchiveFilter.Active, null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize + 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveFilter_Active_All_OnlyArchived_AreAppliedBeforeCount()
     {
         var active = AddAlert(_branchA, _head.Id, "نشط", At(0));
@@ -129,7 +126,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Equal(archived.Id, Assert.Single(onlyArchived.Items).Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RecipientList_LawyerIgnoresBranch_HeadIsBranchScoped_AndCountersFollowCaller()
     {
         var readAt = At(9);
@@ -173,7 +170,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Equal(1, headPage.Items[0].UnreadCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SentList_ReturnsOnlyCreatorRowsInBranch_WithBaseCounters()
     {
         var sent = AddAlert(_branchA, _head.Id, "صادر", At(0), recipientIds: new[] { _lawyer1.Id, _lawyer2.Id });
@@ -196,7 +193,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Null(item.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DelegationFilter_AppliesToRecipientAndOversightLists()
     {
         AddAlert(_branchA, _head.Id, "إنابة 77", At(0), delegationId: 77);
@@ -215,7 +212,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Empty(recipient.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Summary_TitleDistinguishesBlankExistingDocumentFromDeleted_AndMatchesSingleRow()
     {
         // صف قديم بلا حقول عرض لكن الملف قائم ⇒ «مستند {id}» لا «مستند محذوف».
@@ -249,7 +246,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
     /// (<c>= C AND Id &lt; C.Id</c>) هو ما يمنع تكرار الصف الحدّي أو فقدان توائم الزمن.
     /// وحجم الصفحة يتغيّر بين الجلبين (لا يفترض ثباته).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Cursor_WalksEqualTimestampsByDescendingId_WithoutDuplicatesOrGaps()
     {
         var first = AddAlert(_branchA, _head.Id, "أول", At(5));
@@ -291,7 +288,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
     /// المؤشر يُطبَّق **بعد** الفلاتر، فلا يتجاوزها: الأرشيف والإنابة يحدّان النتيجة
     /// كما في مسار الإزاحة، ومؤشر أحدث من كل الصفوف يعيد القائمة كاملة بلا اقتطاع.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Cursor_RespectsArchiveAndDelegationFilters_AndNewerCursorReturnsAll()
     {
         var active = AddAlert(_branchA, _head.Id, "نشط", At(1));

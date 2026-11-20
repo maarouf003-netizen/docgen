@@ -16,13 +16,11 @@ namespace DocGenerator.Application.Tests;
 /// سقف التصدير: يُرفض التصدير الواسع بعدّ مسبق قبل جلب أي صف إلى الذاكرة،
 /// ويُسمح عند الحد تمامًا وتحته — حماية ذاكرة الخادم دون تغيير شكل النتائج.
 /// </summary>
-public class ExportCapTests : IDisposable
+public class ExportCapTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
     private readonly FakeAuditLogger _audit = new();
     private int _userId;
 
-    public void Dispose() => _db.Dispose();
 
     private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Build(int maxRows)
     {
@@ -59,7 +57,7 @@ public class ExportCapTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExportAsync_WhenResultsExceedCap_ThrowsWithFriendlyMessage()
     {
         var bundle = Build(maxRows: 1);
@@ -72,7 +70,7 @@ public class ExportCapTests : IDisposable
         Assert.Contains("طبّق فلترًا أضيق", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExportAsync_AtExactCap_Passes()
     {
         var bundle = Build(maxRows: 2);
@@ -83,7 +81,7 @@ public class ExportCapTests : IDisposable
         Assert.Equal(2, rows.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExportAsync_UnderCap_Passes()
     {
         var bundle = Build(maxRows: 10);

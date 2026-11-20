@@ -15,11 +15,10 @@ namespace DocGenerator.Application.Tests;
 /// قلب قاعدة اعتماد الإنابات (§7.1–§7.7): الاعتماد لمالك الدائرة المنابة لا
 /// المنيب — داخلية بدائرة لرئيس شعبته (وقسمها لرئيس قسمه)، وخارجية لرئيس قسم
 /// الفرع المناب (أو شعبته بعد التوجيه)، مع الرفض للتصحيح والذرية.
-/// قاعدة كل اختبار جديدة (TestDb) — بلا تلوث متبادل.
+/// قاعدة كل حالة مُصفَّرة (‏`PostgresDbTest`) — بلا تلوث متبادل.
 /// </summary>
-public class SubHeadDelegationTests : IDisposable
+public class SubHeadDelegationTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
@@ -35,7 +34,6 @@ public class SubHeadDelegationTests : IDisposable
 
     public SubHeadDelegationTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _otherBranch = new Branch { Name = "اللاذقية", Code = "LAT", Governorate = "دمشق" };
@@ -87,7 +85,6 @@ public class SubHeadDelegationTests : IDisposable
             sections: new Repository<Section>(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private Task FlushAlertsAsync()
         => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
@@ -194,7 +191,7 @@ public class SubHeadDelegationTests : IDisposable
         AssetIds: new List<int> { assetId },
         DelegatedCircuitId: circuitId);
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_SectionCircuit_BySubHead_Succeeds_HeadThrows()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -218,7 +215,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Contains("assign_delegation", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_DivisionCircuit_ByHead_Succeeds_SubThrows()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -236,7 +233,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(circuitId, (await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value)).ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_CrossBranchCircuit_ByCircuitBranchHead_TargetFollowsCircuit()
     {
         // دائرة فرع آخر بنفس المحافظة: الاعتماد لمالك الدائرة والمحامي من فرعها.
@@ -261,7 +258,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(circuitId, target.ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_LegacyNoCircuit_BySourceHead_Preserved()
     {
         // صف قديم بلا دائرة مرجعية (قبل السجل/مفكوك): قاعدته القديمة — رئيس فرع المنيب.
@@ -288,7 +285,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Null(target.ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_StaleVersion_ThrowsConflict()
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
@@ -299,7 +296,7 @@ public class SubHeadDelegationTests : IDisposable
             _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id, 9999), _head1.Id, _branch.Id, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Redirect_External_ToSection_SubAssigns_RecallRestores()
     {
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
@@ -333,7 +330,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(_otherBranch.Id, (await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value)).BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RecallRedirect_RestoresHeadScope()
     {
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
@@ -351,7 +348,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reject_WrongCircuit_BlocksAssign_LawyerCorrectionReleases()
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
@@ -391,7 +388,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Null(updated!.RejectReason);
         Assert.Contains(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
     }
-    [Fact]
+    [PostgresFact]
     public async Task Create_CrossBranchCircuit_AlertTargetsCircuitBranchOwner()
     {
         // تنبيه التسطير العابر للفروع يُنشأ في فرع الدائرة (لا المنيب) لمالكه.
@@ -406,7 +403,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(_otherHead.Id, Assert.Single(alert.Recipients).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RecallRedirect_TargetsRecallingHead()
     {
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
@@ -424,7 +421,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(_otherHead.Id, Assert.Single(alert.Recipients).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AfterRedirect_RebuildsHeadAlert()
     {
         // تصحيح المحامي بعد التوجيه: يُمحى التوجيه ويُعاد بناء التنبيه لرئيس
@@ -449,7 +446,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Contains("بانتظار اعتماد الإنابة", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AfterReject_ClearsReasonWithoutCorruptingAlerts()
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
@@ -469,7 +466,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.DoesNotContain("غير مختصة", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reject_Twice_Throws_And_RecallOnRejected_Throws()
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
@@ -481,7 +478,7 @@ public class SubHeadDelegationTests : IDisposable
             _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب ثانٍ"), _head1.Id, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RedirectReject_StaleVersion_ThrowsConflict()
     {
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
@@ -497,7 +494,7 @@ public class SubHeadDelegationTests : IDisposable
             _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب", 9999), _otherHead.Id, "head2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Mutations_BumpVersion()
     {
         // كل كتابة ترفع الرمز — حماية ثنائية الاتجاه للسباق.
@@ -511,7 +508,7 @@ public class SubHeadDelegationTests : IDisposable
         Assert.Equal(updated.Version + 1, assigned!.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingScope_HeadExcludesSection_SubSeesOwnOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);

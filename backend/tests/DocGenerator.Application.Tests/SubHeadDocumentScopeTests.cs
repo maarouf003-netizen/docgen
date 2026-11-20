@@ -12,9 +12,8 @@ namespace DocGenerator.Application.Tests;
 /// نقطة النطاق الوحيدة `ApplyOwnerScope` — والمتحكم يمرر `ownerSectionId` (يغطيه حارس
 /// `subhead-guards.mjs`)، فالتغطية هنا على السلوك عبر المستودع مباشرة.
 /// </summary>
-public class SubHeadDocumentScopeTests : IDisposable
+public class SubHeadDocumentScopeTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly DocumentRepository _documents;
     private readonly Branch _branch;
     private readonly User _lawyer;
@@ -22,7 +21,6 @@ public class SubHeadDocumentScopeTests : IDisposable
 
     public SubHeadDocumentScopeTests()
     {
-        _db = TestDb.Create();
         _branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _db.Branches.Add(_branch);
         _db.SaveChanges();
@@ -40,7 +38,6 @@ public class SubHeadDocumentScopeTests : IDisposable
         _documents = new DocumentRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private async Task<int> AddSectionAsync(string name)
     {
@@ -98,7 +95,7 @@ public class SubHeadDocumentScopeTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchDeleted_SubHeadSeesOwnSectionOnly()
     {
         var sectionA = await AddSectionAsync("شعبة أ");
@@ -127,7 +124,7 @@ public class SubHeadDocumentScopeTests : IDisposable
         Assert.Equal(4, full.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchStruckOff_SubHeadSeesOwnSectionOnly()
     {
         var sectionA = await AddSectionAsync("شعبة أ");
@@ -157,7 +154,7 @@ public class SubHeadDocumentScopeTests : IDisposable
         Assert.DoesNotContain(head.Items, d => d.Id == docB.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchExecuted_SubHeadSeesOwnSectionOnly()
     {
         var sectionA = await AddSectionAsync("شعبة أ");
@@ -185,7 +182,7 @@ public class SubHeadDocumentScopeTests : IDisposable
         Assert.DoesNotContain(head.Items, d => d.Id == docB.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStart_SubHeadSeesOwnSectionOnly()
     {
         var sectionA = await AddSectionAsync("شعبة أ");

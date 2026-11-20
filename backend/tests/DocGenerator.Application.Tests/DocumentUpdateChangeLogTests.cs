@@ -14,16 +14,14 @@ namespace DocGenerator.Application.Tests;
 /// اختبار طرف-إلى-طرف لسجل تعديلات الملف: تعديل نموذجي عبر UpdateAsync
 /// يُنتج إدخال تدقيق بصفوف «حقل/قبل/بعد»، والتعديل دون تغيير يمر بلا صفوف.
 /// </summary>
-public class DocumentUpdateChangeLogTests : IDisposable
+public class DocumentUpdateChangeLogTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
 
     public DocumentUpdateChangeLogTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -43,7 +41,6 @@ public class DocumentUpdateChangeLogTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest Sample() => new()
     {
@@ -56,7 +53,7 @@ public class DocumentUpdateChangeLogTests : IDisposable
         Applicant = "المصرف",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithChangedFields_LogsFieldRows()
     {
         var created = await _service.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
@@ -81,7 +78,7 @@ public class DocumentUpdateChangeLogTests : IDisposable
         Assert.False(byKey.ContainsKey(nameof(Document.Court)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithoutChanges_LogsPlainUpdateOnly()
     {
         var created = await _service.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",

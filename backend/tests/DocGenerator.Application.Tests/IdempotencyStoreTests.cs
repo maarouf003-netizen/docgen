@@ -8,24 +8,20 @@ namespace DocGenerator.Application.Tests;
 /// `IdempotencyStore` يقرأ `TimeProvider` المحقون لا `DateTime.UtcNow`:
 /// التقديم المزيف للساعة يُسقط الحجز القديم حتميًا بلا انتظار حقيقي.
 /// </summary>
-public sealed class IdempotencyStoreTests : IDisposable
+public sealed class IdempotencyStoreTests : PostgresDbTest
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
-
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeTimeProvider _clock;
     private readonly IdempotencyStore _store;
 
     public IdempotencyStoreTests()
     {
-        _db = TestDb.Create();
         _clock = new FakeTimeProvider(T0);
         _store = new IdempotencyStore(_db, _clock);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_FreshKey_ReturnsTicket()
     {
         var begin = await _store.BeginAsync("k1", "op", 7, "fp", _clock.GetUtcNow().UtcDateTime.AddMinutes(5));
@@ -35,7 +31,7 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.Null(begin.ReplayBody);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_SameFingerprintWhilePending_ReturnsBusy()
     {
         var expires = _clock.GetUtcNow().UtcDateTime.AddMinutes(5);
@@ -50,7 +46,7 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.Null(second.ReplayBody);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_AfterExpiry_ReturnsFreshTicket()
     {
         var first = await _store.BeginAsync("k1", "op", 7, "fp", _clock.GetUtcNow().UtcDateTime.AddMinutes(5));
@@ -65,7 +61,7 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.False(second.Busy);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_CompletedKey_ReplaysBody()
     {
         var first = await _store.BeginAsync("k1", "op", 7, "fp", _clock.GetUtcNow().UtcDateTime.AddMinutes(5));
@@ -80,7 +76,7 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.Equal("{\"ok\":true}", replay.ReplayBody);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_CompletedKey_ReplaysStatusContentTypeAndLocation()
     {
         var expires = _clock.GetUtcNow().UtcDateTime.AddMinutes(5);
@@ -97,7 +93,7 @@ public sealed class IdempotencyStoreTests : IDisposable
         Assert.Equal("/api/things/1", replay.ReplayLocation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BeginAsync_DifferentFingerprint_ResetsStoredMetadata()
     {
         var expires = _clock.GetUtcNow().UtcDateTime.AddMinutes(5);

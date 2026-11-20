@@ -10,16 +10,14 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class UserManagementServiceTests : IDisposable
+public class UserManagementServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IUserManagementService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly PasswordHasher _hasher = new();
 
     public UserManagementServiceTests()
     {
-        _db = TestDb.Create();
         _db.Branches.AddRange(
             new Branch { Name = "دمشق", Code = "DAM" },
             new Branch { Name = "حلب", Code = "ALP" });
@@ -47,7 +45,6 @@ public class UserManagementServiceTests : IDisposable
             uow, _hasher, tx, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private int DamascusId => _db.Branches.Single(b => b.Code == "DAM").Id;
     private int AleppoId => _db.Branches.Single(b => b.Code == "ALP").Id;
@@ -68,7 +65,7 @@ public class UserManagementServiceTests : IDisposable
         return user;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_AddsActiveLawyerToBranch()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -81,7 +78,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("create_user", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_DuplicateUsername_Throws()
     {
         await AddUserAsync("duplicate", "محامي موجود", UserRole.Lawyer, DamascusId);
@@ -90,14 +87,14 @@ public class UserManagementServiceTests : IDisposable
             _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("duplicate", "محامي", "TestPass1234"), "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_WeakPassword_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("lawyer_short", "محامي", "123"), "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetLawyerActive_OutsideScope_ReturnsFalse()
     {
         var aleppoLawyer = await AddUserAsync("alep", "محامي حلب", UserRole.Lawyer, AleppoId);
@@ -107,7 +104,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.False(ok);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetLawyerActive_Disable_IncrementsTokenVersion()
     {
         var lawyer = await AddUserAsync("off", "محامي إيقاف", UserRole.Lawyer, DamascusId);
@@ -121,7 +118,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("update_user", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetLawyerActive_OnNonLawyer_ReturnsFalse()
     {
         var head = await AddUserAsync("head_x", "رئيس قسم", UserRole.Head, DamascusId);
@@ -131,7 +128,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.False(ok);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_FiltersByBranch()
     {
         await AddUserAsync("d1", "محامي دمشق 1", UserRole.Lawyer, DamascusId);
@@ -143,7 +140,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("d1", lawyers[0].Username);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_WithManagerRole_NoBranchRequired()
     {
         var user = await _service.CreateUserAsync(
@@ -154,21 +151,21 @@ public class UserManagementServiceTests : IDisposable
         Assert.True(user.IsActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_LawyerWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(new CreateUserRequest("law", "محامي", "lawyer", null, "TestPass1234"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_HeadWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "TestPass1234"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_RoleToLawyerWithoutBranch_Throws()
     {
         // المسار الوحيد القابل للوصول عبر الخدمة: مندوب (بلا فرع بالتصميم) يُحوَّل
@@ -180,14 +177,14 @@ public class UserManagementServiceTests : IDisposable
             _service.UpdateUserAsync(user.Id, new UpdateUserRequest("مندوب", "lawyer", null, true, null), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_InvalidRole_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", "مشرف", null, "TestPass1234"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_SelfDisable_Throws()
     {
         var admin = await AddUserAsync("admin_x", "مشرف", UserRole.Admin, null);
@@ -196,7 +193,7 @@ public class UserManagementServiceTests : IDisposable
             _service.UpdateUserAsync(admin.Id, new UpdateUserRequest("مشرف", "admin", null, false, null), admin.Id, "admin_x"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_ResetPassword_IncrementsTokenVersion()
     {
         var user = await AddUserAsync("reset", "مستخدم", UserRole.Lawyer, DamascusId);
@@ -211,7 +208,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.True(_hasher.Verify("TestPass5678", reloaded.PasswordHash));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_NotFound_ReturnsNull()
     {
         var result = await _service.UpdateUserAsync(
@@ -220,7 +217,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_Rename_SyncsUsernameAndFullName()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -237,7 +234,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("update_user", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_ResetPassword_IncrementsTokenVersion()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -253,7 +250,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("lawyer_pw", reloaded.Username);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_OutsideScope_ReturnsNull()
     {
         var aleppoLawyer = await AddUserAsync("alep_edit", "محامي حلب", UserRole.Lawyer, AleppoId);
@@ -264,7 +261,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_OnNonLawyer_ReturnsNull()
     {
         var headUser = await AddUserAsync("head_edit", "رئيس قسم", UserRole.Head, DamascusId);
@@ -275,7 +272,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_NotFound_ReturnsNull()
     {
         var result = await _service.UpdateLawyerAsync(
@@ -284,7 +281,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_DuplicateNameSameBranch_Throws()
     {
         await _service.CreateLawyerAsync(DamascusId,
@@ -298,7 +295,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("نفس الفرع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_WeakPassword_Throws()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -308,7 +305,7 @@ public class UserManagementServiceTests : IDisposable
             _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, "123"), DamascusId, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_PaddedPassword_StoresTrimmedValue()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -319,7 +316,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.False(_hasher.Verify("  TestPass1234  ", reloaded.PasswordHash));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_NoChanges_Throws()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -331,7 +328,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("لا يوجد تغيير", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateLawyer_EquivalentSpelling_PresentationChange_Allowed()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -346,7 +343,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("محمد أحمد علي", updated.FullName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_SameNameDifferentBranch_Allowed()
     {
         await AddUserAsync("محمد احمد علي", "محمد أحمد علي", UserRole.Lawyer, DamascusId);
@@ -358,7 +355,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(AleppoId, lawyer.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_ArabicNameWithSpaces_AcceptedAndNormalized()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
@@ -369,7 +366,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("محمد أحمد علي", lawyer.FullName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_EquivalentArabicSpelling_SameBranch_Throws()
     {
         await _service.CreateLawyerAsync(DamascusId,
@@ -382,7 +379,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("نفس الفرع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SameNameSameBranch_Throws()
     {
         await _service.CreateUserAsync(
@@ -393,7 +390,7 @@ public class UserManagementServiceTests : IDisposable
                 new CreateUserRequest("خالد حسن", "خالد حسن", "lawyer", DamascusId, "TestPass1234"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_Rename_SyncsUsernameAndBlocksDuplicates()
     {
         var user = await AddUserAsync("قاسم علي", "قاسم علي", UserRole.Lawyer, DamascusId);
@@ -412,7 +409,7 @@ public class UserManagementServiceTests : IDisposable
                 user.Id, new UpdateUserRequest("مروان سعيد", "lawyer", DamascusId, true, null), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_LeavingEntityManagerRole_ClearsPortalBindings()
     {
         // مندوب مربوط بهوية: تحويله لمحامٍ عبر الشاشة القديمة يجب أن يفكّ نطاق
@@ -435,7 +432,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null(stored.PortalEntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SecondActiveHeadSameBranch_ThrowsWithApprovedMessage()
     {
         await _service.CreateUserAsync(
@@ -447,7 +444,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("الفرع لا يقبل رئيسي قسم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_HeadDifferentBranch_Allowed()
     {
         await _service.CreateUserAsync(
@@ -458,7 +455,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(AleppoId, other.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SecondHeadAfterDeactivation_Allowed()
     {
         var first = await _service.CreateUserAsync(
@@ -472,7 +469,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.NotNull(second);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_PromoteLawyerToHeadWithExistingHead_Throws()
     {
         await _service.CreateUserAsync(
@@ -484,7 +481,7 @@ public class UserManagementServiceTests : IDisposable
                 lawyer.Id, new UpdateUserRequest(lawyer.FullName, "head", DamascusId, true, null), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_SelfHeadUpdate_Allowed()
     {
         var head = await _service.CreateUserAsync(
@@ -552,7 +549,7 @@ public class UserManagementServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_BranchMode_ReturnsFullBranch()
     {
         await AddUserAsync("محام أ", "محام أ", UserRole.Lawyer, DamascusId);
@@ -561,7 +558,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains(list, l => l.Username == "محام أ");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_BadMode_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -569,7 +566,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("mine أو branch", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_Mine_UnionRule()
     {
         var head = await AddHeadUserAsync("رئيس القسم", DamascusId);
@@ -603,7 +600,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.DoesNotContain("محام هـ", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_Mine_SubHeadSeesOwnSectionFiles()
     {
         var head = await AddHeadUserAsync("رئيس القسم", DamascusId);
@@ -631,7 +628,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.DoesNotContain("محام غريب", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_Mine_ManagerBypassesToFullList()
     {
         await AddUserAsync("محام أ", "محام أ", UserRole.Lawyer, DamascusId);
@@ -641,7 +638,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains(list, l => l.Username == "محام أ");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListLawyers_IncludeInactive_FalseExcludes()
     {
         var lawyer = await AddUserAsync("محام خامل", "محام خامل", UserRole.Lawyer, DamascusId);
@@ -653,7 +650,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.NotEmpty(await _service.ListLawyersAsync(DamascusId, "branch", 999, null, false, true));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SubHeadWithoutSection_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -662,7 +659,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("الشعبة إلزامية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SubHeadFullFlow_SetsSectionAndOccupancy()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -679,7 +676,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("الشعبة مشغولة برئيس مفعّل", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_SubHeadSectionWrongBranch_Throws()
     {
         var foreignSection = await AddSectionAsync("شعبة حلب", AleppoId);
@@ -690,7 +687,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("ليست ضمن فرع الحساب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_HeadWithSection_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -701,7 +698,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("مخصصة لرئيس الشعبة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateUser_Lawyer_SetsCreatedById()
     {
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
@@ -712,7 +709,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Id == created.Id)).CreatedById);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLawyer_SetsCreatedById()
     {
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
@@ -723,7 +720,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Username == lawyer.Username)).CreatedById);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_MoveSubHeadBetweenSections_BumpsToken()
     {
         var first = await AddSectionAsync("شعبة أولى", DamascusId);
@@ -740,7 +737,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.True((await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).TokenVersion > before);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_SubHeadLosesRole_ClearsSection()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -755,7 +752,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Null((await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateUser_LawyerWithSection_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -781,7 +778,7 @@ public class UserManagementServiceTests : IDisposable
         return await _db.Users.SingleAsync(u => u.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_WithoutSuccessor_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -793,7 +790,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains("خلفًا إجباريًا", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_WithSuccessor_FullSuccession()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -868,7 +865,7 @@ public class UserManagementServiceTests : IDisposable
             e => e == HeadSuccessionEventCatalog.Succeeded);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_ReadRecipient_StaysWithPredecessor()
     {
         // المقروء تاريخ مكتمل لا يُرحَّل — فقط المعلقة (غير المقروءة) تنتقل.
@@ -893,7 +890,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(head.Id, (await _db.HeadAlertRecipients.AsNoTracking().SingleAsync()).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateDivisionHead_WithSuccessor_PromotesAndClearsSection()
     {
         // قرار §2.18 يسري على القسم أيضًا: تعطيل رئيس القسم بخلف (محامٍ يُرقَّى).
@@ -913,7 +910,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Contains(HeadSuccessionEventCatalog.Succeeded, events);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_AnsweredLetter_StaysWithPredecessor()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -950,7 +947,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal(head.Id, (await _db.Correspondences.AsNoTracking().SingleAsync()).TargetUserId);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Admin)]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.EntityManager)]
@@ -965,7 +962,7 @@ public class UserManagementServiceTests : IDisposable
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, bad.Id), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_InactiveSuccessor_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -980,7 +977,7 @@ public class UserManagementServiceTests : IDisposable
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, off.Id), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateHead_ForeignBranchSuccessor_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -992,7 +989,7 @@ public class UserManagementServiceTests : IDisposable
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, foreign.Id), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeactivateLawyer_WithSuccessor_Throws()
     {
         var lawyer = await AddUserAsync("محام", "محام", UserRole.Lawyer, DamascusId);
@@ -1003,7 +1000,7 @@ public class UserManagementServiceTests : IDisposable
                 lawyer.Id, new UpdateUserRequest(null, null, null, false, null, null, other.Id), 999, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReactivateHead_WithActiveSuccessor_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
@@ -1019,7 +1016,7 @@ public class UserManagementServiceTests : IDisposable
         Assert.Equal("الشعبة مشغولة برئيس مفعّل", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListSuccession_OrderedDesc_WithNames()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);

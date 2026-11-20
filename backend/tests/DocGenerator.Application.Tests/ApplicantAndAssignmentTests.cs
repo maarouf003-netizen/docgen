@@ -15,15 +15,13 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات قائمة الجهات طالبة التنفيذ (ApplicantPublicEntity)، وحقلي ورود الملف،
 /// وسجل التعاقب على الملف (منشئ + إحالات) في وضع «الجهة العامة طالبة تنفيذ».
 /// </summary>
-public class ApplicantAndAssignmentTests : IDisposable
+public class ApplicantAndAssignmentTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
 
     public ApplicantAndAssignmentTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -53,7 +51,6 @@ public class ApplicantAndAssignmentTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest ApplicantSample() => new()
     {
@@ -75,7 +72,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         ExecutedRequiredAmount = 1000m,
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithApplicantEntities_StoresListAndDerivesApplicantText()
     {
         var req = ApplicantSample();
@@ -101,7 +98,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Equal("5/1/2024", loaded.FileArrivalDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithManyLongApplicantEntities_TruncatesApplicantTextToColumnLimit()
     {
         var req = ApplicantSample();
@@ -121,7 +118,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.EndsWith("…", loaded.Applicant);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithLegacyApplicantString_CreatesSingleEntity()
     {
         var req = ApplicantSample();
@@ -135,7 +132,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Equal("المدعي القديم", loaded.Applicant);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_ClearsApplicantListAndArrivalFields()
     {
         var req = ExecutedSample();
@@ -150,7 +147,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Null(loaded.FileArrivalDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WithLegacyApplicantString_DoesNotCreatePhantomEntity()
     {
         // C-01: النص القديم `Applicant` توافقٌ لوضع «طالبة تنفيذ» فقط — لا يُحوَّل
@@ -165,7 +162,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.True(string.IsNullOrEmpty(loaded.Applicant));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_StruckOffApplicant_PreservesStruckOffDate()
     {
         var created = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
@@ -183,7 +180,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Equal(ExecutionStatusCatalog.StateStruckOff, updated.ExecStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateAsync_RecordsCreateAssignment()
     {
         var doc = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
@@ -195,7 +192,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.Null(create.AssignedByName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAsync_RecordsTransferAssignment()
     {
         var doc = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
@@ -210,7 +207,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         Assert.True(transfer.AssignedAt <= DateTime.UtcNow);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchText_IncludesApplicantEntityAndArrivalNumber()
     {
         var req = ApplicantSample();

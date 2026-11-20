@@ -41,7 +41,7 @@
 | `8a/4` | `SecurityTests` + مجموعات التزامن الثمانية (ملفات `SQLite` → نُسخ `Postgres`) | ✅ |
 | `8a/4a` | `OptimisticConcurrencyTests` + `TransferConcurrencyTests` (25 حالة) | ✅ |
 | `8a/4b` | بقية التزامن: `Delegation`/`AppealTransfer`/`Correspondence`/`HeadAlert`×2/`Intervention` + `SecurityTests` | ✅ |
-| `8a/5` | `TestDb` المركزي (~80 ملفًا) → `PostgresTestDb`، وتخطّي صريح للاختبارات | ⏳ |
+| `8a/5` | `TestDb` المركزي (~80 ملفًا) → `PostgresTestDb`، وتخطّي صريح للاختبارات | ✅ |
 | `8b/1` | `ApiFactory` على `Postgres` فقط + المجموعات الـ29 والـ3 والمصنعان | ⏳ |
 | `8b/2` | مصانع المضيف السبعة (`TestDatabase`) + حذف `TestDatabase` | ⏳ |
 | `8c` | حذف الحزم من `src`/`tests`، تنظيف `packages.lock.json`، تحديث `CI` والوثائق | ⏳ |

@@ -11,9 +11,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentNumberRegistryTests : IDisposable
+public class DocumentNumberRegistryTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
     private readonly FakeAuditLogger _audit = new();
     private readonly DocumentNumberRegistry _registry;
     private readonly DocumentRepository _documents;
@@ -81,7 +80,6 @@ public class DocumentNumberRegistryTests : IDisposable
         _currentYear = ServerClock.CurrentYear(TestClock.Provider, TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private Document AddDocument(
         int circuitId, string number, string year, string type = "صلح",
@@ -110,7 +108,7 @@ public class DocumentNumberRegistryTests : IDisposable
     private Task Sync(Document doc) =>
         _registry.SyncRegistrationAsync(doc, _userId, "lawyer", null, default);
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncRegistration_CreatesActiveRegistrationRow_WithCircuitAndKeys()
     {
         var doc = AddDocument(_circuitA, " ١٢٣ ", _currentYear.ToString());
@@ -126,7 +124,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Null(row.VoidedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncRegistration_YearChange_VoidsOldAndInsertsNew_RowRemainsInHistory()
     {
         var doc = AddDocument(_circuitA, "500", "2024");
@@ -147,7 +145,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal(NumberSources.Registration, current.Source);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncRegistration_ClearingNumber_VoidsRegistration_AndKeepsRow()
     {
         var doc = AddDocument(_circuitA, "501", "2025");
@@ -160,7 +158,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal(NumberVoidReasons.RegistrationCleared, row.VoidReason);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveRotation_InsertsRotationInCurrentYear_AndEffectiveUsesIt()
     {
         var doc = AddDocument(_circuitA, "600", (_currentYear - 1).ToString());
@@ -178,7 +176,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal("900", EffectiveFileIdentity.Number(loaded, _currentYear));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveRotation_HardDuplicate_SameCircuit_IsRejectedWithoutOverride()
     {
         var existing = AddDocument(_circuitA, "700", _currentYear.ToString());
@@ -192,7 +190,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal("number_duplicate", ex.Code);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveRotation_SoftDuplicate_OtherCircuit_WarnsThenAcceptsWithToken()
     {
         var existing = AddDocument(_circuitA, "710", _currentYear.ToString());
@@ -213,7 +211,7 @@ public class DocumentNumberRegistryTests : IDisposable
             && b.BaseNumber == "710" && b.VoidedAt == null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Correct_UpdatesRowInPlace_AndAuditsBeforeAndAfter()
     {
         var doc = AddDocument(_circuitA, "800", _currentYear.ToString());
@@ -232,7 +230,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Contains("بعد «801»", audit);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UndoRotation_CurrentYear_VoidsRotationAndKeepsRow()
     {
         var doc = AddDocument(_circuitA, "810", (_currentYear - 1).ToString());
@@ -249,7 +247,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.Equal("910", row.BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task VoidForDocumentDelete_VoidsAllRows_DocumentDeletedHistoryKept()
     {
         var doc = AddDocument(_circuitA, "820", "2025");
@@ -268,7 +266,7 @@ public class DocumentNumberRegistryTests : IDisposable
         });
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task History_IncludesVoidedRows_AndMarksEffective()
     {
         var doc = AddDocument(_circuitA, "830", "2024");
@@ -301,7 +299,7 @@ public class DocumentNumberRegistryTests : IDisposable
             TestClock.TimeZone);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StrictMode_RejectsRegistrationWithoutCircuit_AndCreatesNoRow()
     {
         var doc = AddDocument(_circuitA, "940", _currentYear.ToString());
@@ -316,7 +314,7 @@ public class DocumentNumberRegistryTests : IDisposable
         Assert.False(await _db.BaseNumbers.AnyAsync(b => b.DocumentId == doc.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StrictMode_RejectsRotationWithoutCircuit()
     {
         var doc = AddDocument(_circuitA, "941", (_currentYear - 1).ToString());

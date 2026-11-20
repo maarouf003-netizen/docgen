@@ -19,16 +19,13 @@ namespace DocGenerator.Application.Tests;
 /// فيخطئ كل ما يعتمد على السنة. هنا يُثبَّت زمن الخادم على 2026 ويُتحقق أن النتائج
 /// لا تتأثر بموضع الصف في الصفحة.
 /// </summary>
-public class SearchServerYearTests : IDisposable
+public class SearchServerYearTests : PostgresDbTest
 {
     private static readonly FakeTimeProvider Clock = new(new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero));
-
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeAuditLogger _audit = new();
 
     public SearchServerYearTests()
     {
-        _db = TestDb.Create();
         // الفرع لازم للمحامي (قيد القاعدة) — البحث هنا user-scoped بلا فلتر فرع
         // (`visibleBranchId: null` تعني بلا فلترة) فالقيمة لا تؤثر في التأكيدات.
         var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
@@ -44,14 +41,13 @@ public class SearchServerYearTests : IDisposable
         _db.SaveChanges();
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>
     /// ملفان في قائمة البحث، أحدهما دوّره المحامي في سنة سابقة (2025) بلا رقم لسنة 2026:
     /// يجب أن يعرض رقمَ الأساس 2025 وسنةَ 2025 واحتياج التدوير، أينما وقع في الصفحة —
     /// وليس وفق موقع الصف (مؤشر 0 أو 1) كما يفعله العبور الخاطئ بحمولة Select ذات الفهرس.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_UsesServerYearForDisplayedNumberAndNeedsRotation()
     {
         var userId = 1;
@@ -105,7 +101,7 @@ public class SearchServerYearTests : IDisposable
     /// <summary>
     /// قائمة الاستئنافات: أهلية التدوير والرقم الفعّال تعتمدان على سنة الخادم لا موقع الصف.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task AppealSearch_UsesServerYearForRotationEligibilityAndEffectiveNumber()
     {
         var userId = 1;

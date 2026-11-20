@@ -15,9 +15,8 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات شريحة المنتدى (مصفوفة التفويض §2-أ سطرًا بسطر + الترقيم بمفتاح +
 /// الاحتفاظ + الهوية + الحدود) — قاعدة SQLite ذاكرة معزولة لكل اختبار.
 /// </summary>
-public class ForumServiceTests : IDisposable
+public class ForumServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeTimeProvider _clock;
     private readonly IForumService _service;
     private readonly int _branchId;
@@ -37,7 +36,6 @@ public class ForumServiceTests : IDisposable
 
     public ForumServiceTests()
     {
-        _db = TestDb.Create();
         _clock = new FakeTimeProvider(FixedNow);
 
         var branch = new Branch { Name = "اللاذقية", Code = "LAT", Governorate = "اللاذقية" };
@@ -66,7 +64,6 @@ public class ForumServiceTests : IDisposable
         _service = BuildService();
     }
 
-    public void Dispose() => _db.Dispose();
 
     private ForumService BuildService(TimeProvider? clock = null)
     {
@@ -103,7 +100,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- النشر والهوية ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_SnapshotsAuthorIdentity_PartsOnly()
     {
         var dto = await PostAsync(_lawyer1, "مرحبا بالمنتدى");
@@ -116,7 +113,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("مرحبا بالمنتدى", dto.Body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_SubHead_SnapshotsSectionName()
     {
         var dto = await PostAsync(_subHead);
@@ -126,7 +123,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("اللاذقية", dto.AuthorLocation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_BranchlessAdmin_LocationFallsBackToAllBranches()
     {
         var dto = await PostAsync(_admin);
@@ -135,31 +132,31 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("كل الفروع", dto.AuthorLocation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_EmptyBody_ThrowsArgument()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, "   "));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_OverLimitBody_ThrowsArgument()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, new string('س', 2001)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_Delegate_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => PostAsync(_delegate));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_BrokenSubHead_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => PostAsync(_brokenSubHead));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_InactiveUser_ThrowsUnauthorized()
     {
         _lawyer1.IsActive = false;
@@ -169,7 +166,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- الاقتباس ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_WithQuote_SnapshotsAuthorAndExcerpt()
     {
         var original = await PostAsync(_lawyer1, "النص الأصلي للاقتباس");
@@ -180,13 +177,13 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("النص الأصلي للاقتباس", reply.QuotedExcerpt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_WithMissingQuote_ThrowsArgument()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, "رد", 9999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_QuotedMessage_KeepsSnapshotAndNullsReference()
     {
         var original = await PostAsync(_lawyer1, "الأصل");
@@ -203,7 +200,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- الترقيم بمفتاح ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task List_TailReturnsLatestAscending_WithHasOlder()
     {
         await PostAsync(_lawyer1, "1");
@@ -216,7 +213,7 @@ public class ForumServiceTests : IDisposable
         Assert.True(page.HasOlder);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_BeforeCursor_ReturnsOlderSlice()
     {
         var first = await PostAsync(_lawyer1, "1");
@@ -230,7 +227,7 @@ public class ForumServiceTests : IDisposable
         Assert.False(older.HasOlder);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_InsertDuringScroll_NeitherDuplicatesNorSkips()
     {
         await PostAsync(_lawyer1, "1");
@@ -247,7 +244,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(new[] { fresh.Id }, newer.Items.Select(m => m.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_IsCrossBranch_GlobalStream()
     {
         await PostAsync(_lawyer2, "من دمشق");
@@ -259,7 +256,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- التعديل والحذف (مصفوفة §2-أ) ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_OwnMessage_SetsEditedStamp()
     {
         var posted = await PostAsync(_lawyer1, "قبل");
@@ -272,7 +269,7 @@ public class ForumServiceTests : IDisposable
         Assert.NotNull(updated.EditedAtUtc);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_OthersMessage_ThrowsUnauthorized_EvenForAdmin()
     {
         var posted = await PostAsync(_lawyer1);
@@ -283,14 +280,14 @@ public class ForumServiceTests : IDisposable
             () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest("x"), _admin.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.UpdateAsync(9999, new UpdateForumMessageRequest("x"), _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_OwnMessage_RemovesItWithReads()
     {
         var posted = await PostAsync(_lawyer1);
@@ -302,7 +299,7 @@ public class ForumServiceTests : IDisposable
         Assert.Empty(_db.ForumMessageReads.Where(r => r.MessageId == posted.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_OthersMessage_ThrowsUnauthorized()
     {
         var posted = await PostAsync(_lawyer1);
@@ -313,7 +310,7 @@ public class ForumServiceTests : IDisposable
             () => _service.DeleteAsync(posted.Id, _manager.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_ByAdmin_RemovesAnyMessage()
     {
         var posted = await PostAsync(_lawyer1);
@@ -323,7 +320,7 @@ public class ForumServiceTests : IDisposable
         Assert.Null(await _service.GetByIdAsync(posted.Id, _admin.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.DeleteAsync(9999, _admin.Id));
@@ -331,7 +328,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- التثبيت ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_ByAdmin_PinsAndUnpinsPrevious()
     {
         var first = await PostAsync(_lawyer1, "أولى");
@@ -348,7 +345,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(second.Id, pinned!.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_ToggleOff_Unpins()
     {
         var posted = await PostAsync(_lawyer1);
@@ -360,7 +357,7 @@ public class ForumServiceTests : IDisposable
         Assert.Null(await _service.GetPinnedAsync(_admin.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_ByNonAdmin_ThrowsUnauthorized()
     {
         var posted = await PostAsync(_lawyer1);
@@ -371,13 +368,13 @@ public class ForumServiceTests : IDisposable
             () => _service.TogglePinAsync(posted.Id, _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.TogglePinAsync(9999, _admin.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pin_ConcurrentDoublePin_MapsUniqueViolationToConflict()
     {
         var posted = await PostAsync(_lawyer1, "سباق تثبيت");
@@ -425,28 +422,37 @@ public class ForumServiceTests : IDisposable
 
         private static DbUpdateException BuildRealPinUniqueViolation()
         {
-            using var db = TestDb.Create();
-            var author = new User
-            {
-                Username = "pin_racer",
-                FullName = "متسابق التثبيت",
-                Role = UserRole.Admin,
-                PasswordHash = "x",
-            };
-            db.Users.Add(author);
-            db.SaveChanges();
-            db.ForumMessages.Add(Pinned(author));
-            db.SaveChanges();
-            db.ForumMessages.Add(Pinned(author));
+            // قاعدة معزولة: الصفوف المتسابقة لا تُلوّث قاعدة الحالة الجارية.
+            var pg = PostgresTestDb.Create();
             try
             {
+                using var db = pg.CreateContext();
+                var author = new User
+                {
+                    Username = "pin_racer",
+                    FullName = "متسابق التثبيت",
+                    Role = UserRole.Admin,
+                    PasswordHash = "x",
+                };
+                db.Users.Add(author);
                 db.SaveChanges();
+                db.ForumMessages.Add(Pinned(author));
+                db.SaveChanges();
+                db.ForumMessages.Add(Pinned(author));
+                try
+                {
+                    db.SaveChanges();
+                }
+                catch (DbUpdateException ex)
+                {
+                    return ex;
+                }
+                throw new InvalidOperationException("تعذّر توليد تعارض تثبيت حقيقي من المزود");
             }
-            catch (DbUpdateException ex)
+            finally
             {
-                return ex;
+                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            throw new InvalidOperationException("تعذّر توليد تعارض تثبيت حقيقي من المزود");
 
             static ForumMessage Pinned(User a) => new()
             {
@@ -463,7 +469,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- القراءة والعدّاد ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_CreatesBatchReceipts_AndIsMonotonic()
     {
         var first = await PostAsync(_lawyer1, "1");
@@ -479,7 +485,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(2, _db.ForumMessageReads.Count(r => r.UserId == _lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_NeverRecordsSelfReads()
     {
         await PostAsync(_lawyer1, "1");
@@ -491,7 +497,7 @@ public class ForumServiceTests : IDisposable
         Assert.Empty(_db.ForumMessageReads.Where(r => r.UserId == _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnreadCount_ExcludesOwnMessages()
     {
         await PostAsync(_lawyer1, "لي");
@@ -500,7 +506,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(1, await _service.CountUnreadAsync(_lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readers_NeverIncludeAuthorThemselves()
     {
         var posted = await PostAsync(_lawyer1);
@@ -511,7 +517,7 @@ public class ForumServiceTests : IDisposable
         Assert.Empty(readers);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_ConcurrentDuplicateInsert_TreatedAsSuccess()
     {
         var posted = await PostAsync(_lawyer1, "1");
@@ -550,7 +556,7 @@ public class ForumServiceTests : IDisposable
             => Task.FromResult(new List<int>());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_SkipsDeletedIds_ButAdvancesWatermark()
     {
         var first = await PostAsync(_lawyer1, "1");
@@ -564,7 +570,7 @@ public class ForumServiceTests : IDisposable
             _db.ForumMessageReads.Where(r => r.UserId == _lawyer2.Id).Select(r => r.MessageId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnreadCount_DropsToZeroAfterFullRead()
     {
         await PostAsync(_lawyer1, "1");
@@ -577,7 +583,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(0, await _service.CountUnreadAsync(_lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readers_VisibleToAuthorOnly_WithSnapshotName()
     {
         var posted = await PostAsync(_lawyer1);
@@ -593,7 +599,7 @@ public class ForumServiceTests : IDisposable
             () => _service.GetReadersAsync(posted.Id, _lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readers_KeepSnapshotAfterRename()
     {
         var posted = await PostAsync(_lawyer1);
@@ -606,13 +612,13 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("محامي دمشق", readers[0].UserName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Readers_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetReadersAsync(9999, _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_ReadCount_OnlyForOwnMessages()
     {
         await PostAsync(_lawyer1, "لي");
@@ -630,7 +636,7 @@ public class ForumServiceTests : IDisposable
 
     // ---------- الذِكر (مرحلة 2) ----------
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_WithMention_RewritesCanonicalName()
     {
         var dto = await PostAsync(_lawyer1, $"راجع يا @[{_lawyer2.Id}:اسم مزيّف] الملف");
@@ -638,13 +644,13 @@ public class ForumServiceTests : IDisposable
         Assert.Equal($"راجع يا @[{_lawyer2.Id}:محامي دمشق] الملف", dto.Body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_WithMissingMentionedUser_ThrowsArgument()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, "راجع يا @[987654:شبح] الملف"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_WithInactiveMentionedUser_ThrowsArgument()
     {
         _lawyer2.IsActive = false;
@@ -653,7 +659,7 @@ public class ForumServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, $"راجع يا @[{_lawyer2.Id}:محامي دمشق]"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_MalformedMention_StaysLiteralText()
     {
         var dto = await PostAsync(_lawyer1, "سعر @[abc] ورمز @[5 غير مغلق");
@@ -661,7 +667,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("سعر @[abc] ورمز @[5 غير مغلق", dto.Body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_MoreThanTenMentions_ThrowsArgument()
     {
         var extra = new List<User>();
@@ -688,14 +694,14 @@ public class ForumServiceTests : IDisposable
             () => PostAsync(_lawyer1, string.Join(" ", eleven.Select(u => $"@[{u.Id}:س]"))));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Post_MentioningDelegate_ThrowsArgument()
     {
         await Assert.ThrowsAsync<ArgumentException>(
             () => PostAsync(_lawyer1, $"راجع يا @[{_delegate.Id}:مندوب الجهة]"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RevalidatesMentions()
     {
         var posted = await PostAsync(_lawyer1, "بلا ذِكر");
@@ -706,7 +712,7 @@ public class ForumServiceTests : IDisposable
             () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest($"أضيف @[{_lawyer2.Id}:س]"), _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchUsers_ReturnsActiveOnly_ExcludingSelf_WithIdentityParts()
     {
         _delegate.IsActive = false;
@@ -719,7 +725,7 @@ public class ForumServiceTests : IDisposable
         Assert.DoesNotContain(results, u => u.Id == _delegate.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchUsers_ExcludesDelegates_EvenWhenActive()
     {
         var results = await _service.SearchUsersAsync(null, _lawyer1.Id);
@@ -729,7 +735,7 @@ public class ForumServiceTests : IDisposable
         Assert.DoesNotContain(results, u => u.Id == _delegate.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchUsers_SubHeadCarriesSection()
     {
         var results = await _service.SearchUsersAsync("الشعبة", _lawyer1.Id);
@@ -740,7 +746,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal("اللاذقية", sub.Location);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchUsers_DelegateCaller_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchUsersAsync(null, _delegate.Id));
@@ -765,7 +771,7 @@ public class ForumServiceTests : IDisposable
         return message;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Retention_DeletesOnlyStaleUnpinned_WithTheirReads()
     {
         var now = FixedNow.UtcDateTime;
@@ -793,7 +799,7 @@ public class ForumServiceTests : IDisposable
         Assert.Empty(_db.ForumMessageReads.Where(r => r.MessageId == stale.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Retention_Disabled_ReturnsZeroWithoutDeleting()
     {
         await SeedMessageAsync(_lawyer1, FixedNow.UtcDateTime.AddYears(-2));
@@ -804,7 +810,7 @@ public class ForumServiceTests : IDisposable
         Assert.Equal(1, await _db.ForumMessages.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Retention_NullsQuotesToStale_KeepingSnapshots()
     {
         var now = FixedNow.UtcDateTime;

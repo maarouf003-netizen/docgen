@@ -10,9 +10,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
-public class ReviewLetterServiceTests : IDisposable
+public class ReviewLetterServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IReviewLetterService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -26,7 +25,6 @@ public class ReviewLetterServiceTests : IDisposable
 
     public ReviewLetterServiceTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         var otherBranch = new Branch { Name = "حلب", Code = "ALP" };
         _db.Branches.AddRange(branch, otherBranch);
@@ -48,7 +46,7 @@ public class ReviewLetterServiceTests : IDisposable
     /// P4-03: نطاق فاعل غير صالح (رئيس بلا فرع) = 403 لا 400 — نفس قاعدة
     /// P2-01e/f على المطالعات.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
@@ -56,14 +54,13 @@ public class ReviewLetterServiceTests : IDisposable
     }
 
     /// <summary>P4-03: الكتاب المفقود KeyNotFound (404) لا Argument (400/404 مموّه).</summary>
-    [Fact]
+    [PostgresFact]
     public async Task GetById_Missing_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             _service.GetByIdAsync(999_999, _lawyer1.Id, UserRole.Lawyer, _branchId, default));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private ReviewLetterService BuildService(IEntropySource? entropy = null)
     {
@@ -117,7 +114,7 @@ public class ReviewLetterServiceTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_GeneralLetter_GeneratesNumberDateAndOriginalMessage()
     {
         var letter = await _service.CreateAsync(
@@ -138,7 +135,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Contains("نطلب التوجيه في الأمر", letter.Messages.Single().BodyHtml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NumberGeneration_UsesInjectedEntropy()
     {
         // P1-02b: نفس عقد الحقن في كتاب المطالعة — بلا Random.Shared.
@@ -151,7 +148,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Matches(@"^DAM-\d{4}-4321$", letter.LetterNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyBody_IsRejected()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
@@ -159,7 +156,7 @@ public class ReviewLetterServiceTests : IDisposable
             _lawyer1.Id, "المحامي الأول", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LinkedLetter_BuildsFileContextFromDocument()
     {
         var doc = await AddDocumentAsync(_lawyer1, "77/2026");
@@ -174,7 +171,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal("دائرة تنفيذ دمشق", letter.FileContext.Court);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LinkedLetter_OnRotatedFile_ShowsEffectiveNumber_NotOriginal()
     {
         // ملف مدوَّر لسنة سابقة: سياق المطالعة (إنشاءً وقراءةً) يعرض الرقم الفعّال
@@ -210,7 +207,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(rotatedYear.ToString(), hit.FileContext.FileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnForeignFile_IsDenied()
     {
         var doc = await AddDocumentAsync(_lawyer2);
@@ -220,7 +217,7 @@ public class ReviewLetterServiceTests : IDisposable
             _lawyer1.Id, "المحامي الأول", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_BySameBranchHead_MarksAnsweredWithGeneratedReplyNumber()
     {
         var letter = await _service.CreateAsync(
@@ -240,7 +237,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(0, await _service.CountPendingForHeadAsync(_branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_ByOtherBranchHead_IsDenied()
     {
         var letter = await _service.CreateAsync(
@@ -252,7 +249,7 @@ public class ReviewLetterServiceTests : IDisposable
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAddendum_ByOwnerResetsAnswered_AndOthersAreDenied()
     {
         var letter = await _service.CreateAsync(
@@ -279,7 +276,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(ReviewLetterMessage.KindAddendum, stored.Messages[^1].Kind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ScopesByRole()
     {
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب الأول</p>"),
@@ -307,7 +304,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.All(managerView.Items, i => Assert.Equal("دمشق", i.AdministrativeBranchName));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByExecutedNameFindsLinkedLetters()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -321,7 +318,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.NotNull(hit.Items[0].FileContext);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListByDocument_FollowerViaDelegation_CanViewStrangersCannot()
     {
         var sourceDoc = await AddDocumentAsync(_lawyer1);
@@ -353,7 +350,7 @@ public class ReviewLetterServiceTests : IDisposable
             () => _service.GetByIdAsync(linkedLetter.Id, stranger.Id, UserRole.Lawyer, _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListByDocument_FollowerViaAppeal_CanView()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -376,7 +373,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Single(view);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GeneratedNumbers_AreUniqueAcrossManyLetters()
     {
         var numbers = new HashSet<string>();
@@ -389,7 +386,7 @@ public class ReviewLetterServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_CreatesAlertForAuthorLawyer_AndCoalescesConsecutiveReplies()
     {
         var letter = await _service.CreateAsync(
@@ -423,7 +420,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_AlertCarriesFullBody_WithoutTruncation()
     {
         var letter = await _service.CreateAsync(
@@ -440,7 +437,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.DoesNotContain("…", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRepliesSeen_ByOwnerClearsBadge_OthersDenied()
     {
         var letter = await _service.CreateAsync(
@@ -463,7 +460,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.True(list.Items[0].IsAnswered);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAddendum_AfterSeenReply_ReactivatesUnseenFlowOnNextReply()
     {
         var letter = await _service.CreateAsync(
@@ -482,7 +479,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_AdminUnknownOrBlankBranch_ReturnsEmpty()
     {
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
@@ -498,7 +495,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Empty(blank.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAll_BlankBranch_ReturnsEmptyWithoutQuerying()
     {
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
@@ -520,7 +517,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Single(selectedItems);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_AdminBranchCombinedWithQuery()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -538,7 +535,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Equal(0, inAleppo.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAdministrativeBranches_ReturnsDistinctSortedNames()
     {
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ١</p>"),

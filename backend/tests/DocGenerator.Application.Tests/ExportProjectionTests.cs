@@ -18,13 +18,11 @@ namespace DocGenerator.Application.Tests;
 /// أرقام الأساس) والرقم الفعّال والحالة تُسقط بقيم مطابقة لمسار الكيان الكامل —
 /// حماية عقد الورقة بعد إسقاط `Include` الشجرة.
 /// </summary>
-public class ExportProjectionTests : IDisposable
+public class ExportProjectionTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
     private readonly FakeAuditLogger _audit = new();
     private int _userId;
 
-    public void Dispose() => _db.Dispose();
 
     private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Build()
     {
@@ -43,7 +41,7 @@ public class ExportProjectionTests : IDisposable
         return DocumentServiceFactory.Create(_db, _audit, exportOptions: new ExportOptions { MaxRows = 10 });
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExportAsync_ProjectsRelatedListsAndEffectiveIdentity()
     {
         var bundle = Build();
@@ -91,7 +89,7 @@ public class ExportProjectionTests : IDisposable
         Assert.Equal(full!.DisplayStatus, DocumentStatusResolver.Resolve(row));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExportAsync_JoinedNamesFollowProjectedOrder()
     {
         // عائلة «منفذ عليه»: الاسم المعروض أول طالب تنفيذ غير فارغ — الأول الفارغ
@@ -126,7 +124,7 @@ public class ExportProjectionTests : IDisposable
         Assert.Equal("ثانٍ أب عائلة", cells[3]);
     }
 
-    [Fact]
+    [PostgresFact]
     public void BuildDocumentsWorkbook_EscapesSpecialChars()
     {
         // محارف XML الخاصة (`&`, `<`, `>`) في الخلايا يجب أن تُهرَّب في التسلسل

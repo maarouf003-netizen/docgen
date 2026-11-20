@@ -5,12 +5,12 @@ using DocGenerator.Infrastructure.Persistence;
 
 namespace DocGenerator.Application.Tests;
 
-public class DbSeederTests
+public class DbSeederTests : PostgresDbTest
 {
-    [Fact]
+    [PostgresFact]
     public async Task BootstrapAsync_WithExistingUsers_DoesNothing()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
         db.Users.Add(new User { Username = "existing", Role = UserRole.Admin, PasswordHash = hasher.Hash("x") });
         await db.SaveChangesAsync();
@@ -21,10 +21,10 @@ public class DbSeederTests
         Assert.Equal("existing", user.Username);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BootstrapAsync_WithoutUsersAndWithPassword_CreatesAdmin()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         await DbSeeder.BootstrapAsync(db, hasher, "strong-admin-pass");
@@ -35,35 +35,35 @@ public class DbSeederTests
         Assert.True(hasher.Verify("strong-admin-pass", admin.PasswordHash));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BootstrapAsync_WithoutUsersAndWithoutPassword_Throws()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DbSeeder.BootstrapAsync(db, hasher, null));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("   ")]
     [InlineData("")]
     public async Task BootstrapAsync_WithoutUsersAndBlankPassword_Throws(string? password)
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DbSeeder.BootstrapAsync(db, hasher, password));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("short")]
     [InlineData("  short  ")]
     [InlineData("password123")]
     public async Task BootstrapAsync_WithoutUsersAndWeakPassword_Throws(string password)
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -72,10 +72,10 @@ public class DbSeederTests
         Assert.Empty(db.Users);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_WhenEmpty_CreatesBranchesAndDevUsers()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         // العقد الجديد (RF-006): كلمة صريحة تُستخدَم كما هي (كانت "123456" ثابتة ملتزمة قبل الإصلاح).
@@ -91,10 +91,10 @@ public class DbSeederTests
         Assert.Equal(2, db.Users.Count(u => u.BranchId != null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_WhenUsersExist_DoesNotDuplicateBranchesOrUsers()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
         db.Users.Add(new User { Username = "custom", Role = UserRole.Manager, PasswordHash = hasher.Hash("x") });
         await db.SaveChangesAsync();
@@ -114,12 +114,12 @@ public class DbSeederTests
 /// الكونسول حالة مشتركة عالمية — مجموعة تتابعية لتجنب التزاحم مع طبقات سجلات أخرى.
 /// </summary>
 [Collection("Sequential")]
-public class DbSeederPrintTests
+public class DbSeederPrintTests : PostgresDbTest
 {
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_PrintsPasswordOnlyWhenAccountsActuallyCreated()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
         var originalOut = Console.Out;
         try
@@ -144,10 +144,10 @@ public class DbSeederPrintTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_WithExplicitDevPassword_PrintsNothing()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
         var originalOut = Console.Out;
         try

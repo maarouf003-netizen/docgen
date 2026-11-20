@@ -11,9 +11,8 @@ namespace DocGenerator.Application.Tests;
 /// شعبته وأحداث فاعلي شعبته فقط — أحداث شعبة أخرى/بلا دائرة/بلا نسب مخفية.
 /// مرآة نطاق الفرع القائم (RF-007) على `ownerSectionId`.
 /// </summary>
-public class SubHeadAuditScopeTests : IDisposable
+public class SubHeadAuditScopeTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly AuditLogRepository _logs;
     private readonly AuditLogService _service;
     private readonly Branch _branch;
@@ -27,7 +26,6 @@ public class SubHeadAuditScopeTests : IDisposable
 
     public SubHeadAuditScopeTests()
     {
-        _db = TestDb.Create();
         _branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _db.Branches.Add(_branch);
         _db.SaveChanges();
@@ -51,7 +49,6 @@ public class SubHeadAuditScopeTests : IDisposable
         _service = new AuditLogService(_logs);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private int AddSection(string name)
     {
@@ -137,7 +134,7 @@ public class SubHeadAuditScopeTests : IDisposable
         _db.SaveChanges();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_SubHeadSeesOwnSectionEventsOnly()
     {
         AddEvent("lawyer1", _docA.Id); // حدث على مستند دائرة شعبته — مرئي.
@@ -154,7 +151,7 @@ public class SubHeadAuditScopeTests : IDisposable
         Assert.Contains(items, a => a.UserName == "sub_a" && a.DocumentId == null);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_SectionScopeFlowsThroughService()
     {
         AddEvent("lawyer1", _docA.Id);
@@ -166,7 +163,7 @@ public class SubHeadAuditScopeTests : IDisposable
         Assert.Equal(_docA.Id, Assert.Single(page.Items).DocumentId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_BranchScopeUnchanged_AndUnscopedSeesAll()
     {
         AddEvent("lawyer1", _docA.Id);
@@ -179,7 +176,7 @@ public class SubHeadAuditScopeTests : IDisposable
         Assert.Equal(2, fullTotal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_RenamedUserEventsBecomeUnattributed_HiddenFailClosed()
     {
         // (د): أسماء الدخول قابلة للتغيير — فحدث الفاعل الذي غُيّر اسمه يفقد نسبه

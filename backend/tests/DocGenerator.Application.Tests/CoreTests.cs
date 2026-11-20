@@ -1,29 +1,6 @@
 using DocGenerator.Application.Services;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
-
-public static class TestDb
-{
-    public static Infrastructure.Persistence.DocGeneratorDbContext Create()
-    {
-        var options = new DbContextOptionsBuilder<Infrastructure.Persistence.DocGeneratorDbContext>()
-            .UseSqlite("DataSource=:memory:")
-            .Options;
-        var db = new Infrastructure.Persistence.DocGeneratorDbContext(options);
-        db.Database.OpenConnection();
-        db.Database.EnsureCreated();
-        return db;
-    }
-
-    /// <summary>
-    /// خيارات سياق فوق اتصال مشترك مُدار خارجيًا (اختبارات التزامن متعددة
-    /// الاتصالات) — نفس السطر الموحد من ملفات التزامن الخمسة (R1-4).
-    /// </summary>
-    public static DbContextOptions<Infrastructure.Persistence.DocGeneratorDbContext> CreateOptions(SqliteConnection connection)
-        => new DbContextOptionsBuilder<Infrastructure.Persistence.DocGeneratorDbContext>().UseSqlite(connection).Options;
-}
 
 /// <summary>
 /// منطقة زمن ثابتة للاختبارات تُمثّل منطقة النظام الإنتاجية (آسيا/دمشق) بفارق +03،

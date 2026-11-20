@@ -10,10 +10,8 @@ namespace DocGenerator.Application.Tests;
 /// الفهرس الفريد (`CourtNorm` + الرقم + النوع + السنة، بفلتر `NOT IsDeleted`)
 /// هو خط الدفاع الأخير. بلا هجرات جديدة.
 /// </summary>
-public class RF009DbConstraintTests : IDisposable
+public class RF009DbConstraintTests : PostgresDbTest
 {
-    private readonly Infrastructure.Persistence.DocGeneratorDbContext _db = TestDb.Create();
-
     public RF009DbConstraintTests()
     {
         // بذر أدنى لعبور مفاتيح FK (المنشئ/الفرع) — القيد المفحوص هو الفريد وحده.
@@ -29,7 +27,6 @@ public class RF009DbConstraintTests : IDisposable
         _db.SaveChanges();
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static Document Numbered(string norm, string number, bool deleted = false) => new()
     {
@@ -42,7 +39,7 @@ public class RF009DbConstraintTests : IDisposable
         BranchId = 1,
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task DuplicateActiveNumber_DirectInsert_ThrowsDbUpdateException()
     {
         _db.Documents.Add(Numbered("دمشق", "99111"));
@@ -52,7 +49,7 @@ public class RF009DbConstraintTests : IDisposable
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeletedDuplicate_DirectInsert_Succeeds()
     {
         // فلتر القيد يستثني المحذوف: إعادة استعمال رقم محذوف مسموحة.

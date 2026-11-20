@@ -13,9 +13,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>اختبارات إدارة حسابات مندوبي الجهات وربط نطاقهم (د11 — المرحلة 3).</summary>
-public class EntityDelegateServiceTests : IDisposable
+public class EntityDelegateServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IEntityDelegateService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupId;
@@ -23,7 +22,6 @@ public class EntityDelegateServiceTests : IDisposable
 
     public EntityDelegateServiceTests()
     {
-        _db = TestDb.Create();
 
         // مستخدم مرجعي (Id=1) لملكية إنشاء القيود قبل إدراجها.
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
@@ -45,7 +43,6 @@ public class EntityDelegateServiceTests : IDisposable
             new Repository<Branch>(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>قيد إضافي بحالة محددة لاختبارات أهلية الربط (معلق/مراجعة/موقوف).</summary>
     private async Task<int> AddEntryAsync(string branch, string? status = null, bool needsReview = false, bool isActive = true)
@@ -65,7 +62,7 @@ public class EntityDelegateServiceTests : IDisposable
         return entry.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_HashesPassword_BindsScope_AndAudits()
     {
         var dto = await _service.CreateAsync(
@@ -82,7 +79,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Contains("create_delegate", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RequiresExactlyOneScope()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -94,7 +91,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Empty(_audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateUsername_FailsFriendly()
     {
         await _service.CreateAsync(new CreateDelegateRequest("delegate.dup", "أول", "TestPass1234", _groupId, null), "مدير");
@@ -107,14 +104,14 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Single(await _service.ListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_UnknownEntry_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "TestPass1234", null, 999), "مدير"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PendingEntry_Rejected()
     {
         var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
@@ -127,7 +124,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Empty(_audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NeedsReviewEntry_Rejected()
     {
         var reviewId = await AddEntryAsync("فرع مراجعة", needsReview: true);
@@ -139,7 +136,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Empty(await _service.ListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InactiveEntry_Rejected()
     {
         var offId = await AddEntryAsync("فرع موقوف", isActive: false);
@@ -151,7 +148,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Empty(await _service.ListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EntryScope_WithUnloadedGroup_ResolvesLabel()
     {
         // يحاكي طلب الإنتاج: القيد مُتتبَّع بلا Include(Group) كما يحمّله
@@ -168,7 +165,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Equal("وزارة التعليم / الفرع الرئيسي", dto.PortalEntryLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ToEntryScope_AfterDetach_ResolvesLabel()
     {
         var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "TestPass1234", _groupId, null), "مدير");
@@ -184,7 +181,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Equal("وزارة التعليم / الفرع الرئيسي", updated.PortalEntryLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ToIneligibleEntry_Rejected()
     {
         var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "TestPass1234", _groupId, null), "مدير");
@@ -203,7 +200,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Null(dto.PortalEntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RebindsScope_ResetsPassword_AndBumpsTokenVersion()
     {
         var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.re", "مندوب", "TestPass1234", _groupId, null), "مدير");
@@ -225,7 +222,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Contains("update_delegate", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NonDelegate_ReturnsNull()
     {
         // الفرع لازم للمحامي (قيد القاعدة) — النية «غير مندوب» لا تتأثر بقيمته.
@@ -239,7 +236,7 @@ public class EntityDelegateServiceTests : IDisposable
             new UpdateDelegateRequest(null, false, null, _groupId, null), "مدير"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ShortPassword_Rejected()
     {
         var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.pw", "مندوب", "TestPass1234", _groupId, null), "مدير");
@@ -251,7 +248,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.Contains("10 أحرف", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Deactivate_WithoutPasswordChange_BumpsTokenVersion_ToRevokeSessions()
     {
         var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "TestPass1234", _groupId, null), "مدير");
@@ -265,7 +262,7 @@ public class EntityDelegateServiceTests : IDisposable
         Assert.True(after.TokenVersion > before.TokenVersion);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SubHead_GovernorateLock_ParityWithHead()
     {
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };

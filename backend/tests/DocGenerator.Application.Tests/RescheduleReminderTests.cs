@@ -16,16 +16,14 @@ namespace DocGenerator.Application.Tests;
 /// للملفات و`RescheduleAppealReminderAsync` للاستئنافات): المدخل `dueDate` نفسه،
 /// وتُعاد حساب `ActionDate` خلفيًا مع بقاء المدة — بلا مساس ببقية الحقول.
 /// </summary>
-public class RescheduleDocumentReminderTests : IDisposable
+public class RescheduleDocumentReminderTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IExecutionActionService _actions;
     private readonly FakeAuditLogger _audit = new();
 
     public RescheduleDocumentReminderTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -41,7 +39,6 @@ public class RescheduleDocumentReminderTests : IDisposable
         _actions = bundle.Actions;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static int s_sampleSeq;
 
@@ -76,7 +73,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         return (doc.Id, action);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_MovesReminderBaseKeepingDuration()
     {
         var (documentId, action) = await SeedActionAsync();
@@ -112,7 +109,7 @@ public class RescheduleDocumentReminderTests : IDisposable
     /// العيب المُبلَّغ عنه: نقل التذكير يجب ألا يمسّ تاريخ الإجراء — لا قيمةً ولا صيغةً
     /// (المدخل `10-11-2026` يبقى حرفيًا، والقيمة المشتقة تذهب إلى `ReminderBaseDate`).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_DoesNotTouchActionDate()
     {
         var (documentId, action) = await SeedActionAsync("10-11-2026");
@@ -122,7 +119,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("10-11-2026", rescheduled.ActionDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_ArabicDigits_Accepted()
     {
         var (documentId, action) = await SeedActionAsync();
@@ -134,7 +131,7 @@ public class RescheduleDocumentReminderTests : IDisposable
             (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
@@ -147,7 +144,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026", ex.Message);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("31/2/2026")]
     [InlineData("ليس تاريخًا")]
     public async Task Reschedule_Invalid_ThrowsFriendly(string newDueDate)
@@ -159,7 +156,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("اليوم الجديد غير صالح — استخدم مثال: 1/8/2026", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_NoReminder_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
@@ -172,7 +169,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("لا يوجد تذكير لإعادة جدولته", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_UnknownLegacyDuration_ThrowsInsteadOfSilencingSuspect()
     {
         // مدة قديمة خارج الأربع لا يمكن زرعها عبر الخدمة (مرفوضة كتابةً) — تُزرع مباشرة.
@@ -198,7 +195,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         Assert.Equal("1/8/2026", (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!.ActionDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_ColorOnly_UsesDueDateAsBase()
     {
         var (documentId, action) = await SeedActionAsync(duration: null, color: "أصفر");
@@ -211,7 +208,7 @@ public class RescheduleDocumentReminderTests : IDisposable
             (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_NoteWithoutDate_KeepsItsExplicitDate()
     {
         var (documentId, action) = await SeedActionAsync(type: "note", actionDate: null, duration: "أسبوع");
@@ -226,7 +223,7 @@ public class RescheduleDocumentReminderTests : IDisposable
             (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_MissingActionOrMismatchedParent_ThrowsKeyNotFound()
     {
         var (documentId, action) = await SeedActionAsync();
@@ -241,9 +238,8 @@ public class RescheduleDocumentReminderTests : IDisposable
     }
 }
 
-public class RescheduleAppealReminderTests : IDisposable
+public class RescheduleAppealReminderTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentAppealService _service;
     private readonly FakeAuditLogger _audit = new();
 
@@ -254,7 +250,6 @@ public class RescheduleAppealReminderTests : IDisposable
 
     public RescheduleAppealReminderTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(_branch);
@@ -286,7 +281,6 @@ public class RescheduleAppealReminderTests : IDisposable
             TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -349,7 +343,7 @@ public class RescheduleAppealReminderTests : IDisposable
         return created.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_MovesReminderBaseKeepingDuration()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -380,7 +374,7 @@ public class RescheduleAppealReminderTests : IDisposable
     }
 
     /// <summary>المرآة: نقل تذكير إجراء الاستئناف لا يمسّ `AppealAction.ActionDate`.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_DoesNotTouchActionDate()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -394,7 +388,7 @@ public class RescheduleAppealReminderTests : IDisposable
         Assert.Equal("10-11-2026", rescheduled.ActionDate);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(null)]
     [InlineData("   ")]
     [InlineData("31/2/2026")]
@@ -410,7 +404,7 @@ public class RescheduleAppealReminderTests : IDisposable
         Assert.Contains("اليوم الجديد", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_NoReminder_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -423,7 +417,7 @@ public class RescheduleAppealReminderTests : IDisposable
         Assert.Equal("لا يوجد تذكير لإعادة جدولته", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_NonFollower_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -436,7 +430,7 @@ public class RescheduleAppealReminderTests : IDisposable
         Assert.Contains("ليس مسندًا إليك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_MissingAppealOrAction_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();

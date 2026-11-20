@@ -16,14 +16,14 @@ namespace DocGenerator.Application.Tests;
 /// (<c>HasPendingModelChanges</c>) لسياق PostgreSQL، ومسار <c>DbLoginRateLimiter</c> الخام.
 /// SQLite في الاختبارات يُبنى بـ<c>EnsureCreated</c> بلا هجرات بعد P0-02.
 /// </summary>
-public class UtcDateTimeConverterTests
+public class UtcDateTimeConverterTests : PostgresDbTest
 {
     private static readonly DateTime Origin = new(2026, 9, 26, 12, 34, 56, DateTimeKind.Utc);
 
-    [Fact]
+    [PostgresFact]
     public async Task UtcTimestamp_RoundTrips_WithKindUtc()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         db.AuditLogs.Add(new AuditLog { UserName = "u", Timestamp = Origin });
         await db.SaveChangesAsync();
 
@@ -33,10 +33,10 @@ public class UtcDateTimeConverterTests
         Assert.Equal(Origin, reread.Timestamp);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LocalTimestamp_IsStoredAsUtc()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         // قيمة Local بفارق +3 (دمشق): يجب أن تُخزَّن وتُقرأ UTC محوَّلة.
         var local = new DateTime(2026, 9, 26, 15, 34, 56, DateTimeKind.Local);
         db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM", CreatedAt = local });
@@ -48,10 +48,10 @@ public class UtcDateTimeConverterTests
         Assert.Equal(local.ToUniversalTime(), reread.CreatedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnspecifiedTimestamp_IsInterpretedAsUtc()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         // القيمة المخزّنة تاريخيًا في SQLite (Kind=Unspecified) تُسمّى Utc دون تحويل Ticks.
         var unspecified = new DateTime(2026, 9, 26, 12, 34, 56, DateTimeKind.Unspecified);
         db.AuditLogs.Add(new AuditLog { UserName = "u", Timestamp = unspecified });
@@ -63,10 +63,10 @@ public class UtcDateTimeConverterTests
         Assert.Equal(Origin, reread.Timestamp);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NullableDateTime_RoundTrips_WithKindUtc()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var branch = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         await db.SaveChangesAsync();
         db.Users.Add(new User
@@ -87,10 +87,10 @@ public class UtcDateTimeConverterTests
         Assert.Equal(Origin, reread.LastLogin);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NullableDateTime_NullValue_StaysNull()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var branch = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         await db.SaveChangesAsync();
         db.Users.Add(new User
@@ -109,10 +109,10 @@ public class UtcDateTimeConverterTests
         Assert.Null(reread.LastLogin);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReadTimestamp_SerializesWithExplicitUtcOffset()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         db.AuditLogs.Add(new AuditLog { UserName = "u", Timestamp = Origin });
         await db.SaveChangesAsync();
 
@@ -122,7 +122,7 @@ public class UtcDateTimeConverterTests
         Assert.Equal("\"2026-09-26T12:34:56Z\"", json);
     }
 
-    [Fact]
+    [PostgresFact]
     public void PostgresModel_HasNoPendingMigrations()
     {
         var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
@@ -132,10 +132,10 @@ public class UtcDateTimeConverterTests
         Assert.False(db.Database.HasPendingModelChanges());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbLoginRateLimiter_RawSqlWorks_WithConverterRegistered()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var limiter = new DbLoginRateLimiter(
             db,
             Options.Create(new RateLimitOptions { MaxLoginAttempts = 2, WindowMinutes = 5 }));

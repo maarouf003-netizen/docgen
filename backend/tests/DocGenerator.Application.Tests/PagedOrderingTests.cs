@@ -15,21 +15,18 @@ namespace DocGenerator.Application.Tests;
 /// والمحذوف) وسجل التدقيق. المقارنة على **تسلسل المعرّفات** لا على المحتوى، لأن
 /// الفاصل المطلوب هو `Id` تنازليًا.</para>
 /// </summary>
-public class PagedOrderingTests : IDisposable
+public class PagedOrderingTests : PostgresDbTest
 {
     /// <summary>مرساة زمنية موحّدة: كل الصفوف متساوية في مفتاح الترتيب عن قصد.</summary>
     private static readonly DateTime Anchor = new(2026, 11, 4, 9, 0, 0, DateTimeKind.Utc);
 
     private const int SeededRows = 6;
     private const int PageSize = 2;
-
-    private readonly DocGeneratorDbContext _db;
     private readonly int _branchId;
     private readonly int _userId;
 
     public PagedOrderingTests()
     {
-        _db = TestDb.Create();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
@@ -51,9 +48,8 @@ public class PagedOrderingTests : IDisposable
         _userId = user.Id;
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentSearch_EqualCreatedAt_PagesAreDisjointAndComplete_ByDescendingId()
     {
         var seeded = new List<Document>(SeededRows);
@@ -78,7 +74,7 @@ public class PagedOrderingTests : IDisposable
         Assert.Equal(SeededRows, collected.Distinct().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentSearchDeleted_EqualDeletedAt_PagesAreDisjointAndComplete_ByDescendingId()
     {
         var seeded = new List<Document>(SeededRows);
@@ -101,7 +97,7 @@ public class PagedOrderingTests : IDisposable
         Assert.Equal(SeededRows, collected.Distinct().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AuditLogSearch_EqualTimestamp_PagesAreDisjointAndComplete_ByDescendingId()
     {
         for (var i = 0; i < SeededRows; i++)

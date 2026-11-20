@@ -14,9 +14,8 @@ namespace DocGenerator.Application.Tests;
 /// نطاق الدائرة المنابة عند تسطير المسودة (S2): معرف دائرة من محافظة أخرى
 /// يُرفض مبكرًا بدل كشف اسمها ثم الفشل المتأخر عند الاعتماد.
 /// </summary>
-public class DelegationDraftCircuitScopeTests : IDisposable
+public class DelegationDraftCircuitScopeTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
     private readonly FakeAuditLogger _audit = new();
 
@@ -26,7 +25,6 @@ public class DelegationDraftCircuitScopeTests : IDisposable
 
     public DelegationDraftCircuitScopeTests()
     {
-        _db = TestDb.Create();
 
         _branchA = new Branch { Name = "فرع دمشق", Code = "DAM", Governorate = "دمشق" };
         _branchB = new Branch { Name = "فرع اللاذقية", Code = "LAT", Governorate = "اللاذقية" };
@@ -80,7 +78,6 @@ public class DelegationDraftCircuitScopeTests : IDisposable
             circuits: new Repository<ExecutionCircuit>(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static int s_sourceSeq;
 
@@ -149,7 +146,7 @@ public class DelegationDraftCircuitScopeTests : IDisposable
             new List<int> { assetId },
             circuitId);
 
-    [Fact]
+    [PostgresFact]
     public async Task Draft_WithForeignGovernorateCircuit_RejectedEarly()
     {
         var (doc, assetId) = await CreateSourceAsync();
@@ -160,7 +157,7 @@ public class DelegationDraftCircuitScopeTests : IDisposable
         Assert.Contains("محافظة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Draft_WithSameGovernorateCircuit_Accepted()
     {
         var (doc, assetId) = await CreateSourceAsync();
@@ -172,7 +169,7 @@ public class DelegationDraftCircuitScopeTests : IDisposable
         Assert.Equal(sameId, _db.DocumentDelegations.Single(d => d.Id == dto.Id).DelegatedCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Draft_WithUnknownGovernorates_LenientAsApprovePath()
     {
         // بلا محافظات مسجلة: التساهل نفسه المطبق في مسار الاعتماد (لا رفض مبكر).

@@ -14,9 +14,8 @@ using static DocGenerator.Application.Tests.TestHelpers.MirrorRequests;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentDelegationServiceTests : IDisposable
+public class DocumentDelegationServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
     private readonly IDocumentService _documentService;
     private readonly IDocumentSearchService _documentSearch;
@@ -35,7 +34,6 @@ public class DocumentDelegationServiceTests : IDisposable
 
     public DocumentDelegationServiceTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM" };
         _otherBranch = new Branch { Name = "اللاذقية", Code = "LAT" };
@@ -90,7 +88,6 @@ public class DocumentDelegationServiceTests : IDisposable
         _documentStatus = docBundle.Status;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -157,7 +154,7 @@ public class DocumentDelegationServiceTests : IDisposable
         AssetIds: assetIds.ToList());
 
     /// <summary>طلب تعديل يعيد بناء جميع حقول المستند بدقة من الكيان — للمرآة/الحارس بلا تشويه.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task Create_SourceFile_ReturnsPendingDelegationWithAssetSnapshot()
     {
         var source = await CreateSourceAsync("520");
@@ -178,7 +175,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("2024", dto.SourceFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SourceWithCurrentYearBaseNumber_ReturnsCurrentBaseAsSourceFileNumber()
     {
         var source = await CreateSourceAsync();
@@ -198,7 +195,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NotOwner_Throws()
     {
         var source = await CreateSourceAsync();
@@ -209,7 +206,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا تملكه", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSideFile_Throws()
     {
         var source = await CreateSourceAsync();
@@ -223,7 +220,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("طالبة التنفيذ", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedFile_Throws()
     {
         var source = await CreateSourceAsync();
@@ -238,7 +235,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("منفَّذ", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_MissingCourtOrDate_Throws()
     {
         var source = await CreateSourceAsync();
@@ -255,7 +252,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("تاريخ الإنابة", ex2.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NoAssetsOrForeignAsset_Throws()
     {
         var source = await CreateSourceAsync();
@@ -273,7 +270,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يتبع", ex2.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AssetWithoutSeizureDate_Throws()
     {
         var source = await CreateSourceAsync();
@@ -294,7 +291,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("مركبة لوحة 999", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SalaryWithoutSeizureDate_ThrowsSalaryMessageFirst()
     {
         // ترتيب الرسائل: الكفالة أولًا ثم الحجز ثم الحجب.
@@ -315,7 +312,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("كفالة الرواتب لا يجري عليها إنابة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AddsAssetWithoutSeizureDate_Throws()
     {
         var source = await CreateSourceAsync();
@@ -369,7 +366,7 @@ public class DocumentDelegationServiceTests : IDisposable
         return request;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_ClearsSeizureDateOnDelegatedAsset_Throws()
     {
         var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
@@ -384,7 +381,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("عقار رقم 77", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_WhitespaceSeizureDateOnDelegatedAsset_Throws()
     {
         var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
@@ -398,7 +395,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_ChangesSeizureDateOnDelegatedAsset_Succeeds()
     {
         // التعديل بقيمة صالحة مسموح — القفل على الحذف فقط.
@@ -414,7 +411,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 5), stored.SeizureDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_LegacyNullRightType_MatchesDefault_Succeeds()
     {
         // بيانات قديمة بلا نوع حق: الطلب الجديد يُطبِّعها إلى «حق رقبة»، فيجب ألا يرفضها
@@ -429,7 +426,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(RightTypeCatalog.BareOwnership, stored.RightType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_ClearsSeizureDateOnFreeAsset_Succeeds()
     {
         var (source, _, freeId) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
@@ -444,7 +441,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Null(stored.SeizureDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_DeletesDelegatedAssetRow_Throws()
     {
         var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
@@ -457,7 +454,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("عقار رقم 77", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSource_DeletesFreeAssetRow_Succeeds()
     {
         var (source, _, freeId) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
@@ -469,7 +466,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Empty(await _db.Assets.Where(a => a.PropertyNumber == "88").ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Pending_ByOwner_ChangesFields()
     {
         var source = await CreateSourceAsync();
@@ -485,7 +482,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("عدّلت المنطوق", updated.DelegationText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Pending_ByOwner_SwitchAsset_Succeeds()
     {
         // سيناريو المستخدم حرفيًا: تسطير إنابة على عقار ثم تصحيح فوري بتبديله
@@ -526,7 +523,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("عقار رقم 78", asset.AssetLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NotOwner_Throws()
     {
         var source = await CreateSourceAsync();
@@ -538,7 +535,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا تملكه", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_Pending_ByOwner_Removes()
     {
         var source = await CreateSourceAsync();
@@ -549,7 +546,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Null(await _db.DocumentDelegations.FindAsync(created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_BySourceHead_CreatesTargetFile()
     {
         var source = await CreateSourceAsync();
@@ -580,7 +577,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("دائرة تنفيذ حلب", dto!.DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncTargetsTransferred_UpdatesAssignedLawyer()
     {
         // بعد نقل ملكية الملف المناب: المحامي المختص المخزّن على الإنابة يتبع
@@ -600,7 +597,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer1.Id, stored.AssignedLawyerId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentTransfer_SyncsDelegationAssignedLawyer()
     {
         // التكامل: نقل الملف المناب عبر مسار النقل العام يقود مزامنة الإنابة
@@ -622,7 +619,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer1.Id, target.CreatedById);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentTransfer_ArchivesOldAssignmentAlert_AndNotifiesNewOwner()
     {
         var source = await CreateSourceAsync();
@@ -659,7 +656,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("أحمد خالد الخطيب", transferAlert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentTransfer_KeepsHeadPendingCompletionAlert()
     {
         var (_, created, targetId) = await RegisteredDelegationAsync();
@@ -678,7 +675,7 @@ public class DocumentDelegationServiceTests : IDisposable
             .ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SyncsEveryDelegatedTarget_AndNotifiesNewOwner()
     {
         // النقل الجماعي يمرّ بمسار المزامنة نفسه: كل إنابة على ملف منقول تتبع المالك
@@ -714,7 +711,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.All(transferAlerts, a => Assert.DoesNotContain(_lawyer2.Id, a.Recipients.Select(r => r.UserId)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TargetTransfer_WithoutActor_DoesNotArchiveAlertNorFakeNotification()
     {
         // الأرشفة والإشعار وحدة واحدة: بلا فاعل معروف لا يُؤرشف تنبيه المحامي السابق
@@ -746,7 +743,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer1.Id, stored.AssignedLawyerId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TargetCourt_IsIndependent_EditableAndNotMirrored()
     {
         // الدائرة حقيقة خاصة بالمناب: قابلة للتعديل كحقل أصيل، وتعديل المنيب لا يسري عليها،
@@ -781,7 +778,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("دائرة تنفيذ حماة", card.Single(d => d.Id == created.Id).DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnAssetWithPendingDelegation_ThrowsActiveDelegation()
     {
         // لا إنابتان على مال واحد: المعلّقة («بانتظار رئيس القسم») تحجب مالها عن أي تسطير جديد،
@@ -797,7 +794,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("عقار رقم 77", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnSalaryGuarantee_ThrowsNeverDelegated()
     {
         // كفالة الرواتب خارج الإنابة كليًا: لا تُحجب بل تُرفض صراحة إنشاءً وتعديلًا.
@@ -811,7 +808,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("كفالة الرواتب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_OwnPendingDelegation_KeepsOwnAssets()
     {
         // تعديل المعلّقة على أموالها مسموح (تُستثنى ذاتها من الحجب).
@@ -827,7 +824,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Single(updated!.Assets);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TakingAssetBlockedByAnother_Throws()
     {
         // D1 معلّقة على المال الأول، D2 معلّقة على الثاني؛ مدّ D2 إلى الأول مرفوض.
@@ -850,7 +847,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RejectedByGuard_LeavesNoTrackedMutation()
     {
         // D1: الفحص قبل أي إسناد — الرفض لا يترك حالة Modified عالقة ولا يمس الحقول المخزنة.
@@ -879,7 +876,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("دائرة تنفيذ حلب", stored.DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reservations_FollowDelegationLifecycle()
     {
         // B3: صف حجز لكل أصل مختار؛ التعديل يوائم الصفوف؛ الحذف يحرر بالتتالي بلا تسمم.
@@ -915,7 +912,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(again);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DuplicateLabels_OneToOneBlocking_KeepsHealthyTwin()
     {
         // توأمان متطابقا التسمية («عقار رقم 77» مرتين): حجب أحدهما لا يحجب الآخر.
@@ -943,7 +940,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DuplicateLabels_AvailabilityDriven_SymmetricBlocking()
     {
         // C1/B3: التوأم المتاح دائمًا قابل للتسطير أيًا كان ترتيب الاختيار الأول —
@@ -996,7 +993,7 @@ public class DocumentDelegationServiceTests : IDisposable
         await SecondSucceedsOnExactlyOneTwinAsync(1);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SpacedPropertyNumber_NormalizedLabel_EndToEnd()
     {
         // E2: رقم عقاري بمسافات محيطة يُطبَّع في اللقطة والحارس معًا —
@@ -1024,7 +1021,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AfterCompletion_AllowedAndUnblocked()
     {
         // الإتمام يُحرر الأموال: تسطير جديد على المال نفسه مسموح، وعلم الحجب ساقط عن المنفذة.
@@ -1049,7 +1046,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(assigned!.TargetDocumentId, card.Single(d => d.Id == created.Id).TargetDocumentId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AfterTargetStruckOff_Allowed()
     {
         // شطب المناب يُحرر الأموال (الحالة «مسجلة أصولًا» لا تتغير — يُفحص المناب نفسه).
@@ -1072,7 +1069,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(second);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(ExecutionStatusCatalog.Recovered)]
     [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
     public async Task Create_AfterTargetTerminalState_Allowed(string terminalStatus)
@@ -1097,7 +1094,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(second);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(ExecutionStatusCatalog.StateStruckOff)]
     [InlineData(ExecutionStatusCatalog.Recovered)]
     [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
@@ -1121,7 +1118,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.False(dto.BlocksAssets);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LifecycleVsBlocking_RegisteredWithTerminalTarget_StrikeOffRejectedButNewDelegationAllowed()
     {
         // D2: الفرق المقصود بين «سارية» الواسعة (S1) و«الحاجبة» الضيقة (C) في اختبار واحد —
@@ -1147,7 +1144,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TargetTerminal_TrueForExecutedSideStruckOff()
     {
         // A1: الفرع الرابع من النهائية — شطب جهة «طالبة منفذة» (ExecutedStatus) يُنهي المناب أيضًا.
@@ -1168,7 +1165,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.False(dto.BlocksAssets);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TargetTerminal_FalseForTradingTargetAndPendingDelegation()
     {
         // A1: مناب حي أو غائب (معلّقة قبل الاعتماد) → غير نهائي.
@@ -1190,7 +1187,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.True(registered.BlocksAssets);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_SetsTargetLawyerName_ForListColumnAndFilter()
     {
         // انحدار: اسم المحامي الموكول بالملف المناب هو مصدر عمود «المحامي المختص»
@@ -1217,7 +1214,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains(filtered.Items, d => d.Id == targetId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_WithBlankLawyerFullName_FallsBackToUsername()
     {
         // حدّية: محامٍ بلا اسم كامل يُسجَّل المناب باسم دخوله — بنفس صيغة الإنشاء العادي.
@@ -1236,7 +1233,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("lawyer_noname", target.Lawyer);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForSource_AfterTargetRotation_ReturnsEffectiveTargetFileNumber()
     {
         var source = await CreateSourceAsync();
@@ -1262,7 +1259,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(TestClock.Today.Year.ToString(), assigned.TargetFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForSource_WithoutTargetRotation_FallsBackToTargetOriginalFileNumber()
     {
         var source = await CreateSourceAsync();
@@ -1282,7 +1279,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("2025", assigned.TargetFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForTarget_AfterTargetRotation_ReturnsEffectiveTargetFileNumber()
     {
         // مسار المناب (FindByTargetAsync): رقم المناب الفعّال يُعرض في بطاقته —
@@ -1314,7 +1311,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(rotatedYear.ToString(), assigned.TargetFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_CopiesAllSourcePartiesAndBooksToTarget()
     {
         var source = await CreateSourceAsync();
@@ -1379,7 +1376,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("تحت-3", target.UnderFilingNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_DoesNotCopyFileReceiptFieldsToTarget()
     {
         // B6: حقلا «ورود الإخطار التنفيذي» (FileReceiptNumber/FileReceiptDate) خارج عقد
@@ -1403,7 +1400,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Null(target.FileReceiptDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_SourceAfterAssignment_MirrorsChangesToPendingTarget()
     {
         var source = await CreateSourceAsync();
@@ -1426,7 +1423,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(2_000_000m, target.AmountNumeric);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_SourceAfterAssignment_MirrorsLockedFieldsToPendingTargetAndAlertsTargetLawyer()
     {
         var source = await CreateSourceAsync();
@@ -1455,7 +1452,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("بيانات المقترض", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsLockedFieldChange()
     {
         var source = await CreateSourceAsync();
@@ -1481,7 +1478,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("أحمد", target.BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_WithDerivedWords_AcceptsRealFrontendPayloadAndKeepsAmountLocked()
     {
         // حمولة الواجهة الحقيقية لا تحمل حقول «كتابة» إطلاقًا (التفقيط مشتقّ خادميًا).
@@ -1524,7 +1521,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("المبلغ (الأول)", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_AllowsLocalHeirAddition_AndNotifiesSourceLawyer()
     {
         var source = await CreateSourceAsync();
@@ -1559,7 +1556,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("مرسى", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_TargetCarriesSourceFileType_AndDocumentResponseLinksSourceDelegation()
     {
         var source = await CreateSourceAsync();
@@ -1587,7 +1584,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(created.Id, response!.SourceDelegationId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_NotifiesAssignedLawyerViaHeadAlert()
     {
         var source = await CreateSourceAsync();
@@ -1612,7 +1609,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.EndsWith("ملف أحمد خالد الخطيب)", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_External_NotifiesAssignedLawyerInExternalBranch()
     {
         var source = await CreateSourceAsync();
@@ -1631,7 +1628,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains(_externalLawyer.Id, alert.Recipients.Select(r => r.UserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_WrongHeadBranch_Throws()
     {
         var source = await CreateSourceAsync();
@@ -1645,7 +1642,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("ضمن فرعك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_ToNonLawyer_Throws()
     {
         var source = await CreateSourceAsync();
@@ -1658,7 +1655,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("المحامي المختص", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_ByTargetLawyer_MarksRegisteredAndFillsFileData()
     {
         var source = await CreateSourceAsync();
@@ -1681,7 +1678,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 5), target.RegistrationDate.DateParsed);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_ByWrongLawyer_Throws()
     {
         var source = await CreateSourceAsync();
@@ -1696,7 +1693,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكنك تسجيل", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_RaisesDelegation_AroundRegisteredTarget_AndEditPageShowsSameIdentity()
     {
         // عقد «نافذة تسجيل الإنابة أصولًا»: رقم أساس الإنابة وسنة قيدها وتاريخ قيدها تُكتب
@@ -1730,7 +1727,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 5), target.RegistrationDate.DateParsed);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_ByTargetLawyer_MarksExecutedAndPrices()
     {
         var source = await CreateSourceAsync();
@@ -1764,7 +1761,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(ExecutionStatusCatalog.DelegationExecuted, target.ExecStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_NotifiesSourceLawyerViaHeadAlert()
     {
         var source = await CreateSourceAsync();
@@ -1797,7 +1794,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("عقار رقم 77", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_External_NotifiesSourceLawyerInSourceBranch()
     {
         var source = await CreateSourceAsync();
@@ -1828,7 +1825,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_MissingSalePriceOrReturnDate_Throws()
     {
         var source = await CreateSourceAsync();
@@ -1881,7 +1878,7 @@ public class DocumentDelegationServiceTests : IDisposable
         return (created.Id, source, target);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(ExecutionStatusCatalog.Deferred)]
     [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
     [InlineData(ExecutionStatusCatalog.StateStruckOff)]
@@ -1903,7 +1900,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تنفيذ انابة في ملف غير متداول", ex.Message);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(ExecutionStatusCatalog.Deferred, null)]
     [InlineData(ExecutionStatusCatalog.ExecutedBySettlement, null)]
     [InlineData(ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubFullyExecuted)]
@@ -1925,7 +1922,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تنفيذ انابة في ملف غير متداول", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_OnTradingTarget_WithPartiallyExecutedSource_Succeeds()
     {
         // المنيب «منفذ جبريا / منفذ جزئيا» (N1) والمناب ما زال متداولًا — الإتمام جائز.
@@ -1943,7 +1940,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(ExecutionStatusCatalog.DelegationExecuted, target.ExecStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnDeferredSource_RejectsWithE4()
     {
         // C3 (E4): لا تُسطَّر إنابة على ملف تريث.
@@ -1960,7 +1957,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تسطير انابة في ملف تريث", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_OnDeferredSource_RejectsWithE5()
     {
         // N5 (E5): لا تُسجَّل إنابة بعد وصول كتاب تريث في الملف المنيب — الحالة تُفحص لحظة التسجيل.
@@ -1982,7 +1979,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تسجيل الانابة لورود كتاب تريث في الملف المنيب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_OnSettledSource_RejectsWithValidateSourceMessage()
     {
         // N5: لو أصبح المنيب منفَّذًا (تسوية) بعد الاعتماد تُرفض التسجيل برسالة ValidateSource القائمة.
@@ -2006,7 +2003,7 @@ public class DocumentDelegationServiceTests : IDisposable
             (await _db.DocumentDelegations.SingleAsync(d => d.Id == created.Id)).Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnReferredToStartSource_Rejects()
     {
         // B5: لا تُسطَّر إنابة على ملف «محال الى البداية» (الحالة إحالة معلقة بلا تنفيذ).
@@ -2021,7 +2018,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تسطير انابة في ملف «محال الى البداية»", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_OnReferredToStartSource_Rejects()
     {
         // B5 (نمط E5): لو أصبح المنيب «محال الى البداية» بعد الاعتماد تُرفض التسجيل برسالة مخصصة.
@@ -2043,7 +2040,7 @@ public class DocumentDelegationServiceTests : IDisposable
             (await _db.DocumentDelegations.SingleAsync(d => d.Id == created.Id)).Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Settlement_RecoversTarget_KeepsDelegationRegisteredAndUnblocked()
     {
         // A3: تسوية المنيب بدورة واقعية (لا ضبط مباشر) — المناب «مسترد»، والإنابة تبقى
@@ -2098,7 +2095,7 @@ public class DocumentDelegationServiceTests : IDisposable
         return (source, created, assigned!.TargetDocumentId!.Value);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AlertCleaned_AfterSettlementRecovery()
     {
         // D3: تسوية المنيب تسترد المناب (نهائي) — تنبيه «بانتظار الإتمام» يُنظَّف (كان عالقًا).
@@ -2113,7 +2110,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AlertCleaned_AfterFullForcibleRecovery()
     {
         // D3: الجبرية الكاملة تسترد المناب — التنبيه يُنظَّف.
@@ -2134,7 +2131,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AlertCleaned_AfterManualTargetStrikeOff()
     {
         // D3: الشطب اليدوي للمناب (نهائي) — التنبيه يُنظَّف.
@@ -2149,7 +2146,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AlertCleaned_WhenTargetTerminalViaExecutedSide()
     {
         // D3: النهائية بكل فروع IsTargetTerminal (هنا شطب جهة المنفذ عليها) — التنبيه يُنظَّف
@@ -2168,7 +2165,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncSnapshots_CountChanged_FrozenAsOrphan()
     {
         // C2: حذف الأصل + إضافة أصلين من النوع نفسه (1 لقطة مقابل 2) — اللقطة تُجمَّد
@@ -2202,7 +2199,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(fresh);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncSnapshots_SameCount_RelabelsEditedAsset()
     {
         // C2: تعديل وصف بحت مع ثبات العدد (1 مقابل 1) — يُعاد التسمية ويُعلَّم التعديل
@@ -2225,7 +2222,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.True(snap.SnapshotAdjusted);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_External_PersistsBranchAndDepositBook()
     {
         var source = await CreateSourceAsync();
@@ -2242,7 +2239,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("2026-08-02", dto.DepositBookDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_External_WithoutOrUnknownBranch_Throws()
     {
         var source = await CreateSourceAsync();
@@ -2259,7 +2256,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("الفرع المناب غير موجود", ex2.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Pending_ToExternal_PersistsBranchAndDepositBook()
     {
         var source = await CreateSourceAsync();
@@ -2282,7 +2279,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("2026-08-04", updated.DepositBookDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_External_ByDelegatedBranchHead_CreatesTargetInExternalBranch()
     {
         var source = await CreateSourceAsync();
@@ -2310,7 +2307,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(source.Id, target.SourceDelegation!.SourceDocumentId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListPendingForHead_ShowsInternalAndExternalOfHisBranchOnly()
     {
         var source = await CreateSourceAsync();
@@ -2342,7 +2339,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
     // ── دورة حياة تنبيهات الإنابة للنظام (نطاق «head») ─────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Pending_NotifiesApprovalBranchHead()
     {
         var source = await CreateSourceAsync();
@@ -2363,7 +2360,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("دائرة تنفيذ حلب", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_External_Pending_NotifiesReceivingBranchHead()
     {
         var source = await CreateSourceAsync();
@@ -2380,7 +2377,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains(_head2.Id, alert.Recipients.Select(r => r.UserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Pending_RefreshesPendingApprovalMessage()
     {
         var source = await CreateSourceAsync();
@@ -2399,7 +2396,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains(_head1.Id, alert.Recipients.Select(r => r.UserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_Pending_RemovesLinkedHeadAlerts()
     {
         var source = await CreateSourceAsync();
@@ -2412,7 +2409,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id && a.ArchivedAt == null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_RemovesPendingApprovalAlert()
     {
         var source = await CreateSourceAsync();
@@ -2434,7 +2431,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains(_lawyer2.Id, targetAlert.Recipients.Select(r => r.UserId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Register_CreatesPendingCompletionAlertForTargetBranchHead()
     {
         var source = await CreateSourceAsync();
@@ -2459,7 +2456,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("بانتظار", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_RemovesPendingCompletionAlert()
     {
         var source = await CreateSourceAsync();
@@ -2486,7 +2483,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("أُعيدت الإنابة المسطرة", done.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SoftDeletedSource_HidesDelegationFromAllOperations()
     {
         var source = await CreateSourceAsync();
@@ -2509,7 +2506,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SoftDeletedSource_TargetView_ReturnsEmptyWithoutCrash()
     {
         var source = await CreateSourceAsync();
@@ -2528,7 +2525,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Empty(delegations);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SourceWithOlderBaseNumber_SourceFileNumberShowsEffectiveNotOriginal()
     {
         var source = await CreateSourceAsync();
@@ -2557,7 +2554,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForSource_SourceRotatedAfterDelegation_SourceFileNumberUpdates()
     {
         var source = await CreateSourceAsync("520");
@@ -2583,7 +2580,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
     // ── حزمة §10: حارس المرآة (B1-B7) + قواعد النظافة (T1-T4) ────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AfterSeizure_TargetCarriesSeizureDate()
     {
         // B5: تاريخ إلقاء الحجز المستندي ينتقل مع الكتب عند إنشاء الإنابة (سطر CopyBooks).
@@ -2600,7 +2597,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal("10/8/2026", target.SeizureDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DraftSource_RejectsDelegation()
     {
         // T2: رفض التسطير على ملف تحت رفع (بلا رقم قيد) — الرقم ضروري لرابطة المصدر/الهدف.
@@ -2615,7 +2612,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("تحت رفع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PartiallyExecutedSource_AllowsDelegation()
     {
         // T2: «منفذ جبريا/منفذ جزئيا» ما زال متداولًا — الإنابة ترخّص لها (IsExecuted خاطئة).
@@ -2632,7 +2629,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(DelegationStatusCatalog.PendingHead, dto.Status);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_SourceDeletesMiddleGuarantor_MirrorRemovesItAndNamesDeletedHeirs()
     {
         // T3 + B7 + قرار 8: حذف كفيل أوسط من المنيب يمرر إلى المناب مع ورثته المرتبطين برقمه،
@@ -2701,7 +2698,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("وورثته (حسن محمود الحلبي)", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Source_WithLocalRepresentativeOnTarget_MirrorSkipsAddressWithoutNoise()
     {
         // B7/قرار 17: عند وجود ممثل محلي على المناب تترك المرآة عنوانه/نوعه كما هو (المتفرغ محليًا)
@@ -2743,7 +2740,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(before, await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsGuarantorHeirRemoveOrEdit()
     {
         // B2/قرار 12: ورثة الكفيل إضافة-فقط بالمفتاح الهوياتي — حذف أو تعديل قائم مرفوض.
@@ -2813,7 +2810,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تعديل ورثة الكفيل", exEdit.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_AllowsFirstHeirRepresentativeAndReportsAddition()
     {
         // ممثل الوريث على الملف المناب: تعبئة أول مرة مسموحة، وتُبلَّغ كإضافة محلية
@@ -2883,7 +2880,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(dto.LocalAddition.LastAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_LocalAdditionSurvivesAlertArchiving()
     {
         // سجل الإضافة المحلية محفوظ على صف الإنابة لا على التنبيه: أرشفة تنبيه المرآة
@@ -2952,7 +2949,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(dto.LocalAddition.LastAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_LocalAdditionCountAccumulatesAcrossSaves()
     {
         // العدّاد تراكمي بعدد العناصر المضافة (وريث/ممثل) لا بعدد عمليات الحفظ.
@@ -3018,7 +3015,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.DoesNotContain("محمود", dto.LocalAddition.LastMessage);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_LocalAdditionSummaryKeepsNewestWithinColumnLimit()
     {
         // الدفعة الكبيرة تُلخَّص بأحدث الإضافات داخل سقف العمود (1000) بعلامة قص في البداية،
@@ -3062,7 +3059,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.True(visible < dto.LocalAddition.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsHeirRepresentativeEditOrRemoval()
     {
         // الممثل المخزَّن للوريث على المناب مقفول: لا يُعدَّل ولا يُزال (كالمقترض/الكفيل).
@@ -3141,7 +3138,7 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Source_AddsBorrowerRepresentative_TargetHasLocalHeirs_DoesNotCopyRepresentative()
     {
         // تعارض المرآة: المناب أضاف ورثة محليين، ثم أضاف المنيب ممثلًا للمقترض.
@@ -3177,7 +3174,7 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsDuplicateGuarantorNumbersWithValidationError()
     {
         // متانة: رقم الكفيل مفتاح هوية للدمج والمقارنة (لا قيد فريد على (DocumentId, GuarantorNumber)
@@ -3218,7 +3215,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(2, stored.Guarantors.Single().GuarantorNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MirrorSync_MassGuarantorRemoval_KeepsFullAlertMessage()
     {
         // مع 49 كفيلًا بأسماء طويلة: حذفهم دفعة من المنيب يُزامَن للمناب، ورسالة
@@ -3267,7 +3264,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.True(alert.Message.Length > 2000);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsHeirsOrRepresentativeOnLegalEntity()
     {
         // B3/قرار 12 و16: لا ورثة ولا ممثل على طرف اعتباري (ApplyRequest يُسقطها بصمت فتُرفض صراحةً).
@@ -3339,7 +3336,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("شركة الكفل", exGuarantor.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsExistingRepresentativeEditOrRemoval()
     {
         // B3/قرار 16: تعديل ممثل قائم كإزالته مرفوض — لا صمت.
@@ -3387,7 +3384,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تعديل الممثل الشرعي للمقترض", exEdit.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RejectsExistingGuarantorRepresentativeEditOrRemoval()
     {
         // B3/قرار 16: ممثل الكفيل القائم كممثل المقترض — تعديله أو إزالته مرفوض.
@@ -3460,7 +3457,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تعديل الممثل الشرعي للكفيل", exEdit.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_ReverseAlertNamesTheGuarantorOfAddedHeir()
     {
         // B2/قرار 12: التنبيه العكسي للمنيب يُسمّي الكفيل عند إضافة وريث له («لكفيل-N»).
@@ -3521,7 +3518,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لكفيل-2", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_NotifiesPendingTargetsWithStatusChangeAlert()
     {
         // B4: التراجع عن الشطب يُنبه المنابات المعلقة بالنص الموحد كالشطب ذاته.
@@ -3546,7 +3543,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("تغيّرت حالة الملف المنيب", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_RepeatSaveWithHeirs_AcceptedWithEmptyAddress()
     {
         // T4/قرار 13: حفظ متكرر بلا إضافة (مع ورثة) لا يُرفض ويُخزَّن العنوان فارغًا باطراد.
@@ -3580,7 +3577,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Null(stored.BorrowerAddress);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_AddRepresentativeOverHeirs_Rejected()
     {
         // القاعدة الصارمة: لا يجتمع ممثل الطرف مع ورثته — حتى على المناب.
@@ -3623,7 +3620,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Null(stored.BorrowerRepresentativeName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_GuarantorRepresentativeOverHeirs_Rejected()
     {
         // القاعدة نفسها للكفيل: لا ممثل مع ورثة على الطرف نفسه.
@@ -3689,7 +3686,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Single(stored.Heirs);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_TargetMirror_EmptyingAddressWithoutFamily_StillRejected()
     {
         // T4/قرار 13: تفريغ العنوان بلا ورثة/ممثل في الطلب يبقى فرقًا مقفولًا (لا إعفاء حضور).
@@ -3770,7 +3767,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public void MirrorGuard_LocksAnnexList()
     {
         var doc = new Document
@@ -3798,7 +3795,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("ملاحق السند التنفيذي", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MirrorAndGuard_FieldLists_AreEquivalentAcrossCreateMirrorGuard()
     {
         // B6: قائمة الحقول المشتركة بين (نسخ الإنشاء ↔ دمج المرآة ↔ فحوص الحارس)
@@ -3907,7 +3904,7 @@ public class DocumentDelegationServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SourceWithPendingDelegation_Throws()
     {
         var source = await CreateSourceWithDelegationAsync();
@@ -3917,7 +3914,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SourceWithExecutedDelegation_Throws()
     {
         // «حتى لو لم تكن سارية»: إنابة منفذة تمنع الحذف أيضًا.
@@ -3931,7 +3928,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_MirrorFile_Throws()
     {
         var source = await CreateSourceWithDelegationAsync();
@@ -3959,7 +3956,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف المناب لوجود إنابة مرتبطة به", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_FileWithPendingAppeal_Throws()
     {
         var source = await CreateSourceAsync();
@@ -3970,7 +3967,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_FileWithDecidedAppeal_Throws()
     {
         // «حتى لو كان محسوم»: الاستئناف المحسوم يمنع الحذف أيضًا.
@@ -3982,7 +3979,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_FileWithStruckOffAppeal_Throws()
     {
         var source = await CreateSourceAsync();
@@ -3993,7 +3990,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_CleanFile_SucceedsAndAudits()
     {
         var source = await CreateSourceAsync();

@@ -10,9 +10,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
-public class HeadAlertSuccessionTests : IDisposable
+public class HeadAlertSuccessionTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly TransactionRunner _tx;
     private readonly HeadAlertSuccessionService _service;
     private readonly FakeAuditLogger _audit = new();
@@ -23,7 +22,6 @@ public class HeadAlertSuccessionTests : IDisposable
 
     public HeadAlertSuccessionTests()
     {
-        _db = TestDb.Create();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
@@ -47,7 +45,6 @@ public class HeadAlertSuccessionTests : IDisposable
             _tx);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static string Key(int delegationId, int recipientId)
         => $"delegation:{delegationId}:recipient:{recipientId}:{HeadAlertKindCatalog.DelegationPendingApproval}";
@@ -91,7 +88,7 @@ public class HeadAlertSuccessionTests : IDisposable
 
     private const string demoMessage = "تنبيه معلّق";
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_MovesUnreadRecipient_Rekeys_AndLeavesReadAndArchived()
     {
         var alert = AddAlert(
@@ -141,7 +138,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Contains("alert_succession", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_MergesDuplicateRecipient_AndPreservesReadState()
     {
         var readAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
@@ -169,7 +166,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal(Key(7, _successor.Id), stored.DedupeKey);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_DedupeCollision_KeepsNewerHolder_AndArchivesLoser()
     {
         var older = DateTime.UtcNow.AddHours(-2);
@@ -211,7 +208,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Contains("archive_alert", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_UpdatesPendingOutboxPayload_ButNotProcessed()
     {
         var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
@@ -280,7 +277,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal(_predecessor.Id, processedPayload.TargetUserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_OutboxColumnPayloadMismatch_ForcesBothToSuccessor()
     {
         var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
@@ -328,7 +325,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal(_predecessor.Id, storedPayload.Request!.RecipientUserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_OutboxMessagesTargetingOthers_AreUntouched()
     {
         var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
@@ -379,7 +376,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal(_successor.Id, storedMatching.TargetUserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_InvalidOutboxPayload_LeavesRowUntouched()
     {
         var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
@@ -408,7 +405,7 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal("not-json-payload", stored.Payload);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ApplyAsync_WithoutActiveTransaction_Throws()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.ApplyAsync(
