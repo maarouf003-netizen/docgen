@@ -10,7 +10,7 @@ jobs:
     # مهلة صريحة: شبكة أمان ضد أي تعليق مستقبلي بدل حجب المجموعة ساعات بصمت.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -65,7 +65,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # شجرة الاعتماديات المثبتة (jsdom 30 + undici 8) تتطلب Node ≥ 22 وقت التشغيل —
       # التثبيت على 20 يُسقط كل ملفات vitest بخطأ `markAsUncloneable` ( undici/jsdom ).
       - uses: actions/setup-node@v4
@@ -100,7 +100,7 @@ jobs:
   guards:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -132,7 +132,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -252,7 +252,7 @@ jobs:
       # يمنع «الخضرة الكاذبة»: غياب السلسلة أو تعذّر الاتصال = فشل صريح لا Skip.
       DOCGEN_REQUIRE_POSTGRES: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
