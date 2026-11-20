@@ -1,52 +1,53 @@
 ---
 name: DB Migration (PostgreSQL)
-description: Use when adding, changing, or verifying an EF Core migration in this repo. PostgreSQL only (DocGeneratorPostgresDbContext), migration guards, RUN_GUIDE §9 + AGENTS watchlist, and the deploy warning.
+description: Use when adding, changing, or verifying an EF Core migration (PostgreSQL only). Creates with DocGeneratorPostgresDbContext, runs migration guards, updates RUN_GUIDE §9 + AGENTS watchlist, and states the deploy command. استخدمها لأي هجرة قاعدة بيانات.
 ---
 
 # هجرة قاعدة بيانات (PostgreSQL فقط)
 
+إجراء تنفيذي. القواعد الحاكمة تبقى في `AGENTS.md`؛ هذه المهارة تترجمها إلى خطوات وأوامر.
+
 ## متى تُستخدم
 
-- أي تغيير في `DocGeneratorDbContext` أو الكيانات أو `IEntityTypeConfiguration` يغيّر **المخطط**:
-  عمود جديد، تغيير نوع، قيد `CHECK`/`FK`/`UNIQUE`، فهرس.
-- التحقق من هجرات معلّقة قبل النشر أو قبل فتح `PR`.
-- لا تُستخدم لتغيير **قيمة** عمود `DateTime?` قائم — لا هجرة مطلوبة.
+- تغيير **مخطط** في `DocGeneratorDbContext` أو الكيانات أو `IEntityTypeConfiguration`
+  (`Persistence/Configurations/`): عمود، نوع، طول، دقة، قيد، فهرس، علاقة.
+- التحقق من هجرات معلّقة قبل النشر أو قبل `PR`.
+- **لا** تُستخدم لتغيير قيمة عمود `DateTime?` قائم — لا هجرة مطلوبة.
 
-## حقائق ثابتة في هذا المستودع
+## حقائق ثابتة
 
-- قاعدة التشغيل `PostgreSQL` فقط (`ADR-0001`)؛ لا هجرات `SQLite` بعد `P0-02`.
-- مجلد الهجرات الوحيد:
-  `backend/src/DocGenerator.Infrastructure/Persistence/MigrationsPostgres`.
-- سياق التشغيل والهجرات: `DocGeneratorPostgresDbContext`. لا يوجد سياق تشغيلي غيره.
-- في الإنتاج `Database:AutoMigrate=false`: التطبيق **يرفض الإقلاع** إذا وُجدت هجرة معلّقة، فلا
-  تعتبر المهمة منجزة قبل تنبيه المستخدم بأمر التطبيق.
-- عدد الهجرات الحالي والترتيب التراكمي في `RUN_GUIDE.md` §9، والقائمة المختصرة في `AGENTS.md`
-  (§ «تذكير الهجرات المعلّقة»). الحارس: `node scripts/migration-watchlist-guard.mjs`.
+- `PostgreSQL` فقط (`ADR-0001`)؛ لا هجرات `SQLite` بعد `P0-02`.
+- مجلد الهجرات الوحيد: `backend/src/DocGenerator.Infrastructure/Persistence/MigrationsPostgres`.
+- سياق الهجرات: `DocGeneratorPostgresDbContext` (لا سياق تشغيلي غيره).
+- الإنتاج `Database:AutoMigrate=false`: هجرة معلّقة = رفض إقلاع مقصود.
+- حارس القائمة: `node scripts/migration-watchlist-guard.mjs` — يفشل إن لم تُسجَّل كل هجرة في
+  **بند** (`-`/`*`) داخل `RUN_GUIDE.md` §9 و`AGENTS.md` § «تذكير الهجرات المعلّقة».
+- لا تعتمد على عدد ثابت: عدد الهجرات الحالي يظهر في مخرجات الحارس.
 
 ## الخطوات
 
-1. **تحقق من خط الأساس أولًا** — لا تبدأ إن كان الحارس أحمر:
+1. **خط الأساس أخضر** — لا تبدأ على أحمر:
 
    ```powershell
    node scripts/migration-watchlist-guard.mjs
    ```
 
-2. **غيّر النموذج** في `backend/src/DocGenerator.Infrastructure/Persistence` (الكيان أو
-   `OnModelCreating`) لا في الهجرات القديمة.
+2. **غيّر النموذج** في `Persistence/` (الكيان أو `Configurations/`). لا تُعدّل هجرة قائمة طُبّقت؛
+   التصحيح بهجرة جديدة. لا تُعدّل `DocGeneratorPostgresDbContextModelSnapshot.cs` يدويًا.
 
-3. **أنشئ الهجرة بالسياق الصحيح فقط**:
+3. **أنشئ الهجرة** (الاسم يتبع نمط الكود الحالي: `<Code>_<ShortName>`، مثل `P0_08_ShortName`):
 
    ```powershell
-   dotnet ef migrations add <Name> `
+   dotnet ef migrations add P0_08_ShortName `
      --context DocGeneratorPostgresDbContext `
      --project backend/src/DocGenerator.Infrastructure `
      --startup-project backend/src/DocGenerator.Api
    ```
 
-   - لا تستخدم `--context DocGeneratorDbContext`.
-   - لا تُعدّل هجرة طُبّقت على أي بيئة؛ التصحيح بهجرة جديدة.
+4. **راجع `Up` بنفسك** قبل أي اختبار: هل يوجد `Drop`/`Alter`/`Rename`/`DeleteData`؟ إن نعم،
+   تحتاج خطة expand/contract على مرحلتين (إضافة → تعبئة → إزالة لاحقًا) لا هجرة كاسرة واحدة.
 
-4. **تحقق من مطابقة النموذج للقطة (G1)** — يتطلب سلسلة وهمية فقط:
+5. **مطابقة النموذج للقطة (G1)** — لا يحتاج قاعدة فعلية، سلسلة وهمية تكفي:
 
    ```powershell
    $env:POSTGRES_CONNECTION = 'Host=localhost;Port=5432;Database=docgen;Username=x;Password=x'
@@ -56,31 +57,41 @@ description: Use when adding, changing, or verifying an EF Core migration in thi
      --startup-project backend/src/DocGenerator.Api
    ```
 
-5. **حارس السلامة** — يرفض `Drop`/`Alter`/`Rename`/`DeleteData` في `Up` بلا خطة expand/contract
-   وبلا إدخال موثّق في `scripts/migration-safety-allowlist.json` (لا تُدخل استثناءً بلا موافقة المالك):
+   المطلوب: `No changes have been made to the model since the last migration.`
+
+6. **حارس السلامة** — أي عملية هدم في `Up` تُرفض بلا استثناء موثّق في
+   `scripts/migration-safety-allowlist.json` (لا استثناء بلا موافقة المالك):
 
    ```powershell
    node scripts/migration-safety-guard.mjs
    ```
 
-6. **Preflight قبل هجرات القيود على البيانات**: شغّل `scripts/p0-07b-preflight.sql` (وأي سكربت
-   preflight مخصص) على نسخة من قاعدة الإنتاج أولًا؛ أي قيمة سالبة تُفشل هجرة القيود.
+7. **Preflight للقيود المعتمدة على البيانات**: شغّل `scripts/p0-07b-preflight.sql` (أو preflight
+   المخصص) على نسخة من قاعدة الإنتاج أولًا؛ قيمة واحدة مخالفة تُفشل هجرة القيد.
 
-7. **حدّث الوثيقتين في التغيير نفسه** (الحارس يفشل بدونهما):
-   - `RUN_GUIDE.md` §9 — سطر جديد بتاريخ الإنشاء واسم الهجرة وحالتها (معلّقة/مطبّقة).
-   - `AGENTS.md` § «تذكير الهجرات المعلّقة» — بند الهجرة الجديدة.
-   - أضف سطرًا إلى قائمة الهجرات التراكمية فقط؛ لا تحذف بندًا معلّقًا قبل تطبيقه فعليًا.
+8. **سجّل الهجرة في الوثيقتين، في نفس الـ commit** (الحارس يفشل بدونهما):
+   - `RUN_GUIDE.md` §9، قسم «هجرات بانتظار التطبيق (قائمة تراكمية)» — بند جديد بالشكل المتبع:
+     `` - [ ] **YYYY-MM-DD — `<ClassName>` (`<Code>`)** — وصف موجز + أمر التطبيق. ``
+     استخدم `- [ ]` للمعلّقة (الحارس يعدّها) و`- [x]` بعد التطبيق الفعلي فقط؛ لا تشطب بندًا
+     قبل تطبيقه على البيئة.
+   - `AGENTS.md` § «تذكير الهجرات المعلّقة» — بند يذكر اسم الهجرة الكامل وتاريخها وحالتها
+     (بند `-` عادي، وليس `- [ ]`).
 
-8. **تحقق كامل**:
+9. **تحقق كامل**:
 
    ```powershell
-   dotnet build backend/DocGenerator.sln --nologo -warnaserror
+   dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
    dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q
    node scripts/migration-watchlist-guard.mjs
    node scripts/migration-safety-guard.mjs
    ```
 
-   ثم أعد الخطوة 4 (لازم `No changes`).
+   ثم أعد الخطوة 5 (يجب أن تبقى `No changes`)، وقبل الدفع نفّذ مهارة `release-gate` كاملة.
+
+## إن أخطأت في الهجرة
+
+- **قبل التطبيق**: `dotnet ef migrations remove --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api`، ثم أصلح النموذج وأعد الإنشاء.
+- **بعد التطبيق على أي بيئة**: لا تحذف ولا تعدّل؛ أنشئ هجرة تصحيحية.
 
 ## أمر النشر (يُذكر حرفيًا في التقرير)
 
@@ -88,24 +99,21 @@ description: Use when adding, changing, or verifying an EF Core migration in thi
 dotnet ef database update --context DocGeneratorPostgresDbContext
 ```
 
-- الترتيب الإلزامي: نسخة احتياطية مجرَّبة → تطبيق الهجرات → التحقق من `__EFMigrationsHistory` →
+- الترتيب: نسخة احتياطية مجرَّبة → تطبيق الهجرات → التحقق من `__EFMigrationsHistory` →
   تشغيل النسخة الجديدة.
 - لا تُشغّل `--context DocGeneratorDbContext` (لا هجرات له).
-- إن كانت الهجرة جديدة وغير مطبّقة: اكتب تنبيهًا صريحًا أن المهمة لا تُعدّ منجزة حتى تُطبَّق في
-  نافذة النشر.
+- هجرة جديدة غير مطبّقة = المهمة **غير منجزة** حتى تُطبَّق في نافذة النشر.
 
 ## أخطاء شائعة
 
-- نسيان `--startup-project` ⇒ فشل إنشاء التصميم (`POSTGRES_CONNECTION` مطلوب من
-  `PostgresDbContextFactory`).
-- كتابة `DateTime.Now`/`DateTime.Today` في الكيان أو seed — القاعدة `DateTime.UtcNow` حصرًا.
-- تعديل `InitialPostgresBaseline` أو `ModelSnapshot` يدويًا بدل إنشاء هجرة.
-- إضافة فهرس/قيد ثم نسيان خطوة `RUN_GUIDE` ⇒ حارس القائمة الأحمر على `CI`.
+- نسيان `--startup-project` ⇒ فشل إنشاء التصميم (`PostgresDbContextFactory` يطلب `POSTGRES_CONNECTION`).
+- `DateTime.Now`/`Today` في الكيان أو seed — القاعدة `DateTime.UtcNow` حصرًا (`UtcDateTimeConverter`).
+- تحديث `RUN_GUIDE.md` دون `AGENTS.md` (أو العكس) ⇒ حارس أحمر.
+- إضافة هجرة بلا بند في القائمة ثم «إصلاح» الحارس بتعديل الحارس نفسه.
 
 ## مخرجات التقرير
 
-- اسم الهجرة (أو الهجرات) وعددها، وتاريخها.
-- نتيجة الحارسين و G1.
-- هل تحتاج preflight؟ نتيجته.
-- بند `RUN_GUIDE` §9 و`AGENTS.md` المضافان.
+- أسماء الهجرات وعددها وتاريخها، ونتيجة الحارسين و G1.
+- هل لزم preflight؟ نتيجته.
+- البندان المضافان في `RUN_GUIDE.md` §9 و`AGENTS.md`.
 - تنبيه النشر بالأمر أعلاه.

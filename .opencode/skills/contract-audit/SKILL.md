@@ -1,92 +1,116 @@
 ---
 name: Contract Audit (End-to-End)
-description: Use when a change touches a request/response DTO, service mapping, entity, projection, or frontend type. Trace one field from the form to the database and back, field by field, checking name, type, nullability, formatting, and JSON contract.
+description: Use when a change touches a request/response DTO, service mapping, entity, projection, or frontend type. Trace one field from form to database and back, checking name, type, nullability, formatting, and JSON contract. استخدمها لتدقيق عقد حقل من النهاية للنهاية.
 ---
 
 # تدقيق عقد من النهاية للنهاية
 
+إجراء مراجعة ذاتية إلزامي قبل إعلان إنجاز أي تغيير يمسّ العقد. القواعد الحاكمة في `AGENTS.md`.
+
 ## متى تُستخدم
 
-- إضافة أو تعديل حقل في `DocumentUpsertRequest` / `DocumentResponse` أو أي DTO آخر.
-- تغيير نوع حقل (`string` ↔ `DateTime?` ↔ `decimal?`) أو إعادة تسميته.
-- تغيير استعلام/إسقاط (`projection`) أو إحصاء يعيد حقلًا للواجهة.
-- مراجعة ذاتية قبل إعلان إنجاز أي مهمة تمسّ العقد (وهي بند إلزامي في `AGENTS.md`).
+- إضافة/تعديل/إعادة تسمية حقل في `DocumentUpsertRequest` أو `DocumentResponse` أو أي `DTO`.
+- تغيير نوع (`string` ↔ `DateTime?` ↔ `decimal?`) أو قابلية فراغ.
+- تغيير استعلام/إسقاط (`Select`) أو إحصاء يعيد حقلًا للواجهة.
+- تغيير في `docs/openapi/docgen-v1.json` أو `frontend/src/api/generated.ts`.
 
 ## المبدأ
 
-اختر **حقلًا واحدًا** وتتبّعه عبر الطبقات الست، ولا تعلن النجاح قبل أن تتطابق كل خلية في الجدول:
+اختر **حقلًا واحدًا** وتتبّعه عبر الطبقات، ثم أعد المسار كاملًا من قاعدة البيانات إلى الشاشة.
+لا تعلن النجاح قبل أن يتطابق كل صف في جدول التدقيق.
 
 ```
-نموذج الواجهة → نوع TS → طلب JSON → DTO طلب → Service/Validator → Entity → EF Config
-→ استعلام/إسقاط → DTO استجابة → JSON → واجهة العرض
+نموذج → normalizeArabicDigits → نوع TS → طلب JSON → DTO طلب → Service/Validator
+→ Entity → EF Config → استعلام/إسقاط → DTO استجابة → JSON → عرض/إحصاء
 ```
 
-## خطوات التنفيذ
+## الخطوات
 
-1. **حدّد الحقل والمسار**: مثال `RegistrationDate` في مسار «إضافة ملف».
+1. **حدّد الحقل والمسار** (مثال: `RegistrationDate` في «إضافة ملف»).
 
-2. **اجمع كل المواضع** (بدل البحث العشوائي):
+2. **اجمع كل المواضع** بدل البحث العشوائي:
 
    ```powershell
    git grep -n "RegistrationDate" -- backend frontend docs/openapi
    git grep -n "registrationDate" -- frontend
    ```
 
-3. **ابنِ جدول التدقيق** (طبقة، ملف، رمز، نوع، قابل للفراغ، ملاحظة) واملأه من الكود لا من الذاكرة.
-   المسارات المرجعية المعتمدة:
+3. **املأ جدول التدقيق من الكود** لا من الذاكرة. المراجع المعتمدة:
 
    | الطبقة | المرجع |
    |---|---|
    | طلب | `backend/src/DocGenerator.Application/DTOs/DocumentRequests.cs` (`DocumentUpsertRequest`) |
-   | استجابة | `backend/src/DocGenerator.Application/DTOs/DocumentDtos.cs` (`DocumentResponse`) |
+   | استجابة | `backend/src/DocGenerator.Application/DTOs/DocumentDtos.cs` (`DocumentResponse`, `IDocumentSheetFields`) |
    | منطق/تحقق | `backend/src/DocGenerator.Application/Services/DocumentService.cs` |
    | تحقق الحقول | `backend/src/DocGenerator.Application/Common/DocumentValidator.cs` |
-   | تاريخ حر | `backend/src/DocGenerator.Application/Common/FreeDateParser.cs` + `ActionDateParser.cs` |
-   | تخزين/إسقاط | `backend/src/DocGenerator.Infrastructure/Persistence/DocumentRepository.cs` |
+   | تاريخ حر | `Common/FreeDateParser.cs` + `Common/ActionDateParser.cs` + `Common/ArabicDigitNormalizer.cs` |
    | حارس الكتابة | `backend/src/DocGenerator.Application/Services/DocumentWriteGuard.cs` |
-   | واجهة | `frontend/src/types/document.ts` |
+   | تخزين/إسقاط | `backend/src/DocGenerator.Infrastructure/Persistence/DocumentRepository.cs` |
+   | إعداد العمود | `backend/src/DocGenerator.Infrastructure/Persistence/Configurations/` |
+   | تحويل الزمن | `backend/src/DocGenerator.Infrastructure/Persistence/UtcDateTimeConverter.cs` |
+   | واجهة | `frontend/src/types/document.ts` + `frontend/src/utils/arabicDigits.ts` |
    | عميل مولّد | `frontend/src/api/generated.ts` (المصدر `docs/openapi/docgen-v1.json`) |
 
-4. **افحص هذه النقاط بالترتيب**:
+4. **افحص النقاط السبع** بالترتيب:
 
-   - **الاسم**: `PascalCase` في `C#`، `camelCase` في `JSON`، مطابق في `TS`. لا اسم بديل في طبقة واحدة.
-   - **النوع**: `string?` في الطلب مقابل `DateTime?` في التخزين مقابل `string?` في الاستجابة؛ `decimal?`
-     مقابل `number`؛ لا `int` لحقل يمكن أن يكون فارغًا.
-   - **القابلية للفراغ**: لكل حقل `null` مسار واضح: قبول في الطلب، تخزين `null`، عرض فراغ،
-     وعدم كسر `projection` أو إحصاء (`SUM`/`AVG` على فراغ = `null` لا صفر).
-   - **التواريخ**: الحقول النصية الحرة تُحلَّل عبر `DocumentValidator.ParseDateTime` ←
-     `FreeDateParser.Parse` ← `ActionDateParser.TryParse`؛ والاستجابة `yyyy-MM-dd` عبر
-     `FreeDateParser.ToResponse`.
-     **المرجع التنفيذي هو `ActionDateParser.Formats` في الكود** (حاليًا خمس صيغ: `d/M/yyyy`,
-     `dd/MM/yyyy`, `d-M-yyyy`, `dd-MM-yyyy`, `yyyy-MM-dd`، بلا بديل مرن). إن وجدت اختلافًا مع
-     `AGENTS.md` فأبلغ عنه كسؤال للمالك ولا تعدّل القاعدة من تلقاء نفسك.
-   - **الأرقام/العملات**: `decimal` في الخلفية، وتنسيق العرض عبر `Intl.NumberFormat` لا صيغة يدوية.
-   - **التعدادات**: نفس الأعضاء نصًا في `C#` و`TS`، ورفض القيمة غير المعروفة بخطأ `4xx` لا بسقوط صامت.
-   - **المجاميع**: إن كان الحقل يدخل إحصاءً، تحقق من الاستعلام نفسه لا من الـ `DTO` فقط.
+   1. **الاسم**: `PascalCase` في `C#`، `camelCase` في `JSON` (افتراضي `System.Text.Json`)، مطابق في
+      `TS`. لا اسم بديل في طبقة واحدة.
+   2. **النوع**: `string?` طلب ↔ `DateTime?`/`decimal?` تخزين ↔ `string?` استجابة. لا `int` لحقل
+      يمكن أن يغيب.
+   3. **الفراغ**: لكل حقل `null` مسار كامل: يُقبل، يُخزَّن، يُعرض فراغًا، ولا يكسر `SUM`/`AVG`
+      (النتيجة `null` لا صفر) ولا `projection`.
+   4. **التواريخ**: الطلب نص حر يُطبَّع من الواجهة بـ `normalizeArabicDigits(...).trim()` ثم يُحلَّل في
+      الخلفية عبر `DocumentValidator.ParseDateTime` ← `FreeDateParser.Parse` ← `ActionDateParser.TryParse`؛
+      والاستجابة `yyyy-MM-dd` عبر `FreeDateParser.ToResponse`. **المرجع التنفيذي هو
+      `ActionDateParser.Formats`** (خمس صيغ حاليًا، بلا بديل مرن — قرار `RF-014`). إن خالف ذلك
+      `AGENTS.md` فأبلغ كسؤال ولا تعدّل القاعدة من تلقاء نفسك.
+   5. **الزمن**: الكتابة `DateTime.UtcNow` والقراءة عبر `UtcDateTimeConverter`؛ العرض والحسابات
+      الجدارية عبر `ServerClock` (توقيت دمشق) لا `DateTime.Now`.
+   6. **التعدادات**: نفس الأعضاء نصًا في `C#` و`TS`، ورفض القيمة غير المعروفة بـ `4xx` برسالة
+      عربية لا سقوط صامت.
+   7. **الأرقام**: `decimal` في الخلفية ودقته في `Configurations/`، والعرض عبر `Intl.NumberFormat`
+      لا صيغة يدوية.
 
-5. **تحقق من العميل المولّد** (بوابة `CI`):
+5. **حدّث عقد `OpenAPI` ثم العميل المولّد** (بوابتا `CI`):
 
    ```powershell
+   # 1) أعد توليد اللقطة المطبَّعة من سطح API الفعلي
+   $env:UPDATE_OPENAPI_SNAPSHOT = '1'
+   dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj `
+     --filter "FullyQualifiedName~OpenApiContractTests" --nologo -v q
+   Remove-Item Env:UPDATE_OPENAPI_SNAPSHOT
+
+   # 2) أعد توليد عميل TS وقارنه
    cd frontend
    npm run generate:api
    git diff --exit-code -- src/api/generated.ts
+   cd ..
+
+   # 3) أكّد أن اللقطة مطابقة (بلا متغيّر التحديث)
+   dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj `
+     --filter "FullyQualifiedName~OpenApiContractTests" --nologo -v q
    ```
 
-   أي فرق = عقد `OpenAPI` غير محدّث أو تغيير غير مقصود.
+   - إن لم تكن حزمة `openapi-typescript` مثبتة محليًا:
+     `npx --yes openapi-typescript@7.13.0 ../docs/openapi/docgen-v1.json -o src/api/generated.ts`
+     (نفس إصدار `package-lock`).
+   - قد يُظهر `git status` الملف «معدّلًا» بسبب `CRLF` فقط؛ احكم بـ `git diff` الفعلي: إن كان
+     فارغًا فالمحتوى مطابق.
+   - أي فرق حقيقي = العقد غير محدّث أو تغيير غير مقصود.
 
-6. **الاختبارات**: أضف/حدّث اختبار خلفية يغطي الحقل (قيمة، فارغ، `null`، حدّ أقصى) واختبار واجهة
-   يعرضه. الحقل الذي لا اختبار له = حقل غير مُدقَّق.
+6. **الاختبارات**: أضف/حدّث اختبار خلفية (قيمة، فارغ، `null`، حدّ أقصى/أدنى) واختبار واجهة يعرض
+   الحقل. الحقل بلا اختبار = غير مُدقَّق. شغّل المتأثر فقط أثناء العمل ثم البوابات كاملة قبل الدفع.
 
-7. **بعد التعديل**: أعد الخطوتين 2 و5، ثم شغّل بوابات الواجهة والخلفية (انظر مهارة
-   `release-gate`).
+7. **أعد الخطوتين 2 و5** بعد التعديل، ثم نفّذ مهارة `release-gate`.
 
-## قائمة الأخطاء الشائعة
+## أخطاء شائعة
 
-- `DateTime?` في الخلفية و`string` غير اختياري في `TS` ⇒ تعطّل الواجهة عند `null`.
-- تنسيق تاريخ في الواجهة يدويًا (`split('/')`) بدل تمرير النص كما هو إلى الخلفية.
-- إسقاط `Select` ينسى حقلًا أُضيف حديثًا ⇒ يظهر فارغًا بصمت في القائمة.
-- تعديل `DTO` دون تحديث `docs/openapi/docgen-v1.json` وإعادة التوليد.
+- `DateTime?` في الخلفية و`string` غير اختياري في `TS` ⇒ تعطّل عند `null`.
+- تمرير التاريخ من الواجهة بلا `normalizeArabicDigits` ⇒ رفض الخلفية للأرقام العربية.
+- `Select` جديد ينسى حقلًا ⇒ يظهر فارغًا بصمت في القائمة دون خطأ.
+- تعديل `DTO` دون `docs/openapi/docgen-v1.json` وإعادة التوليد.
 - اختبار يغطي الحالة الممتلئة فقط دون الفراغ/`null`/الحد الأقصى.
+- افتراض أن `AGENTS.md` هو الكود: عند التعارض، الكود + `docs/audit/units/RF-014.md` هما الحقيقة.
 
 ## قالب التقرير
 
@@ -94,4 +118,12 @@ description: Use when a change touches a request/response DTO, service mapping, 
 |---|---|---|---|---|
 | ... | ... | ... | ... | مطابق/انحراف |
 
-ثم: الانحرافات المكتشفة، ما أُصلح، وما بقي كسؤال للمالك، ونتيجة `generate:api` diff.
+ثم: الانحرافات، ما أُصلح، ما بقي سؤالًا للمالك، ونتيجة `generate:api` diff.
+
+## قائمة الإنجاز
+
+- [ ] كل مواضع الحقل مجمعة ومطابقة.
+- [ ] جدول التدقيق مكتمل بلا «غير معروف».
+- [ ] `OpenAPI` والعميل المولّد بلا فرق.
+- [ ] اختبارات الحالة الفارغة/`null` مضافة.
+- [ ] البوابات خضراء أو الانحراف مذكور صراحة.
