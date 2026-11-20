@@ -19,21 +19,43 @@
 
 ## التحقق محليًا (إلزامي قبل الدفع)
 
+> **قاعدة `P1-08` (‏ADR-0009):** كل اختبار قاعدة يعمل على `PostgreSQL` حقيقي. بدون
+> `DOCGEN_TEST_POSTGRES` تُتخطّى اختبارات القاعدة **صراحةً** (`[PostgresFact]`)، فلا
+> تعتبر تشغيلًا بلا المتغيّر دليلًا على خضرة الخلفية. عيّن `DOCGEN_REQUIRE_POSTGRES=1`
+> عند لزوم الفشل الصريح بدل التخطي.
+
+```bash
+# قاعدة اختبار محلية مطابقة لـ CI (Linux/Container؛ على Windows يُفضَّل WSL2/Docker
+# لتفادي حد الذاكرة المشتركة وفحص الملفات).
+docker run --rm -d --name docgen-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 \
+  postgres:16 -c fsync=off -c synchronous_commit=off
+
+export DOCGEN_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres"
+export DOCGEN_REQUIRE_POSTGRES=1   # مفيد في CI/التحقق النهائي
+```
+
 ```bash
 # الخلفية — البناء وبوابة التنسيق
 dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
 dotnet format backend/DocGenerator.sln --verify-no-changes --no-restore
 
-# الخلفية — الحلقة السريعة أثناء التطوير
-dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --filter "Category=Unit"
-dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --filter "Category=Unit"
+# أثناء التطوير: مرشَّح فقط (ثوانٍ) لاختبارات القاعدة على Postgres
+dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj \
+  --no-build --filter "FullyQualifiedName~<Area>"
 
-# الخلفية — الكاملة قبل الدفع (Application ≈14–16 دقيقة)
+# قبل الدفع: مصفوفة كاملة واحدة (Application ≈19 دقيقة محليًا/أقل في CI)
 dotnet test backend/tests/DocGenerator.Architecture.Tests/DocGenerator.Architecture.Tests.csproj --no-build
-dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build
-dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --filter "Category!=Sequential"
-dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --filter "Category=Sequential"
+dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build \
+  --logger "trx;LogFileName=app-postgres.trx"
+dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build \
+  --filter "Category!=Sequential" --logger "trx;LogFileName=api-postgres.trx"
+dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build \
+  --filter "Category=Sequential"
+
+# أرقام التحقق للقطة docs/audit (بدل النسخ اليدوي)
+node scripts/test-report.mjs backend/tests/DocGenerator.Application.Tests/TestResults/app-postgres.trx
 ```
+
 
 ```bash
 cd frontend
