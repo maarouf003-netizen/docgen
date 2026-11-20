@@ -4,7 +4,6 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -13,35 +12,20 @@ namespace DocGenerator.Application.Tests;
 
 /// <summary>
 /// سلامة سباق النقل الجملي للاستئنافات (F5): القراءة داخل المعاملة + إعادة فحص
-/// `Pending` + رمز `Version` — مهمتان متزامنتان على المصدر نفسه عبر اتصالين مستقلين.
+/// `Pending` + رمز `Version` — مهمتان متزامنتان على المصدر نفسه عبر سياقين
+/// مستقلين على قاعدة <c>PostgreSQL</c> واحدة (‏`ADR-0009`).
 /// ما يُثبَت هنا بدقة: سلامة الحالة النهائية (المجموع المنقول = المنظور، بلا كتابة
-/// مفقودة صامتة) وصنف الخسارة حصرًا (تعارض تزامن، يترجمه المعالج العام `409`) —
-/// لا التداخل الكامل نفسه: تسلسل SQLite الذاتي قد يمنع التداخل، فهذه قرينة
-/// دفاع-عمق لا برهان تداخل (مرآة `TransferRedirectConcurrencyTests`).
+/// مفقودة صامتة) وصنف الخسارة حصرًا (تعارض تزامن، يترجمه المعالج العام `409`).
+/// على `Postgres` (بخلاف ملف `SQLite`) الأقفال صفّية و`MVCC` حقيقي: الخاسر يرى
+/// إمّا `AssignedLawyerId` محدَّثًا (صفر منظور) أو يفشل على شرط `Version`.
 /// </summary>
-public class AppealTransferAllConcurrencyTests : IDisposable
+public class AppealTransferAllConcurrencyTests : IAsyncLifetime
 {
-    private readonly string _path = Path.GetTempFileName();
-    private readonly List<SqliteConnection> _connections = new();
+    private PostgresTestDb _pg = null!;
 
-    public void Dispose()
-    {
-        foreach (var c in _connections)
-            c.Dispose();
-        try { File.Delete(_path); } catch { /* ملف مؤقت — التجاهل آمن */ }
-    }
+    public async Task InitializeAsync() => _pg = await PostgresTestDb.CreateAsync();
 
-    private async Task<SqliteConnection> OpenConnectionAsync()
-    {
-        var connection = new SqliteConnection($"Data Source={_path}");
-        await connection.OpenAsync();
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000;";
-        await pragma.ExecuteNonQueryAsync();
-        _connections.Add(connection);
-        return connection;
-    }
-
+    public async Task DisposeAsync() => await _pg.DisposeAsync();
 
     private static IDocumentAppealService AppealService(DocGeneratorDbContext db)
     {
@@ -66,9 +50,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
 
     private async Task<(int BranchId, int SourceId, int TargetId)> SeedAsync()
     {
-        var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
-        await db.Database.EnsureCreatedAsync();
+        await using var db = _pg.CreateContext();
 
         var branch = new Branch { Name = "حماة", Code = "HAM", Governorate = "حماة" };
         db.Branches.Add(branch);
@@ -110,7 +92,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
         return (branch.Id, source.Id, target.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_DoubleTransfer_MovedTotalEqualsPending_LoserOnlyConcurrency()
     {
         var seed = await SeedAsync();
@@ -118,8 +100,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
         var outcomes = await Task.WhenAll(
             Task.Run(async () =>
             {
-                var taskConnection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(taskConnection));
+                await using var db = _pg.CreateContext();
                 try
                 {
                     var moved = await AppealService(db).TransferAllAsync(
@@ -130,8 +111,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             }),
             Task.Run(async () =>
             {
-                var taskConnection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(taskConnection));
+                await using var db = _pg.CreateContext();
                 try
                 {
                     var moved = await AppealService(db).TransferAllAsync(
@@ -148,17 +128,15 @@ public class AppealTransferAllConcurrencyTests : IDisposable
         // المجموع المنقول يساوي المنظور (2): الفائز ينقل الكل، والآخر صفر أو يتراجع.
         Assert.Equal(2, outcomes.Where(o => o.Error is null).Sum(o => o.Moved!.Value));
 
-        var checkConnection = await OpenConnectionAsync();
-        await using var check = new DocGeneratorDbContext(TestDb.CreateOptions(checkConnection));
+        await using var check = _pg.CreateContext();
         Assert.Equal(2, await check.DocumentAppeals.CountAsync(a => a.AssignedLawyerId == seed.TargetId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_EmptySource_ReturnsZero()
     {
         var seed = await SeedAsync();
-        var connection = _connections[^1];
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
+        await using var db = _pg.CreateContext();
 
         // المصدر بلا منظور مسند (الهدف نفسه لا يملك شيئًا) — صفر ناجح بلا استثناء.
         var moved = await AppealService(db).TransferAllAsync(

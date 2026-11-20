@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
@@ -13,6 +14,22 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public static class DelegationActivityPolicy
 {
+    /// <summary>
+    /// شرط «حاجبة» كشجرة تعبير يفهمها `EF` — مصدرٌ واحد للدلالة يُستعمل في الذاكرة
+    /// (‏<see cref="IsAssetBlocking"/>) وفي استعلام حذف الحجوزات اليتيمة على القاعدة.
+    /// الكتابة المكررة نصًا في SQL كانت ستُباعد دلالة الحارس عن دلالة التنظيف.
+    /// </summary>
+    public static readonly Expression<Func<DocumentDelegation, bool>> IsAssetBlockingExpression =
+        d => d.Status != DelegationStatusCatalog.Executed
+            && (d.TargetDocument == null
+                || !(d.TargetDocument.ExecStatus == ExecutionStatusCatalog.StateStruckOff
+                    || d.TargetDocument.ExecStatus == ExecutionStatusCatalog.Recovered
+                    || d.TargetDocument.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                    || d.TargetDocument.ExecutedStatus == ExecutedStatusCatalog.StruckOff));
+
+    private static readonly Func<DocumentDelegation, bool> IsAssetBlockingCompiled =
+        IsAssetBlockingExpression.Compile();
+
     /// <summary>هل الإنابة «سارية» بمعنى S1 الواسع؟ — أي حال سوى المنفذة (بما فيها
     /// «بانتظار رئيس القسم» عمدًا: اعتماد الإنابة لا يعيد فحص المنيب).</summary>
     public static bool IsLifecycleActive(DocumentDelegation d) =>
@@ -20,9 +37,7 @@ public static class DelegationActivityPolicy
 
     /// <summary>هل تحجب الإنابة أموالها عن أي تسطير جديد؟ — السارية ما دام منابها
     /// غير نهائي؛ المعلّقة بلا مناب حاجبة دائمًا (الأموال محجوزة منذ التسطير).</summary>
-    public static bool IsAssetBlocking(DocumentDelegation d) =>
-        IsLifecycleActive(d)
-        && (d.TargetDocument is null || !IsTargetTerminal(d.TargetDocument));
+    public static bool IsAssetBlocking(DocumentDelegation d) => IsAssetBlockingCompiled(d);
 
     /// <summary>نهائية المناب المُحرِّرة لأمواله (تعود للظهور في التسطير الجديد):
     /// مشطوب بجهتيه (طالبة تنفيذ/طالبة منفذة)، مسترد، منفذ إنابة.

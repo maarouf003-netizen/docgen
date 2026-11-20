@@ -16,8 +16,10 @@ public interface IDelegationReservationRepository : IRepository<DelegationAssetR
     Task DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
 
     /// <summary>
-    /// حذف الحجوزات اليتيمة لمنيب (صفوف ليست لإنابة حاجبة) — حذف مباشر بلا تتبع
-    /// (آمن مع السياقات طويلة العمر: لا يتعارض مع نسخ متتبعة بالمعرف نفسه).
+    /// حذف الحجوزات اليتيمة لمنيب (صفوف ليست لإنابة حاجبة) في جملة `DELETE` واحدة
+    /// تحكم على حالة الإنابة **وقت التنفيذ** — لا من لقطة سابقة. لقطةٌ أقدم من قراءة
+    /// الحجوزات كانت تمحو حجز إنابةٍ التزمت للتوّ في سباق `READ COMMITTED` على `Postgres`
+    /// (فيبقى أصلها بلا حجز يقيد تسطيرًا متزامنًا لاحقًا).
     /// </summary>
-    Task DeleteExceptAsync(int sourceDocumentId, List<int> keepDelegationIds, CancellationToken ct = default);
+    Task DeleteStaleAsync(int sourceDocumentId, CancellationToken ct = default);
 }

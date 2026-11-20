@@ -3,7 +3,6 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -11,34 +10,21 @@ using DocGenerator.Application.Tests.TestHelpers;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// جولة سلامة سباق الترقيم (F1): تسطيرات متزامنة على الفرع نفسه عبر اتصالات
-/// مستقلة وملف مشترك (WAL) — الكل ينجح بأرقام مميزة، وأي تصادم مرشّحين يُحل
-/// بإعادة التوليد داخل الخدمة لا بخطأ 500. النتيجة حتمية أيًّا كان التداخل
-/// المتحقق (تصادم أم لا)، ومسار التعارض الحتمي مغطى في CorrespondenceServiceTests.
+/// جولة سلامة سباق الترقيم (F1): تسطيرات متزامنة على الفرع نفسه عبر سياقات
+/// مستقلة على قاعدة <c>PostgreSQL</c> واحدة (‏`ADR-0009`) — الكل ينجح بأرقام مميزة،
+/// وأي تصادم مرشّحين يُحل بإعادة التوليد داخل الخدمة لا بخطأ 500.
+///
+/// على `Postgres` يصل اصطدام الفهرس الفريد كـ`23505` فيُجهض المعاملة (بخلاف `SQLite`)
+/// فيتراجع `TransactionRunner` ويعيد التوليد في معاملة جديدة؛ النتيجة الحتمية هي
+/// نجاح الجميع بأرقام مميزة أيًّا كان التداخل المتحقق.
 /// </summary>
-public class CorrespondenceConcurrencyTests : IDisposable
+public class CorrespondenceConcurrencyTests : IAsyncLifetime
 {
-    private readonly string _path = Path.GetTempFileName();
-    private readonly List<SqliteConnection> _connections = new();
+    private PostgresTestDb _pg = null!;
 
-    public void Dispose()
-    {
-        foreach (var c in _connections)
-            c.Dispose();
-        try { File.Delete(_path); } catch { /* ملف مؤقت — التجاهل آمن */ }
-    }
+    public async Task InitializeAsync() => _pg = await PostgresTestDb.CreateAsync();
 
-    private async Task<SqliteConnection> OpenConnectionAsync()
-    {
-        var connection = new SqliteConnection($"Data Source={_path}");
-        await connection.OpenAsync();
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000;";
-        await pragma.ExecuteNonQueryAsync();
-        _connections.Add(connection);
-        return connection;
-    }
-
+    public async Task DisposeAsync() => await _pg.DisposeAsync();
 
     private static ICorrespondenceService BuildService(DocGeneratorDbContext db, FakeAuditLogger audit)
         => new CorrespondenceService(
@@ -59,9 +45,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
 
     private async Task<(int LawyerId, int DelegateId, int BranchId)> SeedAsync()
     {
-        var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
-        await db.Database.EnsureCreatedAsync();
+        await using var db = _pg.CreateContext();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         db.Branches.Add(branch);
@@ -89,7 +73,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
 
     private sealed record RaceOutcome(string? CorrespondenceNumber, int AuditCount, Exception? Error);
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ConcurrentSameBranch_AllSucceedWithDistinctNumbers()
     {
         const int writers = 16;
@@ -99,8 +83,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
         {
             try
             {
-                var connection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
+                await using var db = _pg.CreateContext();
                 var audit = new FakeAuditLogger();
                 var service = BuildService(db, audit);
                 var letter = await service.CreateAsync(
@@ -126,7 +109,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
         // كل تسطير سجّل تدقيقه مرة واحدة داخل معاملته الناجحة.
         Assert.All(outcomes, o => Assert.Equal(1, o.AuditCount));
 
-        await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(await OpenConnectionAsync()));
+        await using var verifyDb = _pg.CreateContext();
         Assert.Equal(writers, await verifyDb.Correspondences.CountAsync());
     }
 }
