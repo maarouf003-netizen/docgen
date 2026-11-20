@@ -11,9 +11,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class BranchManagementServiceTests : IDisposable
+public class BranchManagementServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IBranchManagementService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
@@ -21,7 +20,6 @@ public class BranchManagementServiceTests : IDisposable
 
     public BranchManagementServiceTests()
     {
-        _db = TestDb.Create();
         _db.Branches.AddRange(
             new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" },
             new Branch { Name = "حلب", Code = "ALP", Governorate = "حلب" });
@@ -36,12 +34,11 @@ public class BranchManagementServiceTests : IDisposable
         _service = new BranchManagementService(branches, uow, tx, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private int DamascusId => _damascusId;
     private int AleppoId => _aleppoId;
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AddsActiveBranch_WithCounts()
     {
         var branch = await _service.CreateBranchAsync(
@@ -57,7 +54,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Contains("create_branch", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyGovernorate_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -67,35 +64,35 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Null(await _db.Branches.FirstOrDefaultAsync(b => b.Code == "BXX"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateBranchAsync(new CreateBranchRequest("  ", "X1", null, null), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyCode_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", " ", null, null), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateBranchAsync(new CreateBranchRequest("دمشق", "NEW", null, null, "دمشق"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateCode_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "DAM", null, null, "حلب"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ModifiesFields_AndDeactivates()
     {
         var updated = await _service.UpdateBranchAsync(
@@ -112,7 +109,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Contains("update_branch", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_EmptyGovernorate_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -122,7 +119,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Equal("دمشق", (await _db.Branches.FindAsync(DamascusId))!.Governorate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_DuplicateNameExcludingSelf_Throws()
     {
         // حلب تأخذ اسم "دمشق" — ممنوع (فرع آخر بنفس الاسم).
@@ -130,7 +127,7 @@ public class BranchManagementServiceTests : IDisposable
             _service.UpdateBranchAsync(AleppoId, new UpdateBranchRequest("دمشق", "ALP", null, null, true, "حلب"), "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_SameNameSelf_IsAllowed()
     {
         // الإبقاء على نفس الاسم والكود عند التحديث لا يعد تكراراً.
@@ -143,7 +140,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Equal("دمشق", updated.Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NotFound_ReturnsNull()
     {
         var result = await _service.UpdateBranchAsync(
@@ -152,7 +149,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_StaleVersion_ThrowsConflict_WithoutPersistingOrAuditing()
     {
         // P0-06: النسخة القادمة من العميل لا تطابق المحمّلة — رفض مبكر 409.
@@ -167,7 +164,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.DoesNotContain("update_branch", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_MatchingVersion_SucceedsAndReportsIncrementedVersion()
     {
         var stored = await _db.Branches.AsNoTracking().SingleAsync(b => b.Id == DamascusId);
@@ -182,7 +179,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Equal(1, updated.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_ReportsUserAndDocumentCounts()
     {
         var user = new User
@@ -214,7 +211,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Equal(0, branches.Single(b => b.Code == "ALP").UserCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_UnusedBranch_Succeeds()
     {
         var ok = await _service.DeleteBranchAsync(AleppoId, "admin");
@@ -224,7 +221,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.Contains("delete_branch", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_BranchWithUsers_Throws()
     {
         _db.Users.Add(new User
@@ -244,7 +241,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.NotNull(await _db.Branches.FindAsync(DamascusId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_BranchWithDocuments_Throws()
     {
         var user = new User
@@ -278,7 +275,7 @@ public class BranchManagementServiceTests : IDisposable
         Assert.NotNull(await _db.Branches.FindAsync(DamascusId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_NotFound_ReturnsFalse()
     {
         var ok = await _service.DeleteBranchAsync(999, "admin");

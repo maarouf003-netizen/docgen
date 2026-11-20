@@ -7,9 +7,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class AppSuggestionServiceTests : IDisposable
+public class AppSuggestionServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IAppSuggestionService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -17,7 +16,6 @@ public class AppSuggestionServiceTests : IDisposable
 
     public AppSuggestionServiceTests()
     {
-        _db = TestDb.Create();
         // الفرع لازم للمحامين (قيد القاعدة CK_Users_BranchRequiredForBranchRoles) —
         // الاقتراحات user-scoped فقيمة الفرع لا تؤثر في أي تأكيد هنا.
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" });
@@ -41,9 +39,8 @@ public class AppSuggestionServiceTests : IDisposable
             _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Valid_ReturnsDtoAndAudits()
     {
         var dto = await _service.CreateAsync("أضيفوا تصدير إكسل", _lawyer.Id, "lawyer");
@@ -54,7 +51,7 @@ public class AppSuggestionServiceTests : IDisposable
         Assert.Contains("app-suggestion.create", _audit.Actions);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("")]
     [InlineData("   ")]
     public async Task Create_EmptyMessage_Throws(string message)
@@ -62,14 +59,14 @@ public class AppSuggestionServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(message, _lawyer.Id, "lawyer"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_TooLong_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(
             () => _service.CreateAsync(new string('ع', AppSuggestionService.MessageMaxLength + 1), _lawyer.Id, "lawyer"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListMine_OnlyOwnNewestFirst()
     {
         await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");
@@ -84,7 +81,7 @@ public class AppSuggestionServiceTests : IDisposable
         Assert.Equal("الثاني", mine[0].Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_IdempotentAndNotFound()
     {
         Assert.False(await _service.MarkReadAsync(999));
@@ -97,7 +94,7 @@ public class AppSuggestionServiceTests : IDisposable
         Assert.Contains(admin.Items, s => s.Id == dto.Id && s.IsRead && s.SenderName == "محامي مقترح");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountUnread_TracksUnreadOnly()
     {
         Assert.Equal(0, await _service.CountUnreadAsync());
@@ -113,7 +110,7 @@ public class AppSuggestionServiceTests : IDisposable
         Assert.Equal(1, await _service.CountUnreadAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForAdmin_PagesAndClamps()
     {
         await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");
@@ -136,7 +133,7 @@ public class AppSuggestionServiceTests : IDisposable
         Assert.Equal(AppSuggestionService.DefaultPerPage, clamped.PerPage);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetById_OwnerAdminAndMissingViews()
     {
         var other = new User

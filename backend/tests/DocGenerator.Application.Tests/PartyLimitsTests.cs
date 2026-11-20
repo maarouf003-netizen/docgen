@@ -13,15 +13,13 @@ namespace DocGenerator.Application.Tests;
 /// سقف أطراف الملف (قرار المالك): إجمالي المنفذ عليهم 50 شاملًا المقترض
 /// (مصرفي/عادي بنفس السقف)، أي حتى 49 صف كفلاء — `PartyLimitsCatalog` هو المصدر الوحيد.
 /// </summary>
-public class PartyLimitsTests : IDisposable
+public class PartyLimitsTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
 
     public PartyLimitsTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -35,7 +33,6 @@ public class PartyLimitsTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static GuarantorDto NewGuarantor(int number) => new(
         Id: null,
@@ -69,7 +66,7 @@ public class PartyLimitsTests : IDisposable
         Guarantors = Enumerable.Range(1, guarantorCount).Select(NewGuarantor).ToList(),
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithMaxGuarantors_SucceedsAndRoundTrips()
     {
         var doc = await _service.CreateAsync(Sample(PartyLimitsCatalog.MaxGuarantors), 1, "lawyer1", 1);
@@ -79,7 +76,7 @@ public class PartyLimitsTests : IDisposable
         Assert.Equal("كفيل 49", loaded.Guarantors.OrderBy(g => g.GuarantorNumber).Last().Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AboveMaxGuarantors_ThrowsWithLimitMessage()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(
@@ -87,7 +84,7 @@ public class PartyLimitsTests : IDisposable
         Assert.Contains(PartyLimitsCatalog.MaxTotalDebtors.ToString(), ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AboveMaxGuarantors_ThrowsWithLimitMessage()
     {
         var doc = await _service.CreateAsync(Sample(1), 1, "lawyer1", 1);
@@ -97,7 +94,7 @@ public class PartyLimitsTests : IDisposable
         Assert.Contains(PartyLimitsCatalog.MaxTotalDebtors.ToString(), ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateGuarantorNumber_Throws()
     {
         var req = Sample(2);
@@ -108,7 +105,7 @@ public class PartyLimitsTests : IDisposable
         Assert.Contains("مكرر", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FullPartiesWithHeirsAndRepresentatives_RoundTripsExactly()
     {
         // أمانة الحفظ على نطاق 50: الممثل الشرعي على المقترض وكفيل، والورثة على الكفيل الأخير (49)

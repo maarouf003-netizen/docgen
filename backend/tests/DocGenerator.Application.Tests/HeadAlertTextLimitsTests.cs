@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 using DocGenerator.Application.Common;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 
 namespace DocGenerator.Application.Tests;
 
@@ -114,8 +114,8 @@ public class HeadAlertTextLimitsTests
         Assert.Equal(HeadAlertTextLimits.PreviewMaxElements, HeadAlertTextLimits.CountCodePoints(preview));
     }
 
-    [Fact]
-    public void CountCodePoints_MatchesSqliteLength()
+    [PostgresFact]
+    public async Task CountCodePoints_MatchesPostgresLength()
     {
         var samples = new[]
         {
@@ -125,15 +125,18 @@ public class HeadAlertTextLimitsTests
             string.Concat(Enumerable.Repeat("🧑‍💻", 20)),
         };
 
-        using var connection = new SqliteConnection("Data Source=:memory:");
-        connection.Open();
+        // `length(text)` في PostgreSQL يعدّ نقاط Unicode كما يفعل `CountCodePoints`؛
+        // كان الاختبار يقارن بـ`length()` في SQLite، وهو نفس الدلالة على المزوّد الحي.
+        await using var pg = await PostgresTestDb.CreateAsync();
+        using var connection = new NpgsqlConnection(pg.ConnectionString);
+        await connection.OpenAsync();
 
         foreach (var sample in samples)
         {
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT length(@text)";
-            command.Parameters.AddWithValue("@text", sample);
-            var sqlLength = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+            command.Parameters.AddWithValue("text", sample);
+            var sqlLength = Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
 
             Assert.Equal(sqlLength, HeadAlertTextLimits.CountCodePoints(sample));
         }

@@ -17,9 +17,8 @@ namespace DocGenerator.Application.Tests;
 /// الإملائية تُطابَق (هوية/بحث/ترقيم) والعرض يبقى خامًا.
 /// تفشل قبل الإصلاح (انشطار/تفويت/ازدواج) وتخضر بعده.
 /// </summary>
-public class PB001NormalizationTests : IDisposable
+public class PB001NormalizationTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPublicEntityService _registry;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
@@ -28,7 +27,6 @@ public class PB001NormalizationTests : IDisposable
 
     public PB001NormalizationTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "الفرع الرئيسي - دمشق", Code = "DAM", Governorate = "دمشق" });
         _db.SaveChanges();
         _damascusId = _db.Branches.Single(b => b.Code == "DAM").Id;
@@ -56,7 +54,6 @@ public class PB001NormalizationTests : IDisposable
             new AppealRepository(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private EntityRegistryActor ManagerActor() => new(_managerId, "المدير", UserRole.Manager, null);
 
@@ -77,7 +74,7 @@ public class PB001NormalizationTests : IDisposable
         FileRegistrationDate = number is null ? null : "1/8/2026",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateEntry_BranchVariant_Rejected()
     {
         // نفس الهوية والمحافظة بفرع متغير إملائيًا: اليوم قيد ثانٍ؛ بعده `400`.
@@ -88,7 +85,7 @@ public class PB001NormalizationTests : IDisposable
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسى"), ManagerActor()));
     }
 
-    [Fact]
+    [PostgresFact]
     public void SearchTextBlob_Normalized()
     {
         // توصيف البلوب: مطبَّع (يخضر بعد التطبيع عند البناء).
@@ -99,7 +96,7 @@ public class PB001NormalizationTests : IDisposable
         Assert.DoesNotContain("أحمد", blob);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_VariantName_Finds()
     {
         // بحث «احمد» يجد ملف «أحمد»: اليوم فوات؛ بعده إصابة عبر البلوب المطبَّع.
@@ -111,7 +108,7 @@ public class PB001NormalizationTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Numbering_CourtVariant_Conflict()
     {
         // نفس الرقم بدائرتين متغيرتين إملائيًا: اليوم نجاح مكرر؛ بعده `409`.
@@ -124,7 +121,7 @@ public class PB001NormalizationTests : IDisposable
             () => service.CreateAsync(second, _lawyerId, "tester", _damascusId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Display_StaysRaw()
     {
         // توصيف (يخضر قبل/بعد): العرض يبقى بالإملاء الأصلي دائمًا.

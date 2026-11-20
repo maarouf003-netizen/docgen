@@ -15,17 +15,14 @@ namespace DocGenerator.Application.Tests;
 /// شارة «استئناف» في قائمة الملفات التنفيذية تعني وجود استئناف منظور فقط:
 /// تظهر للمنظور، وتختفي بعد حسم/شطب آخر منظور، وتشير لأول منظور (الأقدم) عند التعدد.
 /// </summary>
-public class DocumentSearchAppealBadgeTests : IDisposable
+public class DocumentSearchAppealBadgeTests : PostgresDbTest
 {
     private static readonly FakeTimeProvider Clock = new(new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero));
-
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _userId;
 
     public DocumentSearchAppealBadgeTests()
     {
-        _db = TestDb.Create();
         // الفرع لازم للمحامي (قيد القاعدة) — الشارة user-scoped فالقيمة محايدة.
         var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         _db.SaveChanges();
@@ -42,7 +39,6 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         _userId = user.Id;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private async Task<DTOs.DocumentResponse> SearchSingleAsync(int documentId)
     {
@@ -83,7 +79,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         };
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_NoAppeal_NoBadge()
     {
         var doc = NewDoc();
@@ -96,7 +92,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Null(row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_PendingAppeal_ShowsBadge()
     {
         var doc = NewDoc();
@@ -112,7 +108,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Equal(appeal.Id, row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_DecidedOnly_HidesBadge()
     {
         var doc = NewDoc();
@@ -127,7 +123,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Null(row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_StruckOffOnly_HidesBadge()
     {
         var doc = NewDoc();
@@ -142,7 +138,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Null(row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_DecidedThenPending_ShowsPendingOnly()
     {
         var doc = NewDoc();
@@ -162,7 +158,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Equal(pending.Id, row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_MultiplePending_ShowsOldestPending()
     {
         var doc = NewDoc();
@@ -181,7 +177,7 @@ public class DocumentSearchAppealBadgeTests : IDisposable
         Assert.Equal(first.Id, row.MatchedAppealId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MapFirstAppealId_EmptyIds_ReturnsEmpty()
     {
         var repo = new AppealRepository(_db);

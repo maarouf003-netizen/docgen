@@ -17,9 +17,8 @@ namespace DocGenerator.Application.Tests;
 /// (ق10) وإبقاء اسمه (ق9)، وتاريخ أرقام الأساس — وعزل النطاق (404) لكل نقطة، وعدم
 /// تسريب الملاحظات الداخلية إلى عمود «الإجراءات والملاحظات» في تصدير Excel (ف12).
 /// </summary>
-public class PortalFileDetailTests : IDisposable
+public class PortalFileDetailTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeAuditLogger _audit = new();
     private readonly IPortalService _portal;
     private readonly IDocumentAppealService _appealService;
@@ -29,7 +28,6 @@ public class PortalFileDetailTests : IDisposable
 
     public PortalFileDetailTests()
     {
-        _db = TestDb.Create();
 
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
         // الفرع لازم للمحامي (قيد القاعدة) — رؤية البوابة بالنطاق لا بفرع المستخدم.
@@ -68,7 +66,6 @@ public class PortalFileDetailTests : IDisposable
             TestClock.Provider, TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>ملف «طالبة تنفيذ» مرتبط بقيد من نطاق المندوب ومملوك للمحامي.</summary>
     private async Task<Document> SeedInScopeDocAsync(string name)
@@ -141,7 +138,7 @@ public class PortalFileDetailTests : IDisposable
 
     // ── الإجراءات التنفيذية ──────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ListExecutionActions_ReturnsOnlyActions_NewestFirst_WithCreatorName()
     {
         var doc = await SeedInScopeDocAsync("ملف الإجراءات");
@@ -167,7 +164,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.DoesNotContain(list, a => a.Text.Contains("ملاحظة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListExecutionActions_OutOfScope_ReturnsNull()
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
@@ -177,7 +174,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.Null(actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListExecutionActions_BreaksCreatedAtTieByNewerId()
     {
         var doc = await SeedInScopeDocAsync("ملف التعادل الزمني");
@@ -198,7 +195,7 @@ public class PortalFileDetailTests : IDisposable
 
     // ── تفاصيل الملف: التقليم السلكي وعقد المشطوب ─────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFile_WireTrimmed_InternalNotesAndNoteActionsDoNotLeave()
     {
         var doc = await SeedInScopeDocAsync("ملف التقليم السلكي");
@@ -232,7 +229,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.DoesNotContain(response.ExecutionActions, a => a.Text.Contains("ملاحظة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFile_StruckOffInScope_ExcludedFromList_StillReturnsDetail()
     {
         var normal = await SeedInScopeDocAsync("ملف متداول شاهد");
@@ -260,7 +257,7 @@ public class PortalFileDetailTests : IDisposable
 
     // ── تشعبات الملف (إنابة) ──────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ListDelegations_InScope_ReturnsScopedList()
     {
         var doc = await SeedInScopeDocAsync("ملف التشعبات");
@@ -271,7 +268,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.Empty(delegations);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListDelegations_OutOfScope_ReturnsNull()
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
@@ -283,7 +280,7 @@ public class PortalFileDetailTests : IDisposable
 
     // ── تفاصيل الاستئنافات ───────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ListAppealDetails_HidesDefenseOpinionAndNotes_KeepsLawyerAndData()
     {
         var doc = await SeedInScopeDocAsync("ملف الاستئناف");
@@ -307,7 +304,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.NotEmpty(appeal.Appellants);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListAppealDetails_OutOfScope_ReturnsNull()
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
@@ -319,7 +316,7 @@ public class PortalFileDetailTests : IDisposable
 
     // ── أرقام الأساس ─────────────────────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ListBaseNumbers_ReturnsHistory_OrderedByYearThenCreatedAtDesc()
     {
         var doc = await SeedInScopeDocAsync("ملف الأرقام");
@@ -342,7 +339,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.Equal("أ/2024", list[2].BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListBaseNumbers_OutOfScope_ReturnsNull()
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
@@ -395,7 +392,7 @@ public class PortalFileDetailTests : IDisposable
     // و«ترتيب الإجراءات الأحدث أولًا مع كسر Id» مغطّى أيضًا في مسار التفاصيل
     // بـ`ListExecutionActions_BreaksCreatedAtTieByNewerId` أعلاه.
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_OmitsAnnexColumn_KeepsNewestPublicActionOnly()
     {
         // «ملحق العقد» خارج المصنّف بحكم التصميم؛ وعمود «الإجراءات والملاحظات»
@@ -426,7 +423,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.Equal("نص إجراء تنفيذي علني", dataRow[7]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_BranchColumn_ShowsScopedEntryBranch_NotInternalBranchName()
     {
         // عمود «فرع الجهة» مصدره فروع نطاق المندوب (`MatchedEntries`) لا
@@ -443,7 +440,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.DoesNotContain("فرع إداري سري", sheetXml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_BranchColumn_ListsEveryScopedBranch_WithoutCardTruncation()
     {
         // البطاقة في الواجهة تختصر «أول فرعين +N» لحجر البصر؛ المصنّف لا يقتطع أبدًا
@@ -475,7 +472,7 @@ public class PortalFileDetailTests : IDisposable
             dataRow[2]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_BranchCellOrderMatchesScopeDropdownOrder()
     {
         // توحيد الترتيب ميكانيكيًا: خلية «فرع الجهة» تسرد الفروع بالترتيب نفسه
@@ -509,7 +506,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.Equal(expected, cellBranches);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_WithEntryFilter_BranchColumnShowsThatBranchOnly()
     {
         // عمود الفروع يوافق مُرشِّح التصدير: تصدير فرع واحد لا يذكر فروع المندوب
@@ -525,7 +522,7 @@ public class PortalFileDetailTests : IDisposable
         Assert.DoesNotContain("دمشق/الفرع الرئيسي", sheetXml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_PortalHeadersMatchDeclaredAllowlist()
     {
         // G2: أي عمود جديد في تصدير البوابة يُجبر صاحبه على قرار صريح —

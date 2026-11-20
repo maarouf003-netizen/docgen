@@ -7,79 +7,13 @@ using Microsoft.EntityFrameworkCore;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// اختبارات حتمية لمصنّف أخطاء القيد (B3): تعارض فريد حقيقي على SQLite يُصنَّف
-/// موجبًا، وغير الفريد سالبًا — يثبت نصف مسار الترجمة (النصف الآخر: موضع الالتقاط
-/// حول حفظ الحجوزات، مثبت بالمراجعة وجولات السلامة).
+/// اختبارات حتمية لمصنّف أخطاء القيد (B3): رموز المزوّدين المصطنعة (SQLite/Postgres)
+/// تُصنَّف كما هي، وغيرها سالبًا. تعارض التفرّد الحقيقي من قاعدة حيّة مغطى في
+/// <see cref="DbExceptionClassifierDatabaseTests"/>.
 /// </summary>
-public class DbExceptionClassifierTests : IDisposable
+public class DbExceptionClassifierTests
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
     private readonly IDbExceptionClassifier _classifier = new DbExceptionClassifier();
-
-    public void Dispose() => _db.Dispose();
-
-    private async Task<(int SourceId, int DelegationId)> SeedAsync()
-    {
-        var branch = new Branch { Name = "دمشق", Code = "DAM" };
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
-
-        var lawyer = new User
-        {
-            Username = "classifier_lawyer",
-            FullName = "محامي المصنف",
-            Role = UserRole.Lawyer,
-            BranchId = branch.Id,
-            PasswordHash = "x",
-        };
-        _db.Users.Add(lawyer);
-        await _db.SaveChangesAsync();
-
-        var source = new Document
-        {
-            CreatedById = lawyer.Id,
-            BranchId = branch.Id,
-            IsDraft = false,
-        };
-        _db.Documents.Add(source);
-        await _db.SaveChangesAsync();
-
-        var delegation = new DocumentDelegation
-        {
-            SourceDocumentId = source.Id,
-            CreatedById = lawyer.Id,
-            DelegatedCourt = "دائرة تنفيذ حلب",
-            Status = DelegationStatusCatalog.PendingHead,
-        };
-        _db.DocumentDelegations.Add(delegation);
-        await _db.SaveChangesAsync();
-
-        return (source.Id, delegation.Id);
-    }
-
-    [Fact]
-    public async Task IsUniqueViolation_DuplicateReservation_True()
-    {
-        // تعارض فريد حقيقي من المزود (لا محاكاة): صفّان بنفس (المنيب + الأصل).
-        var (sourceId, delegationId) = await SeedAsync();
-        _db.DelegationAssetReservations.Add(new DelegationAssetReservation
-        {
-            DelegationId = delegationId,
-            SourceDocumentId = sourceId,
-            AssetId = 5,
-        });
-        await _db.SaveChangesAsync();
-
-        _db.DelegationAssetReservations.Add(new DelegationAssetReservation
-        {
-            DelegationId = delegationId,
-            SourceDocumentId = sourceId,
-            AssetId = 5,
-        });
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
-
-        Assert.True(_classifier.IsUniqueViolation(ex));
-    }
 
     [Fact]
     public void IsUniqueViolation_NonUniqueDbError_False()
@@ -162,25 +96,6 @@ public class DbExceptionClassifierTests : IDisposable
     }
 
     [Fact]
-    public async Task IsConcurrencyViolation_StaleVersionSave_True()
-    {
-        // تعارض تزامن حقيقي على مستوى `EF` (RF-010 — لا محاكاة لمصنّف):
-        // قيمة أصلية قديمة لا تطابق أي صف فيفشل `WHERE Version` (السباق الحقيقي
-        // عبر سياقين مغطى تكامليًا في `RF010ConcurrencyTests`).
-        var (_, _) = await SeedAsync();
-        var staleId = _db.Documents.Select(d => d.Id).First();
-
-        var stale = await _db.Documents.FindAsync(staleId);
-        stale!.BorrowerName = "المتأخر";
-        stale.Version++;
-        _db.Entry(stale).Property(d => d.Version).OriginalValue = -1;
-        var ex = await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => _db.SaveChangesAsync());
-
-        Assert.True(_classifier.IsConcurrencyViolation(ex));
-        Assert.False(_classifier.IsUniqueViolation(ex));
-    }
-
-    [Fact]
     public void IsConcurrencyViolation_PlainException_False()
     {
         Assert.False(_classifier.IsConcurrencyViolation(new InvalidOperationException("عطل عام")));
@@ -192,12 +107,104 @@ public class DbExceptionClassifierTests : IDisposable
     public void IsConcurrencyViolation_StorageBusy_Friendly()
     {
         // انشغال/قفل التخزين المتزامن (المرحلة 9): كتابتان حقيقيتان تتصادمان
-        // خارج `WHERE` الرمز — تُترجمان 409 ودية بدل 500 خام.
+        // خارج `WHERE` الرمز — تُترجمـان 409 ودية بدل 500 خام.
         Assert.True(_classifier.IsConcurrencyViolation(
             new DbUpdateException("فشل حفظ", new Microsoft.Data.Sqlite.SqliteException("database is locked", 5))));
         Assert.True(_classifier.IsConcurrencyViolation(
             new Microsoft.Data.Sqlite.SqliteException("database table is locked", 6)));
         Assert.False(_classifier.IsConcurrencyViolation(
             new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19)));
+    }
+}
+
+/// <summary>
+/// نصف مسار الترجمة على قاعدة <c>PostgreSQL</c> حيّة: تعارض فريد حقيقي من المزود
+/// (‏`23505`) وتعارض تزامن حقيقي (‏`WHERE Version`). النصف الآخر (موضع الالتقاط حول
+/// حفظ الحجوزات) مثبت بمراجعة الموضع وجولات السلامة في `DelegationConcurrencyTests`.
+/// </summary>
+public class DbExceptionClassifierDatabaseTests : PostgresDbTest
+{
+    private readonly IDbExceptionClassifier _classifier = new DbExceptionClassifier();
+
+    private async Task<(int SourceId, int DelegationId)> SeedAsync()
+    {
+        var branch = new Branch { Name = "دمشق", Code = "DAM" };
+        _db.Branches.Add(branch);
+        await _db.SaveChangesAsync();
+
+        var lawyer = new User
+        {
+            Username = "classifier_lawyer",
+            FullName = "محامي المصنف",
+            Role = UserRole.Lawyer,
+            BranchId = branch.Id,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(lawyer);
+        await _db.SaveChangesAsync();
+
+        var source = new Document
+        {
+            CreatedById = lawyer.Id,
+            BranchId = branch.Id,
+            IsDraft = false,
+        };
+        _db.Documents.Add(source);
+        await _db.SaveChangesAsync();
+
+        var delegation = new DocumentDelegation
+        {
+            SourceDocumentId = source.Id,
+            CreatedById = lawyer.Id,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.PendingHead,
+        };
+        _db.DocumentDelegations.Add(delegation);
+        await _db.SaveChangesAsync();
+
+        return (source.Id, delegation.Id);
+    }
+
+    [PostgresFact]
+    public async Task IsUniqueViolation_DuplicateReservation_True()
+    {
+        // تعارض فريد حقيقي من المزود (لا محاكاة): صفّان بنفس (المنيب + الأصل).
+        var (sourceId, delegationId) = await SeedAsync();
+        _db.DelegationAssetReservations.Add(new DelegationAssetReservation
+        {
+            DelegationId = delegationId,
+            SourceDocumentId = sourceId,
+            AssetId = 5,
+        });
+        await _db.SaveChangesAsync();
+
+        _db.DelegationAssetReservations.Add(new DelegationAssetReservation
+        {
+            DelegationId = delegationId,
+            SourceDocumentId = sourceId,
+            AssetId = 5,
+        });
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
+
+        Assert.True(_classifier.IsUniqueViolation(ex));
+    }
+
+    [PostgresFact]
+    public async Task IsConcurrencyViolation_StaleVersionSave_True()
+    {
+        // تعارض تزامن حقيقي على مستوى `EF` (RF-010 — لا محاكاة لمصنّف):
+        // قيمة أصلية قديمة لا تطابق أي صف فيفشل `WHERE Version` (السباق الحقيقي
+        // عبر سياقين مغطى تكامليًا في `RF010ConcurrencyTests`).
+        await SeedAsync();
+        var staleId = _db.Documents.Select(d => d.Id).First();
+
+        var stale = await _db.Documents.FindAsync(staleId);
+        stale!.BorrowerName = "المتأخر";
+        stale.Version++;
+        _db.Entry(stale).Property(d => d.Version).OriginalValue = -1;
+        var ex = await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => _db.SaveChangesAsync());
+
+        Assert.True(_classifier.IsConcurrencyViolation(ex));
+        Assert.False(_classifier.IsUniqueViolation(ex));
     }
 }

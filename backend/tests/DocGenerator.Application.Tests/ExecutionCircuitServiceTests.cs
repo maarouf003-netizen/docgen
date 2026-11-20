@@ -17,9 +17,8 @@ namespace DocGenerator.Application.Tests;
 /// النطاق، الإلزامية، الوحدانية، منع الحذف، الذرية، التنبيه، الاستثناء الخارجي،
 /// إسقاط العلم، حارس التدوير، تجاهل court، رفع Version، الأعمدة الجديدة، مسح BaseNumbers.
 /// </summary>
-public class ExecutionCircuitServiceTests : IDisposable
+public class ExecutionCircuitServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IExecutionCircuitService _circuits;
     private readonly IDocumentService _documents;
     private readonly IDocumentStatusService _documentStatus;
@@ -33,7 +32,6 @@ public class ExecutionCircuitServiceTests : IDisposable
 
     public ExecutionCircuitServiceTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -74,7 +72,6 @@ public class ExecutionCircuitServiceTests : IDisposable
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
-    public void Dispose() => _db.Dispose();
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
     {
@@ -99,7 +96,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         return created.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Circuit_RequiresGovernorateBranch()
     {
         var badBranch = new Branch { Name = "بلا محافظة", Code = "NOG" };
@@ -109,7 +106,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _circuits.CreateAsync(badBranch.Id, _headId, "head1", "دائرة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateName_Normalized_Conflict()
     {
         await CreateCircuitAsync("دائرة دمشق الأولى");
@@ -117,7 +114,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة  دمشق الأولى"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Document_RequiresCircuit_WhenRegistryNonEmpty()
     {
         await CreateCircuitAsync();
@@ -126,7 +123,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _documents.CreateAsync(req, _lawyer1Id, "lawyer", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Document_RejectsNameOutsideRegistry()
     {
         await CreateCircuitAsync();
@@ -136,7 +133,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _documents.CreateAsync(req, _lawyer1Id, "lawyer", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Document_DerivesCourt_IgnoresClientText()
     {
         var id = await CreateCircuitAsync("دائرة دمشق الأولى");
@@ -148,7 +145,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(id, created.ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Document_RejectsDisabledCircuit()
     {
         var id = await CreateCircuitAsync();
@@ -159,7 +156,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _documents.CreateAsync(req, _lawyer1Id, "lawyer", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Uniqueness_IsPerCircuit_SameNumberDifferentCircuits_WarnsThenAllowsWithToken()
     {
         var a = await CreateCircuitAsync("دائرة أ");
@@ -175,7 +172,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(b, created.ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Uniqueness_SameCircuitDuplicate_Conflict()
     {
         var a = await CreateCircuitAsync("دائرة أ");
@@ -186,7 +183,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _documents.CreateAsync(req, _lawyer2Id, "lawyer", _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_BlockedByFiles_ConflictWithCount()
     {
         // تعديل البند 41: الحارس يعدّ الأحياء فقط — المحذوفة لا ترفع العدد ولا تمنع.
@@ -211,7 +208,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.DoesNotContain("2", ex2.Message.Replace("2026", "").Replace("811", ""));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_EmptiesCircuit_KeepsBaseNumbersInOldCircuit_SetsPending_CheckOccurrenceColumns()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
@@ -258,7 +255,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("200", occ.FileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_SkipsAlreadyOwned_SilentlyCountsSkipped()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
@@ -273,7 +270,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Single(pending);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_NormalizesArabicDigits_AndDropsFlag()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
@@ -301,7 +298,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("123", occ.FileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Pending_IsExcludedFromRotationCandidates()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
@@ -314,7 +311,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(0, total);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusChange_BlockedOnPending()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
@@ -326,7 +323,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _documentStatus.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_PropagatesToDocuments_AndBumpsVersion()
     {
         var id = await CreateCircuitAsync("دائرة قديمة");
@@ -338,7 +335,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.True(doc.Version > before);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_WithCompletedDelegationTargeting_DetachesFkKeepsText()
     {
         // H1: إنابة مكتملة تستهدف الدائرة — الحذف يفك المرجع ويُبقي النص (التاريخ المجمد)
@@ -367,7 +364,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("دائرة المنابة", g.DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_WithPendingIncoming_Conflict()
     {
         var source = await CreateCircuitAsync("دائرة المنيب");
@@ -391,7 +388,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("معلقة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_PurgesSoftDeletedFiles_AndAudits()
     {
         // تعديل البند 41: سلة المحذوفات تُطهَّر نهائيًا ضمن معاملة الحذف — بلا استعادة ولا نقل.
@@ -414,7 +411,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", _audit.Details[idx]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_ArchivesCircuitAlertsBeforePurge()
     {
         var source = await CreateCircuitAsync("دائرة مصدر");
@@ -443,7 +440,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.NotNull(archived.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_CascadeRemovesDelegationOfPurgedDoc()
     {
         // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DocumentService.DeleteAsync
@@ -480,7 +477,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("طُهِّر نهائيًا", _audit.Details[idx]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListMine_ReportsDeletedFileCount()
     {
         // عدادات مزدوجة في نفس الاستجابة: fileCount=الأحياء و deletedFileCount=المحذوفة.
@@ -510,7 +507,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(2, renamed.FileCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_CreatesOccurrencesPerDoc_AndUpdatesCircuitAlertMessage()
     {
         // M1+M6: وقوعّة تسمية لكل ملف + تحديث نص تنبيه الدائرة عبر Outbox.
@@ -533,7 +530,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(HeadAlertMessages.CircuitPendingDocuments(new("دائرة جديدة")), alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_SourceDocWithDelegation_NotifiesMirrors()
     {
         // قاعدة 2 (C2): نقل ملف منيب له إنابة صادرة → وقعة source-file-moved واحدة على
@@ -592,7 +589,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.DoesNotContain("delegationCircuitChange", selfOcc.Details!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_MirrorDoc_UpdatesDelegationAndNotesOccurrence()
     {
         // قاعدة 3 (C2): نقل ملف مناب له إنابة داخلية تستهدف دائرة المصدر → تحديث الوجهة
@@ -666,7 +663,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             o.OccurrenceType == OccurrenceTypeCatalog.MirrorFileMoved && o.FileNumber == "852"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_DoubleRole_BothRulesApplyTogether()
     {
         // حدّ مزدوج (C2): ملف منيب (له إنابة صادرة بمناب) وهو نفسه مناب (إنابته الداخلية
@@ -719,7 +716,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("delegationCircuitChange", doubleOcc.Details!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Refer_IdempotentReplay_ReturnsStoredWithoutReexecuting()
     {
         // H3: نفس المفتاح + نفس البصمة → إعادة اللقطة بلا تنفيذ جديد.
@@ -745,7 +742,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             .Count(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SyncPendingAlertsAfterTransfer_MovesAlertToNewOwner()
     {
         // H2: التنبيه يتبع المالك — معلق نُقل لمالك جديد: تنبيه الجديد يُنشأ والقديم يُصفَّى.
@@ -766,7 +763,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(HeadAlertMessages.CircuitPendingDocuments(new("دائرة الهدف")), moved.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_RejectsEmptyFileType()
     {
         // M13: النوع معبأ بالقديم — فراغه مرفوض صراحة لا تخزين null صامت.
@@ -788,7 +785,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("النوع إلزامي", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_DoesNotMigrateOtherBranchAlerts()
     {
         // C2: اسمان متطابقان في فرعين — التسمية تُحدّث تنبيه دائرة فرعها فقط.
@@ -841,7 +838,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(otherMessage, untouched.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_DetachesDelegationWithDeletedSource()
     {
         // C1: إنابة مكتملة مصدرها محذوف (مخفية عن الفلتر) — الحذف يفكها لا ينفجر FK.
@@ -873,7 +870,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("دائرة المنابة", g.DelegatedCourt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_BlockedByPendingWithDeletedSource()
     {
         // C1: المعلقة تحظر الحذف أيًا كان حال مصدرها.
@@ -902,7 +899,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _circuits.DeleteAsync(target, _branchId, null, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_WritesFieldChangesPerDocument()
     {
         // S5: التسمية الجماعية توثّق حقول كل ملف (مرآة المسار المفرد).
@@ -915,7 +912,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.NotEmpty(log.Changes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReferFiles_WritesFieldChangesPerDocument()
     {
         // S5: الإحالة الجماعية توثّق حقول كل ملف محال (الملكية/الدائرة/الرقم).
@@ -929,7 +926,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.NotEmpty(log.Changes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Complete_WritesFieldChangesPerDocument()
     {
         // S5: إعادة القيد توثّق حقول كل ملف (الرقم/النوع/السنة + إسقاط العلم).
@@ -952,7 +949,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.NotEmpty(log.Changes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ReusingDeactivatedName_Conflicts()
     {
         // S6.f: التعطيل لا يحرّر الاسم داخل الفرع — إعادة الاستخدام 409 حتى بعد التعطيل.
@@ -963,7 +960,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             CreateCircuitAsync("دائرة محجوزة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_ReturnsLawyerCounts()
     {
         // M7: المحامون النشطون باستعلام تجميعي واحد.
@@ -980,7 +977,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(0, rowB.LawyerCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_IncludesNoCircuitRow_OnlyWhenOrphansExist()
     {
         // F4: صف «بلا دائرة» الاصطناعي (`CircuitId = 0`) يظهر لرئيس القسم/الإدارة
@@ -1005,7 +1002,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.DoesNotContain(subStats, s => s.CircuitId == 0);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_OmitsNoCircuitRow_WhenNoOrphans()
     {
         // بلا ملفات يتيمة: الاستجابة مطابقة للسابق تمامًا (منع انحدار).
@@ -1076,7 +1073,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SubHeadCreator_AutoTagsOwnSection()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -1087,7 +1084,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(sectionId, _db.ExecutionCircuits.Single(c => c.Id == circuit.Id).SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateDepartmentCircuit_SubHead_MessageNamesDepartmentOwner()
     {
         await CreateCircuitAsync("دائرة القسم المشتركة");
@@ -1101,7 +1098,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("دائرة القسم المشتركة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DuplicateSectionCircuit_Head_MessageNamesSectionOwner()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -1114,7 +1111,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("شعبة «شعبة مصياف»", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_ToDepartmentCircuitName_MessageNamesDepartmentOwner()
     {
         await CreateCircuitAsync("دائرة القسم");
@@ -1128,7 +1125,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("ضمن دوائر القسم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_HeadCreator_OwnedByDivision()
     {
         var circuit = await _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة القسم");
@@ -1136,14 +1133,14 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Null(_db.ExecutionCircuits.Single(c => c.Id == circuit.Id).SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NonHeadCreator_Throws()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _circuits.CreateAsync(_branchId, _lawyer1Id, "lawyer1", "دائرة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SectionlessSubHead_Throws()
     {
         var hasher = new PasswordHasher();
@@ -1165,7 +1162,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("بلا شعبة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToSection_MovesOwnership_WritesSuccessionAndReplacementAlert()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -1208,7 +1205,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(subId, Assert.Single(alert.Recipients).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToDivision_ClearsSection_SuccessionToHead()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -1224,7 +1221,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Null(succession.SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_SameOwner_NoOpWithoutAudit()
     {
         var circuitId = await CreateCircuitAsync("دائرة القسم");
@@ -1237,7 +1234,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Empty(_db.HeadSuccessions.ToList());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_HeadlessNewOwner_NoAlertNoSuccession()
     {
         var sectionId = await AddSectionAsync("شعبة شاغرة");
@@ -1254,14 +1251,14 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Empty(_db.HeadAlerts.ToList());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_UnknownCircuit_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _circuits.TransferCircuitAsync(999999, null, _headId, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_UnknownSection_Throws()
     {
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
@@ -1270,7 +1267,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _circuits.TransferCircuitAsync(circuitId, 999999, _headId, "admin"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_CrossBranchSection_Throws()
     {
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
@@ -1286,7 +1283,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("داخل الفرع نفسه", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_InactiveSection_Throws()
     {
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
@@ -1300,7 +1297,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("معطلة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_StaleVersion_Conflict()
     {
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
@@ -1312,7 +1309,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             _circuits.TransferCircuitAsync(circuitId, null, _headId, "admin", version: version));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListMine_HeadSeesDivisionOnly()
     {
         var divisionId = await CreateCircuitAsync("دائرة القسم");
@@ -1326,7 +1323,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.DoesNotContain(mine, c => c.Id == sectionCircuit);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListMine_SubHeadSeesOwnSectionOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -1344,7 +1341,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("شعبة مصياف", single.SectionName);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("rename")]
     [InlineData("active")]
     [InlineData("delete")]
@@ -1365,7 +1362,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Contains("ليست ضمن نطاقك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_HeadSeesDivisionOnly_ManagerSeesAll()
     {
         var divisionId = await CreateCircuitAsync("دائرة القسم");
@@ -1384,7 +1381,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(2, allRows.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForLawyer_LawyerSeesAll_HeadSeesOwn()
     {
         var divisionId = await CreateCircuitAsync("دائرة القسم");
@@ -1402,7 +1399,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(sectionCircuit, Assert.Single(subView).Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListFiles_ReturnsHiddenStatusDocs_ScopedToOwner()
     {
         var circuitId = await CreateCircuitAsync("دائرة الإفراغ");

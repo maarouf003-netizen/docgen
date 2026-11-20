@@ -16,9 +16,8 @@ namespace DocGenerator.Application.Tests;
 /// RegistryId على صفوف الطرفين، نسخة التسريع ApplicantRegistryId على الملف،
 /// وتدقيق قبل/بعد لتغيّر الربط عبر محرك تتبع الحقول.
 /// </summary>
-public class EntityRegistryLinkTests : IDisposable
+public class EntityRegistryLinkTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _entryAId;
@@ -26,7 +25,6 @@ public class EntityRegistryLinkTests : IDisposable
 
     public EntityRegistryLinkTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -54,7 +52,6 @@ public class EntityRegistryLinkTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest ApplicantSample() => new()
     {
@@ -66,7 +63,7 @@ public class EntityRegistryLinkTests : IDisposable
         FileRegistrationDate = "1/1/2024",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithRegistryLink_PersistsRowLink_AndAccelerator()
     {
         var req = ApplicantSample();
@@ -83,7 +80,7 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Equal(_entryAId, loaded.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Accelerator_TakesFirstLinkedRow_WhenSecondUnlinked()
     {
         var req = ApplicantSample();
@@ -99,7 +96,7 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Equal(_entryAId, loaded!.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ChangingRegistryLink_RecomputesAccelerator_AndLogsBeforeAfter()
     {
         var req = ApplicantSample();
@@ -128,7 +125,7 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Equal(_entryBId.ToString(), change.NewValue);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_RemovingRegistryLink_ClearsAccelerator_AndLogsClear()
     {
         var req = ApplicantSample();
@@ -155,7 +152,7 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Null(change.NewValue);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedSide_KeepsRegistryLink_OnPublicRows_AndClearsAccelerator()
     {
         var req = new DocumentUpsertRequest
@@ -180,7 +177,7 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Null(loaded.ApplicantRegistryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutedLegalNature_DropsRegistryLink_EvenWhenProvided()
     {
         var req = new DocumentUpsertRequest
@@ -213,7 +210,7 @@ public class EntityRegistryLinkTests : IDisposable
         ExecutedRequiredAmount = 500m,
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutionApplicant_LegalWithoutRegistry_KeepsFreeName()
     {
         var req = ExecutionApplicantSample();

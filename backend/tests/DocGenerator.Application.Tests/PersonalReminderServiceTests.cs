@@ -10,9 +10,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class PersonalReminderServiceTests : IDisposable
+public class PersonalReminderServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPersonalReminderService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer1;
@@ -20,7 +19,6 @@ public class PersonalReminderServiceTests : IDisposable
 
     public PersonalReminderServiceTests()
     {
-        _db = TestDb.Create();
         // الفرع لازم للمحامي (قيد القاعدة) — التذكيرات user-scoped فالقيمة محايدة.
         var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         _db.SaveChanges();
@@ -50,7 +48,6 @@ public class PersonalReminderServiceTests : IDisposable
             _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static CreatePersonalReminderRequest ValidRequest(
         string title = "مراجعة الملف",
@@ -60,7 +57,7 @@ public class PersonalReminderServiceTests : IDisposable
         string? color = PersonalReminderCatalog.ColorRed)
         => new(title, "ملاحظة", dueDate, color, recurrence, recurrenceEnd);
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_Valid_ReturnsDtoWithIsoDates()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -73,7 +70,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Contains("personal-reminder.create", _audit.Actions);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("")]
     [InlineData("   ")]
     public async Task Create_EmptyTitle_Throws(string title)
@@ -82,7 +79,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(ValidRequest(title: title), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_TitleTooLong_Throws()
     {
         var request = ValidRequest(title: new string('ع', PersonalReminderCatalog.TitleMaxLength + 1));
@@ -90,7 +87,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(request, _lawyer1.Id, "lawyer1"));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("أخضر")]
     [InlineData("red")]
     public async Task Create_InvalidColor_Throws(string color)
@@ -99,14 +96,14 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(ValidRequest(color: color), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InvalidRecurrence_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(
             () => _service.CreateAsync(ValidRequest(recurrence: "سنوي"), _lawyer1.Id, "lawyer1"));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("ليس تاريخًا")]
     [InlineData("32/13/2026")]
     [InlineData("")]
@@ -116,7 +113,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(ValidRequest(dueDate: dueDate), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AcceptsSystemDateFormats()
     {
         // نفس عقد تواريخ النظام: `d/M/yyyy` والأرقام العربية مقبولة وتُطبَّع `yyyy-MM-dd`.
@@ -124,7 +121,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Equal("2026-08-08", dto.DueDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RecurrenceEndBeforeDueDate_Throws()
     {
         var request = ValidRequest(
@@ -134,7 +131,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(request, _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_DueDateBeyondRecurrenceEnd_Throws()
     {
         var dto = await _service.CreateAsync(
@@ -150,7 +147,7 @@ public class PersonalReminderServiceTests : IDisposable
                 "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BeyondCap_Throws()
     {
         for (var i = 0; i < PersonalReminderCatalog.MaxActivePerUser; i++)
@@ -160,7 +157,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BeyondCap_MessageDirectsToDelete()
     {
         // بلا خيار أرشفة في الواجهة: الرسالة توجه للحذف لا للأرشفة.
@@ -174,7 +171,7 @@ public class PersonalReminderServiceTests : IDisposable
             ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetOccurrence_Overflow_MessageDirectsToEndDateOrDelete()
     {
         var dto = await _service.CreateAsync(
@@ -192,7 +189,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Equal("تجاوز سجل التكرارات المنجزة حده — حدّد تاريخ انتهاء للتكرار أو احذف التذكير", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetById_OwnerReturnsNonOwnerNull()
     {
         var created = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -206,7 +203,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Null(await _service.GetByIdAsync(999999, _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NonOwner_ReturnsNull()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -220,7 +217,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Null(result);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_Owner_AppliesFieldsAndArchive()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -238,7 +235,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Contains("personal-reminder.update", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_StaleVersion_ThrowsConflict_WithoutChanges()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -255,7 +252,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.DoesNotContain("personal-reminder.update", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_MatchingVersion_IncrementsVersion()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -271,7 +268,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Equal(1, updated.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetOccurrence_StaleVersion_ThrowsConflict()
     {
         var dto = await _service.CreateAsync(
@@ -283,7 +280,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Empty((await _service.GetByIdAsync(dto.Id, _lawyer1.Id))!.CompletedOccurrenceKeys);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_ExcludesArchivedByDefault()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
@@ -297,7 +294,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Single(await _service.ListAsync(_lawyer1.Id, includeArchived: true));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetOccurrence_TogglesDoneAndRejectsBadKey()
     {
         var dto = await _service.CreateAsync(
@@ -317,7 +314,7 @@ public class PersonalReminderServiceTests : IDisposable
         Assert.Null(await _service.SetOccurrenceAsync(dto.Id, "2026-08-09", true, _lawyer2.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetOccurrence_Archived_Throws()
     {
         var dto = await _service.CreateAsync(
@@ -332,7 +329,7 @@ public class PersonalReminderServiceTests : IDisposable
             () => _service.SetOccurrenceAsync(dto.Id, "2026-08-09", true, _lawyer1.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_OwnerOnly()
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");

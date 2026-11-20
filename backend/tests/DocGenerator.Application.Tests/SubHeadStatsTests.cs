@@ -13,11 +13,10 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// نطاق الإحصاءات (§12/قرار 27 + قاعدة 20): القسم لإحصاء قسمه (دوائر القسم
 /// وبلا دائرة)، والشعبة لشعبتها، والإدارة للفرع ككل — كل ملف لمالك واحد.
-/// قاعدة كل اختبار جديدة (TestDb) — بلا تلوث متبادل.
+/// قاعدة كل حالة مُصفَّرة (‏`PostgresDbTest`) — بلا تلوث متبادل.
 /// </summary>
-public class SubHeadStatsTests : IDisposable
+public class SubHeadStatsTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IStatisticsRepository _stats;
     private readonly IExecutionCircuitService _circuits;
     private readonly IHeadAlertService _alerts;
@@ -31,7 +30,6 @@ public class SubHeadStatsTests : IDisposable
 
     public SubHeadStatsTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _db.Branches.Add(_branch);
@@ -78,7 +76,6 @@ public class SubHeadStatsTests : IDisposable
             tx);
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>قائمة المستلَم حسب دور المستخدم — صفحة كاملة للاختبار (PR-4: <c>ListForActorAsync</c>).</summary>
     private Task<PagedResult<HeadAlertSummaryDto>> ReceivedAlertsAsync(User user) =>
@@ -153,7 +150,7 @@ public class SubHeadStatsTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_HeadSeesDivisionOnly_SubSeesOwnOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -178,7 +175,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Equal(1, section.TotalFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_NullCircuitFile_CountsInDivision()
     {
         await AddDocumentAsync(_lawyer1.Id, null);
@@ -188,7 +185,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Equal(1, division.TotalFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_CountsWithinOwnerScope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -212,7 +209,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Equal(2, Assert.Single(full, l => l.LawyerId == _lawyer1.Id).TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_Scoped()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -222,7 +219,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Empty(await _stats.GetAvailablePeriodsAsync(_branch.Id, null, default, null, false));
         Assert.NotEmpty(await _stats.GetAvailablePeriodsAsync(_branch.Id, null, default, sectionId, false));
     }
-    [Fact]
+    [PostgresFact]
     public async Task DashboardAndMonthly_HeadDivision_SubSection()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -244,7 +241,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Equal(1, subMonthly.Sum(m => m.Count));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CircuitStats_CarriesSectionColumns()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
@@ -265,7 +262,7 @@ public class SubHeadStatsTests : IDisposable
         Assert.Equal(1, section.FileCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Alerts_HeadSeesOwnOnly_SubSeesOwnOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");

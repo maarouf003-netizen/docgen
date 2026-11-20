@@ -17,16 +17,14 @@ namespace DocGenerator.Application.Tests;
 /// صحة الحقول، وترتيب الوقوعات في الاستجابة. الإدارة اليدوية (إضافة/تعديل/حذف)
 /// أُلغيت من المحرر ونقاط النهاية — فلا اختبارات لها هنا.
 /// </summary>
-public class OccurrenceTests : IDisposable
+public class OccurrenceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IDocumentStatusService _status;
     private readonly FakeAuditLogger _audit = new();
 
     public OccurrenceTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -50,7 +48,6 @@ public class OccurrenceTests : IDisposable
         _status = bundle.Status;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest ExecutedSample() => new()
     {
@@ -75,7 +72,7 @@ public class OccurrenceTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToStruckOff_RecordsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -95,7 +92,7 @@ public class OccurrenceTests : IDisposable
         Assert.Contains("executed-status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToStruckOff_CarriesFileTypeIntoOccurrence()
     {
         var req = ExecutedSample();
@@ -113,7 +110,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal("قضية تنفيذ", occurrence.FileType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ApplicantSideStruckOff_RecordsFileNumberTypeAndYear()
     {
         // نظام «الجهة العامة طالبة تنفيذ»: وقعة الشطب تحمل رقم الملف المشطوب ونوعه وسنة شطبه
@@ -140,7 +137,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 1), occurrence.EventDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToStruckOff_WithEligibleRotation_StoresEffectiveNumberAtStrike()
     {
         // وقعة الشطب يجب أن تحمل الهوية الفعّالة وقت الشطب (آخر رقم أساس ≤ سنة الشطب عبر
@@ -167,7 +164,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(loaded.StruckOffDate!.Value.Year, occurrence.Year);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ApplicantSideStruckOff_WithEligibleRotation_StoresEffectiveNumber()
     {
         // نفس قاعدة الهوية الفعّالة تنطبق على وقعة الشطب في نظام «طالبة تنفيذ».
@@ -203,7 +200,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(2026, occurrence.Year);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_RecordsRenewalOccurrence_AndKeepsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -235,7 +232,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal("777", struck.FileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_ToStruckOff_RecordsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -253,7 +250,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(new DateTime(2026, 6, 10), occurrence.EventDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_ReStrikeAfterRenewal_RecordsSecondStruckOffOccurrence()
     {
         // شطب ثم تجديد ثم شطب من جديد: يُسجَّل وقعتا شطب معًا في السجل الزمني.
@@ -277,7 +274,7 @@ public class OccurrenceTests : IDisposable
         Assert.All(loaded.Occurrences, o => Assert.Equal(OccurrenceSourceCatalog.System, o.Source));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAsync_OrdersOccurrencesByEventDateAscending()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -312,7 +309,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(new DateTime(2026, 12, 10), dates[1]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BackfilledLikeData_FromCreateWithStruckOffStatus_IsRecorded()
     {
         // إنشاء ملف مشطوب منذ البداية: يجب أن يُسجَّل وقعة شطب تلقائيًا أيضًا.
@@ -353,7 +350,7 @@ public class OccurrenceTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_EditStruckOffToExecuted_Direct_Throws()
     {
         // §4.6 حارس: مشطوب → منفذ مباشر عبر نموذج التعديل ممنوع — يجب الإعادة إلى المتداول أولًا.
@@ -371,7 +368,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(ExecutedStatusCatalog.StruckOff, loaded!.ExecutedStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_EditExecutedStatus_SameStatus_StaysAllowed()
     {
         // §4.6: الإبقاء على «منفذ» دون تغيير يبقى مقبولًا في نموذج التعديل (حواري مستقر).
@@ -383,7 +380,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_EditExecutedLikeFromExecuted_ToStruck_Throws()
     {
         // §4.6: وضع «منفذ» في صفة «الجهة العامة منفذ عليها» نهائي — لا يُشطب بالتحرير.
@@ -403,7 +400,7 @@ public class OccurrenceTests : IDisposable
         Assert.Empty(loaded.Occurrences);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_EditDepositFromExecuted_ToStruck_Throws()
     {
         // §4.6: «عرض وايداع» من وضع «منفذ» لا يُشطب في نموذج التعديل.
@@ -419,7 +416,7 @@ public class OccurrenceTests : IDisposable
         Assert.Contains("لا يمكن شطب «عرض وايداع» من وضع «منفذ»", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAsync_EditDepositFromExecuted_ToTraded_Direct_Throws()
     {
         // §4.6: إرجاع «عرض وايداع» من «منفذ» إلى المتداول عبر التحرير ممنوع (كتاب السير بالنافذة حصرًا).

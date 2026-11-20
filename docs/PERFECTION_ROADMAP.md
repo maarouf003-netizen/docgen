@@ -372,7 +372,7 @@
 
 #### `P1-08` — إزالة `SQLite` من الاختبارات
 
-- **الحالة (2026-11-20):** **جزئيًا — `8a/1`–`8a/4` منفذة؛ المتبقي `8a/5` ثم `8b` ثم `8c`.**
+- **الحالة (2026-11-20):** **جزئيًا — `8a/1`–`8a/5` منفذة؛ المتبقي `8b` ثم `8c`.**
   - القرار: [ADR-0009](adr/0009-postgres-only-tests.md) — قاعدة اختبار واحدة
     (`PostgreSQL`)، بلا `EF InMemory`، والخطة المرحلية في
     [`P1-08-SQLITE-REMOVAL-PLAN.md`](P1-08-SQLITE-REMOVAL-PLAN.md).
@@ -398,11 +398,17 @@
     للتوّ تحت `READ COMMITTED` (صار الحكم داخل جملة `DELETE` نفسها)، وتجاوز حد محاولات
     الدخول المتزامنة على `Postgres` (قفل استشاري معاملاتي على المفتاح:
     `pg_advisory_xact_lock`). (`docs/audit/78-p1-08a4b-concurrency-suites-20261120.md`).
+  - **`8a/5`:** حُذف `TestDb` المركزي ونُقلت كل أصناف القاعدة إلى `PostgresDbTest`:
+    قاعدة معزولة **لكل صنف** + تصفير `DELETE`/`replica` مع إعادة تسلسل (~15ms) بدل
+    استنساخ قاعدة لكل اختبار (~2s)، واتصالات السياقات مُجمَّعة. التحويل كشف:
+    إفراط أطوال `character varying` كان `SQLite` يتجاهله، ودلالة «قاعدة مستقلة» في
+    اختبارين، ومهلة `CREATE DATABASE` تحت التوازي. تدقيق المشغّلات: لا اختبار في
+    `Application.Tests` يعتمد على مشغّلات/قيود الهجرة الخام؛ مغطاة في `Api.Tests` عبر
+    المهاجر. (`docs/audit/79-p1-08a5-central-test-db-20261120.md`).
   - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
     `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
     أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.
-  - **المتبقي:** `8a/5` (`TestDb` المركزي)، ثم `8b` (‏`Api.Tests` و`ApiFactory`)،
-    ثم `8c` (حذف الحزم).
+  - **المتبقي:** `8b` (‏`Api.Tests` و`ApiFactory`)، ثم `8c` (حذف الحزم).
 - **العمل:** بعد `P1-01`، حذف `Microsoft.EntityFrameworkCore.Sqlite`، `TestDb`، وكل `UseSqlite` من الاختبارات.
 - **DoD:** لا مرجع لـSQLite في `src` أو `tests`.
 

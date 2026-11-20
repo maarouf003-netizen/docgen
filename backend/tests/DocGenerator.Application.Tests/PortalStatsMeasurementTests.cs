@@ -16,11 +16,9 @@ namespace DocGenerator.Application.Tests;
 /// النتائج حتميًا، بينما الزمن يُسجَّل في مخرجات الاختبار للحكم عليه —
 /// لا يُفشَل عليه (الأزمنة الجدارية هشّة تحت الحمل ولا تصلح حدًّا).
 /// </summary>
-public class PortalStatsMeasurementTests : IDisposable
+public class PortalStatsMeasurementTests : PostgresDbTest
 {
     private static readonly DateTime FixedDate = new(2020, 1, 15);
-
-    private readonly DocGeneratorDbContext _db;
     private readonly IPortalService _portal;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _delegateGroupId;
@@ -31,7 +29,6 @@ public class PortalStatsMeasurementTests : IDisposable
     public PortalStatsMeasurementTests(ITestOutputHelper output)
     {
         _output = output;
-        _db = TestDb.Create();
 
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
         var group = new PublicEntityGroup { CanonicalName = "مصرف القياس", EntityType = PublicEntityTypeCatalog.Company };
@@ -50,9 +47,8 @@ public class PortalStatsMeasurementTests : IDisposable
         _portal = PortalServiceFactory.Create(_db, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task M6_StatsOverScopeVolume_CompletesWithCorrectTotals()
     {
         const int count = 1000;

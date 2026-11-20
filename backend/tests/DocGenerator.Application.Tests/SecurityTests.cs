@@ -200,16 +200,12 @@ public class PasswordHasherLegacyTests
 }
 
 [Collection("Sequential")]
-public class LoginRateLimiterTests : IDisposable
+public class LoginRateLimiterTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
-
     public LoginRateLimiterTests()
     {
-        _db = TestDb.Create();
     }
 
-    public void Dispose() => _db.Dispose();
 
     private DbLoginRateLimiter Create(int max = 5, int windowMinutes = 5) => new(
         _db,
@@ -219,7 +215,7 @@ public class LoginRateLimiterTests : IDisposable
             WindowMinutes = windowMinutes,
         }));
 
-    [Fact]
+    [PostgresFact]
     public async Task Allows_UpToMaxAttempts()
     {
         var limiter = Create(max: 3);
@@ -233,7 +229,7 @@ public class LoginRateLimiterTests : IDisposable
         Assert.False(await limiter.TryRecordFailureAsync("k"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reset_ClearsFailures()
     {
         var limiter = Create(max: 1);
@@ -243,7 +239,7 @@ public class LoginRateLimiterTests : IDisposable
         Assert.True(await limiter.IsAllowedAsync("k"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Keys_AreIsolated()
     {
         var limiter = Create(max: 1);
@@ -252,7 +248,7 @@ public class LoginRateLimiterTests : IDisposable
         Assert.False(await limiter.IsAllowedAsync("a"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Prune_RemovesAttemptsOlderThanWindow()
     {
         ResetPruneTimestamp();

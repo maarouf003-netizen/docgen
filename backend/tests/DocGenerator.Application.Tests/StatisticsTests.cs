@@ -8,17 +8,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
-public class StatisticsRepositoryTests : IDisposable
+public class StatisticsRepositoryTests : PostgresDbTest
 {
     /// <summary>تاريخ إدخال قديم ثابت للوثائق الأولية بلا تاريخ قيد، كي لا تلوّث نوافذ الفترات الحالية.</summary>
     private static readonly DateTime LegacyDate = new(2020, 1, 15);
-
-    private readonly DocGeneratorDbContext _db;
     private readonly IStatisticsRepository _stats;
 
     public StatisticsRepositoryTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -33,9 +30,8 @@ public class StatisticsRepositoryTests : IDisposable
         _stats = new StatisticsRepository(_db, TestClock.Provider, TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_WithoutBranchFilter_CountsAll()
     {
         var s = await _stats.GetDashboardStatsAsync(null);
@@ -50,7 +46,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(300, s.TotalCollectedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_WithBranchFilter_LimitsToBranch()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -65,7 +61,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(200, s.TotalCollectedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_CountsDelegationExecutedAsExecuted()
     {
         // الملف المناب «منفذ إنابة» يُعامل منفذًا في إحصاءات لوحة القيادة
@@ -93,7 +89,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0, s.TotalActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_CountsActiveDirectly()
     {
         _db.Documents.AddRange(
@@ -111,7 +107,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(2, s.TotalDeferred);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_NullExecSubStatusForcibly_CountsAsExecuted()
     {
         // FR-004: مرآة القوائم (H4) — «منفذ جبريا» بلا حالة فرعية (صفوف قديمة) منفذ كامل
@@ -136,7 +132,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0, s.TotalActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_ExcludesStruckOffExecutedFiles()
     {
         // الملفات المشطوبة (وضع «منفذ عليه») مستثناة من عدادات اللوحة مثل القوائم والتصدير:
@@ -166,10 +162,14 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1200, s.TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_SumsMoneyInDecimalWithoutPrecisionLoss()
     {
-        using var db = TestDb.Create();
+        // قاعدة معزولة: باني الصنف يبذر فرع «DAM» ومستندات مرجعية، وهذه الحالة تقيس
+        // مجموع فرع جديد مستقل، فلا تصلح قاعدة الصنف المشتركة (كانت الحالة تُنشئ قاعدة
+        // مستقلة عبر المساعد القديم).
+        await using var pg = await PostgresTestDb.CreateAsync();
+        using var db = pg.CreateContext();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         db.Branches.Add(branch);
         db.SaveChanges();
@@ -187,10 +187,14 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0.6m, s.TotalCollectedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_DoesNotDoubleCountAmountAndInclusionSets()
     {
-        using var db = TestDb.Create();
+        // قاعدة معزولة: باني الصنف يبذر فرع «DAM» ومستندات مرجعية، وهذه الحالة تقيس
+        // مجموع فرع جديد مستقل، فلا تصلح قاعدة الصنف المشتركة (كانت الحالة تُنشئ قاعدة
+        // مستقلة عبر المساعد القديم).
+        await using var pg = await PostgresTestDb.CreateAsync();
+        using var db = pg.CreateContext();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         db.Branches.Add(branch);
         db.SaveChanges();
@@ -231,7 +235,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(130m, branches.Single(b => b.BranchId == branch.Id).TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_ReturnsOnlyActionsWithRemindersOrderedByDueDate()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFather = "خالد", BorrowerFamily = "العلي", AmountNumeric = 100, ExecStatus = string.Empty, DocumentType = "متداول - أحمد خالد العلي" };
@@ -259,7 +263,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.True(reminders[0].ActionId > 0);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_ExecutedFile_UsesExecutedEntityNameAsDocumentLabel()
     {
         var doc = new Document
@@ -297,7 +301,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal("شركة بركات التجارية", reminder.DocumentLabel);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_FiltersByUser()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 100, ExecStatus = string.Empty };
@@ -310,7 +314,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Empty(await _stats.GetRemindersAsync(999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_UsesCreatedAtWhenActionDateMissing()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أ", BorrowerFamily = "ب", AmountNumeric = 100, ExecStatus = string.Empty };
@@ -325,7 +329,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 15), reminder.DueDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchesSummary_GroupsPerBranch()
     {
         var summary = await _stats.GetBranchesSummaryAsync();
@@ -337,7 +341,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1200, dam.TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UserActivity_ListsUsersWithCounts()
     {
         var activity = await _stats.GetUserActivityAsync();
@@ -368,7 +372,7 @@ public class StatisticsRepositoryTests : IDisposable
             RegistrationDate = new DocumentRegistrationDate { Date = date, DateParsed = ActionDateParser.TryParse(date) },
         };
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_Monthly_CountsRegisteredFilesInCurrentMonth()
     {
         var today = TestClock.Today;
@@ -403,7 +407,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodQuarter);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ForcibleMineebIncludesExecutedDelegationSales()
     {
         // مجموع بدل المبيع لإنابات المنيب المنفذة («منفذ إنابة») يُضاف إلى سلة «منفذ جبريا»
@@ -448,7 +452,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1030m, s.ForcibleCollectedAmounts.Single().Amount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_DelegationExecutedTarget_CountsAsSettled()
     {
         // الملف المناب عند إتمام إنابته («منفذ إنابة») منفَّذ فعليًا: يُحتسب ضمن بطاقة
@@ -468,7 +472,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0, s.TotalFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_WithBranchFilter_LimitsToBranch()
     {
         var today = TestClock.Today;
@@ -488,7 +492,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0, s.Deferred);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_CountsExecutedSideFilesInTheirOwnCards()
     {
         // ملفات وضع «الجهة العامة منفذ عليها» تُحتسب في بطاقتي «متداول للضد»/«منفذ للضد»
@@ -544,7 +548,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(500m, AmountOf(s.TradingAgainstAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExecutedAgainstAmountSumsAllThreePaidSlots()
     {
         // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة»، فمبلغ
@@ -571,7 +575,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(3500m, s.ExecutedAgainstAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExecutedSideUsesFileReceiptDateAsPeriod()
     {
         // فترة ملف «منفذ عليها» من تاريخ ورود الاخطار لا من تاريخ قيده (المقيد من الخصم)،
@@ -608,7 +612,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(300m, AmountOf(s.TradingAgainstAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_CountsDepositSideAsBeneficiaryRows()
     {
         // ملفات «عرض وايداع» تُحتسب «للصالح» كأسطر فرعية داخل بطاقتي متداول/منفذ:
@@ -662,7 +666,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Empty(s.TradingAgainstAmounts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_DepositRevertedToTrading_StaysExecutedInStats()
     {
         // «عرض وايداع» عاد من «منفذ» إلى متداول بكتاب السير بالملف: العلامة الدائمة «سبق تنفيذه»
@@ -699,7 +703,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1250m, s.DepositExecutedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_DepositSideUsesFileReceiptDateAsPeriod()
     {
         // فترة ملف «عرض وايداع» من تاريخ ورود الاخطار لا من تاريخ قيده (مثل وضع منفذ عليها)،
@@ -737,7 +741,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(200m, s.DepositExecutedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_Quarterly_CountsCurrentQuarterOnly()
     {
         var today = TestClock.Today;
@@ -761,7 +765,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_Yearly_CountsCurrentYearOnly()
     {
         var today = TestClock.Today;
@@ -784,7 +788,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_TotalExcludesExecuted()
     {
         var today = TestClock.Today;
@@ -806,7 +810,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(300m, s.SettledCollected + s.ForcibleCollected);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_AmountsPerStatus_SumAmountNumeric()
     {
         var today = TestClock.Today;
@@ -843,7 +847,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(50m, s.SettledCollected);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ReferredToStart_CountedWithSplitAndTotal()
     {
         // ب6 (خطة RTS): ملف «محال الى البداية» — ومنه من دخل من «منفذ جزئيا» (ExecSubStatus
@@ -870,7 +874,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(300m, AmountOf(s.TotalAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ActiveAndDeferred_SplitByContractTypeWithCurrencies()
     {
         // مبالغ «متداول للصالح» و«التريث» تُفصَّل مصرفي/عادي ويُجمَّع كل مبلغ في سلة عملته الفعلية
@@ -937,7 +941,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(350m, AmountOf(s.TotalAmounts, "يورو"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_TradingAgainst_AmountsEachWithOwnCurrency()
     {
         // المبالغ المطلوبة الثلاثة في «متداول للضد» تُعرض كلٌّ بعملتها الفعلية،
@@ -981,7 +985,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.DoesNotContain(s.TradingAgainstAmounts, a => a.Currency == "ليرة سورية" && a.Amount != 800m);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_Ordinary_ThreeAmountsEachWithOwnCurrency()
     {
         // المبالغ الثلاثة للملف العادي (المتضمن) تُجمع كلٌّ في سلة عملتها الفعلية ضمن سلة
@@ -1020,7 +1024,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(40m, AmountOf(s.TotalAmounts, "يورو"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DashboardAndBranchSummary_IncludeOrdinaryInclusionAmounts()
     {
         _db.Documents.AddRange(
@@ -1057,7 +1061,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1600m, branches.Single(b => b.BranchId == 1).TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_ListsBranchLawyersWithMonthlyPoints()
     {
         var today = TestClock.Today;
@@ -1085,7 +1089,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1, stats[1].TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_IncludesLawyersWithNoFiles()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1099,7 +1103,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.All(stats, s => Assert.Equal(0, s.TotalCount));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExplicitMonth_CountsOnlyThatMonth()
     {
         _db.Documents.AddRange(
@@ -1118,7 +1122,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodQuarter);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExplicitQuarter_CountsOnlyThatQuarter()
     {
         _db.Documents.AddRange(
@@ -1137,7 +1141,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExplicitYear_CountsOnlyThatYear()
     {
         _db.Documents.AddRange(
@@ -1156,7 +1160,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Null(s.PeriodMonth);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PersonalStats_FiltersByUser()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1182,7 +1186,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1, other.Deferred);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_ListsOnlyRegisteredMonthsWithCounts()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1199,7 +1203,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.All(all, p => Assert.True(p.Count >= 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_ScopesByBranch()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1218,7 +1222,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Contains(branchOnly, p => p.Year == 2026 && p.Month == 5);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AvailablePeriods_IncludesCreationMonthForDraftsWithoutRegistrationDate()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1237,7 +1241,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Contains(all, p => p.Year == 2026 && p.Month == 7);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PersonalStats_CountsDraftWithoutRegistrationDateInItsCreationMonth()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1299,7 +1303,7 @@ public class StatisticsRepositoryTests : IDisposable
         return target;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_ExcludesDelegationTargetAmountsFromTotal()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1316,7 +1320,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(2, s.TotalActive);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_ExcludesDelegationTargetCollectedAmounts()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1334,7 +1338,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(200m, s.TotalCollectedAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dashboard_CountsRecoveredDelegationAsExecutedWithoutAmount()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1351,7 +1355,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1200m, s.TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchesSummary_ExcludesDelegationTargetAmounts()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1367,7 +1371,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(2100m, dam.TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_DelegationTarget_CountsAsActiveWithoutAmounts()
     {
         var today = TestClock.Today;
@@ -1386,7 +1390,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(100m, AmountOf(s.TotalAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_RecoveredFoldsIntoSettledCount_AsCountOnly()
     {
         var today = TestClock.Today;
@@ -1405,7 +1409,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(150m, AmountOf(s.SettledCollectedAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_SettledTargetCollectedAmountsExcluded()
     {
         var today = TestClock.Today;
@@ -1425,7 +1429,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(150m, AmountOf(s.SettledCollectedAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PersonalStats_DelegationTarget_CountsWithoutAmounts()
     {
         var branch = await _db.Branches.FirstAsync();
@@ -1442,7 +1446,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0m, AmountOf(s.ActiveSplit.OrdinaryAmounts, "ليرة سورية"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_MarksPeriodFallbackCount()
     {
         _db.Documents.AddRange(
@@ -1464,7 +1468,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1, s.PeriodDateFallbackCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_SplitsReceiptFallbackFromRegistrationFallback()
     {
         // غياب إخطار الورود لجهتي «منفذ عليها/إيداع» سببٌ مستقل: لا يُنسب إلى «تعذّر تحليل تاريخ
@@ -1512,7 +1516,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(2, s.PeriodDateFromReceiptCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_ExecutedAgainst_SplitsPerCurrency_NoMixedSum()
     {
         // `BQ-029`: مدفوعات «منفذ للضد» بعملات مختلفة تُفصل لكل عملة كالبقية،
@@ -1546,7 +1550,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(3, s.ExecutedAgainstAmounts.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_DepositExecuted_SplitsPerCurrency_NoMixedSum()
     {
         // `BQ-029`: مبالغ «عرض وايداع» المنفذة تُفصل لكل عملة، وحقل الليرة توافقٌ فقط.
@@ -1576,7 +1580,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(2, s.DepositExecutedAmounts.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerStats_UnknownCurrency_BucketsAsOther_NotDropped()
     {
         // `BQ-030`: العملات خارج الثلاث لا تُسقَط بصمت بل تُجمَّع في سلة «أخرى» للمراجعة.
@@ -1613,7 +1617,7 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0m, s.ExecutedAgainstAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ManagerLawyerStats_MarksPointsCountedFromCreatedAt()
     {
         var branch = await _db.Branches.FirstAsync();

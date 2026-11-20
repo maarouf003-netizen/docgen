@@ -3,6 +3,7 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Xunit.Abstractions;
 
 namespace DocGenerator.Application.Tests;
@@ -13,18 +14,15 @@ namespace DocGenerator.Application.Tests;
 /// بينما الأزمنة وخطط التنفيذ تُسجَّل في مخرجات الاختبار للحكم عليها — لا يُفشَل عليها
 /// (الأزمنة الجدارية هشّة ولا تصلح حدًّا — روح `M6`).
 /// </summary>
-public class SearchMeasurementTests : IDisposable
+public class SearchMeasurementTests : PostgresDbTest
 {
     private const int Count = 10_000;
-
-    private readonly DocGeneratorDbContext _db;
     private readonly DocumentRepository _repo;
     private readonly ITestOutputHelper _output;
 
     public SearchMeasurementTests(ITestOutputHelper output)
     {
         _output = output;
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -39,9 +37,8 @@ public class SearchMeasurementTests : IDisposable
         _repo = new DocumentRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task M24_SearchOverTenThousandDocs_CompletesWithCorrectCounts()
     {
         var seedSw = Stopwatch.StartNew();
@@ -91,33 +88,38 @@ public class SearchMeasurementTests : IDisposable
         Assert.Equal(2000, deferredTotal);
         _output.WriteLine($"M24: status-filter search over {Count} docs took {statusSw.ElapsedMilliseconds} ms (total={deferredTotal})");
 
-        // خطط التنفيذ للأشكال المكافئة (تُقرأ لا يُفشَل عليها — نص الخطة يتبدل بين إصدارات SQLite).
+        // خطط التنفيذ للأشكال المكافئة (تُقرأ لا يُفشَل عليها — نص الخطة يتبدل بين
+        // إصدارات PostgreSQL): `strpos` نظير `instr`، و`EXPLAIN` بلا `QUERY PLAN`.
         var namePlan = Explain(
             "SELECT COUNT(*) FROM \"Documents\" AS \"d\" WHERE EXISTS " +
             "(SELECT 1 FROM \"Guarantors\" AS \"g\" WHERE \"g\".\"DocumentId\" = \"d\".\"Id\" " +
-            "AND instr(\"g\".\"GuarantorName\", 'كفيل 5') > 0)");
+            "AND strpos(\"g\".\"GuarantorName\", 'كفيل 5') > 0)");
         var statusPlan = Explain(
             $"SELECT COUNT(*) FROM \"Documents\" AS \"d\" WHERE \"d\".\"ExecStatus\" = '{ExecutionStatusCatalog.Deferred}'");
         Assert.NotEmpty(namePlan);
         Assert.NotEmpty(statusPlan);
         _output.WriteLine("M24: plan(name-search) = " + string.Join(" | ", namePlan));
         _output.WriteLine("M24: plan(status-filter) = " + string.Join(" | ", statusPlan));
-        // تثبيت بنيوي فقط (نص الخطة يتبدل بين الإصدارات): بحث الأسماء مسبار `EXISTS`
-        // مفهرس على التوابع + مسح خارجي؛ فلتر الحالة مسح كامل بلا فهرس.
-        Assert.Contains(namePlan, d => d.Contains("EXISTS"));
-        Assert.Contains(namePlan, d => d.Contains("SEARCH"));
-        Assert.Contains(statusPlan, d => d.Contains("SCAN"));
+        // تثبيت بنيوي فقط (نص الخطة يتبدل بين الإصدارات): بحث الأسماء يمرّ على جدول
+        // التوابع (‏`EXISTS` نصف-ربط)؛ وفلتر الحالة مسح كامل لغياب فهرس عليه.
+        Assert.Contains(namePlan, d => d.Contains("Guarantors", StringComparison.Ordinal));
+        Assert.Contains(
+            statusPlan,
+            d => d.Contains("Seq Scan", StringComparison.Ordinal)
+                && d.Contains("Documents", StringComparison.Ordinal));
     }
 
-    /// <summary>تفاصيل `EXPLAIN QUERY PLAN` (عمود `detail`) لاستعلام خام على نفس الاتصال.</summary>
+    /// <summary>سطور `EXPLAIN` النصية لاستعلام خام على اتصال مستقل بالقاعدة نفسها.</summary>
     private List<string> Explain(string sql)
     {
-        using var cmd = _db.Database.GetDbConnection().CreateCommand();
-        cmd.CommandText = "EXPLAIN QUERY PLAN " + sql;
+        using var connection = new NpgsqlConnection(_db.Database.GetConnectionString());
+        connection.Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "EXPLAIN " + sql;
         using var reader = cmd.ExecuteReader();
         var details = new List<string>();
         while (reader.Read())
-            details.Add(reader.GetString(3));
+            details.Add(reader.GetString(0));
         return details;
     }
 }

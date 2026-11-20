@@ -13,15 +13,13 @@ namespace DocGenerator.Application.Tests;
 /// حفظ واسترجاع وتحديث في الصفات الثلاث (طالبة تنفيذ/منفذ عليها/عرض وايداع)،
 /// مع بقاء الفارغ مقبولًا.
 /// </summary>
-public class InclusionNotesTests : IDisposable
+public class InclusionNotesTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
 
     public InclusionNotesTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -43,7 +41,6 @@ public class InclusionNotesTests : IDisposable
         _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentUpsertRequest ApplicantSample() => new()
     {
@@ -69,7 +66,7 @@ public class InclusionNotesTests : IDisposable
         InclusionText = "خلاصة القرار",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantWithNotes_PersistsAndReturns()
     {
         var req = ApplicantSample();
@@ -83,7 +80,7 @@ public class InclusionNotesTests : IDisposable
         Assert.Equal("القرار الثاني رقم 5 لعام 2024", loaded!.InclusionNotes);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("executed")]
     [InlineData("deposit")]
     public async Task Create_ExecutedLikeWithNotes_Persists(string side)
@@ -97,7 +94,7 @@ public class InclusionNotesTests : IDisposable
         Assert.Equal("قرارات أخرى: 12 و 13", loaded!.InclusionNotes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NotesToEmpty_ClearsValue()
     {
         var req = ApplicantSample();
@@ -114,7 +111,7 @@ public class InclusionNotesTests : IDisposable
         Assert.Equal("", updated!.InclusionNotes);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithoutNotes_ReturnsNullOrEmpty()
     {
         var created = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);

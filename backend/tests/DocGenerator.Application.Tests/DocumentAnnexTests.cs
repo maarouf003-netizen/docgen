@@ -10,12 +10,12 @@ namespace DocGenerator.Application.Tests;
 /// الترتيب في الملف نفسه، ويسمح بتكراره بين ملفات مختلفة. لا علاقة له بتكرار اسم
 /// الممثل الشرعي (المخزَّن في Heirs/ExecutedHeirs) عبر الورثة أو الملفات.
 /// </summary>
-public class DocumentAnnexTests
+public class DocumentAnnexTests : PostgresDbTest
 {
-    [Fact]
+    [PostgresFact]
     public async Task UniqueIndex_RejectsDuplicateSequenceWithinSameDocument()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         db.Branches.Add(branch);
         await db.SaveChangesAsync();
@@ -43,10 +43,10 @@ public class DocumentAnnexTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SameSequenceAcrossDifferentDocuments_IsAllowed()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var branch = new Branch { Name = "حلب", Code = "ALP", Governorate = "حلب" };
         db.Branches.Add(branch);
         await db.SaveChangesAsync();

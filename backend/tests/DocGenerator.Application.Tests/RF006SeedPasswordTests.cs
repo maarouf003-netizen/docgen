@@ -11,12 +11,12 @@ namespace DocGenerator.Application.Tests;
 /// <c>DbSeederPrintTests</c> التي تلتقط المخرجات (مراجعة 2026-10-17).
 /// </summary>
 [Collection("Sequential")]
-public class RF006SeedPasswordTests
+public class RF006SeedPasswordTests : PostgresDbTest
 {
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_CommittedDefaultPassword_NotUsable()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         await DbSeeder.SeedAsync(db, hasher);
@@ -24,10 +24,10 @@ public class RF006SeedPasswordTests
         Assert.All(db.Users, u => Assert.False(hasher.Verify("123456", u.PasswordHash)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_WithoutPassword_ReturnsRandomWorkingPassword()
     {
-        using var db = TestDb.Create();
+        using var db = NewContext();
         var hasher = new PasswordHasher();
 
         var first = await DbSeeder.SeedAsync(db, hasher);
@@ -37,11 +37,15 @@ public class RF006SeedPasswordTests
         Assert.All(db.Users, u => Assert.True(hasher.Verify(first, u.PasswordHash)));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SeedAsync_TwoSeeds_UseDifferentPasswords()
     {
-        using var first = TestDb.Create();
-        using var second = TestDb.Create();
+        // بذرتان على قاعدتين فارغتين مستقلتين (قاعدة الصنف مشتركة ومصفَّرة، لا تصلح
+        // لمقارنة كلمتَي بذر لأنهما ستلتقيان على المستخدمين أنفسهم).
+        await using var firstPg = await PostgresTestDb.CreateAsync();
+        await using var secondPg = await PostgresTestDb.CreateAsync();
+        using var first = firstPg.CreateContext();
+        using var second = secondPg.CreateContext();
         var hasher = new PasswordHasher();
 
         var firstPassword = await DbSeeder.SeedAsync(first, hasher);

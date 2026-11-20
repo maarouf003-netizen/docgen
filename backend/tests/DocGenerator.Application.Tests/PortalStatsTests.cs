@@ -13,9 +13,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>اختبارات إحصاءات بوابة الجهة (المرحلة 4): عزل النطاق وتطابق التصنيف مع فلاتر القائمة.</summary>
-public class PortalStatsTests : IDisposable
+public class PortalStatsTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPortalService _portal;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
@@ -25,7 +24,6 @@ public class PortalStatsTests : IDisposable
 
     public PortalStatsTests()
     {
-        _db = TestDb.Create();
 
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
         var groupA = new PublicEntityGroup { CanonicalName = "وزارة التعليم", EntityType = PublicEntityTypeCatalog.Ministry };
@@ -47,7 +45,6 @@ public class PortalStatsTests : IDisposable
         _portal = PortalServiceFactory.Create(_db, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>ينشئ ملف طالب مرتبطًا بقيد من نطاق الوزارة بحالة ووقت إنشاء محددين.</summary>
     private async Task<int> SeedApplicantDocAsync(string name, string? execStatus, bool isDraft, DateTime createdAt,
@@ -75,7 +72,7 @@ public class PortalStatsTests : IDisposable
         return doc.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_ClassifyStatuses_ExactlyLikeListFilters_AndExcludeStruckOff()
     {
         var now = DateTime.UtcNow.AddMonths(-1);
@@ -104,7 +101,7 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(2, stats.PerEntry.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_RecoveredTargetFiles_CountedAsExecutedCount_NotInAmountBaskets()
     {
         // «المسترد» مناب عاد لمرجعه — يُحتسب عدًدا ضمن «منفذ» تمامًا كفلتر البوابة (PortalRepository
@@ -124,7 +121,7 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(0, stats.ReferredToStartFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_Isolation_OnlyScopeEntriesCounted()
     {
         var now = DateTime.UtcNow.AddMonths(-2);
@@ -155,7 +152,7 @@ public class PortalStatsTests : IDisposable
         Assert.DoesNotContain(stats.PerEntry, e => e.EntryId == _entryBId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_MonthlySeries_IsTwelveConnectedBuckets_IncludingZeroMonths_AndCountsThisMonth()
     {
         var thisMonth = new DateTime(TestClock.CurrentYear, TestClock.Today.Month, 15, 0, 0, 0, DateTimeKind.Utc);
@@ -173,7 +170,7 @@ public class PortalStatsTests : IDisposable
         Assert.All(stats.Monthly.Skip(1).Take(10), m => Assert.Equal(0, m.Files));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_PerEntry_MayDoubleCount_FileLinkedToTwoEntries_OfSameGroup()
     {
         var secondEntryId = _db.PublicEntities.AsNoTracking().Single(e => e.Governorate == "حلب").Id;
@@ -203,7 +200,7 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(1, stats.TotalFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_TopCurrencies_GroupPerCurrency_NoCrossCurrencySum()
     {
         var now = DateTime.UtcNow.AddDays(-3);
@@ -222,7 +219,7 @@ public class PortalStatsTests : IDisposable
         Assert.DoesNotContain(stats.TopCurrencies, c => c.Currency == "ليرة سورية" && c.TotalAmount == 357m);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_AppealsBreakdown_PendingVsClosed_WithinScopeOnly()
     {
         var inScopeDoc = await SeedApplicantDocAsync("ملف باستئناف", null, false, DateTime.UtcNow.AddDays(-1), registryId: _entryAId);
@@ -251,7 +248,7 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(1, stats.ClosedAppeals);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_ReferredToStartFiles_IndependentOfExecutedFilter()
     {
         // ب6 (خطة RTS): «محال الى البداية» سلّة مستقلة — لا تُبتلع في «منفذ» (لو حمل جزئية)
@@ -271,7 +268,7 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(0, stats.CirculatingFiles);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_ExecutionApplicantRegistryId_IsIgnored()
     {
         var executedLike = new Document

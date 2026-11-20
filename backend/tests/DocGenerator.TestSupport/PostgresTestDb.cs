@@ -1,14 +1,19 @@
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace DocGenerator.Testing;
 
 /// <summary>
-/// قاعدة <c>PostgreSQL</c> مؤقتة لحالة اختبار واحدة (‏`ADR-0009`):
+/// قاعدة <c>PostgreSQL</c> مؤقتة (‏`ADR-0009`):
 /// يُبنى **قالب واحد لكل تشغيل** بـ<c>EnsureCreated</c> من
-/// <see cref="DocGeneratorPostgresDbContext"/>، ثم كل اختبار
-/// يحصل على **نسخة مستنسخة** بـ<c>CREATE DATABASE … TEMPLATE</c> — كلفة منخفضة
-/// وعزل كامل بلا مسح جداول مشترك.
+/// <see cref="DocGeneratorPostgresDbContext"/>، ثم:
+/// <list type="bullet">
+/// <item>الاختبار المعزول يحصل على **نسخة مستنسخة** بـ<c>CREATE DATABASE … TEMPLATE</c>؛</item>
+/// <item>واختبارات صنفٍ واحد تتشارك نسخةً واحدة و<see cref="Reset"/> يفرّغها قبل كل
+/// حالة — الاستنساخ (~2s مع الإسقاط) أغلى بكثير من تصفير جداول فارغة (~15ms دافئًا)
+/// عندما تكون الحالات كثيرة (مسح الجداول الكبير في `Application.Tests`).</item>
+/// </list>
 ///
 /// <para>الاستخدام: <c>await using var db = await PostgresTestDb.CreateAsync();</c>
 /// ثم <see cref="CreateContext"/> أو <see cref="ConnectionString"/> لاختبارات
@@ -19,7 +24,7 @@ namespace DocGenerator.Testing;
 /// </summary>
 public sealed class PostgresTestDb : IAsyncDisposable
 {
-    private static readonly SemaphoreSlim TemplateGate = new(1, 1);
+    private static readonly object TemplateGate = new();
     private static readonly object CleanupGate = new();
     private static readonly List<string> LiveDatabases = [];
     private static string? _baseConnectionString;
@@ -41,8 +46,13 @@ public sealed class PostgresTestDb : IAsyncDisposable
             .Options;
     }
 
-    /// <summary>سلسلة اتصال النسخة المعزولة (‏<c>Pooling=false</c>).</summary>
+    /// <summary>
+    /// سلسلة اتصال النسخة المعزولة. مُجمَّعة (‏`Pooling=true`، حجم 4، عمر خمول 15s):
+    /// `Pooling=false` كان يفتح اتصالًا فيزيائيًا لكل عملية `EF` فتتحول مئات الحالات
+    /// إلى دقائق إضافية. الإسقاط يستخدم <c>WITH (FORCE)</c> فيقطع أي اتصال خامل.
+    /// </summary>
     public string ConnectionString { get; }
+
 
     /// <summary>خيارات سياق جاهزة فوق القاعدة نفسها (لاتصالات متعددة).</summary>
     public DbContextOptions<DocGeneratorPostgresDbContext> Options { get; }
@@ -50,17 +60,95 @@ public sealed class PostgresTestDb : IAsyncDisposable
     /// <summary>سياق جديد فوق القاعدة (الملكية للمستدعي: <c>await using</c>).</summary>
     public DocGeneratorPostgresDbContext CreateContext() => new(Options);
 
+    /// <summary>
+    /// يفرّغ كل جداول المخطط العام ويعيد تسلسلات المعرفات إلى 1، ويُبقي المخطط كما هو.
+    /// استبدال سريع لاستنساخ قاعدة جديدة بين حالات الصنف نفسه، بلا صفوف من الحالة السابقة.
+    ///
+    /// <para>`DELETE` تحت <c>session_replication_role=replica</c> بدل `TRUNCATE`: الأخير
+    /// يُعيد إنشاء ملفات كل جدول/فهرس (‏~200 ملف على 51 جدولًا) فيصير ~0.7s على Windows
+    /// ويتضاعف تحت توازي الأصناف، بينما الحذف من جداول فارغة ميكانيكي ورخيص. إعادة
+    /// التسلسل ضرورية لأن كثيرًا من الحالات تبذر صفًا واحدًا وتتوقع المعرّف 1.</para>
+    /// متزامن عن قصد: يُستدعى من باني قاعدة الاختبار حيث لا يجوز حجب خيوط المجمّع.
+    /// </summary>
+    public void Reset()
+    {
+        // اتصال مُجمَّع: أول أمر على اتصال جديد يدفع كلفة تحليل/تخطيط (~300ms على
+        // Windows)، وبقاء الـbackend دافئًا يجعل التصفير المتكرر ~15ms. القاعدة معزولة
+        // لصنف واحد فلا يزاحمها شيء على هذا الاتصال.
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        var (tables, sequences) = ListRelations(connection);
+        if (tables.Count == 0)
+            return;
+
+        var deletes = string.Join(
+            "\n",
+            tables.Select(t => $"DELETE FROM {t};"));
+        using (var wipe = new NpgsqlCommand(
+            "SET session_replication_role = replica;\n" + deletes
+            + "\nSET session_replication_role = origin;", connection))
+        {
+            wipe.CommandTimeout = 120;
+            wipe.ExecuteNonQuery();
+        }
+
+        if (sequences.Count > 0)
+        {
+            // إعادة التسلسلات في أمر منفصل: دمجها مع حذف وضع `replica` يكلّف مئات
+            // المللي ثانية لكل مجموعة، بينما هي وحدها ~3ms.
+            using var restart = new NpgsqlCommand(
+                "SELECT " + string.Join(", ", sequences.Select(s => $"setval('{s}', 1, false)")) + ";",
+                connection);
+            restart.CommandTimeout = 120;
+            restart.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>جداول المخطط العام وتسلسلاته (دون سجل الهجرات) بترتيب ثابت.</summary>
+    private static (List<string> Tables, List<string> Sequences) ListRelations(NpgsqlConnection connection)
+    {
+        var tables = new List<string>();
+        using (var list = new NpgsqlCommand(ListTablesSql, connection))
+        using (var reader = list.ExecuteReader())
+        {
+            while (reader.Read())
+                tables.Add($"\"{reader.GetString(0)}\".\"{reader.GetString(1)}\"");
+        }
+
+        var sequences = new List<string>();
+        using (var list = new NpgsqlCommand(ListSequencesSql, connection))
+        using (var reader = list.ExecuteReader())
+        {
+            while (reader.Read())
+                sequences.Add($"\"{reader.GetString(0)}\".\"{reader.GetString(1)}\"");
+        }
+
+        return (tables, sequences);
+    }
+
+    /// <summary>جداول المخطط العام دون سجل الهجرات (لا وجود له في قاعدة <c>EnsureCreated</c>).</summary>
+    private const string ListTablesSql =
+        "SELECT n.nspname, c.relname "
+        + "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        + "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+        + "AND c.relname <> '__EFMigrationsHistory' ORDER BY 1, 2;";
+
+    private const string ListSequencesSql =
+        "SELECT schemaname, sequencename FROM pg_sequences "
+        + "WHERE schemaname = 'public' ORDER BY 1, 2;";
+
     /// <summary>ينشئ نسخة معزولة جديدة من القالب (قالب يُهيَّأ مرة واحدة لكل تشغيل).</summary>
-    public static async Task<PostgresTestDb> CreateAsync()
+    public static PostgresTestDb Create()
     {
         var baseConnectionString = PostgresTestEnvironment.RequireOrSkip()
             ?? throw new InvalidOperationException(
                 $"PostgresTestDb يتطلب {PostgresTestEnvironment.ConnectionStringVariable} — "
                 + "علّم الاختبار بـ[PostgresFact] كي يُتخطّى صراحةً بدل الفشل.");
 
-        var template = await EnsureTemplateAsync(baseConnectionString);
+        var template = EnsureTemplate(baseConnectionString);
         var databaseName = "docgen_app_" + Guid.NewGuid().ToString("N")[..16];
-        var connectionString = await PostgresTestDatabase.CloneAsync(
+        var connectionString = PostgresTestDatabase.Clone(
             baseConnectionString, template, databaseName);
 
         lock (CleanupGate)
@@ -71,34 +159,36 @@ public sealed class PostgresTestDb : IAsyncDisposable
         return new PostgresTestDb(connectionString, databaseName);
     }
 
-    private static async Task<string> EnsureTemplateAsync(string baseConnectionString)
+    /// <summary>نظير غير المتزامن (لا يعتمد عليه مسار البناء لتجنّب حجب خيوط المجمّع).</summary>
+    public static Task<PostgresTestDb> CreateAsync() => Task.FromResult(Create());
+
+    private static string EnsureTemplate(string baseConnectionString)
     {
-        await TemplateGate.WaitAsync();
-        try
+        // قفل عادي لا `SemaphoreSlim`: مسارا الإنشاء (البناء المتزامن والاختبارات غير
+        // المتزامنة) يشتركان في القالب نفسه، فلا يُنشأ قالبان ولا يتسابقان على الكتابة.
+        lock (TemplateGate)
         {
             if (_templateDatabase is not null)
                 return _templateDatabase;
 
-            _baseConnectionString = baseConnectionString;
             var templateName = "docgen_app_tpl_" + Guid.NewGuid().ToString("N")[..12];
-            var connectionString = await PostgresTestDatabase.CreateAsync(
-                baseConnectionString, templateName);
+            // غير مُجمَّع: `CREATE DATABASE … TEMPLATE` يرفض أي جلسة قائمة على القالب،
+            // واتصال مجمَّع خامل بعد `EnsureCreated` كان يُفشل أول استنساخ.
+            var connectionString = PostgresTestDatabase.Create(
+                baseConnectionString, templateName, pooling: false);
 
             var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
                 .UseNpgsql(connectionString, npgsql => npgsql.CommandTimeout(180))
                 .Options;
-            await using (var template = new DocGeneratorPostgresDbContext(options))
+            using (var template = new DocGeneratorPostgresDbContext(options))
             {
-                await template.Database.EnsureCreatedAsync();
+                template.Database.EnsureCreated();
             }
 
+            _baseConnectionString = baseConnectionString;
             _templateDatabase = templateName;
             RegisterExitHook();
             return templateName;
-        }
-        finally
-        {
-            TemplateGate.Release();
         }
     }
 
@@ -123,24 +213,28 @@ public sealed class PostgresTestDb : IAsyncDisposable
             LiveDatabases.Clear();
         }
 
-        foreach (var name in names)
-        {
-            try
+        // الإسقاط متوازٍ: عشرات قواعد الأصناف تُسقط عند الخروج، والتسلسل كان يؤخّر
+        // إنهاء المضيف دقيقة كاملة (كل إسقاط ~0.8s على Windows).
+        Parallel.ForEach(
+            names,
+            new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            name =>
             {
-                PostgresTestDatabase.DropAsync(_baseConnectionString, name).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                // تنظيف أفضل جهد — لا يُفشل تشغيل الاختبارات.
-            }
-        }
+                try
+                {
+                    PostgresTestDatabase.Drop(_baseConnectionString, name);
+                }
+                catch
+                {
+                    // تنظيف أفضل جهد — لا يُفشل تشغيل الاختبارات.
+                }
+            });
 
         if (_templateDatabase is not null)
         {
             try
             {
-                PostgresTestDatabase.DropAsync(_baseConnectionString, _templateDatabase)
-                    .GetAwaiter().GetResult();
+                PostgresTestDatabase.Drop(_baseConnectionString, _templateDatabase);
             }
             catch
             {

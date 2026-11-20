@@ -1,10 +1,10 @@
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Npgsql;
 
 namespace DocGenerator.Application.Tests;
 
@@ -14,13 +14,9 @@ namespace DocGenerator.Application.Tests;
 /// (2) فهرس <c>(BranchId, SectionId)</c> على المستخدمين موجود وغير فريد؛
 /// (3) الكتابة الخام السالبة تُرفض من القاعدة نفسها لا من الخدمة.
 /// </summary>
-public class SafeConstraintTests : IDisposable
+public class SafeConstraintTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db = TestDb.Create();
-
-    public void Dispose() => _db.Dispose();
-
-    [Theory]
+    [PostgresTheory]
     [InlineData(typeof(Document))]
     [InlineData(typeof(DocumentAppeal))]
     [InlineData(typeof(DocumentDelegation))]
@@ -49,7 +45,7 @@ public class SafeConstraintTests : IDisposable
         Assert.True(names.Contains(expected), $"expected {expected}; actual: {string.Join("|", names)}");
     }
 
-    [Fact]
+    [PostgresFact]
     public void Users_HaveBranchSectionCompositeIndex()
     {
         var model = _db.GetService<IDesignTimeModel>().Model;
@@ -61,21 +57,18 @@ public class SafeConstraintTests : IDisposable
         Assert.False(index.IsUnique);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RawNegativeVersion_IsRejectedByDatabase()
     {
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         _db.Branches.Add(branch);
         await _db.SaveChangesAsync();
 
-        await using var command = _db.Database.GetDbConnection().CreateCommand();
-        command.CommandText = "UPDATE Branches SET Version = -1 WHERE Id = $id";
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "$id";
-        parameter.Value = branch.Id;
-        command.Parameters.Add(parameter);
+        var ex = await ExecuteRawAsync(
+            "UPDATE \"Branches\" SET \"Version\" = -1 WHERE \"Id\" = @id", branch.Id);
 
-        await Assert.ThrowsAsync<SqliteException>(() => command.ExecuteNonQueryAsync());
+        Assert.Equal("23514", ex.SqlState);
+        Assert.Equal("CK_Branches_VersionNonNegative", ex.ConstraintName);
     }
 
     private static readonly string[] AmountColumns =
@@ -87,7 +80,7 @@ public class SafeConstraintTests : IDisposable
         "ExecutedPaidAmount", "ExecutedPaidAmount2", "ExecutedPaidAmount3",
     ];
 
-    [Fact]
+    [PostgresFact]
     public void Documents_HaveNonNegativeAmountChecks()
     {
         var model = _db.GetService<IDesignTimeModel>().Model;
@@ -98,7 +91,7 @@ public class SafeConstraintTests : IDisposable
             Assert.Contains($"CK_Documents_{column}_NonNegative", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RawNegativeAmounts_AreRejectedByDatabase()
     {
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
@@ -127,14 +120,30 @@ public class SafeConstraintTests : IDisposable
 
         foreach (var column in AmountColumns)
         {
-            await using var command = _db.Database.GetDbConnection().CreateCommand();
-            command.CommandText = $"UPDATE \"Documents\" SET \"{column}\" = -1 WHERE \"Id\" = $id";
-            var parameter = command.CreateParameter();
-            parameter.ParameterName = "$id";
-            parameter.Value = document.Id;
-            command.Parameters.Add(parameter);
+            var ex = await ExecuteRawAsync(
+                $"UPDATE \"Documents\" SET \"{column}\" = -1 WHERE \"Id\" = @id", document.Id);
 
-            await Assert.ThrowsAsync<SqliteException>(() => command.ExecuteNonQueryAsync());
+            Assert.Equal("23514", ex.SqlState);
+            Assert.Equal($"CK_Documents_{column}_NonNegative", ex.ConstraintName);
         }
+    }
+
+    /// <summary>
+    /// ينفّذ أمر تحديث خامًا ويتوقع رفض القاعدة، فيرجع استثناء المزوّد للتحقق من
+    /// اسم القيد نفسه لا من نوع عام.
+    /// </summary>
+    private async Task<PostgresException> ExecuteRawAsync(string sql, int id)
+    {
+        var connection = _db.Database.GetDbConnection();
+        await _db.Database.OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "id";
+        parameter.Value = id;
+        command.Parameters.Add(parameter);
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        return ex;
     }
 }

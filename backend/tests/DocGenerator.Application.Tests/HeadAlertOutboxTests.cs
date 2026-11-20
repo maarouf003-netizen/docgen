@@ -17,9 +17,8 @@ namespace DocGenerator.Application.Tests;
 /// حراسة صندوق الصادر (الخطة §6.4 و§14.1): حارس المعاملة، وشكل الصف، ودورية الحمولة،
 /// وتسلسل الإلام والمعالجة.
 /// </summary>
-public class HeadAlertOutboxTests : IDisposable
+public class HeadAlertOutboxTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly ServiceProvider _provider;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -28,7 +27,6 @@ public class HeadAlertOutboxTests : IDisposable
 
     public HeadAlertOutboxTests()
     {
-        _db = TestDb.Create();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
@@ -43,7 +41,7 @@ public class HeadAlertOutboxTests : IDisposable
         _provider = BuildProvider();
     }
 
-    public void Dispose()
+    public override void Dispose()
     {
         _provider.Dispose();
         _db.Dispose();
@@ -53,7 +51,7 @@ public class HeadAlertOutboxTests : IDisposable
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(_db);
+        services.AddSingleton<DocGeneratorDbContext>(_db);
         services.AddScoped<ITransactionRunner>(sp => new TransactionRunner(sp.GetRequiredService<DocGeneratorDbContext>()));
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
         services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
@@ -91,7 +89,7 @@ public class HeadAlertOutboxTests : IDisposable
             RecipientUserId: recipientUserId ?? _head.Id,
             DelegationId: 7);
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_WithoutActiveTransaction_ThrowsAndInsertsNothing()
     {
         var outbox = Outbox();
@@ -102,7 +100,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Empty(await _db.HeadAlertOutboxMessages.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_InsideTransaction_CreatesOnePendingRow()
     {
         var outbox = Outbox();
@@ -126,7 +124,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Equal(_head.Id, message.TargetUserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_BroadcastAudience_HasNoTargetUser()
     {
         var outbox = Outbox();
@@ -147,7 +145,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Null(message.TargetUserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_RejectsInvalidKindAudienceAndCreator()
     {
         var outbox = Outbox();
@@ -169,7 +167,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Empty(await _db.HeadAlertOutboxMessages.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_RejectsSupersedePlanWithoutScopeOrKinds()
     {
         var outbox = Outbox();
@@ -184,7 +182,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Empty(await _db.HeadAlertOutboxMessages.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueSystemAsync_PayloadRoundTripsCreatorAndAudience()
     {
         var outbox = Outbox();
@@ -207,7 +205,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Equal(HeadAlertKindCatalog.DelegationMirrorUpdated, payload.Request.Kind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EnqueueCircuitRenamedAsync_ProducesOperationWithoutKind()
     {
         var outbox = Outbox();
@@ -229,7 +227,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Equal("أُعيدت تسمية الدائرة", payload.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Enqueue_SharesTheCallersTransaction_SoFailureRollsBackTogether()
     {
         var outbox = Outbox();
@@ -263,7 +261,7 @@ public class HeadAlertOutboxTests : IDisposable
             ProcessedAt = status is HeadAlertOutboxStatus.Processed or HeadAlertOutboxStatus.Skipped ? processedAt : null,
         };
 
-    [Fact]
+    [PostgresFact]
     public async Task CleanupAsync_DeletesOnlyExpiredProcessedAndSkipped()
     {
         var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
@@ -288,7 +286,7 @@ public class HeadAlertOutboxTests : IDisposable
             remaining.Select(m => m.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetHealthAsync_ReturnsPendingCountOldestAndFailedCount()
     {
         var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
@@ -307,7 +305,7 @@ public class HeadAlertOutboxTests : IDisposable
         Assert.Equal(1, health.FailedCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetHealthAsync_NoPending_ReturnsNullOldest()
     {
         var health = await Store().GetHealthAsync();

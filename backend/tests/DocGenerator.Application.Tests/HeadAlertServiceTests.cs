@@ -11,9 +11,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class HeadAlertServiceTests : IDisposable
+public class HeadAlertServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IHeadAlertService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly TransactionRunner _tx;
@@ -24,7 +23,6 @@ public class HeadAlertServiceTests : IDisposable
 
     public HeadAlertServiceTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
         _db.SaveChanges();
@@ -70,7 +68,6 @@ public class HeadAlertServiceTests : IDisposable
             new DelegationRepository(_db), uow, _tx, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static AlertPageRequest FullPage() => new() { Page = 1, PageSize = AlertPageRequest.MaxPageSize };
 
@@ -133,7 +130,7 @@ public class HeadAlertServiceTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DocumentTargeted_RecipientIsDocumentLawyer()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -154,7 +151,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("أحمد العلي", lawyerAlert.DocumentTitle);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LawyerTargeted_RecipientIsThatLawyerOnly()
     {
         var alert = await _service.CreateAsync(
@@ -168,7 +165,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Single(list2);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_BranchBroadcast_ReachesAllActiveLawyers()
     {
         _db.Users.Add(new User
@@ -190,14 +187,14 @@ public class HeadAlertServiceTests : IDisposable
             + (await ReceivedAsync(_lawyer2)).Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_EmptyMessage_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), ActorFor(_head), "head_x"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DocumentOutsideBranch_Throws()
     {
         var other = new Branch { Name = "حلب", Code = "ALP" };
@@ -221,7 +218,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("الملف غير متاح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OutsideBranchDocumentWithInactiveCreator_ReportsUnavailableOnly()
     {
         // ف‑4: فحص الفرع يسبق فحص المنشئ عمدًا — وجود حساب في فرع آخر لا يُكشف
@@ -248,7 +245,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("الملف غير متاح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_MissingDocument_UsesSameUnavailableMessage()
     {
         // P3-5: الملف غير الموجود والملف خارج الفرع برسالة واحدة — لا يُكشف وجود
@@ -259,7 +256,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("الملف غير متاح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InactiveDocumentCreator_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -272,7 +269,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InactiveLawyerTarget_Throws()
     {
         _lawyer2.IsActive = false;
@@ -284,7 +281,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_LawyerOutsideBranch_Throws()
     {
         var other = new Branch { Name = "حلب", Code = "ALP" };
@@ -307,14 +304,14 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InvalidTargetType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), ActorFor(_head), "head_x"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListForHead_ReturnsOnlyOwnRecipientAlerts()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -345,7 +342,7 @@ public class HeadAlertServiceTests : IDisposable
             a => a.Id == ownId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_SetsRead_AndDecrementsUnread()
     {
         var alert = await _service.CreateAsync(
@@ -362,14 +359,14 @@ public class HeadAlertServiceTests : IDisposable
         Assert.True(dto.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_NotFound_ReturnsFalse()
     {
         var ok = await _service.MarkReadAsync(999, ActorFor(_lawyer1));
         Assert.False(ok);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_NonRecipient_ReturnsFalse()
     {
         var alert = await _service.CreateAsync(
@@ -380,7 +377,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.False(ok);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ManualHeadTarget_Rejected()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -389,7 +386,7 @@ public class HeadAlertServiceTests : IDisposable
                 ActorFor(_head), "head_x"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystem_SingleHead_MissingRecipient_ThrowsNoRecipients()
     {
         // لا رئيس نشط في الفرع: حالة عمل بلا مستلمين — تُترجم لدى المشغّل إلى
@@ -398,7 +395,7 @@ public class HeadAlertServiceTests : IDisposable
             CreateSystemHeadAlertAsync("system head", HeadAlertAudience.SingleHead));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystem_HeadTargeted_ReachesExplicitActiveRecipient()
     {
         var sub = new User
@@ -427,7 +424,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(sub.Id, Assert.Single(stored.Recipients).UserId);
         Assert.Equal(77, stored.DelegationId);
     }
-    [Fact]
+    [PostgresFact]
     public async Task DetailContract_CarriesAllFields_AndCanViewRecipientsIsServerComputed()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -470,7 +467,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(created.Kind, recipientView.Kind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_CreatorWithThreeRecipients_HasNullIsRead_AndNoCounters()
     {
         var lawyer3 = new User
@@ -500,7 +497,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.False(recipientDetail.CanViewRecipients);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkRead_UpdatesOnlyActorRow_AndDetailReflectsIt()
     {
         var created = await _service.CreateAsync(
@@ -535,7 +532,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.True(detail!.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDetails_MapsArchivedAndReferenceFields_ForOversight()
     {
         var createdAt = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
@@ -575,7 +572,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Null(dto.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_MapsDistinctLinkIds_InPositionalOrder()
     {
         // P3-3: قيم مميزة لكل مرجع تكشف أي إزاحة موضعية في وسائط `ToDetailDto`
@@ -675,7 +672,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(77, dto.ExecutionCircuitId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
         var sent = await _service.CreateAsync(
@@ -703,7 +700,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Empty(otherBranchSent.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Sent_SubHead_SeesOwnOnly()
     {
         var sub = new User

@@ -8,20 +8,17 @@ namespace DocGenerator.Application.Tests;
 /// انحدار F-01: إسقاط الوصول الخفيف يجب أن يعيد الحقول الخمسة نفسها التي تعتمد
 /// عليها قاعدة الصلاحيات، ويحترم فلتر الحذف المنطقي، دون تحميل شجرة المستند.
 /// </summary>
-public sealed class DocumentAccessInfoTests : IDisposable
+public sealed class DocumentAccessInfoTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly DocumentRepository _repository;
 
     public DocumentAccessInfoTests()
     {
-        _db = TestDb.Create();
         _repository = new DocumentRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAccessInfo_ReturnsBranchCircuitAndSection_ForLiveDocument()
     {
         var (document, circuit, branch, section) = await SeedAsync(withCircuit: true);
@@ -36,7 +33,7 @@ public sealed class DocumentAccessInfoTests : IDisposable
         Assert.Equal(section!.Id, info.SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAccessInfo_ReturnsNullSection_WhenDocumentHasNoCircuit()
     {
         var (document, _, _, _) = await SeedAsync(withCircuit: false);
@@ -48,7 +45,7 @@ public sealed class DocumentAccessInfoTests : IDisposable
         Assert.Null(info.SectionId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAccessInfo_ReturnsNull_ForMissingAndSoftDeletedDocuments()
     {
         var (document, _, _, _) = await SeedAsync(withCircuit: true);

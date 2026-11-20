@@ -4,20 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
-public class TransactionRunnerTests : IDisposable
+public class TransactionRunnerTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly TransactionRunner _tx;
 
     public TransactionRunnerTests()
     {
-        _db = TestDb.Create();
         _tx = new TransactionRunner(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_OnSuccess_CommitsAllInnerSaves()
     {
         await _tx.RunAsync(async token =>
@@ -32,7 +29,7 @@ public class TransactionRunnerTests : IDisposable
         Assert.Equal(1, _db.AuditLogs.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_WhenInnerThrows_RollsBackBothSaves()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -50,7 +47,7 @@ public class TransactionRunnerTests : IDisposable
         Assert.Equal(0, _db.AuditLogs.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_Generic_ReturnsResultOnSuccess()
     {
         var id = await _tx.RunAsync(async token =>
@@ -65,7 +62,7 @@ public class TransactionRunnerTests : IDisposable
         Assert.Equal(1, _db.Branches.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_Generic_WhenInnerThrows_RollsBack()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -80,7 +77,7 @@ public class TransactionRunnerTests : IDisposable
         Assert.Equal(0, _db.Branches.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RunAsync_OnSuccess_ResultIsCommittedAndVisible()
     {
         var branch = new Branch { Name = "اللاذقية", Code = "LAT" };

@@ -16,9 +16,8 @@ namespace DocGenerator.Application.Tests;
 /// اختبارات عزل نطاق بوابة مندوب الجهة (المرحلة 3): قاعدة «أي تطابق طرفي
 /// بقيد نهائي»، إخفاء قيود الانتظار، و404 للملفات خارج النطاق.
 /// </summary>
-public class PortalScopingTests : IDisposable
+public class PortalScopingTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPortalService _portal;
     private readonly IPublicEntityService _entities;
     private readonly FakeAuditLogger _audit = new();
@@ -32,7 +31,6 @@ public class PortalScopingTests : IDisposable
 
     public PortalScopingTests()
     {
-        _db = TestDb.Create();
 
         // مستخدم مرجعي (Id=1) لملكية إنشاء القيود قبل إدراجها.
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
@@ -84,7 +82,6 @@ public class PortalScopingTests : IDisposable
             new AppealRepository(_db));
     }
 
-    public void Dispose() => _db.Dispose();
 
     /// <summary>ينشئ ملفاً بروابط أطراف محددة مباشرة في القاعدة (بمعزل عن مسار الحفظ).</summary>
     private async Task<int> SeedDocumentAsync(
@@ -133,7 +130,7 @@ public class PortalScopingTests : IDisposable
         return doc.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_FindsGuarantorName_EvenWhenSearchTextIsEmpty()
     {
         var id = await SeedDocumentAsync("ملف بلا نص بحث", applicantRegistryId: _entryAId);
@@ -154,7 +151,7 @@ public class PortalScopingTests : IDisposable
         Assert.Contains(result.Items, i => i.Id == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GroupScope_MatchesAnySide_FinalOnly_AndExcludesUnrelated()
     {
         var docApplicant = await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
@@ -171,7 +168,7 @@ public class PortalScopingTests : IDisposable
         Assert.DoesNotContain(page.Items, i => i.Id == docOtherGroup);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntryScope_MatchesExactEntryOnly()
     {
         await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
@@ -183,7 +180,7 @@ public class PortalScopingTests : IDisposable
         Assert.DoesNotContain(page.Items, i => i.Id == docOther);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExecutionApplicantRegistryId_IsIgnoredByDelegateScope()
     {
         // الربط السجلي لطالب التنفيذ الاعتباري أُلغي بقرار المالك: حتى لو بقي
@@ -195,7 +192,7 @@ public class PortalScopingTests : IDisposable
         Assert.DoesNotContain(page.Items, i => i.Id == doc);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PendingLinkedDocuments_AreHidden_UntilHeadApproves()
     {
         await SeedDocumentAsync("ملف بانتظار الاعتماد", applicantRegistryId: _entryPendingId);
@@ -212,7 +209,7 @@ public class PortalScopingTests : IDisposable
         Assert.Equal(1, after.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_OutOfScope_ReturnsNull_WithoutViewAudit()
     {
         var docOutOfScope = await SeedDocumentAsync("ملف منفذ", executedLink: (_entryBId, false));
@@ -223,7 +220,7 @@ public class PortalScopingTests : IDisposable
         Assert.DoesNotContain("view_entity_portal_files", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_InScope_ReturnsFullReadModel_AndLogsSessionView()
     {
         var docId = await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
@@ -235,7 +232,7 @@ public class PortalScopingTests : IDisposable
         Assert.Contains("view_entity_portal_files", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Appeals_OutOfScope_ReturnsNull_InScope_Lists()
     {
         var docId = await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
@@ -246,7 +243,7 @@ public class PortalScopingTests : IDisposable
         Assert.Empty(inScope);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusFilter_Executed_NarrowsWithinScope()
     {
         var normalDoc = await SeedDocumentAsync("ملف طالب متداول", applicantRegistryId: _entryAId);
@@ -272,7 +269,7 @@ public class PortalScopingTests : IDisposable
         Assert.Contains(normalDoc, all.Items.Select(i => i.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_ExceedingMaxRows_IsRejected_WithFriendlyCapMessage()
     {
         await SeedDocumentAsync("ملف أ", applicantRegistryId: _entryAId);
@@ -286,7 +283,7 @@ public class PortalScopingTests : IDisposable
         Assert.Contains("الحد الأقصى للتصدير", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_WithinCap_ProducesWorkbook_AndLogsExportAction()
     {
         await SeedDocumentAsync("ملف تصدير", applicantRegistryId: _entryAId);
@@ -301,7 +298,7 @@ public class PortalScopingTests : IDisposable
         Assert.Contains("export_entity_portal_excel", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DelegateWithoutBinding_SeesNothing_ButGetsEmptyScope()
     {
         var unbound = new User { Username = "delegate_none", FullName = "مندوب بلا نطاق", Role = UserRole.EntityManager, PasswordHash = "x" };
@@ -320,7 +317,7 @@ public class PortalScopingTests : IDisposable
     // ── المواءمة السلوكية (§6bis): قيد بانتظار مراجعة (Status=Final + NeedsReview=true)
     //    — كما يُنشئه CreateAsync للمحامي — لا يظهر لبوات المندوبين قبل اعتماد رئيس القسم. ──
 
-    [Fact]
+    [PostgresFact]
     public async Task NeedsReviewEntry_IsHiddenFromPortal_UntilApproved()
     {
         // قيد Status=Final لكن NeedsReview=true (الحالة التي يُنتجها CreateAsync للمحامي).
@@ -363,7 +360,7 @@ public class PortalScopingTests : IDisposable
         Assert.Equal(1, after.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NeedsReviewGroupEntries_AreExcludedFromScopeResolution()
     {
         // مندوب مربوط بمجموعة: القيد (Status=Final + NeedsReview=true) لا يدخل نطاقه.
@@ -390,7 +387,7 @@ public class PortalScopingTests : IDisposable
     // ── المواءمة السلوكية (§8.7): عمليات مراجعة السجل (rename) لا تُظهر للمندوب
     //     الملفات المرتبطة بقيدٍ ما زال بانتظار مراجعة رئيس القسم (NeedsReview=true). ──
 
-    [Fact]
+    [PostgresFact]
     public async Task Rename_ProducedEntriesSurface_WhilePendingReviewEntry_StaysHiddenUntilApproval()
     {
         var doc = await SeedDocumentAsync("ملف وزارة التعليم", applicantRegistryId: _entryAId);

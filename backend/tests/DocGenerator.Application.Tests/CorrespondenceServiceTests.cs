@@ -11,9 +11,8 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace DocGenerator.Application.Tests;
 
-public class CorrespondenceServiceTests : IDisposable
+public class CorrespondenceServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly ICorrespondenceService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -34,7 +33,6 @@ public class CorrespondenceServiceTests : IDisposable
 
     public CorrespondenceServiceTests()
     {
-        _db = TestDb.Create();
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
         var otherBranch = new Branch { Name = "حلب", Code = "ALP", Governorate = "حلب" };
         _db.Branches.AddRange(branch, otherBranch);
@@ -81,14 +79,13 @@ public class CorrespondenceServiceTests : IDisposable
     /// P4-03: نطاق فاعل غير صالح (رئيس بلا فرع) = 403 لا 400 — نفس قاعدة
     /// P2-01e/f على المراسلات.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.SearchAsync(_head.Id, UserRole.Head, null, null, null, null, 1, 20));
     }
 
-    public void Dispose() => _db.Dispose();
 
     private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));
 
@@ -162,7 +159,7 @@ public class CorrespondenceServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_GeneralFromLawyer_GeneratesNumberAndOriginalMessage()
     {
         var letter = await _service.CreateAsync(
@@ -180,7 +177,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Empty(letter.Receipts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NumberGeneration_UsesInjectedEntropy()
     {
         // P1-02: العشوائية عبر المصدر المحقون — بلا Random.Shared.
@@ -193,7 +190,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Matches(@"^DAM-\d{4}-12345$", letter.CorrespondenceNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinked_UsesDocumentBranchAndFileContext()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -211,7 +208,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal("urgent", letter.Importance);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_InvalidImportance_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
@@ -220,7 +217,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("الأهمية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ToSelf_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
@@ -229,7 +226,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("لنفسك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ToManager_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
@@ -238,7 +235,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("المستلم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ManagerRole_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
@@ -246,7 +243,7 @@ public class CorrespondenceServiceTests : IDisposable
             _manager.Id, "المدير", UserRole.Manager, null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinked_ByNonOwnerLawyer_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -256,7 +253,7 @@ public class CorrespondenceServiceTests : IDisposable
             _lawyer2.Id, "المحامي الثاني", UserRole.Lawyer, _branchId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_GeneralFromDelegate_HasNullBranchAndEntityGovernorate()
     {
         var letter = await _service.CreateAsync(
@@ -269,7 +266,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal("important", letter.Importance);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DelegateWithoutScope_Throws()
     {
         var orphan = EntityBuilders.NewUser("corr_orphan", "مندوب بلا نطاق", UserRole.EntityManager, null);
@@ -282,7 +279,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("نطاق", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_SeesBranchCorrespondence_ButNotOtherGovernorate()
     {
         await _service.CreateAsync(
@@ -298,7 +295,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(0, aleppo.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Manager_SearchRequiresGovernorate()
     {
         await _service.CreateAsync(
@@ -314,7 +311,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(1, allowed.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Addendum_OnlyCreator_AndReply_OnlyTarget()
     {
         var letter = await _service.CreateAsync(
@@ -341,7 +338,7 @@ public class CorrespondenceServiceTests : IDisposable
             _head.Id, "رئيس القسم"));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("create")]
     [InlineData("addendum")]
     [InlineData("reply")]
@@ -368,7 +365,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("10000", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BodyText_AtLimit_IsAccepted()
     {
         // الحدّية: 10000 حرف بالضبط تُقبل — الحد للشذوذ لا للرسائل المشروعة.
@@ -378,7 +375,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains(new string('ن', 10_000), letter.Messages.Single().BodyHtml);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BodyText_TagsDoNotCount_TowardLimit()
     {
         // 3000 حرف مرئي داخل ~21000 حرف وسوم (`<b>` المسموح): تُقبل لأن
@@ -392,7 +389,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Single(letter.Messages);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("get")]
     [InlineData("addendum")]
     [InlineData("reply")]
@@ -417,7 +414,7 @@ public class CorrespondenceServiceTests : IDisposable
         });
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MarkSeen_TargetOnly_DocumentsOnce_AndReportsViewStatus()
     {
         var letter = await _service.CreateAsync(
@@ -443,7 +440,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal("مندوب الجهة", stored.Receipts[0].UserName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Timestamps_ComeFromInjectedClock_NotSystemTime()
     {
         // حتمية الوقت: تجميد الساعة يجعل كل طوابع الكتابة مساوية للحظة
@@ -474,7 +471,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(frozen.UtcDateTime, reply.MessageDate);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("lawyer")]
     [InlineData("head")]
     [InlineData("manager")]
@@ -510,7 +507,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Empty(stored.Receipts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Receipts_AreFilteredToTarget_AndListReportsStatusAndRight()
     {
         // مستند قديم: توثيقات أنشأها مرسلون وقت كان الحقل مفتوحًا للجميع.
@@ -572,7 +569,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.True(targetRow.CanReply);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnseenCount_CountsAllUnseenForTargetOnly()
     {
         var urgent = await _service.CreateAsync(
@@ -592,7 +589,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reply_RecordsSeenReceiptAutomatically()
     {
         var letter = await _service.CreateAsync(
@@ -622,7 +619,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(firstSeenAt, again.SeenAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_FindsActivePartyMembersWithoutSelf()
     {
         var targets = await _service.SearchTargetsAsync(
@@ -635,7 +632,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("مندوب الجهة الثاني", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delegate_SeesOnlyOwnDocumentCorrespondences()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -658,7 +655,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(2, headView.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinkedOnBranchlessDoc_FallsBackToActorBranch()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -676,7 +673,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.StartsWith("DAM-", letter.CorrespondenceNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Numbers_AreUniqueAcrossLetters()
     {
         var first = await _service.CreateAsync(
@@ -689,7 +686,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.NotEqual(first.CorrespondenceNumber, second.CorrespondenceNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_CapsResultsAtTwenty()
     {
         for (var i = 0; i < 25; i++)
@@ -703,7 +700,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.All(targets, t => Assert.Contains("مرشح تجريبي", t.FullName));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_General_RemainsOpenAcrossRoles()
     {
         var targets = await _service.SearchTargetsAsync(
@@ -713,7 +710,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("رئيس القسم", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_DelegateOnFileLinked_ReturnsDocumentLawyersOnly()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -730,7 +727,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.DoesNotContain("مندوب الجهة", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_DelegateOnFileLinked_IncludesDelegationFollower()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -745,7 +742,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("المحامي الثاني", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_LawyerOnFileLinked_ReturnsScopeDelegatesOnly()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -764,7 +761,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.DoesNotContain("رئيس القسم", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_FileLinked_OutOfScopeActor_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -777,7 +774,7 @@ public class CorrespondenceServiceTests : IDisposable
             _lawyer3.Id, UserRole.Lawyer, _branchId, "مندوب", doc.Id, default));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_FileLinked_HeadBehavesLikeLawyer()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -792,7 +789,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.DoesNotContain("مندوب حلب", names);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinkedByDelegate_ToUninvolvedLawyer_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -804,7 +801,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("محامي الملف", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinkedByLawyer_ToOutOfScopeDelegate_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -816,7 +813,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("مندوب جهة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinkedByLawyer_ToHead_Throws()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -828,7 +825,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Contains("مندوب جهة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FileLinkedByDelegate_ToDocumentOwner_Succeeds()
     {
         var doc = await AddDocumentAsync(_lawyer1);
@@ -843,7 +840,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.StartsWith("DAM-", letter.CorrespondenceNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchTargets_GeneralActors_ByQueryAndSelfExclusion_SameAsBefore()
     {
         // عام (بلا ملف): مندوب الجهة يبحث بحرية بين المحامين، والمحامون بين المناديب.
@@ -886,39 +883,43 @@ public class CorrespondenceServiceTests : IDisposable
 
         private static DbUpdateException BuildRealUniqueViolation()
         {
-            var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-                .UseSqlite("DataSource=:memory:")
-                .Options;
-            using var db = new DocGeneratorDbContext(options);
-            db.Database.OpenConnection();
-            db.Database.EnsureCreated();
-            // الفرع لازم للمحامي (قيد القاعدة) — الدور هنا عرضي لتوليد تعارض فريد.
-            var damascus = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
-            db.SaveChanges();
-            var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
-            var target = new User { Username = "conflict_target", FullName = "مستلم التعارض", Role = UserRole.EntityManager, PasswordHash = "x" };
-            db.Users.AddRange(maker, target);
-            db.SaveChanges();
-            var duplicate = () => new Correspondence
-            {
-                Governorate = "دمشق",
-                CreatedById = maker.Id,
-                TargetUserId = target.Id,
-                CorrespondenceNumber = "CNF-2026-0001",
-                Importance = Correspondence.ImportanceNormal,
-            };
-            db.Correspondences.Add(duplicate());
-            db.SaveChanges();
-            db.Correspondences.Add(duplicate());
+            // قاعدة معزولة: الصفوف المتسابقة لا تُلوّث قاعدة الحالة الجارية.
+            var pg = PostgresTestDb.Create();
             try
             {
+                using var db = pg.CreateContext();
+                // الفرع لازم للمحامي (قيد القاعدة) — الدور هنا عرضي لتوليد تعارض فريد.
+                var damascus = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
                 db.SaveChanges();
+                var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
+                var target = new User { Username = "conflict_target", FullName = "مستلم التعارض", Role = UserRole.EntityManager, PasswordHash = "x" };
+                db.Users.AddRange(maker, target);
+                db.SaveChanges();
+                var duplicate = () => new Correspondence
+                {
+                    Governorate = "دمشق",
+                    CreatedById = maker.Id,
+                    TargetUserId = target.Id,
+                    CorrespondenceNumber = "CNF-2026-0001",
+                    Importance = Correspondence.ImportanceNormal,
+                };
+                db.Correspondences.Add(duplicate());
+                db.SaveChanges();
+                db.Correspondences.Add(duplicate());
+                try
+                {
+                    db.SaveChanges();
+                }
+                catch (DbUpdateException ex)
+                {
+                    return ex;
+                }
+                throw new InvalidOperationException("تعذّر توليد تعارض فريد حقيقي من المزود");
             }
-            catch (DbUpdateException ex)
+            finally
             {
-                return ex;
+                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            throw new InvalidOperationException("تعذّر توليد تعارض فريد حقيقي من المزود");
         }
     }
 
@@ -980,7 +981,7 @@ public class CorrespondenceServiceTests : IDisposable
         public Task<Correspondence?> GetTrackedWithDetailsAsync(int id, CancellationToken ct = default) => _inner.GetTrackedWithDetailsAsync(id, ct);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RaceConflict_RetriesWithFreshNumberAndSucceeds()
     {
         // المحاولة الأولى تصطدم بالقيد الفريد (سباق ترقيم) فتُعاد بالتوليد برقم جديد.
@@ -1008,7 +1009,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(recorder.CheckedCandidates[1], letter.CorrespondenceNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PersistentConflict_ThrowsFriendlyAfterExhaustion()
     {
         // 20 = حد محاولات التوليد: كل المحاولات متصادمة فيُرفض الطلب برسالة مفهومة بلا صف يتيم.
@@ -1025,7 +1026,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(0, await _db.Correspondences.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_NonUniqueFailure_PropagatesWithoutRetry()
     {
         // الفشل غير الفريد (عطل حفظ عام) لا يُعاد: يتصاعد كما هو من أول محاولة.
@@ -1043,7 +1044,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(0, await _db.Correspondences.CountAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Messages_AreNumberedSequentiallyWithinLetterScope()
     {
         var letter = await _service.CreateAsync(
@@ -1114,7 +1115,7 @@ public class CorrespondenceServiceTests : IDisposable
         return doc;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SubHead_FileLinked_Create_AllowedInOwnSectionOnly()
     {
         var (sub, sectionId) = await AddSubHeadWithSectionAsync();
@@ -1137,7 +1138,7 @@ public class CorrespondenceServiceTests : IDisposable
             sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, null));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SubHead_FileLinked_SearchTargets_GatedByScope()
     {
         var (sub, sectionId) = await AddSubHeadWithSectionAsync();

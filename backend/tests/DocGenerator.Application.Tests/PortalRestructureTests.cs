@@ -17,9 +17,8 @@ namespace DocGenerator.Application.Tests;
 /// إعادة هيكلة عرض المندوب: فلتر الفرع (إجمالي/قيد)، رقم الأساس الأحدث دائمًا،
 /// البطاقة الجديدة (ثلاثي + فرع + أساس/نوع/دائرة)، وتفصيل المبالغ حسب العملة.
 /// </summary>
-public class PortalRestructureTests : IDisposable
+public class PortalRestructureTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPortalService _portal;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
@@ -30,7 +29,6 @@ public class PortalRestructureTests : IDisposable
 
     public PortalRestructureTests()
     {
-        _db = TestDb.Create();
 
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
         var groupA = new PublicEntityGroup { CanonicalName = "المصرف التجاري السوري", EntityType = PublicEntityTypeCatalog.Company };
@@ -52,7 +50,6 @@ public class PortalRestructureTests : IDisposable
         _portal = PortalServiceFactory.Create(_db, _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private async Task<int> SeedDocAsync(
         string borrower, string? father, string? family,
@@ -111,7 +108,7 @@ public class PortalRestructureTests : IDisposable
         return doc.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListFiles_BranchFilter_ReturnsOnlySelectedEntry()
     {
         await SeedDocAsync("أحمد", "خالد", "الخطيب", _entryDamascusId, null, false, "ليرة سورية", 100);
@@ -125,14 +122,14 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal("أحمد", damascus.Items[0].BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListFiles_BranchOutsideScope_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20, default, 999999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListFiles_CardFields_LatestBaseNumber_FileType_Court_Triple_MatchedEntries()
     {
         var id = await SeedDocAsync("أحمد", "خالد", "الخطيب", _entryDamascusId, null, false,
@@ -174,7 +171,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Contains(item.MatchedEntries!, e => e.Id == _entryDamascusId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListFiles_BaseNumberFallback_ToFileNumber_WhenNoBaseRows()
     {
         var id = await SeedDocAsync("بلا أساس", null, null, _entryDamascusId, null, false,
@@ -186,7 +183,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal("2024", item.DisplayBaseYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_BranchFilter_ScopesCountsAndAmounts()
     {
         await SeedDocAsync("دمشق 1", null, null, _entryDamascusId, null, false, "ليرة سورية", 100);
@@ -202,7 +199,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(_entryDamascusId, damascus.PerEntry[0].EntryId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_AmountBreakdown_GroupedPerCurrency_NoCrossCurrencySum()
     {
         await SeedDocAsync("ليرة 1", null, null, _entryDamascusId, null, false, "ليرة سورية", 100);
@@ -227,14 +224,14 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(2, circulating.Files);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Stats_BranchOutsideScope_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _portal.GetStatsAsync(_delegateGroupId, default, 999999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DraftWithStatus_ClassifiedByStatus_NotAsDraft_FilterMatchesCounters()
     {
         // F1: المسودة ذات الحالة تُحتسب في سلّة حالتها (مطابقة قوائم المحامين والمدير)،
@@ -254,7 +251,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(1, deferred.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnknownStatusFilter_Rejected_NotSilentlyIgnored()
     {
         // M3: قيمة غريبة تُرفض (400) كقوائم المحامين — لا سقوط صامت بلا فلتر.
@@ -262,7 +259,7 @@ public class PortalRestructureTests : IDisposable
             _portal.ListFilesAsync(_delegateGroupId, null, "حالة غريبة", 1, 20));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LegacyUnknownStatus_CountedAsCirculating_BucketsReconcile()
     {
         // `PB-002` (`BQ-035`): الحالات اليتيمة مستحيلة قاعديًا — زرع صف إرثي
@@ -310,7 +307,7 @@ public class PortalRestructureTests : IDisposable
         return copyId;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DelegationFiles_CountedNotSummed_PerB6()
     {
         // F4 (مرآة ب6): نسخ الإنابة والحالات الانتهائية تُحتسب عددًا دون مبالغ.
@@ -344,7 +341,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(500m, circulating.Totals.Single().TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task FilterCounts_MatchStatsBuckets_PerStatus()
     {
         // لازمة التطابق: رقم الفلتر يساوي رقم البطاقة لكل حالة.
@@ -370,7 +367,7 @@ public class PortalRestructureTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Export_WithBranchFilter_Succeeds_AndOutsideScope_ThrowsUnauthorized()
     {
         await SeedDocAsync("دمشق", null, null, _entryDamascusId, null, false, "ليرة سورية", 100);
@@ -383,7 +380,7 @@ public class PortalRestructureTests : IDisposable
             _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "tester", default, 999999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LatestBaseNumber_Pinned_RegardlessOfYear()
     {
         // N1: انحراف موثّق — الأحدث دائمًا حتى بسنة مستقبلية (بخلاف قوائم المحامين).
@@ -407,7 +404,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(futureYear.ToString(), item.DisplayBaseYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PartiallyExecuted_IsAlwaysCirculating_CounterMatchesFilter()
     {
         // قرار المالك: «منفذ جبريا + منفذ جزئيا» متداول دائمًا (بوابة ومحامين ومدير).
@@ -440,7 +437,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(5000m, executedRow.Totals.Single().TotalAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LegacyUnknownStatus_FoldedIntoCirculating_FilterMatchesCounter()
     {
         // `PB-002` (`BQ-035`): زرع اليتيم مرفوض — والفلتر == العدّاد على الصالح.
@@ -457,7 +454,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(stats.CirculatingFiles, circulating.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AmountSet_GroupedByCurrency_ZeroSkipped()
     {
         // قاعدة واحدة: المصرفي يقرأ Amount* فقط، ولا يُجمع مع InclusionAmount*.
@@ -481,7 +478,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(2, stats.AmountTotals!.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InclusionSet_GroupedByCurrency_ZeroSkipped()
     {
         // العادي يقرأ InclusionAmount* فقط، حتى لو وُجد Amount* قديم — لا جمع.
@@ -498,7 +495,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(1, lira.Files);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DetailResponse_ScrubsUnconsumedInternalFields_KeepsConsumedOnes()
     {
         // ق7 سلكيًا: كل حقل لا تستهلكه واجهة التفاصيل يُحجب — والحارس يفشل عند أي تسرب لاحق.
@@ -537,7 +534,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal("دائرة تنفيذ دمشق", response.Court);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AppealsBreakdown_ExplicitSets_UnknownIsPending()
     {
         // `PB-002` (`BQ-035`): المغلق = محسوم/مشطوب حصرًا قاعديًا — أي حالة
@@ -573,7 +570,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(2, stats.ClosedAppeals);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MonthlySeries_AnchoredToInjectedClock()
     {
         // السلسلة حتى الشهر الحالي بتوقيت النظام المحقون — لا `DateTime.UtcNow` مباشرة.
@@ -594,7 +591,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(0, stats.Monthly[10].Files);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListItem_DisplayStatus_FromSingleSource()
     {
         // الشارة من `DocumentStatusResolver` — لا تصنيف في الواجهة.
@@ -613,7 +610,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal("مسترد", byName["مسترد"].DisplayStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EntryDelegate_SeesOnlyOwnEntry_AndRejectsOtherEntry()
     {
         await SeedDocAsync("دمشق", null, null, _entryDamascusId, null, false, "ليرة سورية", 100);
@@ -629,7 +626,7 @@ public class PortalRestructureTests : IDisposable
             _portal.GetStatsAsync(_delegateEntryId, default, _entryAleppoId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task H1_StruckOffExecutedSide_ExcludedFromListStatsAndCirculating()
     {
         // عائلة «منفذ عليه» المشطوبة تسجّل شطبها في ExecutedStatus لا ExecStatus —
@@ -676,7 +673,7 @@ public class PortalRestructureTests : IDisposable
         _db.SaveChanges();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task H2_DetailResponse_ScrubsRemainingUnconsumedFields()
     {
         // SoldAssetIds/ForcedExecutionDate/GeneralEntitySideLabel: لا تستهلكها أي بطاقة
@@ -702,7 +699,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Null(response.LastActivitySource);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AmountSet_AllAmountsGroupedPerCurrency_ZeroSkipped()
     {
         // المصرفي: Amount* فقط؛ Inclusion* لا تُجمع معها.
@@ -722,7 +719,7 @@ public class PortalRestructureTests : IDisposable
         Assert.All(stats.AmountTotals, c => Assert.Equal(1, c.Files));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MonthlySeries_MonthBoundaryRespectsLocalZone()
     {
         // 2026-06-30T22:00Z هو حزيران بتوقيت UTC لكن تموز محليًا (+3):
@@ -737,7 +734,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(0, stats.Monthly.Single(m => m.Year == 2026 && m.Month == 6).Files);
     }
 
-    [Fact]
+    [PostgresFact]
     public void PortalDetailResponse_EveryPropertyHasExplicitDisposition()
     {
         // الحارس الحقيقي (H2): أي حقل جديد في `DocumentResponse` بلا تصريف صريح
@@ -830,7 +827,7 @@ public class PortalRestructureTests : IDisposable
         Assert.Empty(undisposed);
     }
 
-    [Fact]
+    [PostgresFact]
     public void PortalListItem_EveryPropertyHasExplicitDisposition()
     {
         // G1: عقد القائمة (`PortalFileListItemDto`) مسار مستقل عن التفاصيل —

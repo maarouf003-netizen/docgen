@@ -9,25 +9,22 @@ namespace DocGenerator.Application.Tests;
 /// تكامل سجل تعديلات الحقول: حفظ صفوف التغييرات مع إدخال التدقيق،
 /// وترقيم مجموعات «سجل التعديلات» لملف محدد.
 /// </summary>
-public class DocumentFieldChangePersistenceTests : IDisposable
+public class DocumentFieldChangePersistenceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly AuditLogger _logger;
     private readonly IAuditLogRepository _logs;
 
     public DocumentFieldChangePersistenceTests()
     {
-        _db = TestDb.Create();
         _logger = new AuditLogger(_db);
         _logs = new AuditLogRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocumentFieldChange Change(string key, string label, string? oldV, string? newV)
         => new() { FieldKey = key, FieldLabel = label, OldValue = oldV, NewValue = newV };
 
-    [Fact]
+    [PostgresFact]
     public async Task LogDocumentChangeAsync_PersistsRowsLinkedToAuditEntry()
     {
         await _logger.LogDocumentChangeAsync("محامي", "update", 7, "سند دين",
@@ -44,7 +41,7 @@ public class DocumentFieldChangePersistenceTests : IDisposable
         Assert.All(stored.FieldChanges, c => { Assert.Equal(stored.Id, c.AuditLogId); Assert.Equal(7, c.DocumentId); });
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LogDocumentChangeAsync_WithEmptyChanges_FallsBackToPlainLog()
     {
         await _logger.LogDocumentChangeAsync("محامي", "update", 3, null, "عدّل المستند", []);
@@ -54,7 +51,7 @@ public class DocumentFieldChangePersistenceTests : IDisposable
         Assert.Equal("عدّل المستند", stored.Details);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task PageDocumentChangeGroups_ReturnsNewestFirst_WithRowsPaged()
     {
         for (var round = 1; round <= 3; round++)

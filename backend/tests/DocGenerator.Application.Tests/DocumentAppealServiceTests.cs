@@ -11,9 +11,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentAppealServiceTests : IDisposable
+public class DocumentAppealServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentAppealService _service;
     private readonly IHeadAlertService _alertService;
     private readonly TransactionRunner _tx;
@@ -29,7 +28,6 @@ public class DocumentAppealServiceTests : IDisposable
 
     public DocumentAppealServiceTests()
     {
-        _db = TestDb.Create();
 
         _branch = new Branch { Name = "دمشق", Code = "DAM" };
         _otherBranch = new Branch { Name = "اللاذقية", Code = "LAT" };
@@ -68,7 +66,6 @@ public class DocumentAppealServiceTests : IDisposable
             TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _alertService, _tx);
 
@@ -155,7 +152,7 @@ public class DocumentAppealServiceTests : IDisposable
         DefenseOpinion: null,
         Notes: null);
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AppellantsDirection_BuildsSnapshotsAndAlertsHead()
     {
         var doc = await CreateApplicantDocAsync();
@@ -184,7 +181,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(headAlerts, a => a.TargetType == "head" && a.MessagePreview.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositFields_NulledForAppellants_KeptForAgainstUs()
     {
         var doc = await CreateApplicantDocAsync();
@@ -212,7 +209,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("2026-08-04", againstUs.DepositBookDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ByNonOwner_Throws()
     {
         var doc = await CreateApplicantDocAsync();
@@ -224,7 +221,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_OnDraftFile_Throws()
     {
         var doc = await CreateApplicantDocAsync(isDraft: true);
@@ -237,14 +234,14 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("تحت الرفع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithoutSelection_Throws()
     {
         var doc = await CreateApplicantDocAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(doc.Id, Request(AppealDirectionCatalog.Appellants, null), _lawyer1.Id, "lawyer1"));
     }
-    [Fact]
+    [PostgresFact]
     public async Task Create_AgainstUsDirection_SelectsFromExecutedParties()
     {
         var doc = await CreateExecutedDocAsync();
@@ -261,7 +258,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("فادي سمير الدمشقي", Assert.Single(dto.Appellees).Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_AgainstUs_OnApplicantFile_IncludesPublicEntityInAppellees()
     {
         var doc = await CreateApplicantDocAsync();
@@ -275,7 +272,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.DoesNotContain(created.Appellees, p => p.Name == "أحمد خالد الخطيب");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithForeignPartySelection_Throws()
     {
         var doc = await CreateApplicantDocAsync();
@@ -286,7 +283,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("لا يتبع أطراف الملف", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAndDelete_BeforeAssignment_ByCreator_Succeed()
     {
         var doc = await CreateApplicantDocAsync();
@@ -303,7 +300,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Null(await _service.GetAsync(created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AfterAssignment_IsBlocked()
     {
         var doc = await CreateApplicantDocAsync();
@@ -317,7 +314,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.UpdateAsync(created.Id, Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_ByHeadOfOtherBranch_Throws()
     {
         var doc = await CreateApplicantDocAsync();
@@ -331,7 +328,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head2.Id, "head2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_CleansHeadAlertAndNotifiesLawyer()
     {
         var doc = await CreateApplicantDocAsync();
@@ -356,7 +353,7 @@ public class DocumentAppealServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
     }
-    [Fact]
+    [PostgresFact]
     public async Task Decide_ByFollower_SetsOutcomeAndNotifiesBaseLawyer()
     {
         var doc = await CreateApplicantDocAsync();
@@ -388,7 +385,7 @@ public class DocumentAppealServiceTests : IDisposable
                 _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Strike_ByFollower_SetsStruckFields()
     {
         var doc = await CreateApplicantDocAsync();
@@ -408,7 +405,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("قرار-شطب-3", struck.StruckOffDecisionNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Decide_WithInvalidOutcomeOrMissingFields_Throws()
     {
         var doc = await CreateApplicantDocAsync();
@@ -430,7 +427,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new DecideAppealRequest("رقم", "1/10/2026", "نص", "قيمة غريبة"), _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_ByAssignedLawyer_ParsesFreeDate()
     {
         var doc = await CreateApplicantDocAsync();
@@ -454,7 +451,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, null, null, null), _lawyer1.Id, "lawyer1"));
     }
-    [Fact]
+    [PostgresFact]
     public async Task Rotation_OldYearNeedsRotation_ThenCurrentYearClearsIt()
     {
         var doc = await CreateApplicantDocAsync();
@@ -519,7 +516,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(history2, h => h.BaseNumber == "900");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_EditsCurrentYearRowInPlace_AndKeepsPreviousYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -556,7 +553,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(1, await _db.AppealBaseNumbers.CountAsync(b => b.AppealId == created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_RejectsFutureYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -575,7 +572,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("سنة مستقبلية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_RejectsMovingCurrentNumberOntoArchivedYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -607,7 +604,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_DoesNotRelabelRotationRowYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -643,7 +640,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(history, h => h.Year == TestClock.Today.Year && h.BaseNumber == "1000");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_EmptyNumberKeepsCurrentIdentity()
     {
         var doc = await CreateApplicantDocAsync();
@@ -670,7 +667,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(updated.NeedsRotation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_LegacyNonNumericYear_IsNotFabricatedToCurrentYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -697,7 +694,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(updated.NeedsRotation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateRegistration_RejectsNumberLongerThanColumn()
     {
         var doc = await CreateApplicantDocAsync();
@@ -716,7 +713,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RejectsFutureBaseYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -735,7 +732,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("سنة مستقبلية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_YearWithoutNumber_IsDropped()
     {
         var doc = await CreateApplicantDocAsync();
@@ -756,7 +753,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Null(created.CurrentBaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CorrectBaseNumber_RejectsFutureUnknownAndEmpty()
     {
         var doc = await CreateApplicantDocAsync();
@@ -779,7 +776,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new CorrectAppealBaseNumberRequest("   "), _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CorrectBaseNumber_RequiresAssignedLawyer()
     {
         var doc = await CreateApplicantDocAsync();
@@ -795,7 +792,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new CorrectAppealBaseNumberRequest("1"), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CorrectBaseNumber_AllowedAfterDecision()
     {
         var doc = await CreateApplicantDocAsync();
@@ -822,7 +819,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("950", Assert.Single(history).BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AppealDto_ToleratesLegacyNonNumericYear()
     {
         var doc = await CreateApplicantDocAsync();
@@ -846,7 +843,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Empty(await _service.GetBaseNumberHistoryAsync(created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AppealDto_CurrentYearRegistrationBeatsOlderRow()
     {
         var doc = await CreateApplicantDocAsync();
@@ -877,7 +874,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.False(dto.NeedsRotation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CorrectBaseNumber_EditsArchivedRowInPlace()
     {
         var doc = await CreateApplicantDocAsync();
@@ -908,7 +905,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(1, await _db.AppealBaseNumbers.CountAsync(b => b.AppealId == created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rotation_PastYearRowNeedsRotation_UntilCurrentYearRowExists()
     {
         // سجل رقم أساس فعلي لسنة سابقة (لا مجرد عمودي القيد) ولا سجل لسنة اليوم
@@ -949,7 +946,7 @@ public class DocumentAppealServiceTests : IDisposable
     private static SaveAppealBaseNumbersRequest SaveAs(string number) =>
         new(new List<AppealBaseNumberEntry> { new(number) });
 
-    [Fact]
+    [PostgresFact]
     public async Task Rotation_RequiresAssigneeAndPending()
     {
         var doc = await CreateApplicantDocAsync();
@@ -992,7 +989,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("لم يبق منظورًا", exStruck.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rotation_WithoutAnyNumber_IsAllowedForAssignee()
     {
         // Request() بلا AppealBaseNumber/AppealYear — المسند المنظور بلا أي رقم يحتاج تدويرًا (R3).
@@ -1016,7 +1013,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.False(after.NeedsRotation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_CrudAndReminders_WorkForAssignedLawyer()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1059,7 +1056,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Empty(await _service.GetActionsAsync(created.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_AppealOnExecutedFile_UsesDocumentLabel()
     {
         var doc = NewDoc(GeneralEntitySideCatalog.Executed);
@@ -1090,7 +1087,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("استئناف قرار رئيس التنفيذ", reminder.AppealTitle);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_SanitizeHtmlOnWrite_StripsDisallowedTags()
     {
         // FR-009: نص الإجراء يُعرض كـ HTML فيُخزَّن معقّمًا خادميًا (القائمة البيضاء المركزية).
@@ -1104,7 +1101,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("نص", action.Text);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_ScriptOnlyText_NeverStoredRaw()
     {
         // نص لا يحمل إلا وسومًا مرفوضة: يُخزَّن بلا أي وسم (أو يُرفض لفراغه بعد التعقيم).
@@ -1135,7 +1132,7 @@ public class DocumentAppealServiceTests : IDisposable
         return created.Id;
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("3/8/2026", "سنة", "أحمر")]
     [InlineData("3/8/2026", "أسبوع", "أخضر")]
     [InlineData("ليس تاريخا", "أسبوع", "أحمر")]
@@ -1150,7 +1147,7 @@ public class DocumentAppealServiceTests : IDisposable
                 _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_SetReminderWithInvalidDuration_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -1163,7 +1160,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new SetAppealReminderRequest("سنة", "أحمر"), _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_SetReminder_InitializesBaseOnce_AndClearNullsFields()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -1195,7 +1192,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("10-11-2026", stored.ActionDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_SetReminder_NonFollower_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -1208,7 +1205,7 @@ public class DocumentAppealServiceTests : IDisposable
                 new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_IncludeAppealActionWithExplicitBaseOnly()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -1228,7 +1225,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.False(reminder.DueDateSuspect);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_InvalidActionType_ThrowsOnAddAndUpdate()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
@@ -1248,7 +1245,7 @@ public class DocumentAppealServiceTests : IDisposable
                 _lawyer2.Id, "lawyer2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Actions_DateRequiredForAction_OptionalForNote()
     {
         // مرآة قاعدة إجراءات الملف: الإجراء بلا تاريخ مرفوض، والملاحظة بلا تاريخ مباحة.
@@ -1275,7 +1272,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("تاريخ الإجراء", exUpdate.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_IndividualAndAll_AreIndependentFromFiles()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1309,7 +1306,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.TransferAllAsync(new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _otherBranch.Id, null, "head2"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SkipsDecidedAndStruckOff()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1339,7 +1336,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(second.Id))!.AssignedLawyerId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithOverlongText_ThrowsFriendlyError()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1354,7 +1351,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountByAssigneeForHead_ScopesToBranch_AndRejectsBranchlessHead()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1385,7 +1382,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(second.Id > 0);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ScopesAndTextMatching_WorkPerRole()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1412,7 +1409,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Single(pendingOnly.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AppealDto_DocumentEffectiveNumber_FollowsFileRotation()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1442,7 +1439,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(TestClock.Today.Year.ToString(), rotated.DocumentEffectiveYear);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AppealDto_CurrentBaseNumber_IgnoresFutureYears()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1537,7 +1534,7 @@ public class DocumentAppealServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Forward_HappyPath_SetsStateAuditsAndRetargetsAlert()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1560,7 +1557,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(_head1.Id, Assert.Single(headAlert.Recipients).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Forward_ByHeadOrLawyer_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1574,7 +1571,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _lawyer1.Id, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Forward_WrongSectionOrAssignedOrDouble_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1593,7 +1590,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Forward_NoDivisionHead_Throws()
     {
         var lonely = new Branch { Name = "بلا رئيس", Code = "NOR" };
@@ -1618,7 +1615,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Recall_ByForwarderAndByHead_RestoresOwned()
     {
         foreach (var byHead in new[] { false, true })
@@ -1638,7 +1635,7 @@ public class DocumentAppealServiceTests : IDisposable
             Assert.Contains("recall_forward", _audit.Actions);
         }
     }
-    [Fact]
+    [PostgresFact]
     public async Task Recall_RestoresSingleAlertForForwarder()
     {
         // التراجع بفرعيه (استرجاع المحيل / إعادة الرئيس) يجب أن يترك تنبيهًا
@@ -1663,7 +1660,7 @@ public class DocumentAppealServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Decide_And_Strike_BumpVersion()
     {
         // كل تحوّل للحالة خارج «منظور» يرفع الرمز لإبطال الكتابات المتزامنة القديمة.
@@ -1688,7 +1685,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(3, (await _service.GetEntityAsync(appeal2.Id))!.Version);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Recall_ByStrangerOrAfterAssign_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1706,7 +1703,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.RecallForwardAsync(appeal.Id, sub.Id, "sub"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_ForwardedAppeal_ByHead_Succeeds_WithException()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1723,7 +1720,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(AppealForwardCatalog.ForwardedToHead, assigned.ForwardState);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_SectionFile_ByHead_WithoutForward_ThrowsOutOfScope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1737,7 +1734,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains("ليست ضمن نطاقك", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_BySubHead_OwnSection_Succeeds_Forwarded_Throws()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1757,7 +1754,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Assign_StaleVersion_Conflict()
     {
         var doc = await CreateApplicantDocAsync();
@@ -1768,7 +1765,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id, 9999), _head1.Id, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_Intersection_ByScope()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1793,7 +1790,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, sectionId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NotifyHeadPending_TargetedToOwnerOnly()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1809,7 +1806,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(sub.Id, Assert.Single(creation.Recipients).UserId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_HeadExcludesSection_IncludesForwardedUntilDecided()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
@@ -1847,7 +1844,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_IncludesForwardedPendingAppeal_ForHead()
     {
         // F2: المحال المنظور المسند يبقى في نطاق القسم للنقل الجملي (قرار §2.22) —
@@ -1869,7 +1866,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(appeal.Id))!.AssignedLawyerId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ExcludesDecidedForwardedAppeal_SubScopeUnchanged()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);

@@ -5,18 +5,15 @@ using DocGenerator.Infrastructure.Persistence;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentContextBuilderTests : IDisposable
+public class DocumentContextBuilderTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly DocumentContextBuilder _builder;
 
     public DocumentContextBuilderTests()
     {
-        _db = TestDb.Create();
         _builder = new DocumentContextBuilder(new DocumentRepository(_db), TestClock.Provider, TestClock.TimeZone);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private async Task<int> AddAsync(Document doc)
     {
@@ -37,7 +34,7 @@ public class DocumentContextBuilderTests : IDisposable
         return doc.Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_BankingContract_SetsBaseAndContainFields()
     {
         var id = await AddAsync(new Document
@@ -96,7 +93,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("<w:b/>", (string)ctx["borrower_address"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_OrdinaryContract_UsesInclusionForContain()
     {
         var id = await AddAsync(new Document
@@ -116,7 +113,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal(string.Empty, ctx["amount_words"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_NoticeTemplate_UsesContainNotice()
     {
         var id = await AddAsync(new Document
@@ -133,7 +130,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("الزامك بدفع مبلغ مليون ليرة", (string)ctx["contain"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_Seizure_SetsPerDebtorVars()
     {
         var id = await AddAsync(new Document
@@ -171,7 +168,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal(string.Empty, ctx["court_with_prefix3"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_Seizure_GappedNumbers_AlignsCourtLinesByNumber()
     {
         // أرقام الكفلاء هوية مستقرة: حذف أوسط (مصرفي) يترك فراغًا (1، 3) —
@@ -224,13 +221,13 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("دائرة تنفيذ دمشق", ctx["court_with_prefix4"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_NotFound_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _builder.BuildContextAsync(999, "001"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_ManyGuarantors_FillsDynamicSlotsBeyondFive()
     {
         // انحدار السقف القديم (1..5): 6 كفلاء يملؤون الخانة السادسة ومقطعها.
@@ -270,7 +267,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("كفيل6", plain);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_CurrentYearBaseNumber_ReplacesFileNumber()
     {
         var id = await AddAsync(new Document
@@ -298,7 +295,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("1500/2026", ctx["file_number_full"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PreviousYearBaseNumber_IsEffective()
     {
         // القاعدة الجديدة «الأحدث هو المعتبر»: رقمُ سنةٍ سابقة (أصغر من أو يساوي سنة قيد الملف)
@@ -331,7 +328,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal(previousYear.ToString(), ctx["file_year"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_NoEligibleBaseNumber_FallsBackToFileNumber()
     {
         // لا رقم أساس مسموح (رقم مستقبلي أعلى من سنة الفحص فقط): يعود رقم الملف وسنته الأصلية —
@@ -361,7 +358,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("520/2026", ctx["file_number_full"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_GuarantorNotice_WithRecipient_UsesGuarantorData()
     {
         var id = await AddAsync(new Document
@@ -400,7 +397,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("الزامك بدفع مبلغ مليون ليرة", (string)ctx["contain"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_GuarantorNotice_InvalidRecipient_Throws()
     {
         var id = await AddAsync(new Document
@@ -415,7 +412,7 @@ public class DocumentContextBuilderTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _builder.BuildContextAsync(id, "003", recipient: 9));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PropertySale_WithoutEstate_Throws()
     {
         var id = await AddAsync(new Document
@@ -443,7 +440,7 @@ public class DocumentContextBuilderTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _builder.BuildContextAsync(id, "005"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PropertySale_WithEstates_SetsPropertyAndOwner()
     {
         var id = await AddAsync(new Document
@@ -479,7 +476,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("مليون ليرة مع توابعه القانونية", ctx["amount_words"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_005_MultipleOwners_JoinsNamesInSelectionOrder()
     {
         var id = await AddAsync(new Document
@@ -519,7 +516,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("حصتك السهمية بالعقار 12 من المنطقة العقارية المزة", ctx["property"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_006_MultipleOwners_JoinsResolvedDebtorNames()
     {
         var id = await AddAsync(new Document
@@ -560,7 +557,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("حصتك السهمية بالعقار 12 من المنطقة العقارية المزة", ctx["property"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PS_MultipleOwners_JoinsDebtorNames()
     {
         var id = await AddAsync(new Document
@@ -595,7 +592,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("المالك الأول و المالك الثاني", ctx["execution_debtor"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PropertySalePaper_WithEstates_SetsDebtor()
     {
         var id = await AddAsync(new Document
@@ -631,7 +628,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("مليون ليرة مع توابعه القانونية", ctx["amount_words"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_NoticePaper_RecipientZero_UsesBorrower()
     {
         var id = await AddAsync(new Document
@@ -656,7 +653,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("الزامك بدفع مبلغ مليون ليرة", (string)ctx["contain"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_NoticePaper_GuarantorRecipient_UsesGuarantor()
     {
         var id = await AddAsync(new Document
@@ -687,7 +684,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("سمير حسن علي", ctx["execution_debtor"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PropertySeizure_SetsFieldsAndStripsAmountPrefix()
     {
         var id = await AddAsync(new Document
@@ -726,7 +723,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("2025-03-15", ctx["estate_seizure_date"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_PropertySeizure_WithoutEstateSeizureDate_RendersFillLine()
     {
         var id = await AddAsync(new Document
@@ -759,7 +756,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("…………………………………………", ctx["estate_seizure_date"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_RepresentedType_UsesYmthaluPhraseForBorrowerAndGuarantor()
     {
         var id = await AddAsync(new Document
@@ -809,7 +806,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("يمثله المحامية فلانة", ctx["guarantor_1_address"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_OrdinaryAddressType_StillUsesUnwanuPhrase()
     {
         var id = await AddAsync(new Document
@@ -833,7 +830,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("المزة", (string)ctx["borrower_address"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_EmptyAddress_ProducesNoPrefixRegardlessOfType()
     {
         var id = await AddAsync(new Document
@@ -894,7 +891,7 @@ public class DocumentContextBuilderTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_001_DeceasedBorrower_UsesHeirsRichItem()
     {
         var id = await AddAsync(DeceasedBorrowerDoc());
@@ -913,7 +910,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("ورثة المتوفى أحمد خالد الخطيب", debtors);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_001_DeceasedBorrower_EmptyHeirAddress_OmitsPhrase()
     {
         var id = await AddAsync(DeceasedBorrowerDoc(heirAddress: "", heirAddressType: "وكيل"));
@@ -926,7 +923,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.DoesNotContain("عنوانه", rich);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_001_DeceasedGuarantor_InRichDebtorsList()
     {
         var id = await AddAsync(new Document
@@ -956,7 +953,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("إضافة لتركة مورثهم (سمير حسن علي)", debtors);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_001_DeceasedGuarantor_AttorneyPhrase_NoDuplicateYmthalu()
     {
         var id = await AddAsync(new Document
@@ -986,7 +983,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.DoesNotContain("يمثله يمثله", debtors);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_003_HeirNotice_UsesHeirLineWithAddress()
     {
         var id = await AddAsync(DeceasedBorrowerDoc());
@@ -1000,7 +997,7 @@ public class DocumentContextBuilderTests : IDisposable
             ctx["execution_debtor_and_its_adress"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_003_HeirNotice_EmptyAddress_OmitsPhrase()
     {
         var id = await AddAsync(DeceasedBorrowerDoc(heirAddress: "", heirAddressType: "وكيل"));
@@ -1042,7 +1039,7 @@ public class DocumentContextBuilderTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_003_HeirNotice_UsesRepresentativeWithAddress()
     {
         var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
@@ -1055,7 +1052,7 @@ public class DocumentContextBuilderTests : IDisposable
             ctx["execution_debtor_and_its_adress"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_007_HeirPaperNotice_MentionsRepresentativeWithoutAddress()
     {
         var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
@@ -1069,7 +1066,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("محمود سامي الحلبي", ctx["recipient_name"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_001_DeceasedBorrower_HeirRepresentativeInRichItem()
     {
         var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
@@ -1082,7 +1079,7 @@ public class DocumentContextBuilderTests : IDisposable
             rich);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_003_GuarantorHeir_ResolvesDeceasedGuarantor()
     {
         var id = await AddAsync(new Document
@@ -1109,7 +1106,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Contains("عنوانه حلب الجديدة", (string)ctx["execution_debtor_and_its_adress"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_003_UnknownHeir_Throws()
     {
         var id = await AddAsync(DeceasedBorrowerDoc());
@@ -1117,7 +1114,7 @@ public class DocumentContextBuilderTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _builder.BuildContextAsync(id, "003", heirId: 999));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_005_Heir_OverridesDebtorLine_WithAddress()
     {
         var id = await AddAsync(new Document
@@ -1157,7 +1154,7 @@ public class DocumentContextBuilderTests : IDisposable
             ctx["execution_debtor_and_its_adress"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_006_Heir_OverridesDebtor_WithoutAddress()
     {
         var id = await AddAsync(new Document
@@ -1195,7 +1192,7 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("محمود الحلبي إضافة لتركة المتوفى (أحمد محمد خالد)", ctx["execution_debtor"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BuildContext_007_HeirPaper_SetsRecipientNameAndNoAddress()
     {
         var id = await AddAsync(DeceasedBorrowerDoc());

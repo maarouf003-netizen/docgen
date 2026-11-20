@@ -14,16 +14,14 @@ namespace DocGenerator.Application.Tests;
 /// تفشل الإظهار قبل الإصلاح (انحراف `datetime2` + `Unspecified`) وتخضر بعده.
 /// بناء نموذج `Postgres` بلا اتصال (سلسلة وهمية — لا خادم).
 /// </summary>
-public class RF013TimestampTests : IDisposable
+public class RF013TimestampTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IPersonalReminderService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
 
     public RF013TimestampTests()
     {
-        _db = TestDb.Create();
         var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         _db.SaveChanges();
         _lawyer = new User
@@ -44,7 +42,6 @@ public class RF013TimestampTests : IDisposable
             _audit);
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static DocGeneratorPostgresDbContext PostgresModel()
     {
@@ -54,7 +51,7 @@ public class RF013TimestampTests : IDisposable
         return new DocGeneratorPostgresDbContext(options);
     }
 
-    [Fact]
+    [PostgresFact]
     public void PostgresModel_MapsReminderDatesToTimestamptz()
     {
         // اليوم: `datetime2` (انحراف INT-011)؛ بعد RF-013: `timestamptz` كالبقية.
@@ -65,14 +62,14 @@ public class RF013TimestampTests : IDisposable
         Assert.Equal("timestamp with time zone", entity.FindProperty(nameof(PersonalReminder.RecurrenceEnd))!.GetColumnType());
     }
 
-    [Fact]
+    [PostgresFact]
     public void ParseDay_ReturnsUtcKind()
     {
         // اليوم: `Unspecified` (مرفوض/مُزاح على `Postgres`)؛ بعد RF-013: `Utc`.
         Assert.Equal(DateTimeKind.Utc, PersonalReminderDates.ParseDay("1/1/2026", "تاريخ الاستحقاق").Kind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReminderDay_RoundTrips_OnNewYearMidnight()
     {
         // توصيف (يخضر قبل/بعد): يوم رأس السنة الحرج يُحفَظ ويُقرأ نفسه على `SQLite`.
@@ -88,7 +85,7 @@ public class RF013TimestampTests : IDisposable
         Assert.Equal("2026-01-01", reread.RecurrenceEnd);
     }
 
-    [Fact]
+    [PostgresFact]
     public void Format_OfParsedDay_IsStable()
     {
         // توصيف (يخضر قبل/بعد): العقد `yyyy-MM-dd` ثابت لا يتأثر بالـ`Kind`.

@@ -11,9 +11,8 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentServiceTests : IDisposable
+public class DocumentServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
@@ -22,7 +21,6 @@ public class DocumentServiceTests : IDisposable
 
     public DocumentServiceTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
         {
@@ -48,7 +46,6 @@ public class DocumentServiceTests : IDisposable
         _status = bundle.Status;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private static int s_sampleSeq;
 
@@ -91,7 +88,7 @@ public class DocumentServiceTests : IDisposable
         ["startReferralDate"] = "2/5/2026",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_FillsDerivedFields()
     {
         var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
@@ -107,7 +104,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("create", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithThirdBankingAndInclusionAmounts_PersistsAndFillsWords()
     {
         // المصرفي يملك حتى ثلاثة مبالغ (Amount/Amount2/Amount3) والعادي كذلك
@@ -142,7 +139,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(loaded.InclusionAmount3Words));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_NewAmountNumericWithoutClientWords_RegeneratesWords()
     {
         // عقد الواجهة: المبالغ رقمًا فقط، والتفقيط مشتق خادميًا. تعديل الرقم مع
@@ -162,7 +159,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("ليرة سورية", words!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_LegacyWordsWithoutNumeric_ArePreservedOnOrdinaryEdit()
     {
         // إرث قديم: مبلغ مكتوب نصًا بلا رقم (كُتب قبل اشتراط المبلغ الرقمي). حفظٌ عادي
@@ -181,7 +178,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("خمسة ملايين ليرة سورية فقط لا غير", updated!.AmountWords);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ClearingPositiveNumeric_ClearsDerivedWords()
     {
         // إفراغ رقمٍ كان موجبًا نية صريحة بإزالة المبلغ: لا يبقى تفقيط مبلغٍ محذوف.
@@ -196,7 +193,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated!.AmountWords);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithoutFileNumber_IsDraft()
     {
         var req = Sample();
@@ -208,13 +205,22 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تحت رفع", doc.DocumentType!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithVeryLongFields_TruncatesSearchTextToMaxLength()
     {
-        // SearchText معرف بحد 1000 (HasMaxLength)؛ PostgreSQL يرفض القيم الأطول فوجب القص.
+        // القيم كلها داخل حدود أعمدتها (`BorrowerName` 100، `Applicant`/`Court` 200):
+        // PostgreSQL يفرض `character varying` بينما SQLite كان يتجاهل الطول. المجموع
+        // (أسماء + عشرة ورثة) يتجاوز 1000 فيُقتطع نص البحث إلى الحد.
         var req = Sample();
-        req.BorrowerName = new string('أ', 800);
-        req.BorrowerFamily = new string('ب', 800);
+        req.BorrowerName = new string('أ', 100);
+        req.BorrowerFamily = new string('ب', 100);
+        req.Court = new string('ب', 200);
+        req.Applicant = new string('ج', 200);
+        for (var i = 0; i < 10; i++)
+        {
+            req.BorrowerHeirs.Add(new HeirDto(
+                null, $"وريث {i}", new string('د', 100), new string('ه', 100), "أصالة", "عنوان", "دمشق"));
+        }
         var created = await _service.CreateAsync(req, userId: 1, actorName: "lawyer1", branchId: 1);
 
         var stored = await _db.Documents.AsNoTracking().FirstAsync(d => d.Id == created.Id);
@@ -225,7 +231,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("ا", stored.SearchText);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_AddingFileNumberAndYear_BecomesMutadawal()
     {
         var req = Sample();
@@ -244,7 +250,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain("تحت رفع", doc.DocumentType!);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RegisteredWithoutRegistrationDate_Throws()
     {
         var req = Sample();
@@ -254,7 +260,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ قيد الملف مطلوب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_RegisteredWithInvalidRegistrationDate_Throws()
     {
         var req = Sample();
@@ -264,7 +270,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("غير صالح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DraftWithoutRegistrationDate_IsAllowed()
     {
         var req = Sample();
@@ -277,7 +283,7 @@ public class DocumentServiceTests : IDisposable
         Assert.True(doc.IsDraft);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_BecomingRegisteredWithoutRegistrationDate_Throws()
     {
         var req = Sample();
@@ -293,7 +299,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ قيد الملف مطلوب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByQuery_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -306,7 +312,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByGuarantorName_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -315,7 +321,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByBorrowerHeirName_FiltersResults()
     {
         var req = Sample();
@@ -330,7 +336,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByGuarantorHeirName_FiltersResults()
     {
         var req = Sample();
@@ -348,7 +354,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByExecutedHeirName_FiltersResults()
     {
         var req = ExecutedSample();
@@ -367,7 +373,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(GeneralEntitySideCatalog.Executed, result.Items[0].GeneralEntitySide);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByExecutedHeirTripleName_FiltersResults()
     {
         var req = ExecutedSample();
@@ -385,7 +391,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_RespectsPagination()
     {
         for (int i = 0; i < 5; i++)
@@ -400,7 +406,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(2, page.Items.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByBinaryDebtorName_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -409,7 +415,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByTripleDebtorName_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -418,7 +424,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByContractNumber_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -427,7 +433,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByCourt_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -436,7 +442,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByApplicantFilter_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -448,7 +454,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByCourtFilter_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -460,7 +466,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByLawyerFilter_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -480,7 +486,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("محامي آخر", result.Items[0].Lawyer);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SetsLawyerFromActorFullName()
     {
         var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
@@ -488,7 +494,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("محامي", doc.Lawyer);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_PreservesLawyer()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -502,7 +508,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("محامي", updated!.Lawyer);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsDistinctApplicantsAndCourts()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -517,7 +523,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("محامي", options.Lawyers);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsExecutedEntities()
     {
         await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -533,7 +539,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("المصرف التجاري", options.ExecutedEntities);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByExecutedEntity_FiltersOnlyPublicEntities()
     {
         await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -550,7 +556,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("المصرف العقاري", doc.ExecutedPublicEntities[0].EntityName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsPublicEntityBranches_FromBothSides()
     {
         // جهة عامة منفذ عليها بطبيعة public في عائلة «منفذ عليه».
@@ -576,7 +582,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain("فرع الشام", options.PublicEntityBranches);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByPublicEntityBranch_FiltersApplicantAndExecutedBranches()
     {
         // ملف عائلة «منفذ عليه» بفرع «فرع المزة».
@@ -605,7 +611,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(GeneralEntitySideCatalog.Applicant, Assert.Single(result2.Items).GeneralEntitySide);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ByPublicEntityBranch_IgnoresLegalNatureBranch()
     {
         // شخص اعتباري (legal) بفرع «فرع الشام» — فرعه لا يُحتسب في فلتر «الفرع».
@@ -620,7 +626,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetFilterOptions_ReturnsFilteredByOtherFilters_NotByOwnFilter()
     {
         // تأكيد أسلوب إكسل: كل قائمة تقيّد بباقي الفلاتر النشطة ما عدا فلتر الحقل نفسه.
@@ -632,7 +638,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("فرع المزة", options.PublicEntityBranches);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Search_ReturnsAdministrativeBranchName()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -642,7 +648,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("دمشق", doc.AdministrativeBranchName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_MovesDocumentToTargetLawyer()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -666,7 +672,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("transfer", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToLawyerInAnotherBranch_Throws()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -684,7 +690,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 2, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToInactiveLawyer_Throws()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -702,7 +708,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 2, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToCurrentOwner_Throws()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -725,7 +731,7 @@ public class DocumentServiceTests : IDisposable
         return _db.Users.Single(u => u.Username == username).Id;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_MovesAllFilesOfSourceToTarget()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -746,7 +752,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(2, _audit.Actions.Count(a => a == "transfer"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ToLawyerInAnotherBranch_Throws()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -764,7 +770,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ToInactiveLawyer_Throws()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -773,7 +779,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SourceInAnotherBranch_Throws()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -783,7 +789,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 2, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SourceIsTarget_Throws()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -791,7 +797,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 1, scopeBranchId: 1, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_NoFiles_ReturnsZero()
     {
         var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
@@ -802,7 +808,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain("transfer", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ExcludesDeletedFiles()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -817,7 +823,7 @@ public class DocumentServiceTests : IDisposable
         Assert.True(doc.IsDeleted);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountFilesByOwner_ReturnsOnlyActiveFiles()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -829,7 +835,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CountFilesByOwner_FromAnotherBranch_Throws()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -837,7 +843,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CountFilesByOwnerAsync(1, scopeBranchId: 2));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ChangesBorrower()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -851,7 +857,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("update", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithBorrowerAndGuarantorHeirs_PersistsBoth()
     {
         var req = Sample();
@@ -882,7 +888,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(3, _db.Heirs.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_IgnoresHeirsWithBlankNames()
     {
         var req = Sample();
@@ -901,7 +907,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, _db.Heirs.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ReplacesHeirsAndNormalizesAddressType()
     {
         var req = Sample();
@@ -924,7 +930,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(2, _db.Heirs.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PersistsMultipleOwnersInSelectionOrder()
     {
         var req = Sample();
@@ -941,7 +947,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new List<string> { "سمير حسن علي", "أحمد خالد الخطيب" }, estate.Owners);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_IgnoresBlankAndDuplicateOwnerNames()
     {
         var req = Sample();
@@ -958,7 +964,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new List<string> { "أحمد العلي", "محمد خالد" }, estate.Owners);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ReplacesOwnersWithNormalizedList()
     {
         var req = Sample();
@@ -978,7 +984,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new List<string> { "المالك الجديد", "المالك المشارك" }, estate.Owners);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithMultipleOwners_ForcesShareTypeToShareOfShares()
     {
         var req = Sample();
@@ -996,7 +1002,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حصة سهمية", estate.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithSingleOwner_KeepsChosenShareType()
     {
         var req = Sample();
@@ -1008,7 +1014,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("تمام العقار", estate.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithSingleOwnerAndExplicitShare_KeepsIt()
     {
         var req = Sample();
@@ -1022,7 +1028,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حصة سهمية", estate.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PersistsEstateCaseNumberAndRightType()
     {
         var req = Sample();
@@ -1040,7 +1046,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حق انتفاع", estate.RightType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DefaultsEstateAndVehicleRightTypeToBareOwnership()
     {
         var estateReq = Sample();
@@ -1066,7 +1072,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(vehicle.CaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DropsUnsupportedAssetCaseNumberAndRightType()
     {
         var req = Sample();
@@ -1090,7 +1096,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(shop.RightType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PersistsVehicleFields()
     {
         var req = Sample();
@@ -1117,7 +1123,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("تمام المركبة", asset.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_PersistsShopFields()
     {
         var req = Sample();
@@ -1145,7 +1151,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("تمام المتجر", asset.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SalaryGuarantee_HasSingleOwnerAndNoShare()
     {
         var req = Sample();
@@ -1171,7 +1177,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(asset.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_UnregisteredShop_HasOwnersAndNoShare()
     {
         var req = Sample();
@@ -1198,7 +1204,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(asset.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ShopWithDashAndArabicDigitDates_ParsesFreeText()
     {
         var req = Sample();
@@ -1220,7 +1226,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("2024-05-10", asset.RegistrationDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_UnregisteredShopWithArabicDigitDate_ParsesFreeText()
     {
         var req = Sample();
@@ -1242,7 +1248,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("2024-02-29", asset.LicenseDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ShopWithInvalidRegistrationDate_Throws()
     {
         var req = Sample();
@@ -1261,7 +1267,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ تسجيل المتجر", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_UnregisteredShopWithInvalidLicenseDate_Throws()
     {
         var req = Sample();
@@ -1280,7 +1286,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ الترخيص", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ShopWithEmptyDates_StoresNull()
     {
         var req = Sample();
@@ -1302,7 +1308,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(asset.RegistrationDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_UnregisteredShopWithEmptyLicenseDate_StoresNull()
     {
         var req = Sample();
@@ -1324,7 +1330,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(asset.LicenseDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_VehicleWithMultipleOwners_ForcesShareOfShares()
     {
         var req = Sample();
@@ -1347,7 +1353,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حصة سهمية", asset.ShareType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithInvalidAssetKind_Throws()
     {
         var req = Sample();
@@ -1365,7 +1371,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Forced_RejectsAssetIdFromAnotherFile()
     {
         var first = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1382,7 +1388,7 @@ public class DocumentServiceTests : IDisposable
                 }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Forced_SellsAuctionableKindsAndExcludesSalaryGuarantee()
     {
         var req = Sample();
@@ -1438,7 +1444,7 @@ public class DocumentServiceTests : IDisposable
                 }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Forced_StoresSoldAssetNamesPerKind()
     {
         var req = Sample();
@@ -1481,7 +1487,7 @@ public class DocumentServiceTests : IDisposable
             .FirstOrDefault(v => v.Contains("بيت")) ?? "");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_SavesFileRegistrationDate()
     {
         var req = Sample();
@@ -1495,7 +1501,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1/8/2026", reloaded!.FileRegistrationDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ChangesFileRegistrationDate()
     {
         var req = Sample();
@@ -1512,7 +1518,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("2/8/2026", reloaded!.FileRegistrationDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ClearingFileRegistrationDateRemovesRow()
     {
         var req = Sample();
@@ -1530,7 +1536,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.DocumentRegistrationDates.Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Settlement_SetsBaraetFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1551,7 +1557,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ForcedPartial_SetsSubStatusAndCollectedAmount()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1575,7 +1581,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated.BaraetNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_InvalidCollectedAmount_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1585,7 +1591,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["collectedAmount"] = "abc" }, "lawyer1"));
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("١٬٠٠٠", 1000d)]
     [InlineData("٥٠٠٫٥٠", 500.50d)]
     public async Task UpdateStatus_ArabicDigitCollectedAmount_Normalized(string raw, double expected)
@@ -1606,7 +1612,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("١/١/٢٠٢٤", updated.BaraetDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_NegativeCollectedAmount_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1616,7 +1622,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["collectedAmount"] = "-100" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_InvalidExecSubStatus_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1626,7 +1632,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["execSubStatus"] = "غير معروف" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Deferred_MissingTarithNumberDate_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1636,7 +1642,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["tarithNumber"] = "5" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Settlement_MissingBaraetNumberDate_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1646,7 +1652,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["baraetNumber"] = "77" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ForcedComplete_SetsCollectedAmountOnly()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1670,7 +1676,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated.BaraetDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_InvalidStatus_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1679,7 +1685,7 @@ public class DocumentServiceTests : IDisposable
             _status.UpdateStatusAsync(doc.Id, "حالة-غير-صالحة", new Dictionary<string, string?>(), "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_ClearsFieldsAndRecordsOccurrence()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1699,7 +1705,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated.BaraetNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_FromDraft_ForbidsForcibleExecution()
     {
         var req = Sample();
@@ -1712,7 +1718,7 @@ public class DocumentServiceTests : IDisposable
                 new Dictionary<string, string?> { ["execSubStatus"] = "منفذ كاملا" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_FromDraft_AllowsDeferred()
     {
         var req = Sample();
@@ -1724,7 +1730,7 @@ public class DocumentServiceTests : IDisposable
             new Dictionary<string, string?> { ["tarithNumber"] = "5", ["tarithDate"] = "1/1/2024" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_FromCirculating_ToStruckOff_SetsDateAndHidesFromSearch()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1788,7 +1794,7 @@ public class DocumentServiceTests : IDisposable
     private static HashSet<int> PageIds(PagedResult<DocumentResponse> page) =>
         page.Items.Select(d => d.Id).ToHashSet();
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_StruckOffPage_MatchesGuarantorHeirAndAppeal()
     {
         // طالبة تنفيذ مشطوبة: الكفيل/الوريث/لقطة الاستئناف — وتكافؤ المجموعات مع القائمة.
@@ -1808,7 +1814,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_StruckOffPage_MatchesExecutedFamilyTables()
     {
         // عائلة «منفذ عليه» المشطوبة: الجهة/الطبيعي/طالب التنفيذ/سلسلة المتوفى/اللقطة.
@@ -1829,7 +1835,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_ExecutedPage_MatchesExecutedFamilyTables()
     {
         // عائلة «منفذ عليه» المنفذة: نفس الجداول الخمسة على صفحة المنفذة + التكافؤ.
@@ -1850,7 +1856,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_ExecutedPage_MatchesApplicantSideBorrowerHeirAndAppeal()
     {
         // طالبة تنفيذ منفذة بالتسوية: المقترض الثلاثي/الوريث/اللقطة على صفحة المنفذة + التكافؤ.
@@ -1870,7 +1876,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_DeletedPage_MatchesAllBranches_AndStaysOutOfMainSearch()
     {
         // المحذوفة: كل الفروع الستة تُرجع الملف المحذوف، والقائمة لا تعيده أبدًا (عزل لا تكافؤ).
@@ -1897,7 +1903,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_MainListWithoutQuery_HidesArchivedDocs()
     {
         // ثبات سلبي: القائمة بلا نص بحث تخفي المنفذة/المشطوبة/المحالة/المحذوفة
@@ -1924,7 +1930,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(deleted.Id, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_ReferredPage_MatchesApplicantSideBranches()
     {
         // المحالة (كتلة مخصصة): الكفيل/الوريث/لقطة الاستئناف على بيانات «طالبة تنفيذ»
@@ -1945,7 +1951,7 @@ public class DocumentServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables()
     {
         // تثبيت التضييق: صف «منفذ عليه» دخيل على ملف محال (لا تُعبَّأ هذه الصفوف
@@ -1970,7 +1976,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(doc.Id, saneIds);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_FromDeferred_RequiresSayerFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -1993,7 +1999,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("8", updated.SayerNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Settlement_StoresThreeCollectedAmounts()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2020,7 +2026,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("يورو", updated.CollectedCurrency3);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_Forcible_RejectsEstateNotOwnedByFile()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2034,7 +2040,7 @@ public class DocumentServiceTests : IDisposable
                 }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusChange_RecordsOccurrenceWithDetails()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2057,7 +2063,7 @@ public class DocumentServiceTests : IDisposable
 
     // ── الإحالة إلى البداية: مسار الدخول «محال الى البداية» ──────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromCirculating_SucceedsAndStoresFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2074,7 +2080,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(loaded.ExecSubStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_OptionalFields_BlankBecomesNull()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2093,7 +2099,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(loaded.StartReferralDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_ArabicDigitsDate_StoredParsed()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2109,7 +2115,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 15), loaded.NoFundsDemandDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromDeferred_ClearsOtherFamilies()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2130,7 +2136,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(loaded.ExecSubStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromPartialForcible_KeepsForceFamilyVisible()
     {
         var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2154,7 +2160,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 5, 1), loaded.NoFundsDemandDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromFullyForcible_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2173,7 +2179,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("الإحالة إلى البداية من «منفذ جبريا» متاحة فقط للملف المنفذ جزئيًا", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_MissingRequiredFields_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2189,7 +2195,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها", exDate.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_InvalidDate_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2204,7 +2210,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها غير صالح", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromDraft_Throws()
     {
         var req = Sample();
@@ -2216,7 +2222,7 @@ public class DocumentServiceTests : IDisposable
             _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromStruckOff_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2227,7 +2233,7 @@ public class DocumentServiceTests : IDisposable
             _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_RecordsOccurrenceWithDetails()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2252,7 +2258,7 @@ public class DocumentServiceTests : IDisposable
 
     // ── الإحالة إلى البداية: مسار العودة (نقطة return-referred-to-start) ────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_FromCirculatingSourceReturnsToCirculating()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2275,7 +2281,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_FromPartialSourceRestoresForceFamily()
     {
         var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2303,7 +2309,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("وعاد منفذًا جزئيًا", details["revertNarration"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_WithRenewal_RecordsBaseNumberAndTwoOccurrences()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2339,7 +2345,7 @@ public class DocumentServiceTests : IDisposable
         Assert.True(details.ContainsKey("renewalYear"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_InvalidRenewalYear_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2354,7 +2360,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("سنة الإعادة غير صالحة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_StruckOffDate_AppliedOnCirculatingResultOnly()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2369,7 +2375,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 5, 5), loaded.StruckOffDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_StruckOffDate_IgnoredOnPartialResult()
     {
         var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2390,7 +2396,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(loaded.StruckOffDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_FromNonReferredState_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2400,7 +2406,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("لا يمكن العودة إلى السير بالملف من الحالة الحالية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_ApplicantSide_ReinstatesWithNumberAndYear()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2421,7 +2427,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(updated.Occurrences, o => o.OccurrenceType == OccurrenceTypeCatalog.Renewal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_SoftDeletesDocument_AndHidesItFromQueries()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2436,7 +2442,7 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(row.DeletedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Delete_ThenRestore_MakesDocumentVisibleAgain()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2453,7 +2459,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(row.DeletedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Restore_NonDeletedOrUnknownDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2461,7 +2467,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(await _service.RestoreAsync(99_999, "head1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchDeleted_ReturnsOnlyDeletedDocuments_WithDeletedAt()
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2476,7 +2482,7 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(result.Items.Single().DeletedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchDeleted_AfterRestore_NoLongerListed()
     {
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2488,7 +2494,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(result.Items, d => d.Id == deleted.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchDeleted_ByQuery_FiltersByName()
     {
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2501,7 +2507,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Empty(noMatch.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchDeleted_WithNoDeletedDocuments_ReturnsEmpty()
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2511,7 +2517,7 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(await _service.GetAsync(active.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetDeleted_ReturnsOnlyDeletedDocuments()
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2527,7 +2533,7 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(dto.DeletedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithoutBorrowerName_Throws()
     {
         var req = Sample();
@@ -2535,7 +2541,7 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_AddsExecutionAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2553,7 +2559,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("action", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_SavesReminderDurationAndColor()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2577,7 +2583,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أحمر", list[0].ReminderColor);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_InvalidReminderDuration_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2594,7 +2600,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_InvalidReminderColor_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2611,7 +2617,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_UnparsableActionDate_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2627,7 +2633,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ الإجراء", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_InvalidActionType_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2643,7 +2649,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_PartialReminderWithoutColor_SavesDurationOnly()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2665,7 +2671,7 @@ public class DocumentServiceTests : IDisposable
     /// تعديل الإجراء (نص/تاريخ) لا يكتب أي حالة تذكير — والتذكير يُعدَّل من مساره المستقل
     /// (`SetReminderAsync`). هذا ما يمنع إعادة اقتران تاريخ الإجراء بقرارات الجدولة.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_KeepsReminder_AndSetReminderChangesIt()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2710,7 +2716,7 @@ public class DocumentServiceTests : IDisposable
     /// إنشاء تذكير على إجراء قائم: الأساس يُهيّأ من تاريخ الإجراء مرة واحدة، وتبقى ثابتة عند
     /// تعديل المدة (I2)، وتُصفَّر الحقول الثلاثة عند الإلغاء (I5) بلا مساس بتاريخ الإجراء.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task SetReminder_InitializesBaseOnce_AndClearNullsAllThree()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2746,7 +2752,7 @@ public class DocumentServiceTests : IDisposable
     /// بيانات قديمة بتاريخ إجراء غير قابل للتحليل: **لا** يُجمَّد احتياط `CreatedAt` في الأساس
     /// (وإلا طُفئ وسم «تاريخ مشتبه» بصمت)، بل يبقى `null` فيُحسب الاستحقاق ديناميكيًا موسومًا.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task SetReminder_LegacyUnparsableActionDate_LeavesBaseNullAndSuspect()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2773,7 +2779,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 8, 4), due);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetReminder_MissingActionOrMismatchedDocument_ThrowsKeyNotFound()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2790,7 +2796,7 @@ public class DocumentServiceTests : IDisposable
                 new SetActionReminderRequest { ReminderDuration = "أسبوع" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_EmptyText_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2800,7 +2806,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetActions_OrdersNewestFirst()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2815,7 +2821,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أول", list[1].Text);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_MissingDocument_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
@@ -2823,7 +2829,7 @@ public class DocumentServiceTests : IDisposable
                 new AddExecutionActionRequest { Text = "إجراء" }, userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddNote_WithoutDate_SetsTodayDate()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2838,7 +2844,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(ServerClock.TodayString(TestClock.Provider, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_WithoutDate_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2849,7 +2855,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AddAction_InvalidType_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2860,7 +2866,7 @@ public class DocumentServiceTests : IDisposable
                 userId: 1, actorName: "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_ChangesTextAndType()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2877,7 +2883,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("action", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_WrongDocument_ThrowsKeyNotFound()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2890,7 +2896,7 @@ public class DocumentServiceTests : IDisposable
                 new UpdateExecutionActionRequest { Type = "note", Text = "x" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_WithoutDate_WhenAction_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2903,7 +2909,7 @@ public class DocumentServiceTests : IDisposable
                 new UpdateExecutionActionRequest { Type = "action", Text = "تحويل إلى إجراء بلا تاريخ" }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteAction_RemovesAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2918,7 +2924,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("action", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DeleteAction_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2930,7 +2936,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(deleted);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClearReminder_ClearsReminderFieldsKeepsAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2956,7 +2962,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("action", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClearReminder_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2968,7 +2974,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(cleared);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClearReminder_MissingAction_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2977,7 +2983,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(cleared);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithInitialActions_SeedsExecutionActions()
     {
         var req = Sample();
@@ -3002,7 +3008,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("action", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithBlankInitialAction_IgnoresIt()
     {
         var req = Sample();
@@ -3016,7 +3022,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Empty(await _actions.GetExecutionActionsAsync(doc.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_WithMaliciousInitialAction_RollsBackWholeSave()
     {
         var req = Sample();
@@ -3032,7 +3038,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.ExecutionActions.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithInitialActionMatchingExisting_SkipsDuplicate()
     {
         var req = Sample();
@@ -3057,7 +3063,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Single(list.Where(a => a.Type == "note" && a.Text == "متابعة لاحقة"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_WithNewInitialAction_AddsPreservingExisting()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -3133,7 +3139,7 @@ public class DocumentServiceTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_ReturnsOnlyEligibleOwnedFiles()
     {
         var active = await CreateDocForRotation(1);
@@ -3162,7 +3168,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(otherOwner.Id, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_ExcludesFilesWithCurrentYearBaseNumber()
     {
         var current = TestClock.Today.Year;
@@ -3242,7 +3248,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حقوق", row.FileType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_PaginatesResultsAcrossPages()
     {
         var doc1 = await CreateDocForRotation(1);
@@ -3270,7 +3276,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Empty(beyond.Items);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetAsync_DisplayFileNumber_ReplacesFileNumberWithCurrentYearBaseNumber()
     {
         var doc = await CreateDocForRotation(1, fileNumber: "520");
@@ -3288,7 +3294,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("520", after.FileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetBaseNumberHistory_ReturnsAllYearsDescending()
     {
         var doc = await CreateDocForRotation(1);
@@ -3308,7 +3314,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("300", history[2].BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetBaseNumberHistory_SameYearRowsOrderedByNewestCreatedAtFirst()
     {
         // السجلات المتعددة لنفس السنة تُعرض كلها، مرتبة بالأحدث CreatedAt أولًا (المعتبر هو الأحدث).
@@ -3328,14 +3334,14 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("900", history[2].BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetBaseNumberHistory_UnknownDocument_ReturnsEmpty()
     {
         var history = await _service.GetBaseNumberHistoryAsync(999999);
         Assert.Empty(history);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_ClampsPagingParameters()
     {
         var doc1 = await CreateDocForRotation(1);
@@ -3351,7 +3357,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(doc1.Id, clamped.Items.Select(i => i.DocumentId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_IncludesTradingExecutedFamilyFilesWithPreviousBase()
     {
         // عائلتا «منفذ عليه» (Executed + Deposit) متداولتان وبها رقم أساس لسنة سابقة → مؤهلتان
@@ -3375,7 +3381,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(row.BorrowerName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetRotationList_ExcludesNonTradingExecutedFamilyFiles()
     {
         // عائلة «منفذ عليه» بحالة «منفذ» أو «مشطوب» → مخفية حتى لو دُوِّرت سابقًا.
@@ -3402,7 +3408,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(neverRotated.Id, ids);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_SecondSaveSameYearAppendsAndNewestWins()
     {
         var doc = await CreateDocForRotation(1);
@@ -3427,7 +3433,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1501", after!.DisplayFileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_EmptyEntryIsNoChange_PreservingAllRows()
     {
         var doc = await CreateDocForRotation(1);
@@ -3447,7 +3453,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("999", rows[0].BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsNonOwnedFile()
     {
         await SeedUser2Async();
@@ -3460,7 +3466,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsExecutedFile()
     {
         var doc = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
@@ -3470,7 +3476,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsExecutedLikeFileWithoutPreviousRotation()
     {
         // عائلة «منفذ عليه» متداولة لكنها لم تُدوَّر قط (لا رقم أساس لسنة سابقة) → غير مؤهلة:
@@ -3482,7 +3488,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsDepositFileWithoutPreviousRotation()
     {
         // عائلة «منفذ عليه» متداولة لكنها لم تُدوَّر قط (لا رقم أساس لسنة سابقة) → غير مؤهلة.
@@ -3493,7 +3499,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_AcceptsTradingExecutedLikeFileWithPreviousBase()
     {
         // عائلة «منفذ عليه» متداولة (لا منفذ ولا مشطوب) وبها رقم أساس لسنة سابقة → مؤهلة.
@@ -3507,7 +3513,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1500", row.BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_AcceptsTradingDepositFileWithPreviousBase()
     {
         var resp = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
@@ -3520,7 +3526,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1500", row.BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsExecutedFamilyFileMarkedExecuted()
     {
         // عائلة «منفذ عليه» بحالة «منفذ» حتى لو دُوِّرت سابقًا → غير مؤهلة.
@@ -3535,7 +3541,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, _db.BaseNumbers.AsNoTracking().Count()); // سجل التدوير القديم محفوظ
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsExecutedFamilyFileStruckOff()
     {
         var resp = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -3549,7 +3555,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Rotation_ExecutedFamilyIgnoresLegacyExecStatus()
     {
         // ملف عائلة «منفذ عليه» ببيانات قديمة تحمل حالة تنفيذ قديمة (منفذ بالتسوية) لكن حالة
@@ -3571,7 +3577,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1500", row.BaseNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsDraftFile()
     {
         var doc = await CreateDocForRotation(1, draft: true);
@@ -3581,7 +3587,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsFileRegisteredInCurrentYear()
     {
         // قاعدة القيد: رقم الملف الأصلي هو نفسه رقم أساس سنة قيده، فالملف المقيد في السنة
@@ -3595,7 +3601,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsDuplicateEntry()
     {
         var doc = await CreateDocForRotation(1);
@@ -3604,7 +3610,7 @@ public class DocumentServiceTests : IDisposable
             _service.SaveBaseNumbersAsync(1,
                 new List<BaseNumberEntry> { new(doc.Id, "1500"), new(doc.Id, "1501") }, "lawyer1"));
     }
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsNullEntry()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -3612,7 +3618,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_RejectsTooLongNumber()
     {
         var doc = await CreateDocForRotation(1);
@@ -3622,7 +3628,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_InvalidEntryRollsBackWholeSave()
     {
         var doc = await CreateDocForRotation(1);
@@ -3636,7 +3642,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveBaseNumbers_BatchesMultipleFilesInOneSave()
     {
         var doc1 = await CreateDocForRotation(1);
@@ -3665,7 +3671,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(3, _audit.Actions.Count(a => a == "rotate"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NeedsRotation_ReflectsRedRule()
     {
         var current = TestClock.Today.Year;
@@ -3703,7 +3709,7 @@ public class DocumentServiceTests : IDisposable
         Assert.True((await _service.GetAsync(doc6.Id))!.NeedsRotation);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NeedsRotation_ExecutedFamilyRedRule()
     {
         // عائلة «منفذ عليه» متداولة بدوران سابق فقط → أحمر.
@@ -3803,7 +3809,7 @@ public class DocumentServiceTests : IDisposable
         },
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_SetsSideAndParties()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -3822,7 +3828,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(doc.ExecutedPaidAmount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WithDeceasedAndHeirs_MapsThem()
     {
         var req = ExecutedSample();
@@ -3849,7 +3855,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("عائلة1", applicant.Heirs[0].HeirFamily);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ExecutedSide_ReplacingDeceased_RemovesOldHeirs()
     {
         var req = ExecutedSample();
@@ -3880,7 +3886,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Empty(storedHeirs);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ExecutedSide_ReplacingNaturalPerson_RemovesOldHeirs()
     {
         var req = ExecutedSample();
@@ -3911,7 +3917,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Empty(storedHeirs);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WithCombinedCapacity_MapsDeceased()
     {
         var req = ExecutedSample();
@@ -3931,7 +3937,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أب المورث", applicant.DeceasedFather);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_ApplicantWithRepresentative_MapsIt()
     {
         var req = ExecutedSample();
@@ -3952,7 +3958,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("المحامي القانوني", applicant.RepresentativeLegalRepresentative);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_NaturalPersonWithRepresentative_MapsIt()
     {
         var req = ExecutedSample();
@@ -3973,7 +3979,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("حلب", person.RepresentativeAddress);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_WithBorrowerRepresentative_MapsIt()
     {
         var req = Sample();
@@ -3994,7 +4000,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("المحامي سامر", doc.BorrowerRepresentativeAddress);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_WithGuarantorRepresentative_MapsIt()
     {
         var req = Sample();
@@ -4017,7 +4023,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("دمشق", guarantor.RepresentativeAddress);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_HeirCapacityAndDomicile_Normalize()
     {
         var req = Sample();
@@ -4033,7 +4039,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("موطن مختار", heir.AddressType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_Representative_IgnoresEmptyTripleName()
     {
         var req = Sample();
@@ -4048,7 +4054,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(doc.BorrowerRepresentativeAddressType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_Representative_NormalizesInvalidValues()
     {
         var req = Sample();
@@ -4063,7 +4069,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("عنوان", doc.BorrowerRepresentativeAddressType);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_RejectsBankingContract()
     {
         var req = ExecutedSample();
@@ -4073,7 +4079,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_RejectsGuarantorsOrEstates()
     {
         var req = ExecutedSample();
@@ -4083,7 +4089,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_RequiresFileNumber()
     {
         var req = ExecutedSample();
@@ -4094,7 +4100,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_DoesNotRequireRegistrationDate()
     {
         // ملف «منفذ عليها» لا يحمل تاريخ قيد (يقيده الخصم)، فالتحقق من تاريخ القيد
@@ -4110,7 +4116,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(doc.IsDraft);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WhenStruckOff_AppliesSubmittedStruckOffDate()
     {
         var req = ExecutedSample();
@@ -4123,7 +4129,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2024, 6, 10), doc.StruckOffDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_WhenStruckOff_RejectsInvalidStruckOffDate()
     {
         var req = ExecutedSample();
@@ -4135,7 +4141,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ الشطب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_AcceptsFreeTextFileReceiptDate()
     {
         // «تاريخ ورود الاخطار» نص حر بصيغ مألوفة (1/5/2024، yyyy-MM-dd) ويُخزَّن زمنيًا.
@@ -4147,7 +4153,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2024, 1, 5), doc.FileReceiptDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_RejectsInvalidFileReceiptDate()
     {
         var req = ExecutedSample();
@@ -4158,7 +4164,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ ورود الاخطار", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_SavesFileReceiptNumber()
     {
         var req = ExecutedSample();
@@ -4169,7 +4175,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("77", doc.FileReceiptNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_DoesNotStoreFileReceiptNumber()
     {
         var req = Sample();
@@ -4180,7 +4186,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(doc.FileReceiptNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ApplicantSide_StillRequiresBorrowerName()
     {
         var req = Sample();
@@ -4190,7 +4196,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_ExecutedSide_DoesNotChangeStoredSide()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4203,7 +4209,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(GeneralEntitySideCatalog.Executed, updated!.GeneralEntitySide);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_SetsStruckOffWithDate()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4217,7 +4223,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("executed-status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_KeepsStruckOffDateButClearsStatus()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4244,7 +4250,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("restore-struck-off", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ReStrikeAfterRestore_RefreshesStruckOffDate()
     {
         // شطب ثم فكّ الشطب (يُبقي تاريخ الشطب السابق للعرض بعد الإعادة) ثم شطب جديد:
@@ -4264,7 +4270,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(2, reStruck.Occurrences.Count(o => o.OccurrenceType == OccurrenceTypeCatalog.StruckOff));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_ExecutedLike_WithMismatchedRenewalYear_Throws()
     {
         // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط: أي سنة
@@ -4277,7 +4283,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("سنة اليوم", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_ExecutedLike_WithoutRenewalYear_StoresCurrentYear()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4295,7 +4301,7 @@ public class DocumentServiceTests : IDisposable
             && b.Year == TestClock.Today.Year && b.BaseNumber == "2026/55");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_TwiceSameYear_AppendsTwoRecordsAndLatestWins()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4324,7 +4330,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(2, occurrences.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_ApplicantSide_WithRenewalDateYearMismatch_Throws()
     {
         // نظام «طالبة تنفيذ»: سنة الإعادة المصرّحة يجب أن تطابق سنة تاريخ التجديد إذا أُرسلا معًا.
@@ -4337,7 +4343,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("سنة الإعادة لا تطابق", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_EditFormReStrike_WithoutDate_RefreshesStruckOffDate()
     {
         // شطبٌ ثم فكّ شطب (تُبقي الخلفية تاريخ الشطب السابق للعرض) ثم شطبٌ جديد من نموذج
@@ -4359,7 +4365,7 @@ public class DocumentServiceTests : IDisposable
             "الشطب الجديد من نموذج التعديل يجب أن يحمل تاريخًا أحدث لا تاريخ الشطب الأول");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_WithoutRenewalFileNumber_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4369,7 +4375,7 @@ public class DocumentServiceTests : IDisposable
             () => _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest(), "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_OnApplicantSideFile_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -4378,7 +4384,7 @@ public class DocumentServiceTests : IDisposable
             () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_WithInvalidStatus_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4387,7 +4393,7 @@ public class DocumentServiceTests : IDisposable
             () => _status.UpdateExecutedStatusAsync(doc.Id, "حالة-غير-صالحة", "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToExecuted_PersistsExecutedFields()
     {
         // حفظ حقول الحالة عند الانتقال إلى «منفذ»: المبلغ وكيفية التنفيذ والوصف تُحفظ
@@ -4410,7 +4416,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("executed-status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToExecuted_PersistsThreePaidAmountsWithCurrencies()
     {
         // المبلغ المدفوع حتى ثلاثة بعملاتها (منهج «كل مبلغ له عملة»): تُحفظ كل خانة بعملتها.
@@ -4438,7 +4444,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("ليرة سورية", updated.ExecutedPaidCurrency3);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToExecuted_KeepsPriorPaidSlotsWhenNotProvided()
     {
         // الإعادة إلى «منفذ» بحقول فارغة تُبقي ما سبق تسجيله: عند تحديث خانة أولى فقط
@@ -4469,7 +4475,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated.ExecutedPaidAmount3);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToExecuted_KeepsPriorFieldsWhenNotProvided()
     {
         // الإعادة إلى «منفذ» بوصف وتاريخ تنفيذ فارغين تُبقي ما سبق تسجيله (مبدأ عدم المساس).
@@ -4496,7 +4502,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 6, 1), updated.ExecutedExecutionDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToExecuted_OnDeposit_PersistsDepositFields()
     {
         // «عرض وايداع» عند الانتقال إلى «منفذ»: يُحفظ المبلغ المودع وتاريخ الإيداع وتُضبط
@@ -4520,7 +4526,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Null(updated.ExecutedDescription);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ToStruckOff_UsesSubmittedDate()
     {
         // عند الدخول إلى «مشطوب» يُحدَّث تاريخ الشطب بتاريخه المُرسَل إن وُجد وإلا للآن.
@@ -4539,7 +4545,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2026, 6, 10), updated.StruckOffDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_FromStruckOffToCirculating_AppliesRenewal()
     {
         // العودة من «مشطوب» إلى متداول تستلزم تجديد الملف برقم ملف جديد لسنة الإعادة.
@@ -4566,7 +4572,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("2026/55", restored.DisplayFileNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_FromStruckOffToCirculating_WithoutRenewalNumber_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4577,7 +4583,7 @@ public class DocumentServiceTests : IDisposable
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_ExecutedSide_FromExecuted_IsTerminal()
     {
         // حالة «منفذ» في صفة «الجهة العامة منفذ عليها» نهائية: لا تُغيَّر إلى متداول ولا إلى مشطوب
@@ -4596,7 +4602,7 @@ public class DocumentServiceTests : IDisposable
             () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_Deposit_FromExecutedToStruckOff_Throws()
     {
         // «عرض وايداع» المنفذ لا يُشطب؛ يمكن إرجاعه إلى متداول بكتاب الجهة العامة بالسير بالملف.
@@ -4612,7 +4618,7 @@ public class DocumentServiceTests : IDisposable
             () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_FromStruckOffToExecuted_Throws()
     {
         // «مشطوب → منفذ» مباشرة عبر النافذة ممنوع في العائلتين: يجب المرور بالتجديد
@@ -4630,7 +4636,7 @@ public class DocumentServiceTests : IDisposable
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_Deposit_FromExecutedToCirculating_RequiresSayerAndKeepsAmount()
     {
         // الإرجاع من «منفذ» إلى «متداول» في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف
@@ -4669,7 +4675,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("executed-status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_ExecutedSide_PersistsThreePaidAmountsWithCurrencies()
     {
         var req = ExecutedSample();
@@ -4692,7 +4698,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("ليرة سورية", loaded.ExecutedPaidCurrency3);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchStruckOff_ReturnsOnlyStruckOffExecutedFiles()
     {
         var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4706,7 +4712,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(struck.Id, result.Items.Single().Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_SetsSideLabelAndDepositStatusFields()
     {
         var req = DepositSample();
@@ -4727,7 +4733,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2024, 1, 5), doc.FileReceiptDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_RejectsInvalidExecutedDepositDate()
     {
         var req = DepositSample();
@@ -4739,7 +4745,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("تاريخ ايداعه حساب الجهة العامة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_RejectsBankingContract()
     {
         var req = DepositSample();
@@ -4749,7 +4755,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_RejectsBorrowerOrGuarantors()
     {
         var req = DepositSample();
@@ -4759,7 +4765,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_RejectsBorrowerHeirs()
     {
         var req = DepositSample();
@@ -4772,7 +4778,7 @@ public class DocumentServiceTests : IDisposable
             () => _service.CreateAsync(req, 1, "lawyer1", 1));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_RequiresFileNumber()
     {
         var req = DepositSample();
@@ -4784,7 +4790,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains("عرض وايداع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_DoesNotRequireRegistrationDate()
     {
         var req = DepositSample();
@@ -4798,7 +4804,7 @@ public class DocumentServiceTests : IDisposable
         Assert.False(doc.IsDraft);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Create_DepositSide_WhenStruckOff_AppliesSubmittedStruckOffDate()
     {
         var req = DepositSample();
@@ -4811,7 +4817,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(new DateTime(2024, 6, 10), doc.StruckOffDate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateExecutedStatus_OnDepositSideFile_Works()
     {
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
@@ -4823,7 +4829,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(ExecutedStatusCatalog.StruckOff, updated!.ExecutedStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_OnDepositSideFile_Works()
     {
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
@@ -4838,7 +4844,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(ExecutedStatusCatalog.None, (await _service.GetAsync(doc.Id))!.ExecutedStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchStruckOff_IncludesStruckOffDepositFiles()
     {
         var struck = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
@@ -4851,7 +4857,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(struck.Id, result.Items.Single().Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_ExcludesStruckOffDepositFiles()
     {
         var struck = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
@@ -4862,7 +4868,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_ExcludesStruckOffFiles()
     {
         var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -4874,7 +4880,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStartPage_ShowsAllReferredIncludingPartialFromForcible()
     {
         // «جميع المحالة» في صفحة «محال الى البداية»: من المتداول ومن «منفذ جبريا» المنفذ
@@ -4903,7 +4909,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(ExecutionStatusCatalog.SubPartiallyExecuted, rows[fromPartial.Id].ExecSubStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_HidesReferredToStart_UnlessTextQuery()
     {
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -4916,7 +4922,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(searched.Items, d => d.Id == referred.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchAsync_WithQuery_ShowsApplicantSideStruckOff()
     {
         var struck = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -4930,7 +4936,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(plain.Items, d => d.Id == struck.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task H3_PartialForcibly_AppearsUnderLawyerCirculatingFilter_NotUnderExecuted()
     {
         // قرار المالك: «منفذ جبريا + منفذ جزئيا» متداول دائمًا — في فلتر «متداول»
@@ -4950,7 +4956,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(executed.Items, d => d.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task H4_LegacyForciblyNullSubstatus_SingleHomedInExecutedPage()
     {
         // صف قديم: جبريا بلا جزئية (ExecSubStatus = NULL) = منفذ كامل بدلالة IsExecuted —
@@ -4969,7 +4975,7 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(general.Items, d => d.Id == created.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStart_ByGuarantorFamilyName_FindsReferred()
     {
         // كفيل العينة «سمير حسن علي»: SearchText يضم الاسم الأول فقط، فيثبت هذا الاختبار
@@ -4984,7 +4990,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(main.Items, d => d.Id == referred.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStart_ByHeirNamePair_FindsReferred()
     {
         // «غريب المقترض» (اسم + عائلة بلا أب) لا يطابق SearchText حرفيًا («غريب عن المقترض»)،
@@ -4998,7 +5004,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(page.Items, d => d.Id == referred.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStart_ByAppealSnapshotName_FindsReferred()
     {
         // لقطة الاستئناف ليست جزءًا من SearchText، فيثبت هذا الاختبار تغطيتها المباشرة
@@ -5020,7 +5026,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(page.Items, d => d.Id == referred.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SearchReferredToStart_NullReferralDate_SortsLast()
     {
         // تاريخ الإحالة اختياري: الغائب يُرتَّب آخرًا حتميًا في كل المزودات (بلا اعتماد
@@ -5042,14 +5048,12 @@ public class DocumentServiceTests : IDisposable
     }
 }
 
-public class AuthServiceTests : IDisposable
+public class AuthServiceTests : PostgresDbTest
 {
-    private readonly DocGeneratorDbContext _db;
     private readonly FakeAuditLogger _audit = new();
 
     public AuthServiceTests()
     {
-        _db = TestDb.Create();
         // الفرع لازم للمحامي (قيد القاعدة CK_Users_BranchRequiredForBranchRoles) —
         // كل تأكيدات هذا الصنف حيادية الفرع (قفل/تدقيق/اختيار فرع).
         var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
@@ -5065,7 +5069,6 @@ public class AuthServiceTests : IDisposable
         _db.SaveChanges();
     }
 
-    public void Dispose() => _db.Dispose();
 
     private AuthService CreateService(int maxFailedAttempts = 5, int lockoutMinutes = 15) => new(
         new UserRepository(_db),
@@ -5080,7 +5083,7 @@ public class AuthServiceTests : IDisposable
             LockoutMinutes = lockoutMinutes,
         }));
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WithValidCredentials_ReturnsUser()
     {
         var result = await CreateService().LoginAsync(new LoginRequest("lawyer1", "123456"));
@@ -5090,7 +5093,7 @@ public class AuthServiceTests : IDisposable
         Assert.Contains("login", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WithWrongPassword_ReturnsInvalidCredentials()
     {
         var result = await CreateService().LoginAsync(new LoginRequest("lawyer1", "bad"));
@@ -5103,7 +5106,7 @@ public class AuthServiceTests : IDisposable
     // (قيد القاعدة يرفض الإدراج)، فانتقلت تغطيتها إلى `AuthServiceBranchGateTests`
     // بمستودع مزيف — للرئيس والمحامي معًا، مع إثبات عدم عدّ الإخفاق.
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_AfterMaxFailedAttempts_LocksAccount()
     {
         var service = CreateService(maxFailedAttempts: 3);
@@ -5126,7 +5129,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(3, user.FailedLoginCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_WhileLockedOut_CorrectPasswordStillReturnsLockedOut()
     {
         var user = _db.Users.First();
@@ -5141,7 +5144,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(2, _db.Users.First().FailedLoginCount);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_AfterLockoutExpires_CorrectPasswordSucceeds()
     {
         var user = _db.Users.First();
@@ -5159,7 +5162,7 @@ public class AuthServiceTests : IDisposable
         Assert.Contains("lockout_released", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_AfterLockoutExpires_WrongPassword_RelocksWithBackoff()
     {
         var user = _db.Users.First();
@@ -5178,7 +5181,7 @@ public class AuthServiceTests : IDisposable
         Assert.NotNull(_db.Users.First().LockoutEndUtc);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_Success_ResetsFailedCount()
     {
         var service = CreateService();
@@ -5194,7 +5197,7 @@ public class AuthServiceTests : IDisposable
         Assert.Null(_db.Users.First().LockoutEndUtc);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_WithCorrectOldPassword_Succeeds()
     {
         var service = CreateService();
@@ -5207,7 +5210,7 @@ public class AuthServiceTests : IDisposable
         Assert.NotNull(login.Response);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_BumpsTokenVersion()
     {
         var service = CreateService();
@@ -5220,7 +5223,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(initial + 1, _db.Users.First().TokenVersion);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ChangePassword_WithShortPassword_Throws()
     {
         var service = CreateService();
@@ -5229,7 +5232,7 @@ public class AuthServiceTests : IDisposable
             service.ChangePasswordAsync(user.Id, "123456", "123"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateNameAcrossBranches_ReturnsBranchSelection()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5251,7 +5254,7 @@ public class AuthServiceTests : IDisposable
         Assert.DoesNotContain("login_failed", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateName_WithBranchId_LogsIntoThatBranch()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5268,7 +5271,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(b2.Id, result.Response!.User.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateName_ZeroBranchId_SelectsNoBranchAccount()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5285,7 +5288,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(noBranch.Id, result.Response!.User.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateName_UnknownBranchId_ReturnsInvalidCredentials()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5304,7 +5307,7 @@ public class AuthServiceTests : IDisposable
         Assert.Contains("login_failed", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateName_WrongPassword_DoesNotRevealPasswordValidityAtSelection()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5326,7 +5329,7 @@ public class AuthServiceTests : IDisposable
         Assert.Contains("login_failed", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Login_DuplicateNameWithInactiveAccount_SkipsBranchSelection()
     {
         var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
@@ -5344,10 +5347,9 @@ public class AuthServiceTests : IDisposable
     }
 }
 
-public class ConsiderDelegationExecutedTests : IDisposable
+public class ConsiderDelegationExecutedTests : PostgresDbTest
 {
     private static int s_considerSeq;
-    private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
@@ -5356,7 +5358,6 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     public ConsiderDelegationExecutedTests()
     {
-        _db = TestDb.Create();
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User { Username = "lawyer1", FullName = "محامي", Role = UserRole.Lawyer, BranchId = 1, PasswordHash = new PasswordHasher().Hash("123456") });
         _db.SaveChanges();
@@ -5375,7 +5376,6 @@ public class ConsiderDelegationExecutedTests : IDisposable
         _status = considerBundle.Status;
     }
 
-    public void Dispose() => _db.Dispose();
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _alerts, _tx);
 
@@ -5436,7 +5436,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_WithExecutedDelegation_MarksFullyAndPersistsTransferFields()
     {
         var source = await SourceInPartialForciblyAsync();
@@ -5463,7 +5463,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("status", _audit.Actions);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_TransferNoticeOptional_PersistsNullWhenAbsent()
     {
         var source = await SourceInPartialForciblyAsync();
@@ -5481,7 +5481,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Null(loaded.ForcibleTransferNoticeNumber);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_WithoutExecutedDelegation_Throws()
     {
         var source = await SourceInPartialForciblyAsync();
@@ -5495,7 +5495,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("لا توجد إنابة منفذة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_FromWrongState_Throws()
     {
         var source = await CreateSourceAsync();
@@ -5510,7 +5510,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("لا يمكن اعتبار الملف منفذًا كاملًا بهذا البيع", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_MissingTransferDate_Throws()
     {
         var source = await SourceInPartialForciblyAsync();
@@ -5522,14 +5522,14 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("تاريخ تحويل بدل المبيع للجهة العامة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_UnknownDocument_ReturnsFalse()
     {
         var ok = await _status.ConsiderExecutedByDelegationAsync(999_999, new Dictionary<string, string?>(), "lawyer1");
         Assert.False(ok);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateSourceAssets_RefreshesPendingDelegationSnapshot_FlagsAdjusted_LeavesExecutedUntouched()
     {
         var doc = await CreateSourceAsync();
@@ -5678,7 +5678,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         ["startReferralDate"] = "2/5/2026",
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToDeferred_InheritsDeferredToPendingTargets()
     {
         var source = await CreateSourceAsync();
@@ -5698,7 +5698,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("1/6/2026", occ.Details);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToDeferred_SkipsDraftStruckOffRecoveredAndFinalTargets()
     {
         var source = await CreateSourceAsync();
@@ -5733,7 +5733,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == final.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToDeferred_ReplacesFamilyFields_WithoutCollectedAmountsOrSoldAssets()
     {
         var source = await CreateSourceAsync();
@@ -5757,7 +5757,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Null(loaded.ExecSubStatus);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToDeferred_AlreadyInheritedTarget_NoDuplicateOccurrence()
     {
         var source = await CreateSourceAsync();
@@ -5774,7 +5774,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToSettlement_RecoversPendingTargets_WithRecoveredOccurrence()
     {
         var source = await CreateSourceAsync();
@@ -5797,7 +5797,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToSettlement_RecoversInheritedDeferredTargets()
     {
         var source = await CreateSourceAsync();
@@ -5813,7 +5813,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("recoveryReason", recovered.Details);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_FromDeferred_ReturnsInheritedTarget_WithRevertOccurrence()
     {
         var source = await CreateSourceAsync();
@@ -5832,7 +5832,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("sayerRegDate", occ.Details);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_AfterSettlement_DoesNotRestoreRecoveredTargets()
     {
         var source = await CreateSourceAsync();
@@ -5846,7 +5846,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToPartialForcibly_HasNoEffectOnTargets()
     {
         var source = await CreateSourceAsync();
@@ -5867,7 +5867,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_RecoversPendingTargets_WithRecoveredOccurrence()
     {
         var source = await SourceInPartialForciblyAsync();
@@ -5896,7 +5896,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── ب2: حارس المناب (E1) — حالة المناب تلحق حالة المنيب ─────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_OnDelegationTarget_RejectsStatusChange()
     {
         var source = await CreateSourceAsync();
@@ -5907,7 +5907,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_OnDelegationTarget_RejectsRevert()
     {
         var source = await CreateSourceAsync();
@@ -5918,7 +5918,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_OnDelegationTarget_ToStruckOff_AllowedByGuardException()
     {
         var source = await CreateSourceAsync();
@@ -5933,7 +5933,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── S1: حارس الشطب (E7) — لا شطب لملف عليه إنابة سارية ───────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToStruckOff_PendingHeadDelegation_Rejected()
     {
         var source = await CreateSourceAsync();
@@ -5952,7 +5952,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToStruckOff_RegisteredDelegation_Rejected()
     {
         var source = await CreateSourceAsync();
@@ -5965,7 +5965,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToStruckOff_OnlyExecutedDelegations_Allowed()
     {
         var source = await CreateSourceAsync();
@@ -5987,7 +5987,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── الإحالة إلى البداية (قرار 9): لا إحالة لملف عليه إنابة سارية ──────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToReferredToStart_PendingHeadDelegation_Rejected()
     {
         var source = await CreateSourceAsync();
@@ -6006,7 +6006,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToReferredToStart_RegisteredDelegation_Rejected()
     {
         var source = await CreateSourceAsync();
@@ -6019,7 +6019,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToReferredToStart_OnDelegatedFile_Throws()
     {
         var source = await CreateSourceAsync();
@@ -6031,7 +6031,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReturnFromReferredToStart_OnDelegatedFile_Throws()
     {
         var source = await CreateSourceAsync();
@@ -6042,7 +6042,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToReferredToStart_OnlyExecutedDelegations_Allowed()
     {
         // إنابة مُتممة (كبيعٍ أدى لجزئيا) ليست سارية — لا تمنع الإحالة حتى من جزئيا.
@@ -6058,7 +6058,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── ب3: حارس فك شطب المناب (E2) — فك الشطب يعيد للدائرة المنيبة ──────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_OnDelegationTarget_Rejected()
     {
         var source = await CreateSourceAsync();
@@ -6072,7 +6072,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة", ex.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RestoreStruckOff_OnRegularStruckOffFile_StillRestores()
     {
         var source = await CreateSourceAsync();
@@ -6089,7 +6089,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── F6/E6: اعتبار الكامل إجراء خاص بالملف المنيب — يرفض المناب دفاعيًا ───────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_OnDelegationTarget_RejectsWithE6()
     {
         // دفاع في العمق للصفوف القديمة/الطلب المباشر (النافذة تخفي الخيار أصلًا).
@@ -6104,7 +6104,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── T6/N7: شطب المنيب مكتوم — لا تنبيه لمناباته ───────────────────────────────────────
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateStatus_ToStruckOff_WithOnlyExecutedDelegations_DoesNotNotify()
     {
         // S1 يسمح بالشطب متى كانت كل الإنابات منفذة؛ وحينها يُكتم تنبيهُ الشطب (N7/T6).
@@ -6121,7 +6121,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── T3 قاصرة على العودة الفعلية: تراجع المنيب من تسوية لا يُنبه «انتهاء حالة التريث» ──
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_AfterSettlement_DoesNotSendReturnedAlert()
     {
         // C1: المسترد نهائي بلا رجوع — التراجع من تسوية لا يُرجع منابًا فلا تنبيه T3 (ضلال).
@@ -6144,7 +6144,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
     // ── ب5: تنبيهات الحالة المخصصة T2-T5 (المنفذ عليه/رقم أساسه/دائرته من وثيقة المناب) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusChange_ToDeferred_NotifiesTarget_WithDeferredFormula()
     {
         var source = await CreateSourceAsync();
@@ -6160,7 +6160,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("يرجى وقف إجراءات الإنابة", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusChange_ToSettlement_NotifiesTarget_WithSettlementFormula()
     {
         var source = await CreateSourceAsync();
@@ -6175,7 +6175,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("تبعًا لاعتبار الملف المنيب منفذًا بالتسوية، وإعادته لمرجعه الأصلي", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task RevertStatus_NotifiesTarget_WithReturnedFormula()
     {
         var source = await CreateSourceAsync();
@@ -6193,7 +6193,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Contains("تبعًا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث", alert.Message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task StatusChange_ToPartiallyExecuted_DoesNotNotifyTargets()
     {
         // N1: «جزئيا» حكمه متداول — بلا تنبيه.
@@ -6215,7 +6215,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.False(await _db.HeadAlerts.AnyAsync(a => a.DelegationId == delegationId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ConsiderExecuted_NotifiesTarget_WithForcibleRecoveryFormula()
     {
         var source = await SourceInPartialForciblyAsync("900");
