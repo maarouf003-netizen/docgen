@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
       # شجرة الاعتماديات المثبتة (jsdom 30 + undici 8) تتطلب Node ≥ 22 وقت التشغيل —
       # التثبيت على 20 يُسقط كل ملفات vitest بخطأ `markAsUncloneable` ( undici/jsdom ).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: SubHead regression guards
@@ -146,7 +146,7 @@ jobs:
         run: node scripts/dependency-audit.mjs --self-test
       - name: Dependency gate (High/Critical)
         run: node scripts/dependency-audit.mjs
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Self-test npm audit guard
