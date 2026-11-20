@@ -224,7 +224,7 @@ public sealed class GlobalExceptionHandlerTests
         var ex = new DbUpdateException(
             "فشل حفظ التغييرات",
             new InvalidOperationException(
-                "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.BranchName'"));
+                "23505: duplicate key value violates unique constraint \"IX_PublicEntities_BranchName\""));
 
         await Handler(new StubDbErrors(unique: true)).TryHandleAsync(
             context, ex, CancellationToken.None);
@@ -233,8 +233,8 @@ public sealed class GlobalExceptionHandlerTests
         var message = JsonDocument.Parse(await ReadBodyAsync(context))
             .RootElement.GetProperty("message").GetString();
         Assert.Equal("تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا", message);
-        Assert.DoesNotContain("UNIQUE", message);
-        Assert.DoesNotContain("SQLite", message);
+        Assert.DoesNotContain("unique constraint", message);
+        Assert.DoesNotContain("IX_PublicEntities", message);
     }
 
     [Fact]
@@ -272,13 +272,13 @@ public sealed class GlobalExceptionHandlerTests
     }
 
     [Fact]
-    public async Task SqliteUniqueViolation_WithRealClassifier_MapsTo409()
+    public async Task PostgresUniqueViolation_WithRealClassifier_MapsTo409()
     {
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
         var ex = new DbUpdateException(
             "فشل حفظ",
-            new Microsoft.Data.Sqlite.SqliteException("UNIQUE constraint failed", 19, 2067));
+            new Npgsql.PostgresException("provider error", "ERROR", "ERROR", "23505", constraintName: "IX_X"));
 
         await Handler(new DbExceptionClassifier()).TryHandleAsync(
             context, ex, CancellationToken.None);
@@ -287,14 +287,14 @@ public sealed class GlobalExceptionHandlerTests
     }
 
     [Fact]
-    public async Task SqliteForeignKeyViolation_WithRealClassifier_Stays500()
+    public async Task PostgresForeignKeyViolation_WithRealClassifier_Stays500()
     {
-        // H-1: الرمز الأساسي 19 عام — خرق المفتاح الأجنبي ليس تفردًا.
+        // خرق المفتاح الأجنبي ليس تفردًا — يبقى 500 ولا يُحوَّل إلى 409 مضللة.
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
         var ex = new DbUpdateException(
             "فشل حفظ",
-            new Microsoft.Data.Sqlite.SqliteException("FOREIGN KEY constraint failed", 19, 787));
+            new Npgsql.PostgresException("provider error", "ERROR", "ERROR", "23503", constraintName: "FK_X"));
 
         await Handler(new DbExceptionClassifier()).TryHandleAsync(
             context, ex, CancellationToken.None);

@@ -451,7 +451,7 @@ public class ForumServiceTests : PostgresDbTest
             }
             finally
             {
-                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                pg.Dispose();
             }
 
             static ForumMessage Pinned(User a) => new()

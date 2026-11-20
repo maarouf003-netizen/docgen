@@ -202,7 +202,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     /// رسالة فعلية من غلاف فشل الحفظ: غلاف <c>DbUpdateException</c> يردّ نصًا عامًا
     /// («An error occurred while saving the entity changes...») بلا فائدة تشخيصية، بينما
     /// يحمل الجذر الداخلي القيد المخالَف أو سبب SQL الحقيقي (مثل
-    /// <c>SQLite Error 19: UNIQUE constraint failed: ...</c>)، فيُمشى نحو أعمق استثناء
+    /// <c>23505: duplicate key value violates unique constraint "IX_…"</c>)، فيُمشى نحو أعمق استثناء
     /// داخلي. تُستخدم في بيئة التطوير فقط لتشخيص فوري دون كشف أي تفاصيل في الإنتاج،
     /// وتمرّ بالسياسة نفسها (<see cref="LogSanitizer.SanitizeForResponse"/>) قبل الرد.
     /// </summary>

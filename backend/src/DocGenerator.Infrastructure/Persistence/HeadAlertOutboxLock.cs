@@ -8,20 +8,17 @@ namespace DocGenerator.Infrastructure.Persistence;
 /// <summary>
 /// قفل «نسخة واحدة» لمشغّل صندوق الصادر (الخطة §0.1-15 و§16.1).
 ///
-/// <list type="bullet">
-/// <item>على <c>PostgreSQL</c>: قفل استشاري جلسي (<c>pg_try_advisory_lock</c>) على اتصال
-/// مخصص — يمنع معالجة الصف نفسه من نسختين.</item>
-/// <item>على <c>SQLite</c>: قفل على مستوى العملية (<c>SemaphoreSlim</c>) — ولا يحمي
-/// نسخًا على مضيفين مختلفين.</item>
-/// </list>
+/// <para>قفل استشاري جلسي (<c>pg_try_advisory_lock</c>) على اتصال مخصص — يمنع معالجة
+/// الصف نفسه من نسختين، داخل العملية وخارجها. بعد <c>P1-08</c> لا يوجد مزوّد آخر،
+/// فلم يبقَ فرع قفل محلي بديل.</para>
 ///
 /// **قيد النسخة الواحدة تشغيلي:** النشر متعدد النسخ يتطلب <c>PostgreSQL</c> + هذا القفل
 /// الاستشاري (موثَّق في <c>RUN_GUIDE.md</c>).
 /// </summary>
 public sealed class HeadAlertOutboxLock : IDisposable
 {
+    // يمنع إعادة الدخول داخل العملية نفسها قبل الوصول إلى الخادم.
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private readonly bool _usePostgres;
     private readonly string _connectionString;
     private readonly ILogger<HeadAlertOutboxLock> _logger;
     private DbConnection? _advisoryConnection;
@@ -29,11 +26,9 @@ public sealed class HeadAlertOutboxLock : IDisposable
 
     public HeadAlertOutboxLock(
         string connectionString,
-        bool usePostgres,
         ILogger<HeadAlertOutboxLock> logger)
     {
         _connectionString = connectionString;
-        _usePostgres = usePostgres;
         _logger = logger;
     }
 
@@ -51,7 +46,7 @@ public sealed class HeadAlertOutboxLock : IDisposable
 
         try
         {
-            if (_usePostgres && !await TryAcquireAdvisoryLockAsync(ct).ConfigureAwait(false))
+            if (!await TryAcquireAdvisoryLockAsync(ct).ConfigureAwait(false))
             {
                 _semaphore.Release();
                 return false;
@@ -76,7 +71,7 @@ public sealed class HeadAlertOutboxLock : IDisposable
 
         _held = false;
 
-        if (_usePostgres && _advisoryConnection is not null)
+        if (_advisoryConnection is not null)
         {
             try
             {

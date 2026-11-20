@@ -57,6 +57,12 @@ dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj -
 node scripts/test-report.mjs backend/tests/DocGenerator.Application.Tests/TestResults/app-postgres.trx
 ```
 
+```bash
+# أو: مصفوفة الخلفية المتوازية (Application + Api معًا) — يُفضَّل WSL2/Linux
+# لتجنّب حد الذاكرة المشتركة على Windows. تفترض قاعدة مطابقة لـ CI أعلاه.
+bash scripts/test-backend-local.sh
+```
+
 
 ```bash
 cd frontend

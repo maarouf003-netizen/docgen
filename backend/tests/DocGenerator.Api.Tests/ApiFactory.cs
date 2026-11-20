@@ -41,9 +41,8 @@ public class ApiFactory : WebApplicationFactory<Program>
     private readonly string _logDir = Path.Combine(
         Path.GetTempPath(), $"docgen_it_logs_{Guid.NewGuid():N}");
 
-    private string? _baseConnectionString;
     private string? _connectionString;
-    private string? _databaseName;
+    private PostgresTestDb? _database;
 
     /// <summary>
     /// يبني المضيف (الترحيلات + البذر) فورًا على خيط بلا <see cref="SynchronizationContext"/>،
@@ -156,15 +155,11 @@ public class ApiFactory : WebApplicationFactory<Program>
             return;
         }
 
-        _baseConnectionString = PostgresTestEnvironment.RequireOrSkip()
-            ?? throw new InvalidOperationException(
-                $"ApiFactory يتطلب {PostgresTestEnvironment.ConnectionStringVariable} "
-                + "لقاعدة اختبار حيّة — لا تُشغَّل هذه المجموعة على SQLite.");
-
-        _databaseName = "docgen_it_" + Guid.NewGuid().ToString("N")[..12];
-        _connectionString = PostgresTestDatabase
-            .CreateAsync(_baseConnectionString, _databaseName)
-            .GetAwaiter().GetResult();
+        // قالب مهاجَر مرة واحدة لكل تشغيل ثم استنساخ (~1s) بدل تشغيل الهجرات (5–8s)
+        // في كل مصنع. مسار الهجرات الكامل يبقى مغطّى في DatabaseInitializerTests
+        // وPostgresBaselineTests، فلا يُستبدل التحقق.
+        _database = PostgresTestDb.CreateMigrated();
+        _connectionString = _database.ConnectionString;
 
         builder.UseSetting("ConnectionStrings:DefaultConnection", _connectionString);
         // الهجرات الحقيقية مقصودة: هذا المسار يختبر مخطط الإنتاج لا EnsureCreated.
@@ -233,21 +228,24 @@ public class ApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (!disposing || _databaseName is null || _baseConnectionString is null)
+        // مجلد السجل يُنظَّف دائمًا (حتى لو لم تُنشأ قاعدة أو غابت سلسلة Postgres).
+        if (disposing)
+        {
+            try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
+        }
+
+        if (!disposing || _database is null)
             return;
 
         try
         {
-            PostgresTestDatabase.DropAsync(_baseConnectionString, _databaseName)
-                .GetAwaiter().GetResult();
+            // متزامن عن قصد: هذا المسار داخل `Dispose` على خيط xUnit، و`await` هنا
+            // يعود إلى سياق محجوب فيُجمِد الجولة (‏`docs/audit/80-…` §3).
+            _database.Dispose();
         }
         catch
         {
             // لا تُفشل جولة الاختبار بسبب تنظيف قاعدة مؤقتة.
-        }
-        finally
-        {
-            try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
         }
     }
 

@@ -297,7 +297,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             }
             finally
             {
-                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                pg.Dispose();
             }
         }
     }

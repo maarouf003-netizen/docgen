@@ -44,8 +44,9 @@ public static class PostgresTestDatabase
         {
             Pooling = pooling,
             // حجم محدود وعمر خمول قصير: أعداد الاتصالات تبقى أقل بكثير من `max_connections`
-            // مع عشرات قواعد الأصناف، وتبقى دافئة بين حالات الصنف المتلاحقة.
-            MaxPoolSize = pooling ? 4 : 1,
+            // مع عشرات قواعد الأصناف (72 قاعدة في Application وحدها). 2 يكفي لأن حالات
+            // الصنف تسلسلية، ويترك هامشًا لتشغيل المشروعين معًا على قاعدة محلية.
+            MaxPoolSize = pooling ? 2 : 1,
             ConnectionIdleLifetime = pooling ? 15 : 0,
         };
         var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" };

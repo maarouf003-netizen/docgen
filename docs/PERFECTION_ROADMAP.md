@@ -372,7 +372,7 @@
 
 #### `P1-08` — إزالة `SQLite` من الاختبارات
 
-- **الحالة (2026-11-20):** **جزئيًا — `8a/1`–`8a/5` منفذة؛ المتبقي `8b+8c` (مدموجة بقرار نطاق).**
+- **الحالة (2026-11-20):** **مكتملة — `8a/1`–`8a/5` و`8b+8c` منفذة؛ لا مسار `SQLite` في `src`/`tests`.**
   - القرار: [ADR-0009](adr/0009-postgres-only-tests.md) — قاعدة اختبار واحدة
     (`PostgreSQL`)، بلا `EF InMemory`، والخطة المرحلية في
     [`P1-08-SQLITE-REMOVAL-PLAN.md`](P1-08-SQLITE-REMOVAL-PLAN.md).
@@ -408,11 +408,15 @@
   - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
     `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
     أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.
-  - **المتبقي:** `8b+8c` مدموجة (‏`ApiFactory` على `Postgres` فقط + مجموعاته + مصانع
-    المضيف، ثم حذف حزم `SQLite` والأقفال و`CI`). بروتوكول تنفيذ اقتصادي معتمد
-    (2026-11-20): تكرار محلي مرشَّح + مصفوفة كاملة واحدة، وبيئة قاعدة مطابقة لـ`CI`،
-    وأتمتة أرقام `trx`، و`P3-01` بالتوازي لعدم مسّه كود الإنتاج
-    (`docs/P1-08-SQLITE-REMOVAL-PLAN.md` §5). معايير القبول لم تتغير.
+  - **`8b+8c`:** `ApiFactory` صار `Postgres` فقط (قاعدة فريدة + هجرات + `Respawn`)،
+    و37 ملف اختبار API مُبوَّب بـ`[PostgresFact]`, ومصانع المضيف السبعة على قاعدة
+    `Postgres` مهاجَرة، وحُذف `TestDatabase`/`EnsureCreatedDatabaseInitializer` وحزم
+    `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3`، وصار
+    `DbExceptionClassifier` على `Postgres` وحده. أُعيدت موازنة اعتماديات EF صراحةً
+    (‏`Microsoft.EntityFrameworkCore`/`.Relational` 10.0.10) بعد سقوط الحزمة التي كانت
+    ترفعها، وأُعيد تنظيم `CI`: `backend` = بناء/تنسيق/معمارية، و`backend-postgres` =
+    كل اختبارات القاعدة على `Postgres`. (`docs/audit/80-p1-08bc-api-postgres-sqlite-removal-20261120.md`).
+  - **المتبقي:** لا شيء في `P1-08`؛ التالي في الخريطة `P3-01` ثم `P3-02`.
 - **العمل:** بعد `P1-01`، حذف `Microsoft.EntityFrameworkCore.Sqlite`، `TestDb`، وكل `UseSqlite` من الاختبارات.
 - **DoD:** لا مرجع لـSQLite في `src` أو `tests`.
 

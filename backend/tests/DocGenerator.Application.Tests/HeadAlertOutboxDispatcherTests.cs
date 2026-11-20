@@ -105,7 +105,7 @@ public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
     private HeadAlertOutboxDispatcher CreateDispatcher(IServiceProvider provider) => new(
         provider.GetRequiredService<IServiceScopeFactory>(),
         Options.Create(new HeadAlertOutboxOptions { Enabled = true, MaxAttempts = 3 }),
-        new HeadAlertOutboxLock(_pg.ConnectionString, usePostgres: true, NullLogger<HeadAlertOutboxLock>.Instance),
+        new HeadAlertOutboxLock(_pg.ConnectionString, NullLogger<HeadAlertOutboxLock>.Instance),
         new DbExceptionClassifier(),
         NullLogger<HeadAlertOutboxDispatcher>.Instance);
 

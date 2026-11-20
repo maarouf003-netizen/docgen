@@ -8,7 +8,7 @@ namespace DocGenerator.Api.Tests;
 
 public class SwaggerIntegrationTests
 {
-    [Fact]
+    [PostgresFact]
     public async Task Swagger_DisabledOutsideDevelopment_ReturnsNotFound()
     {
         using var factory = new SwaggerDisabledFactory();
@@ -25,32 +25,25 @@ public class SwaggerIntegrationTests
 /// </summary>
 public sealed class SwaggerDisabledFactory : WebApplicationFactory<Program>
 {
-    private readonly string _dbPath = Path.Combine(
-        Path.GetTempPath(), $"docgen_swag_{Guid.NewGuid():N}.db");
+    private readonly PostgresHostDatabase _db = PostgresHostDatabase.Create();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");
-        // ADR-0001: لا مسار SQLite إنتاجي — سلسلة Postgres شكلية للحارس، والسياق اختباري.
+        // قاعدة Postgres معزولة مهاجَرة مسبقًا: لا مسار SQLite ولا EnsureCreated.
         builder.UseSecureProductionDefaults();
-        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
-        // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
-        // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+        builder.UseSetting("ConnectionStrings:DefaultConnection", _db.ConnectionString);
         builder.UseSetting("Database:AutoMigrate", "false");
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("Bootstrap:AdminPassword", "test-bootstrap-password");
-        builder.ConfigureTestServices(services =>
-            TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
     }
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        foreach (var suffix in new[] { "", "-shm", "-wal" })
-        {
-            try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-        }
+        if (disposing)
+            _db.Dispose();
     }
 }

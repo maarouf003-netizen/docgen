@@ -918,7 +918,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
             }
             finally
             {
-                pg.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                pg.Dispose();
             }
         }
     }

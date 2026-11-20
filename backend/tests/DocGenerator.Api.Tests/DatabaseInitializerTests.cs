@@ -10,38 +10,33 @@ using Microsoft.Extensions.Options;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// تهيئة قاعدة التطوير/الإنتاج بعد P0-02: لا هجرات SQLite، والمخطط يُبنى من النموذج
-/// في الاختبارات (<c>EnsureCreated</c>) بينما الإنتاج يستخدم Baseline PostgreSQL واحدًا.
-/// اختبارات الهجرات التاريخية أُزيلت مع الهجرات نفسها؛ ومسار Postgres الحقيقي مغطّى
-/// في <see cref="PostgresBaselineTests"/> عند تعريف <c>DOCGEN_TEST_POSTGRES</c>.
+/// تهيئة قاعدة التطوير/الإنتاج على <c>PostgreSQL</c> فقط (‏`ADR-0001`): المخطط يُبنى
+/// بهجرات EF الحقيقية، والإنتاج لا يرحّل تلقائيًا، والبذر يتبع البيئة. لا مسار
+/// <c>EnsureCreated</c>/<c>SQLite</c> بعد `P1-08`؛ ومسار Baseline مغطّى أيضًا في
+/// <see cref="PostgresBaselineTests"/>.
 /// </summary>
 public class DatabaseInitializerTests
 {
-    private static (string Path, DocGeneratorDbContext Db, IDatabaseInitializer Initializer) CreateInitializer(
-        bool autoMigrate = false)
+    /// <summary>
+    /// قاعدة معزولة لكل حالة: مهاجَرة مسبقًا حين يكون `autoMigrate=false` (كي يقيس
+    /// الاختبار ما بعد الترحيل)، وفارغة حين يريد الاختبار أن يرحّل المهيّئ بنفسه.
+    /// </summary>
+    private static (PostgresHostDatabase Host, DocGeneratorPostgresDbContext Db, IDatabaseInitializer Initializer)
+        CreateInitializer(bool autoMigrate = false)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"docgen_init_{Guid.NewGuid():N}.db");
-        var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-            .UseSqlite($"Data Source={path}")
+        var host = PostgresHostDatabase.Create(migrate: !autoMigrate);
+        var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
+            .UseNpgsql(host.ConnectionString, npgsql => npgsql.CommandTimeout(180))
             .Options;
-        var db = new DocGeneratorDbContext(options);
-        db.Database.EnsureCreated();
+        var db = new DocGeneratorPostgresDbContext(options);
         var databaseOptions = Options.Create(new DatabaseOptions { AutoMigrate = autoMigrate });
-        return (path, db, new DatabaseInitializer(db, new FastTestPasswordHasher(), databaseOptions));
+        return (host, db, new DatabaseInitializer(db, new FastTestPasswordHasher(), databaseOptions));
     }
 
-    private static void Cleanup(string path)
-    {
-        foreach (var suffix in new[] { "", "-shm", "-wal" })
-        {
-            try { File.Delete(path + suffix); } catch { /* ignore */ }
-        }
-    }
-
-    [Fact]
+    [PostgresFact]
     public async Task InitializeAsync_Development_SeedsBranchesAndUsers()
     {
-        var (path, db, initializer) = CreateInitializer();
+        var (host, db, initializer) = CreateInitializer();
         try
         {
             await initializer.InitializeAsync(development: true, bootstrapAdminPassword: null);
@@ -54,14 +49,34 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 
-    [Fact]
+    [PostgresFact]
+    public async Task InitializeAsync_AutoMigrateEnabled_OnEmptyDatabase_MigratesAndProceeds()
+    {
+        var (host, db, initializer) = CreateInitializer(autoMigrate: true);
+        try
+        {
+            await initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123");
+
+            Assert.Equal(1, await db.Users.CountAsync());
+            Assert.Contains(
+                db.Database.GetAppliedMigrations(),
+                migration => migration.EndsWith("InitialPostgresBaseline", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            host.Dispose();
+        }
+    }
+
+    [PostgresFact]
     public async Task InitializeAsync_AutoMigrateDisabled_WithUpToDateSchema_Proceeds()
     {
-        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        var (host, db, initializer) = CreateInitializer(autoMigrate: false);
         try
         {
             await initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123");
@@ -71,14 +86,14 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InitializeAsync_Production_WithAdminPassword_CreatesOnlyAdmin()
     {
-        var (path, db, initializer) = CreateInitializer();
+        var (host, db, initializer) = CreateInitializer();
         try
         {
             await initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123");
@@ -90,14 +105,14 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InitializeAsync_Production_WithoutAdminPassword_Throws()
     {
-        var (path, db, initializer) = CreateInitializer();
+        var (host, db, initializer) = CreateInitializer();
         try
         {
             await Assert.ThrowsAsync<InvalidOperationException>(
@@ -106,16 +121,24 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 
-    [Fact]
+    /// <summary>
+    /// حارس R9 دفاعٌ عن قواعد **قديمة** سبقت قيد القاعدة: نُسقط القيد في قاعدة الاختبار
+    /// (بعد الهجرة) لنصنع الحالة التاريخية، ثم يتصدى الحارس لها بالإقلاع. في المخطط
+    /// الحديث يمنع القيد كتابة الصف أصلًا — ولهذا يلزم إسقاطه صراحةً هنا.
+    /// </summary>
+    [PostgresFact]
     public async Task InitializeAsync_Production_RejectsNumberedDocumentWithoutCircuit_R9()
     {
-        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        var (host, db, initializer) = CreateInitializer(autoMigrate: false);
         try
         {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Documents\" DROP CONSTRAINT \"CK_Documents_FileNumberRequiresCircuit\"");
+
             var branch = new Branch { Name = "دمشق", Code = "DAM" };
             db.Branches.Add(branch);
             await db.SaveChangesAsync();
@@ -148,14 +171,14 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InitializeAsync_Production_WhenUsersExist_SkipsSeeding()
     {
-        var (path, db, initializer) = CreateInitializer();
+        var (host, db, initializer) = CreateInitializer();
         try
         {
             db.Users.Add(new User
@@ -177,7 +200,7 @@ public class DatabaseInitializerTests
         finally
         {
             await db.DisposeAsync();
-            Cleanup(path);
+            host.Dispose();
         }
     }
 }

@@ -7,57 +7,30 @@ using Microsoft.EntityFrameworkCore;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// اختبارات حتمية لمصنّف أخطاء القيد (B3): رموز المزوّدين المصطنعة (SQLite/Postgres)
-/// تُصنَّف كما هي، وغيرها سالبًا. تعارض التفرّد الحقيقي من قاعدة حيّة مغطى في
-/// <see cref="DbExceptionClassifierDatabaseTests"/>.
+/// اختبارات حتمية لمصنّف أخطاء القيد (B3) على `PostgreSQL` وحده (‏`ADR-0001`):
+/// رموز المزوّد المصطنعة تُصنَّف كما هي، وغيرها سالبًا. تعارض التفرّد/التزامن الحقيقي
+/// من قاعدة حيّة مغطى في <see cref="DbExceptionClassifierDatabaseTests"/>.
 /// </summary>
 public class DbExceptionClassifierTests
 {
     private readonly IDbExceptionClassifier _classifier = new DbExceptionClassifier();
 
+    private static Npgsql.PostgresException Postgres(string sqlState, string? constraintName = null) =>
+        new("provider error", "ERROR", "ERROR", sqlState, constraintName: constraintName);
+
     [Fact]
-    public void IsUniqueViolation_NonUniqueDbError_False()
+    public void IsUniqueViolation_PostgresUnique_True()
     {
-        var ex = new DbUpdateException("فشل حفظ", new InvalidOperationException("سبب داخلي غير فريد"));
-        Assert.False(_classifier.IsUniqueViolation(ex));
-    }
-
-    [Theory]
-    [InlineData(2067)] // SQLITE_CONSTRAINT_UNIQUE
-    [InlineData(1555)] // SQLITE_CONSTRAINT_PRIMARYKEY
-    [InlineData(2579)] // SQLITE_CONSTRAINT_ROWID
-    public void IsUniqueViolation_UniqueExtendedConstraintCodes_True(int extendedCode)
-    {
-        var ex = new DbUpdateException(
-            "فشل حفظ",
-            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19, extendedCode));
-
+        var ex = new DbUpdateException("فشل حفظ", Postgres("23505", "IX_Users_Username"));
         Assert.True(_classifier.IsUniqueViolation(ex));
     }
 
-    [Theory]
-    [InlineData(787)]  // SQLITE_CONSTRAINT_FOREIGNKEY
-    [InlineData(1299)] // SQLITE_CONSTRAINT_NOTNULL
-    [InlineData(275)]  // SQLITE_CONSTRAINT_CHECK
-    public void IsUniqueViolation_NonUniqueExtendedConstraintCodes_False(int extendedCode)
-    {
-        // الرمز الأساسي 19 عام؛ لا يجوز أن يُصنَّف خرق FK/NOT NULL/CHECK تفردًا
-        // وإلا تحوّل عطل بيانات حقيقي إلى 409 «قيمة مكررة» في المعالج العام.
-        var ex = new DbUpdateException(
-            "فشل حفظ",
-            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19, extendedCode));
-
-        Assert.False(_classifier.IsUniqueViolation(ex));
-    }
-
     [Fact]
-    public void IsUniqueViolation_GenericPrimaryCodeWithoutExtendedCode_False()
+    public void IsUniqueViolation_NonUniqueDbError_False()
     {
-        // غياب الرمز الموسّع (مزود قديم/غلاف فقد الامتداد) يبقى 500 لا 409 — fail-safe.
-        var ex = new DbUpdateException(
-            "فشل حفظ",
-            new Microsoft.Data.Sqlite.SqliteException("UNIQUE constraint failed: X", 19, 0));
-
+        // خرق FK/NOT NULL/CHECK لا يُصنَّف تفردًا وإلا تحوّل عطل بيانات حقيقي إلى
+        // 409 «قيمة مكررة» في المعالج العام.
+        var ex = new DbUpdateException("فشل حفظ", Postgres("23503"));
         Assert.False(_classifier.IsUniqueViolation(ex));
     }
 
@@ -65,6 +38,15 @@ public class DbExceptionClassifierTests
     public void IsUniqueViolation_PlainException_False()
     {
         Assert.False(_classifier.IsUniqueViolation(new InvalidOperationException("عطل عام")));
+    }
+
+    [Fact]
+    public void IsForeignKeyViolation_PostgresForeignKey_True()
+    {
+        var ex = new DbUpdateException("فشل حفظ", Postgres("23503", "FK_X"));
+        Assert.True(_classifier.IsForeignKeyViolation(ex));
+        Assert.False(_classifier.IsForeignKeyViolation(
+            new DbUpdateException("فشل حفظ", Postgres("23505"))));
     }
 
     [Fact]
@@ -104,16 +86,14 @@ public class DbExceptionClassifierTests
     }
 
     [Fact]
-    public void IsConcurrencyViolation_StorageBusy_Friendly()
+    public void IsConcurrencyViolation_SerializationAndDeadlock_True()
     {
-        // انشغال/قفل التخزين المتزامن (المرحلة 9): كتابتان حقيقيتان تتصادمان
-        // خارج `WHERE` الرمز — تُترجمـان 409 ودية بدل 500 خام.
+        // انشغال/تنازع التخزين المتزامن: كتابتان حقيقيتان تتصادمان خارج `WHERE` الرمز
+        // (`serialization_failure`/`deadlock_detected`) — تُترجمان 409 ودية لا 500 خام.
         Assert.True(_classifier.IsConcurrencyViolation(
-            new DbUpdateException("فشل حفظ", new Microsoft.Data.Sqlite.SqliteException("database is locked", 5))));
-        Assert.True(_classifier.IsConcurrencyViolation(
-            new Microsoft.Data.Sqlite.SqliteException("database table is locked", 6)));
-        Assert.False(_classifier.IsConcurrencyViolation(
-            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19)));
+            new DbUpdateException("فشل حفظ", Postgres("40001"))));
+        Assert.True(_classifier.IsConcurrencyViolation(Postgres("40P01")));
+        Assert.False(_classifier.IsConcurrencyViolation(Postgres("23505")));
     }
 }
 

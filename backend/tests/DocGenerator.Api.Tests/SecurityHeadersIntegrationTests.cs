@@ -96,25 +96,23 @@ public class SecurityHeadersIntegrationTests
     }
 
     /// <summary>
-    /// مضيف إنتاج معزول (سياق SQLite اختباري + بذر المدير عبر `Bootstrap:AdminPassword`)
+    /// مضيف إنتاج معزول (قاعدة Postgres مهاجَرة + بذر المدير عبر `Bootstrap:AdminPassword`)
     /// للتحقق من سلوك الإنتاج (بلا `CORS`) دون مساس بمصنع التطوير المشترك.
     /// </summary>
     private sealed class ProductionFactory : WebApplicationFactory<Program>
     {
-        private readonly string _dbPath = Path.Combine(
-            Path.GetTempPath(), $"docgen_prod_{Guid.NewGuid():N}.db");
+        private readonly PostgresHostDatabase _db = PostgresHostDatabase.Create();
         private readonly string _logDir = Path.Combine(
             Path.GetTempPath(), $"docgen_prod_logs_{Guid.NewGuid():N}");
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Production");
-            // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري فقط.
             builder.UseSecureProductionDefaults();
-            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+            builder.UseSetting("ConnectionStrings:DefaultConnection", _db.ConnectionString);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-            // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
-            // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+            // القاعدة مهاجَرة مسبقًا: نطاق الاختبار يتحقق من الإقلاع على مخطط قائم،
+            // والإنتاج لا يرحّل تلقائيًا (AutoMigrate=false).
             builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Swagger:Enabled", "false");
@@ -122,17 +120,13 @@ public class SecurityHeadersIntegrationTests
             builder.UseSetting("Bootstrap:AdminPassword", "ProdTest123456!");
             builder.UseSetting("RateLimiting:MaxLoginAttempts", "5");
             builder.UseSetting("RateLimiting:WindowMinutes", "5");
-            builder.ConfigureTestServices(services =>
-                TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
         }
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-            }
+            if (disposing)
+                _db.Dispose();
             try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
         }
     }
