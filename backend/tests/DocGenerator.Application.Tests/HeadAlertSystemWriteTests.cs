@@ -5,7 +5,6 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,54 +16,55 @@ namespace DocGenerator.Application.Tests;
 /// حراسة معالج التنبيه النظامي (الخطة §8.1 و§6.4): نطاق المفتاح المبنيّ من
 /// المستلِم المُحلّول، وترتيب الأرشفة مع الاستثناء، وتبديل المستلم عند التعاقب،
 /// وحارس المعرّف المستثنى.
+///
+/// يعمل على قاعدة <c>PostgreSQL</c> معزولة لكل حالة (‏`ADR-0009`): القيود والفهارس
+/// الجزئية على `DedupeKey` هي نفسها الإنتاجية، ونطاقات الخدمة تُبنى عبر
+/// <c>DocGeneratorPostgresDbContext</c>.
 /// </summary>
-public class HeadAlertSystemWriteTests : IDisposable
+public class HeadAlertSystemWriteTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection;
-    private readonly DbContextOptions<DocGeneratorDbContext> _options;
-    private readonly ServiceProvider _provider;
-    private readonly int _branchId;
-    private readonly User _head;
-    private readonly User _lawyer;
-    private readonly User _otherLawyer;
+    private PostgresTestDb _pg = null!;
+    private ServiceProvider _provider = null!;
+    private int _branchId;
+    private User _head = null!;
+    private User _lawyer = null!;
+    private User _otherLawyer = null!;
 
-    public HeadAlertSystemWriteTests()
+    public async Task InitializeAsync()
     {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        _connection.Open();
-        _options = TestDb.CreateOptions(_connection);
+        _pg = await PostgresTestDb.CreateAsync();
 
-        using var seed = new DocGeneratorDbContext(_options);
-        seed.Database.EnsureCreated();
+        await using (var seed = _pg.CreateContext())
+        {
+            var branch = new Branch { Name = "دمشق", Code = "DAM" };
+            seed.Branches.Add(branch);
+            await seed.SaveChangesAsync();
+            _branchId = branch.Id;
 
-        var branch = new Branch { Name = "دمشق", Code = "DAM" };
-        seed.Branches.Add(branch);
-        seed.SaveChanges();
-        _branchId = branch.Id;
+            _head = EntityBuilders.NewUser("head_x", "رئيس القسم", UserRole.Head, _branchId);
+            _lawyer = EntityBuilders.NewUser("law1", "محامي", UserRole.Lawyer, _branchId);
+            _otherLawyer = EntityBuilders.NewUser("law2", "محامي آخر", UserRole.Lawyer, _branchId);
+            seed.Users.AddRange(_head, _lawyer, _otherLawyer);
+            await seed.SaveChangesAsync();
 
-        _head = EntityBuilders.NewUser("head_x", "رئيس القسم", UserRole.Head, _branchId);
-        _lawyer = EntityBuilders.NewUser("law1", "محامي", UserRole.Lawyer, _branchId);
-        _otherLawyer = EntityBuilders.NewUser("law2", "محامي آخر", UserRole.Lawyer, _branchId);
-        seed.Users.AddRange(_head, _lawyer, _otherLawyer);
-        seed.SaveChanges();
-
-        // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفوفًا فعلية.
-        HeadAlertReferences.SeedDelegations(seed, _branchId, _head.Id, 42, 77, 88, 99);
+            // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفوفًا فعلية.
+            HeadAlertReferences.SeedDelegations(seed, _branchId, _head.Id, 42, 77, 88, 99);
+        }
 
         _provider = BuildProvider();
     }
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
         _provider.Dispose();
-        _connection.Dispose();
+        await _pg.DisposeAsync();
     }
 
     private ServiceProvider BuildProvider()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddScoped(_ => new DocGeneratorDbContext(_options));
+        services.AddScoped<DocGeneratorDbContext>(_ => _pg.CreateContext());
         services.AddScoped<ITransactionRunner>(sp => new TransactionRunner(sp.GetRequiredService<DocGeneratorDbContext>()));
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
         services.AddScoped<IHeadAlertService>(sp => new HeadAlertService(
@@ -86,11 +86,11 @@ public class HeadAlertSystemWriteTests : IDisposable
     private ITransactionRunner Tx() => _provider.GetRequiredService<ITransactionRunner>();
 
     /// <summary>سياق جديد للقراءة — سياق الجذر مُخزَّن مؤقتًا فلا يصلح للاستعمال بعد الإهمال.</summary>
-    private DocGeneratorDbContext NewDb() => new(_options);
+    private DocGeneratorPostgresDbContext NewDb() => _pg.CreateContext();
 
     private async Task<Document> AddDocumentAsync(User owner)
     {
-        using var db = NewDb();
+        await using var db = NewDb();
         var document = new Document
         {
             BranchId = _branchId,
@@ -105,7 +105,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         return document;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_DocumentCreatorWithoutRecipientUser_UsesResolvedCreatorInKey()
     {
         // «منشئ الملف» يصحّح عبر الملف وحده (بلا RecipientUserId) — مسار مسموح (§9.2).
@@ -124,13 +124,13 @@ public class HeadAlertSystemWriteTests : IDisposable
 
         Assert.Equal(HeadAlertWriteResult.Created, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var alert = await db.HeadAlerts.Include(a => a.Recipients).AsNoTracking().SingleAsync();
         Assert.Equal(_lawyer.Id, Assert.Single(alert.Recipients).UserId);
         Assert.Contains($"document:{document.Id}:recipient:{_lawyer.Id}", alert.DedupeKey!, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_MissingCreator_ThrowsMissingReference()
     {
         var request = new CreateSystemHeadAlertRequest(
@@ -146,11 +146,11 @@ public class HeadAlertSystemWriteTests : IDisposable
                 Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
 
         Assert.Contains("منشئ", exception.Message, StringComparison.Ordinal);
-        using var db = NewDb();
+        await using var db = NewDb();
         Assert.Empty(await db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_MissingBranch_ThrowsMissingReference()
     {
         var request = new CreateSystemHeadAlertRequest(
@@ -168,7 +168,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Contains("الفرع", exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_DocumentCreatorWithMissingDocument_ThrowsMissingReference()
     {
         var request = new CreateSystemHeadAlertRequest(
@@ -187,11 +187,11 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_SoftDeletedDocument_ThrowsMissingReference()
     {
         var document = await AddDocumentAsync(_lawyer);
-        using (var db = NewDb())
+        await using (var db = NewDb())
         {
             var tracked = await db.Documents.SingleAsync(d => d.Id == document.Id);
             tracked.IsDeleted = true;
@@ -214,7 +214,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_EntityGroupKeyWithoutPublicEntityId_UsesGroupScope()
     {
         // أحداث المجموعة (بث P2/P3) لا تحمل PublicEntityId — المفتاح يُبنى من EntityGroupKey.
@@ -232,14 +232,14 @@ public class HeadAlertSystemWriteTests : IDisposable
 
         Assert.Equal(HeadAlertWriteResult.Created, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var alert = await db.HeadAlerts.AsNoTracking().SingleAsync();
         Assert.Equal(
             $"entity:rename:77:branch:{_branchId}:audience:lawyers:{HeadAlertKindCatalog.EntityRenameLawyers}",
             alert.DedupeKey);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_SupersedePlan_DoesNotArchiveTheNewAlert()
     {
         // تنبيه قديم بنفس الإنابة ونفس النوع — يُؤرشف بالبديل، والبديل نفسه يبقى نشطًا.
@@ -265,7 +265,7 @@ public class HeadAlertSystemWriteTests : IDisposable
 
         Assert.Equal(HeadAlertWriteResult.Updated, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var alerts = await db.HeadAlerts.AsNoTracking().OrderBy(a => a.Id).ToListAsync();
 
         // صف واحد نشط (البديل) — لا صفان، ولا أرشفة للبديل نفسه.
@@ -274,7 +274,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Null(active.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_SupersedePlanOnUnchanged_ArchivesOldAndKeepsCurrent()
     {
         // البند §18:3083: الخطة تُطبَّق أيضًا عند Unchanged — لا يُؤرشف البديل
@@ -315,7 +315,7 @@ public class HeadAlertSystemWriteTests : IDisposable
 
         Assert.Equal(HeadAlertWriteResult.Unchanged, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var alerts = await db.HeadAlerts.AsNoTracking().OrderBy(a => a.Id).ToListAsync();
 
         // لا صف توأم: صفّان فقط (القديم المؤرشف والبديل النشط).
@@ -331,7 +331,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Null(kept.ArchivedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_SuccessionOverride_ReplacesPredecessorRecipient()
     {
         var request = new CreateSystemHeadAlertRequest(
@@ -361,7 +361,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         // (تنبيه السلف يُؤرشف/يُدمج في مسار التعاقب — PR-2 الجزء الثاني).
         Assert.Equal(HeadAlertWriteResult.Created, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var alerts = await db.HeadAlerts.Include(a => a.Recipients).AsNoTracking().OrderBy(a => a.Id).ToListAsync();
 
         var successorAlert = alerts.Last();
@@ -371,7 +371,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Contains($"recipient:{_otherLawyer.Id}", successorAlert.DedupeKey!, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_SuccessionOverride_NewRecipientInheritsPredecessorReadState()
     {
         // دفاعي (§8.5): صف قائم بمفتاح الخلف لكن مستلمه السلف (حالة تعاقب غير مكتملة).
@@ -381,7 +381,7 @@ public class HeadAlertSystemWriteTests : IDisposable
         var key = $"delegation:88:recipient:{_otherLawyer.Id}:{HeadAlertKindCatalog.DelegationMirrorUpdated}";
 
         int alertId;
-        using (var seed = NewDb())
+        await using (var seed = NewDb())
         {
             var alert = new HeadAlert
             {
@@ -419,7 +419,7 @@ public class HeadAlertSystemWriteTests : IDisposable
 
         Assert.Equal(HeadAlertWriteResult.Unchanged, result);
 
-        using var db = NewDb();
+        await using var db = NewDb();
         var stored = await db.HeadAlerts.Include(a => a.Recipients)
             .AsNoTracking().SingleAsync(a => a.Id == alertId);
         Assert.Equal(_otherLawyer.Id, stored.TargetLawyerId);
@@ -429,12 +429,12 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Equal(readAt, recipient.ReadAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArchiveByScopeAndKinds_UnknownExcludeIsRejected()
     {
         // حارس المعرّف المستثنى (الخطة §8.1): معرّف غير موجود أو مؤرشف = خطأ
         // استدعاء — لا أرشفة جماعية صامتة. والعقد العام بلا معرّف مستثنى أصلًا.
-        using var db = NewDb();
+        await using var db = NewDb();
         var repository = new HeadAlertRepository(db);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => repository.ArchiveByScopeAndKindsAsync(
@@ -445,7 +445,7 @@ public class HeadAlertSystemWriteTests : IDisposable
             CancellationToken.None));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateSystemAsync_WithoutActiveTransaction_Throws()
     {
         var request = new CreateSystemHeadAlertRequest(

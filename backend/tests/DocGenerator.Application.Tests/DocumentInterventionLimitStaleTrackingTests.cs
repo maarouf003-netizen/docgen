@@ -5,7 +5,6 @@ using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
@@ -14,29 +13,26 @@ namespace DocGenerator.Application.Tests;
 /// انحدار C-04: العدّ داخل القفل يجب أن يقرأ الحالة الفعلية من القاعدة، لا مجموعة
 /// متتبَّعة قديمة. سيناريو: الطلب حمّل الملف للفحص (50 متدخلًا)، ثم حُذف متدخل في
 /// طلب آخر قبل الإضافة — العدّ الطازج 49 فيجب أن تنجح الإضافة (تصبح 50)، لا أن تُرفض.
+///
+/// يُنفَّذ على <c>PostgreSQL</c> (‏`ADR-0009`): الحذف يُثبَّت في معاملة منفصلة، ثم
+/// تقرأ خدمة الإضافة العدّ عبر شبكة قراءة جديدة على القاعدة نفسها — تمامًا كما في
+/// الإنتاج، بدل ملف <c>SQLite</c> كان يعزل الحالتين صناعيًا.
 /// </summary>
-public sealed class DocumentInterventionLimitStaleTrackingTests : IDisposable
+public sealed class DocumentInterventionLimitStaleTrackingTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection;
-    private readonly DbContextOptions<DocGeneratorDbContext> _options;
+    private PostgresTestDb _pg = null!;
 
-    public DocumentInterventionLimitStaleTrackingTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-        _options = TestDb.CreateOptions(_connection);
-    }
+    public async Task InitializeAsync() => _pg = await PostgresTestDb.CreateAsync();
 
-    public void Dispose() => _connection.Dispose();
+    public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    [Fact]
+    [PostgresFact]
     public async Task Add_AfterConcurrentDelete_ReloadsFreshCount()
     {
         int documentId;
         int userId;
-        await using (var seed = new DocGeneratorDbContext(_options))
+        await using (var seed = _pg.CreateContext())
         {
-            await seed.Database.EnsureCreatedAsync();
             var branch = new Branch { Name = "فرع", Code = "STL" };
             seed.Branches.Add(branch);
             await seed.SaveChangesAsync();
@@ -75,13 +71,13 @@ public sealed class DocumentInterventionLimitStaleTrackingTests : IDisposable
         }
 
         // طلب الإضافة حمّل الملف أولًا (فحص الوصول) — 50 متدخلًا في المتتبَّع.
-        await using var stale = new DocGeneratorDbContext(_options);
+        await using var stale = _pg.CreateContext();
         var staleRepo = new DocumentRepository(stale);
         var loaded = await staleRepo.GetByIdAsync(documentId);
         Assert.Equal(InterventionLimitsCatalog.MaxPerDocument, loaded!.Interventions.Count);
 
         // طلب آخر حذف متدخلًا وثبّت الحذف — القاعدة الآن 49 والمتتبَّع القديم ما زال 50.
-        await using (var deleter = new DocGeneratorDbContext(_options))
+        await using (var deleter = _pg.CreateContext())
         {
             var row = await deleter.DocumentInterventions
                 .FirstAsync(i => i.DocumentId == documentId);
@@ -100,7 +96,7 @@ public sealed class DocumentInterventionLimitStaleTrackingTests : IDisposable
         var created = await service.AddAsync(documentId, NaturalRequest(), userId, "فاحص");
 
         Assert.NotNull(created);
-        await using var verify = new DocGeneratorDbContext(_options);
+        await using var verify = _pg.CreateContext();
         Assert.Equal(
             InterventionLimitsCatalog.MaxPerDocument,
             await verify.DocumentInterventions.CountAsync(i => i.DocumentId == documentId));

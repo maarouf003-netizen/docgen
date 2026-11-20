@@ -32,6 +32,16 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
         "WHERE (SELECT COUNT(*) FROM \"LoginAttempts\" " +
         "WHERE \"Key\" = @p0 AND \"AttemptedAtUtc\" >= @p2) < @p3;";
 
+    /// <summary>
+    /// على `PostgreSQL` الجملة أعلاه وحدها لا تكفي: تحت `READ COMMITTED` يأخذ كل
+    /// `INSERT … SELECT` لقطةً عند بدء الجملة، فمحاولتان متزامنتان تقرآن العدّ نفسه
+    /// (مثلًا 4) وتُدرجان معًا فتتجاوز الحد — وهو ما لا يظهر على `SQLite` لأن كتابته
+    /// متسلسلة. قفل استشاري معاملاتي على المفتاح نفسه يُسلسل الإدراج للمفتاح الواحد
+    /// (المفاتيح المختلفة لا تتزاحم)، ويُحرَّر تلقائيًا بانتهاء المعاملة.
+    /// </summary>
+    private const string KeyScopedAdvisoryLockSql =
+        "SELECT pg_advisory_xact_lock(hashtextextended(@p0, 0));";
+
     private readonly DocGeneratorDbContext _db;
     private readonly int _maxAttempts;
     private readonly TimeSpan _window;
@@ -56,12 +66,52 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         var cutoff = now - _window;
-        var inserted = await _db.Database.ExecuteSqlRawAsync(
+        var inserted = _db.Database.IsNpgsql()
+            ? await RecordUnderKeyLockAsync(key, now, cutoff, ct)
+            : await ExecuteConditionalInsertAsync(key, now, cutoff, ct);
+
+        await PruneOldAsync(ct);
+        return inserted == 1;
+    }
+
+    private Task<int> ExecuteConditionalInsertAsync(
+        string key, DateTime now, DateTime cutoff, CancellationToken ct)
+        => _db.Database.ExecuteSqlRawAsync(
             InsertIfUnderLimitSql,
             new object[] { key, now, cutoff, _maxAttempts },
             ct);
-        await PruneOldAsync(ct);
-        return inserted == 1;
+
+    /// <summary>
+    /// إدراج محكوم بقفل المفتاح على `PostgreSQL`: القفل المعاملاتي يغطي العدّ والإدراج
+    /// معًا، فلا يتجاوز مفتاحٌ واحد الحدَّ مهما تزامنت محاولاته. إن كان هناك معاملة
+    /// محيطة يشاركها القفل (بلا معاملة متداخلة)، وإلا تُفتح معاملة قصيرة صريحة.
+    /// </summary>
+    private async Task<int> RecordUnderKeyLockAsync(
+        string key, DateTime now, DateTime cutoff, CancellationToken ct)
+    {
+        var ownsTransaction = _db.Database.CurrentTransaction is null;
+        var transaction = ownsTransaction
+            ? await _db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            await _db.Database.ExecuteSqlRawAsync(
+                KeyScopedAdvisoryLockSql,
+                new object[] { key },
+                ct);
+            var inserted = await ExecuteConditionalInsertAsync(key, now, cutoff, ct);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+
+            return inserted;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     public async Task ResetAsync(string key, CancellationToken ct = default)

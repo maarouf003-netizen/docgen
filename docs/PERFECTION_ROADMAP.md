@@ -372,7 +372,7 @@
 
 #### `P1-08` — إزالة `SQLite` من الاختبارات
 
-- **الحالة (2026-11-19):** **جزئيًا — `ADR-0009` + البنية المشتركة + `8a/1` منفذة.**
+- **الحالة (2026-11-20):** **جزئيًا — `8a/1`–`8a/4` منفذة؛ المتبقي `8a/5` ثم `8b` ثم `8c`.**
   - القرار: [ADR-0009](adr/0009-postgres-only-tests.md) — قاعدة اختبار واحدة
     (`PostgreSQL`)، بلا `EF InMemory`، والخطة المرحلية في
     [`P1-08-SQLITE-REMOVAL-PLAN.md`](P1-08-SQLITE-REMOVAL-PLAN.md).
@@ -391,11 +391,18 @@
   - **`8a/4a`:** `OptimisticConcurrencyTests` + `TransferConcurrencyTests` (25 حالة)
     على `Postgres` بجلسات سياقات متعددة على قاعدة واحدة
     (`docs/audit/77-p1-08a4a-optimistic-transfer-20261119.md`).
+  - **`8a/4b`:** بقية مجموعات التزامن (`Delegation`/`AppealTransferAll`/`Correspondence`/
+    `HeadAlertSystemWrite`/`HeadAlertOutboxDispatcher`/`DocumentInterventionLimitStaleTracking`)
+    + `SecurityTests.ConcurrentFailures` على `Postgres`. وكشف النقل علّتين إنتاجيتين
+    كانت `SQLite` تخفيهما فأُصلحتا: مواءمة الحجوزات الذاتية كانت تمحو حجز إنابةٍ التزمت
+    للتوّ تحت `READ COMMITTED` (صار الحكم داخل جملة `DELETE` نفسها)، وتجاوز حد محاولات
+    الدخول المتزامنة على `Postgres` (قفل استشاري معاملاتي على المفتاح:
+    `pg_advisory_xact_lock`). (`docs/audit/78-p1-08a4b-concurrency-suites-20261120.md`).
   - **مكتشف يحتاج `8c`:** `DocGenerator.Infrastructure` ما زال يعرّف حزم
     `Microsoft.EntityFrameworkCore.Sqlite` و`SQLitePCLRaw.bundle_e_sqlite3` بلا
     أي استخدام كودي — يجب حذفهما مع إعادة توليد الأقفال.
-  - **المتبقي:** مراحل `8a/2`–`8a/5` (حارسا المخطط، القياس، التزامن، `TestDb`
-    المركزي)، ثم `8b` (‏`Api.Tests` و`ApiFactory`)، ثم `8c` (حذف الحزم).
+  - **المتبقي:** `8a/5` (`TestDb` المركزي)، ثم `8b` (‏`Api.Tests` و`ApiFactory`)،
+    ثم `8c` (حذف الحزم).
 - **العمل:** بعد `P1-01`، حذف `Microsoft.EntityFrameworkCore.Sqlite`، `TestDb`، وكل `UseSqlite` من الاختبارات.
 - **DoD:** لا مرجع لـSQLite في `src` أو `tests`.
 

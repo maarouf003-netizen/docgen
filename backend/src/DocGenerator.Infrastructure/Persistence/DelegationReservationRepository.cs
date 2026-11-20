@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,10 +27,16 @@ public class DelegationReservationRepository(DocGeneratorDbContext db)
         DetachTracked(delegationId);
     }
 
-    public async Task DeleteExceptAsync(int sourceDocumentId, List<int> keepDelegationIds, CancellationToken ct = default)
+    public async Task DeleteStaleAsync(int sourceDocumentId, CancellationToken ct = default)
     {
+        // الشرط يُقيَّم داخل `DELETE` نفسه: كل حجز يُقارَن بإنابته الحالية في القاعدة،
+        // فأي إنابة التزمت قبل بدء الجملة تبقى حاجزة، وأي حجز لم يكن مرئيًا أصلًا لا يُحذف.
+        var blocking = DelegationActivityPolicy.IsAssetBlockingExpression;
         await Db.DelegationAssetReservations
-            .Where(r => r.SourceDocumentId == sourceDocumentId && !keepDelegationIds.Contains(r.DelegationId))
+            .Where(r => r.SourceDocumentId == sourceDocumentId)
+            .Where(r => !Db.DocumentDelegations
+                .Where(d => d.Id == r.DelegationId)
+                .Any(blocking))
             .ExecuteDeleteAsync(ct);
         DetachTracked(sourceDocumentId: sourceDocumentId);
     }

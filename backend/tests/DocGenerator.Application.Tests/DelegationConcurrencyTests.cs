@@ -4,7 +4,6 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -14,37 +13,22 @@ using static DocGenerator.Application.Tests.TestHelpers.MirrorRequests;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// جولات سلامة السباق (B3): محاولات تسطير متزامنة على الأصل نفسه عبر اتصالين
-/// مستقلين وخيطين — في كل جولة: فائز واحد + خطأ مجال («إنابة سارية») للخاسر.
-/// ملاحظة تجريبية موثقة: في مكدس SQLite داخل العملية تتسلسل قراءات الحارس ذاتيًا
-/// (أي انتظار داخل معاملة مفتوحة بعد قراءاتها يجمّد القارئ الآخر)، فلا يمكن إجبار
-/// التداخل الكامل حتميًا من الخارج — هذه الجولات تثبت السلامة في كل تداخل متحقق،
-/// ومسار التعارض الحتمي مغطى بـ DbExceptionClassifierTests + مراجعة موضع الالتقاط.
-/// القيد الفريد ضروري وحاسم على PostgreSQL (MVCC حقيقي بلا تسلسل ذاتي).
+/// جولات سلامة السباق (B3): محاولات تسطير متزامنة على الأصل نفسه عبر سياقين
+/// مستقلين وخيطين على قاعدة <c>PostgreSQL</c> واحدة (‏`ADR-0009`) — في كل جولة:
+/// فائز واحد + خطأ مجال («إنابة سارية») للخاسر.
+///
+/// على `Postgres` (`MVCC` حقيقي، `READ COMMITTED`) قد يتجاوز الفحصان بعضهما،
+/// فيصل الاصطدام من الفهرس الفريد على حجز الأصل ويُترجم إلى نفس خطأ المجال —
+/// وهذا بالضبط ما تحرسه الجولات: القيد الفريد هو الحارس الحاسم، لا التسلسل الذاتي
+/// الذي كان يخفيه ملف `SQLite` داخل العملية.
 /// </summary>
-public class DelegationConcurrencyTests : IDisposable
+public class DelegationConcurrencyTests : IAsyncLifetime
 {
-    private readonly string _path = Path.GetTempFileName();
-    private readonly List<SqliteConnection> _connections = new();
+    private PostgresTestDb _pg = null!;
 
-    public void Dispose()
-    {
-        foreach (var c in _connections)
-            c.Dispose();
-        try { File.Delete(_path); } catch { /* ملف مؤقت — التجاهل آمن */ }
-    }
+    public async Task InitializeAsync() => _pg = await PostgresTestDb.CreateAsync();
 
-    private async Task<SqliteConnection> OpenConnectionAsync()
-    {
-        var connection = new SqliteConnection($"Data Source={_path}");
-        await connection.OpenAsync();
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000;";
-        await pragma.ExecuteNonQueryAsync();
-        _connections.Add(connection);
-        return connection;
-    }
-
+    public async Task DisposeAsync() => await _pg.DisposeAsync();
 
     private static IDocumentDelegationService BuildService(DocGeneratorDbContext db)
     {
@@ -77,9 +61,7 @@ public class DelegationConcurrencyTests : IDisposable
 
     private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync()
     {
-        var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
-        await db.Database.EnsureCreatedAsync();
+        await using var db = _pg.CreateContext();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         db.Branches.Add(branch);
@@ -151,17 +133,10 @@ public class DelegationConcurrencyTests : IDisposable
 
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);
 
-    [Fact]
+    [PostgresFact]
     public async Task ConcurrentCreate_OnSameAsset_ExactlyOneWins_WithDomainError()
     {
         var (sourceId, assetIds, lawyerId) = await SeedAsync();
-
-        var connectionA = await OpenConnectionAsync();
-        var connectionB = await OpenConnectionAsync();
-        await using var dbA = new DocGeneratorDbContext(TestDb.CreateOptions(connectionA));
-        await using var dbB = new DocGeneratorDbContext(TestDb.CreateOptions(connectionB));
-        var serviceA = BuildService(dbA);
-        var serviceB = BuildService(dbB);
 
         async Task<RaceOutcome> RunAsync(IDocumentDelegationService service, int assetId)
         {
@@ -178,22 +153,75 @@ public class DelegationConcurrencyTests : IDisposable
 
         foreach (var assetId in assetIds)
         {
+            // سياقان جديدان لكل جولة: كل طلب في الإنتاج نطاق DI مستقل، والخاسر بعد
+            // ترجمة اصطدام الفهرس يبقى متتبَّعًا للكيان الفاشل — فلا يُعاد استعماله.
+            await using var dbA = _pg.CreateContext();
+            await using var dbB = _pg.CreateContext();
+            var serviceA = BuildService(dbA);
+            var serviceB = BuildService(dbB);
+
             var outcomes = await Task.WhenAll(
                 Task.Run(() => RunAsync(serviceA, assetId)),
                 Task.Run(() => RunAsync(serviceB, assetId)));
 
-            Assert.Single(outcomes, o => o.Dto is not null);
+            // فائز واحد حصرًا: أي تداخل يعبر الحارس يُحسم بالفهرس الفريد ويُترجم إلى
+            // خطأ المجال نفسه — فلا تبقى إلا إنابة واحدة حاجبة للأصل.
+            var winner = Assert.Single(outcomes, o => o.Dto is not null);
             var loser = Assert.Single(outcomes, o => o.Error is not null);
             var domainError = Assert.IsType<ArgumentException>(loser.Error);
             Assert.Contains("إنابة سارية", domainError.Message);
+
+            // الثابت الحاسم: صف حجز واحد للأصل ولإنابة الفائز — أي أن المواءمة الذاتية
+            // لم تمحُ حجز إنابةٍ التزمت للتوّ في نافذة `READ COMMITTED`.
+            await using var check = _pg.CreateContext();
+            var reservation = Assert.Single(await check.DelegationAssetReservations
+                .AsNoTracking()
+                .Where(r => r.SourceDocumentId == sourceId && r.AssetId == assetId)
+                .ToListAsync());
+            Assert.Equal(winner.Dto!.Id, reservation.DelegationId);
         }
 
-        await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(await OpenConnectionAsync()));
+        await using var verifyDb = _pg.CreateContext();
         Assert.Equal(assetIds.Count, await verifyDb.DocumentDelegations.CountAsync(d => d.SourceDocumentId == sourceId));
         Assert.Equal(assetIds.Count, await verifyDb.DelegationAssetReservations.CountAsync(r => r.SourceDocumentId == sourceId));
     }
 
-    /// <summary>خدمات سياقٍ واحد: كل اتصال = سياق مستقل = «مستخدم» مستقل في اختبار السباق.</summary>
+    /// <summary>
+    /// المواءمة الذاتية للحجوزات تحكم بحالة الإنابة **اللحظية** لا بلقطة سابقة: حجز
+    /// إنابةٍ حاجبة يبقى، وحجز إنابةٍ منفذة يُحذف. هذا هو الشرط الذي كان سباق
+    /// `READ COMMITTED` على `Postgres` يكسره فيمحو حجز الحاجبة.
+    /// </summary>
+    [PostgresFact]
+    public async Task PruneStaleReservations_KeepsLiveAndDropsExecuted()
+    {
+        var (sourceId, assetIds, lawyerId) = await SeedAsync();
+        int liveId;
+        int executedId;
+
+        await using (var seed = _pg.CreateContext())
+        {
+            var service = BuildService(seed);
+            liveId = (await service.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race")).Id;
+            executedId = (await service.CreateAsync(sourceId, Request(assetIds[1]), lawyerId, "race")).Id;
+
+            var executed = await seed.DocumentDelegations.SingleAsync(d => d.Id == executedId);
+            executed.Status = DelegationStatusCatalog.Executed;
+            await seed.SaveChangesAsync();
+        }
+
+        // جولة تسطير جديدة على أصل ثالث تُشغّل المواءمة داخل معاملتها.
+        await using (var create = _pg.CreateContext())
+            await BuildService(create).CreateAsync(sourceId, Request(assetIds[2]), lawyerId, "race");
+
+        await using var verify = _pg.CreateContext();
+        var rows = await verify.DelegationAssetReservations.AsNoTracking()
+            .Where(r => r.SourceDocumentId == sourceId)
+            .ToListAsync();
+        Assert.DoesNotContain(rows, r => r.DelegationId == executedId);
+        Assert.Contains(rows, r => r.DelegationId == liveId);
+    }
+
+    /// <summary>خدمات سياقٍ واحد: كل سياق = «مستخدم» مستقل في اختبار السباق.</summary>
     private static (IDocumentDelegationService Delegations, IDocumentService Documents, IHeadAlertService Alerts)
         BuildServices(DocGeneratorDbContext db)
     {
@@ -237,11 +265,9 @@ public class DelegationConcurrencyTests : IDisposable
     /// </summary>
     private async Task<MirrorSeed> SeedRegisteredMirrorAsync(int round = 0)
     {
-        var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
-        await db.Database.EnsureCreatedAsync();
+        await using var db = _pg.CreateContext();
 
-        // لاحقة الجولة: قاعدة الملف واحدة للصنف، والقيم الفريدة (رمز الفرع/اسم المستخدم/رقم
+        // لاحقة الجولة: قاعدة الاختبار واحدة للصنف، والقيم الفريدة (رمز الفرع/اسم المستخدم/رقم
         // الملف) تتكرر بين جولات السباق.
         var suffix = round == 0 ? string.Empty : round.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var branch = new Branch { Name = "دمشق", Code = $"DAM{suffix}" };
@@ -346,20 +372,18 @@ public class DelegationConcurrencyTests : IDisposable
     /// <c>WHERE Version = old</c> عند كاتبين متزامنَين فسقط أحد العدّادين بصمت.
     /// الاختبار حتميّ لا سباقي: صف يُقرأ قبل التعديل ثم يُكتب بعده ⇒ يجب أن يُرفض.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task MirrorEdit_MovesDelegationVersion_SoAStaleCounterWriteIsRejected()
     {
         var seed = await SeedRegisteredMirrorAsync();
 
         // كاتب «قديم»: قرأ صف الإنابة قبل التعديل (نسخة المستخدم المفتوحة على الشاشة).
-        var staleConnection = await OpenConnectionAsync();
-        await using var staleDb = new DocGeneratorDbContext(TestDb.CreateOptions(staleConnection));
+        await using var staleDb = _pg.CreateContext();
         var stale = await staleDb.DocumentDelegations.SingleAsync(d => d.Id == seed.DelegationId);
         var versionBefore = stale.Version;
 
         // تعديل حقيقي للملف المناب من سياق آخر ⇒ إضافة محلية واحدة.
-        var editConnection = await OpenConnectionAsync();
-        await using var editDb = new DocGeneratorDbContext(TestDb.CreateOptions(editConnection));
+        await using var editDb = _pg.CreateContext();
         var (_, editDocuments, _) = BuildServices(editDb);
         var target = await editDb.Documents
             .Include(d => d.RegistrationDate)
@@ -369,8 +393,7 @@ public class DelegationConcurrencyTests : IDisposable
             seed.TargetId, RequestWithHeir(target, "وريث سباق"), "assignee", seed.LawyerId);
 
         // (1) التوكن تحرّك، والعدّاد سُجّل.
-        var verifyConnection = await OpenConnectionAsync();
-        await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(verifyConnection));
+        await using var verifyDb = _pg.CreateContext();
         var (verifyDelegations, _, _) = BuildServices(verifyDb);
         var dto = Assert.Single(await verifyDelegations.ListForDocumentAsync(seed.SourceId));
         Assert.NotNull(dto.LocalAddition);
@@ -385,15 +408,15 @@ public class DelegationConcurrencyTests : IDisposable
     /// <summary>
     /// سباق تعديلين على الملف المناب نفسه، كل منهما يضيف وريثًا مختلفًا.
     ///
-    /// **الثابت الحاكم:** <c>LocalAdditionCount == عدد النجاحات</c> — لا «فائز واحد» (فالتسلسل
-    /// يجعل نجاح الاثنين مشروعًا والعدد 2)، ولا «2 دائمًا» (فالتداخل يُرفض أحدهما والعدد 1).
+    /// **الثابت الحاكم:** <c>LocalAdditionCount == عدد النجاحات</c> — لا «فائز واحد» (فقد
+    /// ينجح الاثنان إن لم يتداخلا)، ولا «2 دائمًا» (فالتداخل يُرفض أحدهما والعدد 1).
     /// هذا الثابت يمسك فقدان التحديث في كل تداخل. والخاسر إمّا تعارض تزامن (تداخل حقيقي)
-    /// أو رفض مجال من حارس المرآة (تسلسل SQLite: يرى وريث الفرع الآخر كأنه حذف) — كلاهما رفض مشروع.
+    /// أو رفض مجال من حارس المرآة (رأى وريث الفرع الآخر كأنه حذف) — كلاهما رفض مشروع.
     ///
-    /// قيد موثَّق (كبقية أسرة التزامن هنا): SQLite داخل العملية يُسلسل الكتابات، فلا يمكن
-    /// إجبار التداخل حتميًا؛ الحتمية يوفّرها الاختبار السابق (توكن الصف).
+    /// على `Postgres` الأقفال صفّية حقيقية فلا حاجة لتحايل تسلسل `SQLite`: كل «نجاح»
+    /// يقابله عدّاد واحد وصف تنبيه واحد، والحتمية الكاملة يوفّرها الاختبار السابق (توكن الصف).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task ConcurrentMirrorEdits_NeverLoseLocalAdditionCount()
     {
         for (var round = 0; round < 3; round++)
@@ -401,80 +424,78 @@ public class DelegationConcurrencyTests : IDisposable
             var seed = await SeedRegisteredMirrorAsync(round);
 
             // لقطة واحدة تبني طلبَي الفرعين: كل الحقول مطابقة للمخزَّن، والاختلاف في الوريث فقط.
-            var snapshotConnection = await OpenConnectionAsync();
-            await using var snapshotDb = new DocGeneratorDbContext(TestDb.CreateOptions(snapshotConnection));
-            var snapshot = await snapshotDb.Documents
-                .Include(d => d.RegistrationDate)
-                .Include(d => d.Heirs)
-                .SingleAsync(d => d.Id == seed.TargetId);
-            var requestA = RequestWithHeir(snapshot, $"وريث-أ-{round}");
-            var requestB = RequestWithHeir(snapshot, $"وريث-ب-{round}");
-
-            var connectionA = await OpenConnectionAsync();
-            var connectionB = await OpenConnectionAsync();
-            await using var dbA = new DocGeneratorDbContext(TestDb.CreateOptions(connectionA));
-            await using var dbB = new DocGeneratorDbContext(TestDb.CreateOptions(connectionB));
-            var (_, documentsA, _) = BuildServices(dbA);
-            var (_, documentsB, _) = BuildServices(dbB);
-
-            async Task<Exception?> RunAsync(IDocumentService documents, DocumentUpsertRequest request)
+            await using (var snapshotDb = _pg.CreateContext())
             {
-                try
+                var snapshot = await snapshotDb.Documents
+                    .Include(d => d.RegistrationDate)
+                    .Include(d => d.Heirs)
+                    .SingleAsync(d => d.Id == seed.TargetId);
+                var requestA = RequestWithHeir(snapshot, $"وريث-أ-{round}");
+                var requestB = RequestWithHeir(snapshot, $"وريث-ب-{round}");
+
+                await using var dbA = _pg.CreateContext();
+                await using var dbB = _pg.CreateContext();
+                var (_, documentsA, _) = BuildServices(dbA);
+                var (_, documentsB, _) = BuildServices(dbB);
+
+                async Task<Exception?> RunAsync(IDocumentService documents, DocumentUpsertRequest request)
                 {
-                    await documents.UpdateAsync(seed.TargetId, request, "race", seed.LawyerId);
-                    return null;
+                    try
+                    {
+                        await documents.UpdateAsync(seed.TargetId, request, "race", seed.LawyerId);
+                        return null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    return ex;
-                }
+
+                var outcomes = await Task.WhenAll(
+                    Task.Run(() => RunAsync(documentsA, requestA)),
+                    Task.Run(() => RunAsync(documentsB, requestB)));
+
+                var successes = outcomes.Count(e => e is null);
+                Assert.InRange(successes, 1, 2);
+                Assert.All(
+                    outcomes.Where(e => e is not null),
+                    e => Assert.True(
+                        e is DocumentConflictException || e is ArgumentException,
+                        $"خطأ غير متوقع من فرع خاسر: {e?.GetType().Name} — {e?.Message}"));
+
+                await using var verifyDb = _pg.CreateContext();
+                var (_, _, verifyAlerts) = BuildServices(verifyDb);
+                await HeadAlertOutboxFlush.AllAsync(verifyDb, verifyAlerts, new TransactionRunner(verifyDb));
+
+                var delegation = await verifyDb.DocumentDelegations
+                    .AsNoTracking()
+                    .SingleAsync(d => d.Id == seed.DelegationId);
+
+                // الثابت: العدّاد يحصي النجاحات فقط — لا فقدان تحديث ولا عدّ مزدوج.
+                Assert.Equal(successes, delegation.LocalAdditionCount);
+                Assert.False(string.IsNullOrWhiteSpace(delegation.LocalAdditionLastMessage));
+
+                var alerts = await verifyDb.HeadAlerts.CountAsync(a =>
+                    a.DelegationId == seed.DelegationId
+                    && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition);
+                Assert.Equal(successes, alerts);
+
+                // (حتميّ) بعد احتواء السباق: تعديل إضافي ناجح واحد يجب أن يزيد العدّاد واحدًا
+                // بالضبط فوق ما سُجّل — يثبت أن المسار يعمل صحيحًا بعد النزاع لا أنه «توقّف».
+                var (_, afterDocuments, _) = BuildServices(verifyDb);
+                var afterTarget = await verifyDb.Documents
+                    .Include(d => d.RegistrationDate)
+                    .Include(d => d.Heirs)
+                    .AsNoTracking()
+                    .SingleAsync(d => d.Id == seed.TargetId);
+                await afterDocuments.UpdateAsync(
+                    seed.TargetId, RequestWithHeir(afterTarget, $"وريث-بعد-السباق-{round}"), "race", seed.LawyerId);
+
+                var after = await verifyDb.DocumentDelegations
+                    .AsNoTracking()
+                    .SingleAsync(d => d.Id == seed.DelegationId);
+                Assert.Equal(successes + 1, after.LocalAdditionCount);
             }
-
-            var outcomes = await Task.WhenAll(
-                Task.Run(() => RunAsync(documentsA, requestA)),
-                Task.Run(() => RunAsync(documentsB, requestB)));
-
-            var successes = outcomes.Count(e => e is null);
-            Assert.InRange(successes, 1, 2);
-            Assert.All(
-                outcomes.Where(e => e is not null),
-                e => Assert.True(
-                    e is DocumentConflictException || e is ArgumentException,
-                    $"خطأ غير متوقع من فرع خاسر: {e?.GetType().Name} — {e?.Message}"));
-
-            var verifyConnection = await OpenConnectionAsync();
-            await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(verifyConnection));
-            var (_, _, verifyAlerts) = BuildServices(verifyDb);
-            await HeadAlertOutboxFlush.AllAsync(verifyDb, verifyAlerts, new TransactionRunner(verifyDb));
-
-            var delegation = await verifyDb.DocumentDelegations
-                .AsNoTracking()
-                .SingleAsync(d => d.Id == seed.DelegationId);
-
-            // الثابت: العدّاد يحصي النجاحات فقط — لا فقدان تحديث ولا عدّ مزدوج.
-            Assert.Equal(successes, delegation.LocalAdditionCount);
-            Assert.False(string.IsNullOrWhiteSpace(delegation.LocalAdditionLastMessage));
-
-            var alerts = await verifyDb.HeadAlerts.CountAsync(a =>
-                a.DelegationId == seed.DelegationId
-                && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition);
-            Assert.Equal(successes, alerts);
-
-            // (حتميّ) بعد احتواء السباق: تعديل إضافي ناجح واحد يجب أن يزيد العدّاد واحدًا
-            // بالضبط فوق ما سُجّل — يثبت أن المسار يعمل صحيحًا بعد النزاع لا أنه «توقّف».
-            var (_, afterDocuments, _) = BuildServices(verifyDb);
-            var afterTarget = await verifyDb.Documents
-                .Include(d => d.RegistrationDate)
-                .Include(d => d.Heirs)
-                .AsNoTracking()
-                .SingleAsync(d => d.Id == seed.TargetId);
-            await afterDocuments.UpdateAsync(
-                seed.TargetId, RequestWithHeir(afterTarget, $"وريث-بعد-السباق-{round}"), "race", seed.LawyerId);
-
-            var after = await verifyDb.DocumentDelegations
-                .AsNoTracking()
-                .SingleAsync(d => d.Id == seed.DelegationId);
-            Assert.Equal(successes + 1, after.LocalAdditionCount);
         }
     }
 }

@@ -1781,25 +1781,18 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
     /// <summary>
     /// مواءمة الحجوزات اليتيمة (B3 — شفاء ذاتي في نقطة واحدة): تحذف صفوف الحجوزات التي
-    /// لم تعد لإنابة حاجبة (منفذة/مناب نهائي/محذوفة) قبل الفحص — فلا يحتاج أي مسار تحرر
+    /// لم تعد لإنابة حاجبة (منفذة/مناب نهائي) قبل الفحص — فلا يحتاج أي مسار تحرر
     /// (إتمام/استرداد/شطب-مناب/حذف) خطافًا خاصًا قد يُنسى (عين علة التنبيهات D3)، وأي
     /// انحراف (طفر مباشر، فشل لاحق الالتزام) يُشفى عند أول فحص لاحق. الحذف والفحص
     /// والإدراج اللاحق في معاملة واحدة فلا تسمم متقاطع.
+    ///
+    /// <para>الحكم على «حاجبة» يتم داخل جملة الحذف من حالة القاعدة اللحظية، لا من لقطة
+    /// <c>source</c> — وإلا محا سباقٌ متزامن حجز إنابةٍ التزمت بعد قراءة اللقطة
+    /// (واقع `READ COMMITTED` على `Postgres`).</para>
     /// </summary>
     private async Task PruneStaleReservationsAsync(
         Document source, CancellationToken ct)
-    {
-        var reservations = await _reservations.ListBySourceAsync(source.Id, ct);
-        if (reservations.Count == 0)
-            return;
-        var blockingIds = source.Delegations
-            .Where(DelegationActivityPolicy.IsAssetBlocking)
-            .Select(d => d.Id)
-            .ToList();
-        var staleCount = reservations.Count(r => !blockingIds.Contains(r.DelegationId));
-        if (staleCount > 0)
-            await _reservations.DeleteExceptAsync(source.Id, blockingIds, ct);
-    }
+        => await _reservations.DeleteStaleAsync(source.Id, ct);
 
     /// <summary>حارس التسطير عند الإنشاء/التعديل: يرفض الكفالة (لا إنابة عليها أبدًا)
     /// ويرفض الأموال بلا تاريخ القاء حجز (لا إنابة عليها قانونًا) ويرفض الأموال

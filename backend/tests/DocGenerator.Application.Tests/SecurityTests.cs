@@ -269,46 +269,34 @@ public class LoginRateLimiterTests : IDisposable
 
     /// <summary>
     /// يثبت القضاء على سباق TOCTOU: حتى مع 12 محاولة متزامنة فلا يتجاوز عدد الصفوف
-    /// المدرجة الحد أبدًا — الفحص والتسجيل في جملة إدراج مشروط واحدة ذرّية على المزودين.
+    /// المدرجة الحد أبدًا — الفحص والتسجيل في جملة إدراج مشروط واحدة ذرّية.
+    ///
+    /// يُنفَّذ على <c>PostgreSQL</c> (‏`ADR-0009`): ملف <c>SQLite</c> كان يُسلسل
+    /// الكتابات ذاتيًا فيُخفي سباق `READ COMMITTED` الحقيقي؛ هنا 12 اتصالًا متزامنًا
+    /// على القاعدة نفسها، فلا بد أن يصمد عند الحد في المزوّد الإنتاجي نفسه.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task ConcurrentFailures_NeverExceedMax()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"ratelimit_{Guid.NewGuid():N}.db");
-        var connectionString = $"Data Source={path};Mode=ReadWriteCreate;Pooling=False";
-        try
+        await using var pg = await PostgresTestDb.CreateAsync();
+
+        var tasks = Enumerable.Range(0, 12).Select(_ => Task.Run(async () =>
         {
-            using (var setup = new DocGeneratorDbContext(new DbContextOptionsBuilder<DocGeneratorDbContext>()
-                .UseSqlite(connectionString).Options))
-            {
-                setup.Database.EnsureCreated();
-            }
+            await using var db = pg.CreateContext();
+            var limiter = new DbLoginRateLimiter(db,
+                Microsoft.Extensions.Options.Options.Create(new RateLimitOptions
+                {
+                    MaxLoginAttempts = 5,
+                    WindowMinutes = 5,
+                }));
+            return await limiter.TryRecordFailureAsync("concurrent-key");
+        }));
 
-            var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
-                .UseSqlite(connectionString).Options;
+        var results = await Task.WhenAll(tasks);
+        Assert.Equal(5, results.Count(r => r));
 
-            var tasks = Enumerable.Range(0, 12).Select(_ => Task.Run(async () =>
-            {
-                using var db = new DocGeneratorDbContext(options);
-                var limiter = new DbLoginRateLimiter(db,
-                    Microsoft.Extensions.Options.Options.Create(new RateLimitOptions
-                    {
-                        MaxLoginAttempts = 5,
-                        WindowMinutes = 5,
-                    }));
-                return await limiter.TryRecordFailureAsync("concurrent-key");
-            }));
-
-            var results = await Task.WhenAll(tasks);
-            Assert.Equal(5, results.Count(r => r));
-
-            using var verify = new DocGeneratorDbContext(options);
-            Assert.Equal(5, await verify.LoginAttempts.CountAsync(a => a.Key == "concurrent-key"));
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        await using var verify = pg.CreateContext();
+        Assert.Equal(5, await verify.LoginAttempts.CountAsync(a => a.Key == "concurrent-key"));
     }
 
     private static void ResetPruneTimestamp()

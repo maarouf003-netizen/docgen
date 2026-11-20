@@ -7,7 +7,6 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Outbox;
 using DocGenerator.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,37 +19,37 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// حراسة مشغّل صندوق الصادر (الخطة §6.4 و§14.1): الالتقاط المرتّب، والمعالجة داخل
 /// معاملة واحدة، والتخطي، والتعارض، والحمولة التالفة، وتنظيف الصفوف.
+///
+/// يعمل على قاعدة <c>PostgreSQL</c> معزولة لكل حالة (‏`ADR-0009`): الالتقاط يستعمل
+/// <c>FOR UPDATE SKIP LOCKED</c>، وقفل النسخة الواحدة قفل استشاري حقيقي، وفهرس
+/// <c>UX_HeadAlerts_DedupeKey_Active</c> الجزئي هو نفسه الإنتاجي — لا محاكاة مزوّد آخر.
 /// </summary>
-public class HeadAlertOutboxDispatcherTests : IDisposable
+public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
 {
-    private readonly SqliteConnection _connection;
-    private readonly DbContextOptions<DocGeneratorDbContext> _options;
-    private readonly DocGeneratorDbContext _db;
-    private readonly ServiceProvider _provider;
-    private readonly HeadAlertOutboxDispatcher _dispatcher;
-    private readonly int _branchId;
-    private readonly User _head;
-    private readonly User _lawyer;
+    private PostgresTestDb _pg = null!;
+    private DocGeneratorPostgresDbContext _db = null!;
+    private ServiceProvider _provider = null!;
+    private HeadAlertOutboxDispatcher _dispatcher = null!;
+    private int _branchId;
+    private User _head = null!;
+    private User _lawyer = null!;
 
-    public HeadAlertOutboxDispatcherTests()
+    public async Task InitializeAsync()
     {
-        // اتصال مشترك + سياق لكل نطاق (كما في الإنتاج): كل دورة معالجة تحصل على
-        // سياق نظيف، فلا تتبّع كيانات ملوّث ولا تعارض تتبّع بين النطاقات.
-        _connection = new SqliteConnection("Data Source=:memory:");
-        _connection.Open();
-        _options = TestDb.CreateOptions(_connection);
-        _db = new DocGeneratorDbContext(_options);
-        _db.Database.EnsureCreated();
+        // سياق طويل العمر للقراءة/التحقق + سياق لكل نطاق (كما في الإنتاج): كل دورة
+        // معالجة تحصل على سياق نظيف، فلا تتبّع كيانات ملوّث ولا تعارض تتبّع بين النطاقات.
+        _pg = await PostgresTestDb.CreateAsync();
+        _db = _pg.CreateContext();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
         _db.Branches.Add(branch);
-        _db.SaveChanges();
+        await _db.SaveChangesAsync();
         _branchId = branch.Id;
 
         _head = EntityBuilders.NewUser("head_x", "رئيس القسم", UserRole.Head, _branchId);
         _lawyer = EntityBuilders.NewUser("law1", "محامي", UserRole.Lawyer, _branchId);
         _db.Users.AddRange(_head, _lawyer);
-        _db.SaveChanges();
+        await _db.SaveChangesAsync();
 
         // فحص المراجع قبل الإدراج يقرأ الإنابات من القاعدة: صفوف حقيقية للمعرّفات
         // الثابتة التي تستعملها الاختبارات.
@@ -60,21 +59,21 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         _dispatcher = CreateDispatcher(_provider);
     }
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
         _provider.Dispose();
-        _db.Dispose();
-        _connection.Dispose();
+        await _db.DisposeAsync();
+        await _pg.DisposeAsync();
     }
 
     private ServiceProvider BuildProvider(
         Func<IServiceProvider, IAuditLogger>? auditFactory = null,
         ConflictGate? conflictGate = null,
-        Func<Exception?>? interceptCreate = null)
+        Func<Task<Exception?>>? interceptCreate = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddScoped(_ => new DocGeneratorDbContext(_options));
+        services.AddScoped<DocGeneratorDbContext>(_ => _pg.CreateContext());
         services.AddScoped<ITransactionRunner>(sp => new TransactionRunner(sp.GetRequiredService<DocGeneratorDbContext>()));
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -103,10 +102,10 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     }
 
     /// <summary>مشغّل على مزوّد بديل — للاختبارات التي تحتاج حقن فشل في مسار المعالجة.</summary>
-    private static HeadAlertOutboxDispatcher CreateDispatcher(IServiceProvider provider) => new(
+    private HeadAlertOutboxDispatcher CreateDispatcher(IServiceProvider provider) => new(
         provider.GetRequiredService<IServiceScopeFactory>(),
         Options.Create(new HeadAlertOutboxOptions { Enabled = true, MaxAttempts = 3 }),
-        new HeadAlertOutboxLock("Data Source=:memory:", false, NullLogger<HeadAlertOutboxLock>.Instance),
+        new HeadAlertOutboxLock(_pg.ConnectionString, usePostgres: true, NullLogger<HeadAlertOutboxLock>.Instance),
         new DbExceptionClassifier(),
         NullLogger<HeadAlertOutboxDispatcher>.Instance);
 
@@ -140,13 +139,13 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         return await _db.HeadAlertOutboxMessages.AsNoTracking().OrderByDescending(m => m.Id).FirstAsync();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_NoMessages_ReturnsFalse()
     {
         Assert.False(await _dispatcher.ProcessNextAsync(CancellationToken.None));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_ValidUpsert_CreatesAlertAndMarksRowProcessed()
     {
         await EnqueueAsync();
@@ -166,7 +165,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(1, message.Attempts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_ClaimsInIdOrder_AndProcessesOneRowPerCycle()
     {
         // حدثان مختلفان (إنابتان) => مفتاحان مختلفان => صفّان نشطان.
@@ -193,7 +192,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             m => Assert.Equal(HeadAlertOutboxStatus.Processed, m.Status));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_NoEligibleRecipients_SkipsWithoutFailing()
     {
         // مستلم غير موجود: يُتخطّى (لا مستلمين) ولا يُفشل.
@@ -216,7 +215,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_SingleHeadWithoutRecipient_SkipsAsNoRecipientsWithoutRetry()
     {
         // مسارات الإنابة تُسجّل الرسالة حتى عند غياب رئيس نشط (ownerId = null)؛
@@ -240,7 +239,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_MissingDelegation_SkipsAsMissingReferenceWithoutRetry()
     {
         // إنابة محذوفة بين التسجيل والمعالجة: لا مفتاح أجنبي على DelegationId،
@@ -265,7 +264,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_InactiveSuccessionOverride_SkipsAsRecipientInactive()
     {
         var successor = EntityBuilders.NewUser("head_inactive", "خلف معطّل", UserRole.Head, _branchId);
@@ -300,7 +299,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_ActiveSuccessionOverride_ReassignsRecipient()
     {
         var successor = EntityBuilders.NewUser("head_successor", "خلف فعّال", UserRole.SubHead, _branchId);
@@ -331,7 +330,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Contains($"recipient:{successor.Id}", alert.DedupeKey!, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_InvalidPayload_FailsWithoutRetry()
     {
         var message = await EnqueueAsync();
@@ -348,7 +347,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(1, reloaded.Attempts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_KindMismatchBetweenColumnAndPayload_FailsWithoutRetry()
     {
         var message = await EnqueueAsync();
@@ -371,7 +370,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_UnknownPayloadVersion_FailsWithoutRetry()
     {
         var message = await EnqueueAsync();
@@ -388,7 +387,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(1, reloaded.Attempts);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_SecondIdenticalEvent_UpdatesAlertWithoutCreatingSecondRow()
     {
         var occurredAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
@@ -406,7 +405,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(occurredAt, alert.LastContentChangedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_CircuitRenamedWithoutActiveAlerts_IsSkipped()
     {
         // لا تنبيهات نشطة مرتبطة بالدائرة ⇒ تخطٍّ صريح (لا «نجاح» فارغ).
@@ -424,7 +423,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(HeadAlertOutboxSkipReasons.NoActiveAlerts, message.LastError);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_CircuitRenamedWithOnlyNewerAlerts_IsProcessedNotSkipped()
     {
         var circuit = new ExecutionCircuit
@@ -471,7 +470,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(occurredAt, alert.LastContentChangedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_OlderEvent_IsSkippedAsStale()
     {
         var occurredAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
@@ -491,7 +490,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(occurredAt, alert.LastContentChangedAt);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_ChangedContent_ResetsReadState()
     {
         var occurredAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
@@ -526,7 +525,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
 
     // ── سياسة الإرجاع بعد الفشل (الخطة §6.4 و§18:3081) ──
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_BusinessTransactionFails_RollsBackAlertAndReturnsRowToPending()
     {
         // فشل داخل معاملة المعالجة بعد إدراج التنبيه (تسجيل التدقيق) يجب أن يُرجع
@@ -535,7 +534,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         // لو صار الفشل قبل الإدراج (كان يعني «لا كتابة» لا «تراجعًا»).
         await EnqueueAsync();
 
-        using var provider = BuildProvider(
+        await using var provider = BuildProvider(
             auditFactory: sp => new ThrowingAuditLogger(sp.GetRequiredService<DocGeneratorDbContext>()));
         var dispatcher = CreateDispatcher(provider);
 
@@ -552,13 +551,13 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Contains("فشل تسجيل التدقيق", message.LastError!, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_DedupeConflict_RetriesOnceWithMarkerThenSucceeds()
     {
         await EnqueueAsync();
         var gate = new ConflictGate(remainingConflicts: 1);
 
-        using var provider = BuildProvider(conflictGate: gate);
+        await using var provider = BuildProvider(conflictGate: gate);
         var dispatcher = CreateDispatcher(provider);
 
         // المحاولة الأولى: تعارض ⇒ pending فورًا بعلامة conflict_retry (لا failed،
@@ -585,7 +584,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Single(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_RepeatedDedupeConflict_FailsWithConflictRetryPrefix()
     {
         // التعارض المتكرر لا يعيد إلى ما لا نهاية: المحاولة الثانية تُسجَّل failed
@@ -593,7 +592,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         await EnqueueAsync();
         var gate = new ConflictGate(remainingConflicts: 2);
 
-        using var provider = BuildProvider(conflictGate: gate);
+        await using var provider = BuildProvider(conflictGate: gate);
         var dispatcher = CreateDispatcher(provider);
 
         Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
@@ -607,7 +606,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_DedupeKeyUniqueViolation_UsesConflictPolicyNotTransientBackoff()
     {
         // سباق الفهرس الفريد الجزئي يصل من `SaveChangesAsync` كـ`DbUpdateException`
@@ -615,7 +614,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         // `IsDedupeKeyConflict` — وهذا ما لا يغطيه محقن التعارض في الاختبارات أعلاه.
         await EnqueueAsync();
 
-        using var provider = BuildProvider(interceptCreate: BuildDedupeKeyUniqueViolation);
+        await using var provider = BuildProvider(interceptCreate: BuildDedupeKeyUniqueViolationAsync);
         var dispatcher = CreateDispatcher(provider);
 
         Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
@@ -640,7 +639,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ProcessNext_ConflictThenTransientThenConflict_StillFailsAfterOneRetry()
     {
         // العقد: «إعادة واحدة» تعني واحدة **عبر كل أنواع الفشل**، لا واحدة بين كل خطأين
@@ -654,7 +653,8 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             new HeadAlertConflictException("تعارض ثانٍ"),
         });
 
-        using var provider = BuildProvider(interceptCreate: () => attempts.Dequeue());
+        await using var provider = BuildProvider(
+            interceptCreate: () => Task.FromResult(attempts.Dequeue()));
         var dispatcher = CreateDispatcher(provider);
 
         // 1) تعارض ⇒ pending + ConflictRetries=1.
@@ -703,7 +703,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             ProcessedAt = status is HeadAlertOutboxStatus.Processed or HeadAlertOutboxStatus.Skipped ? processedAt : null,
         };
 
-    [Fact]
+    [PostgresFact]
     public async Task RunMaintenanceAsync_CleansExpiredTerminalRows_AndReturnsHealth()
     {
         var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
@@ -736,32 +736,32 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     {
         private readonly IHeadAlertService _inner;
         private readonly ConflictGate? _gate;
-        private readonly Func<Exception?>? _intercept;
+        private readonly Func<Task<Exception?>>? _intercept;
 
         public CreateFailureAlertService(
             IHeadAlertService inner,
             ConflictGate? gate = null,
-            Func<Exception?>? intercept = null)
+            Func<Task<Exception?>>? intercept = null)
         {
             _inner = inner;
             _gate = gate;
             _intercept = intercept;
         }
 
-        public Task<HeadAlertWriteResult> CreateSystemAsync(
+        public async Task<HeadAlertWriteResult> CreateSystemAsync(
             CreateSystemHeadAlertRequest request,
             DateTime occurredAt,
             HeadAlertSupersedePlan? supersedePlan,
             int? targetUserIdOverride,
             CancellationToken ct = default)
         {
-            if (_intercept?.Invoke() is { } intercepted)
+            if (_intercept is not null && await _intercept() is { } intercepted)
                 throw intercepted;
 
             if (_gate?.TryConsumeConflict() == true)
                 throw new HeadAlertConflictException("تعارض محاكى على مفتاح منع التكرار");
 
-            return _inner.CreateSystemAsync(request, occurredAt, supersedePlan, targetUserIdOverride, ct);
+            return await _inner.CreateSystemAsync(request, occurredAt, supersedePlan, targetUserIdOverride, ct);
         }
 
         // بقية الأعضاء تمرير مباشر: الاختبار يستهدف مسار CreateSystemAsync وحده.
@@ -856,15 +856,20 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
 
     /// <summary>
     /// يولّد <see cref="DbUpdateException"/> حقيقيًا من تعارض الفهرس الفريد الجزئي على
-    /// <c>DedupeKey</c> (SQLite 19/2067، ونصّه يحوي اسم العمود) — كما يحدث في الإنتاج
-    /// عند سباق إدراجين متزامنين، بدل تلفيق استثناء لا يشبه الواقع.
+    /// <c>DedupeKey</c> (‏`PostgreSQL 23505`، ونصّه يحوي اسم الفهرس/العمود) — كما يحدث
+    /// في الإنتاج عند سباق إدراجين متزامنين، بدل تلفيق استثناء لا يشبه الواقع.
+    ///
+    /// <para>قاعدة معزولة خاصة: الصفوف المتسابقة لا تُلوّث قاعدة الحالة الجارية
+    /// (كما كان ملف <c>SQLite</c> المؤقت سابقًا)، والتخطيط والفهرس الجزئي هما الإنتاجيان.</para>
     /// </summary>
-    private static DbUpdateException BuildDedupeKeyUniqueViolation()
+    private static async Task<Exception?> BuildDedupeKeyUniqueViolationAsync()
     {
-        using var db = TestDb.Create();
+        await using var pg = await PostgresTestDb.CreateAsync();
+        await using var db = pg.CreateContext();
 
-        var branch = db.Branches.Add(new Branch { Name = "حلب", Code = "ALP" }).Entity;
-        db.SaveChanges();
+        var branch = new Branch { Name = "حلب", Code = "ALP" };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
 
         var head = new User
         {
@@ -875,7 +880,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             PasswordHash = "x",
         };
         db.Users.Add(head);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
         var occurredAt = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc);
         HeadAlert Row() => new()
@@ -891,12 +896,12 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         };
 
         db.HeadAlerts.Add(Row());
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
         db.HeadAlerts.Add(Row());
         try
         {
-            db.SaveChanges();
+            await db.SaveChangesAsync();
         }
         catch (DbUpdateException ex)
         {
