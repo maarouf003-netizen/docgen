@@ -26,11 +26,12 @@
 
 ```bash
 # قاعدة اختبار محلية مطابقة لـ CI (Linux/Container؛ على Windows يُفضَّل WSL2/Docker
-# لتفادي حد الذاكرة المشتركة وفحص الملفات).
-docker run --rm -d --name docgen-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 \
+# لتفادي حد الذاكرة المشتركة وفحص الملفات). الحاوية محلية ومؤقتة، فمصادقة trust كافية
+# ولا تُخزَّن أي كلمة مرور في المستودع.
+docker run --rm -d --name docgen-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 \
   postgres:16 -c fsync=off -c synchronous_commit=off
 
-export DOCGEN_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres"
+export DOCGEN_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres"
 export DOCGEN_REQUIRE_POSTGRES=1   # مفيد في CI/التحقق النهائي
 ```
 

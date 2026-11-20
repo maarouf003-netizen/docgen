@@ -30,13 +30,14 @@ export function parseResults(trxText) {
   return rows;
 }
 
-/** يبني ملخصًا رقميًا من صفوف النتائج. */
-export function summarize(rows) {
+/** يبني ملخصًا رقميًا من صفوف النتائج (والمدة الجدارية إن توفرت في `Times`). */
+export function summarize(rows, wallSeconds = null) {
   const count = (outcome) => rows.filter((row) => row.outcome === outcome).length;
   const passed = count('Passed');
   const failed = count('Failed');
   const skipped = count('NotExecuted');
-  const seconds = rows.reduce((total, row) => total + row.seconds, 0);
+  const sum = rows.reduce((total, row) => total + row.seconds, 0);
+  const seconds = wallSeconds ?? sum;
 
   return {
     total: rows.length,
@@ -46,6 +47,19 @@ export function summarize(rows) {
     seconds: Math.round(seconds * 10) / 10,
     failedTests: rows.filter((row) => row.outcome === 'Failed').map((row) => row.testName),
   };
+}
+
+/** مدة التشغيل الجدارية من وسم `<Times start=… finish=…>` (‏`null` إن غاب). */
+export function wallClockSeconds(trxText) {
+  const times = /<Times\b[^>]*>/.exec(trxText)?.[0];
+  if (!times) return null;
+
+  const start = /start="([^"]+)"/.exec(times)?.[1];
+  const finish = /finish="([^"]+)"/.exec(times)?.[1];
+  if (!start || !finish) return null;
+
+  const elapsed = (Date.parse(finish) - Date.parse(start)) / 1000;
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
 }
 
 /** كتلة Markdown جاهزة للصق في لقطة `docs/audit`. */
@@ -88,15 +102,15 @@ function decodeXml(value) {
 
 /** اختبار ذاتي معزول (لا يقرأ المستودع). */
 export function selfTest() {
-  const trx = `<TestRun><Results>
+  const trx = `<TestRun><Times start="2026-01-01T00:00:00.0000000Z" finish="2026-01-01T00:00:10.0000000Z" /><Results>
     <UnitTestResult testName="A.Tests.One" outcome="Passed" duration="00:00:02.5000000" />
     <UnitTestResult testName="A.Tests.Two &amp; More" outcome="Passed" duration="00:00:01" />
     <UnitTestResult testName="A.Tests.Failed" outcome="Failed" duration="00:00:00.2500000" />
     <UnitTestResult testName="A.Tests.Skipped" outcome="NotExecuted" duration="00:00:00.0000001" />
   </Results></TestRun>`;
 
-  const summary = summarize(parseResults(trx));
-  const expected = { total: 4, passed: 2, failed: 1, skipped: 1 };
+  const summary = summarize(parseResults(trx), wallClockSeconds(trx));
+  const expected = { total: 4, passed: 2, failed: 1, skipped: 1, seconds: 10 };
   for (const [key, value] of Object.entries(expected)) {
     if (summary[key] !== value) {
       throw new Error(`الاختبار الذاتي فشل: ${key}=${summary[key]} ≠ ${value}`);
@@ -119,24 +133,57 @@ export function selfTest() {
     throw new Error(`الاختبار الذاتي فشل: الكتلة غير متوقعة:\n${block}`);
   }
 
-  console.log('test-report: self-test نظيف (4 حالات تحليل/تلخيص).');
+  // ترتيب الوسائط: يجب ألا يُلتقط عنوان `--label` كمسار ملف.
+  const before = parseArgs(['--label', 'App/PG', 'x.trx']);
+  if (before.file !== 'x.trx' || before.label !== 'App/PG') {
+    throw new Error(`الاختبار الذاتي فشل: تحليل الوسائط (قبل) خاطئ: ${JSON.stringify(before)}`);
+  }
+  const after = parseArgs(['x.trx', '--label', 'App/PG']);
+  if (after.file !== 'x.trx' || after.label !== 'App/PG') {
+    throw new Error(`الاختبار الذاتي فشل: تحليل الوسائط (بعد) خاطئ: ${JSON.stringify(after)}`);
+  }
+  const bare = parseArgs(['x.trx']);
+  if (bare.file !== 'x.trx' || bare.label !== 'Application/PostgreSQL') {
+    throw new Error(`الاختبار الذاتي فشل: الافتراضي غير صحيح: ${JSON.stringify(bare)}`);
+  }
+
+  console.log('test-report: self-test نظيف (تحليل/تلخيص/مدة/وسائط).');
+}
+
+/** يحلّل وسائط سطر الأوامر (المسار أولًا أو بعد `--label` — بلا التباس). */
+export function parseArgs(args) {
+  let file = null;
+  let label = 'Application/PostgreSQL';
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--self-test') return { selfTest: true, file: null, label };
+    if (arg === '--label') {
+      label = args[i + 1] ?? label;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--')) continue;
+    file ??= arg;
+  }
+
+  return { selfTest: false, file, label };
 }
 
 function main() {
-  const args = process.argv.slice(2);
-  if (args.includes('--self-test')) {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.selfTest) {
     selfTest();
     return;
   }
 
-  const trxPath = args.find((arg) => !arg.startsWith('--'));
-  if (!trxPath) {
+  if (!args.file) {
     throw new Error('مرّر مسار ملف trx أو استخدم --self-test.');
   }
-  const labelIndex = args.indexOf('--label');
-  const label = labelIndex >= 0 ? args[labelIndex + 1] : 'Application/PostgreSQL';
+  const trxPath = args.file;
+  const trxPathText = readFileSync(trxPath, 'utf8');
 
-  const summary = summarize(parseResults(readFileSync(trxPath, 'utf8')));
+  const summary = summarize(parseResults(trxPathText), wallClockSeconds(trxPathText));
   if (summary.total === 0) {
     throw new Error('لم تُقرأ أي نتيجة من ملف trx — تحقق من المسار.');
   }
@@ -144,7 +191,7 @@ function main() {
     console.error(`تحذير: ${summary.failed} حالة فاشلة في ${trxPath}.`);
   }
 
-  console.log(renderBlock(summary, label));
+  console.log(renderBlock(summary, args.label));
 }
 
 if (process.argv[1] && process.argv[1].endsWith('test-report.mjs')) {
