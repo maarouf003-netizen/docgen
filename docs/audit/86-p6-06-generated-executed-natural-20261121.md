@@ -3,6 +3,7 @@
 > **النطاق:** إحالة `ExecutedNaturalPersonDto` اليدوي في `frontend/src/types/document.ts`
 > إلى `components['schemas']['ExecutedNaturalPersonDto']`.
 > **لا تغيير في `API`/`DTO`/`backend`.**
+> **PR:** [#247](https://github.com/maarouf003-netizen/docgen/pull/247).
 
 ## 1. ما نُفِّذ
 
