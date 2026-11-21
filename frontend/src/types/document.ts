@@ -256,26 +256,8 @@ export interface DocumentAssignmentDto {  id: number;
   assignedAt?: string;
 }
 
-/** الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). */
-export interface ExecutedNaturalPersonDto {
-  id?: number;
-  name?: string;
-  father?: string;
-  family?: string;
-  addressType?: string;
-  addressOrRepresentative?: string;
-  representationType?: string;
-  deceasedName?: string;
-  deceasedFather?: string;
-  deceasedFamily?: string;
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-  heirs?: ExecutedHeirDto[];
-}
+/** الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). نوعه مولَّد من OpenAPI (P6-06). */
+export type ExecutedNaturalPersonDto = components['schemas']['ExecutedNaturalPersonDto'];
 
 export interface InitialActionRequest {
   type: 'action' | 'note';

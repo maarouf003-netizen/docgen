@@ -957,6 +957,11 @@
     `ExecutedHeirDto` إلى المولَّد وتوسيع `heirOption`
     في `appealOptions` ليقبل `string | null` (خطآن `tsc` فقط)؛ `vitest` 1808/1808.
     التفاصيل: `docs/audit/85-p6-06-generated-executed-heir-20261121.md`.
+  - **الجزء الخامس (2026-11-21):** PR
+    [`#247`](https://github.com/maarouf003-netizen/docgen/pull/247) — إحالة
+    `ExecutedNaturalPersonDto` إلى المولَّد —
+    **صفر أخطاء `tsc`** بفضل nullability الجذرية في الجزء الثالث؛ `vitest` 1808/1808.
+    التفاصيل: `docs/audit/86-p6-06-generated-executed-natural-20261121.md`.
   - **متبقٍ:** إحلال بقية `types/document.ts` (797 سطرًا) تدريجيًا، ومراجعة أي نوع
     يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
