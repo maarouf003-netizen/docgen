@@ -96,22 +96,8 @@ export type PartyNature = 'natural' | 'legal';
 /** طبيعة المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. */
 export type EntityNature = 'public' | 'legal';
 
-/** وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). */
-export interface ExecutedHeirDto {
-  id?: number;
-  heirName?: string;
-  heirFather?: string;
-  heirFamily?: string;
-  addressType?: string;
-  heirAddress?: string;
-  /** الممثل الشرعي للوريث (ولي/وصي/قيم): الاسم الثلاثي والصفة والعنوان. */
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-}
+/** وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). نوعه مولَّد من OpenAPI (P6-06). */
+export type ExecutedHeirDto = components['schemas']['ExecutedHeirDto'];
 
 /** طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). */
 export interface ExecutionApplicantDto {
