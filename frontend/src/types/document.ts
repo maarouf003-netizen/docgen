@@ -27,24 +27,8 @@ export interface GuarantorDto {
   representedBy?: string;
 }
 
-/** وريث لمنفذ عليه متوفى (المقترض أو أحد الكفلاء). */
-export interface HeirDto {
-  id?: number;
-  name?: string;
-  father?: string;
-  family?: string;
-  /** صفة الوريث: أصالة / إضافة لتركة / أصالة وإضافة. */
-  capacity?: string;
-  addressType?: string;
-  address?: string;
-  /** الممثل الشرعي للوريث (ولي/وصي/قيم): الاسم الثلاثي والصفة والعنوان. */
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-}
+/** وريث لمنفذ عليه متوفى (المقترض أو أحد الكفلاء). نوعه مولَّد من OpenAPI (P6-06). */
+export type HeirDto = components['schemas']['HeirDto'];
 
 /**
  * مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)

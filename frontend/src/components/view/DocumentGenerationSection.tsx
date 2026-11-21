@@ -66,7 +66,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
     );
   };
 
-  const downloadOne = async (code: string, recipient: number, estateIds: number[], heirId?: number) => {
+  const downloadOne = async (code: string, recipient: number, estateIds: number[], heirId?: number | null) => {
     const res = await api.get(`/documents/${id}/generate`, {
       params: {
         template: code,
@@ -234,7 +234,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
       if (!name) return;
       noticePersons.push({
         number: heirKey++,
-        heirId: h.id,
+        heirId: h.id ?? undefined,
         label: `الوريث :  ${name} — إضافة لتركة ${deceasedFull}`,
       });
     });

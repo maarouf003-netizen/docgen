@@ -1,13 +1,13 @@
 import { REPRESENTATIVE_ADDRESS_TYPE_OPTIONS, REPRESENTATIVE_CAPACITIES, representativeAddressLabelOf } from './documentFormConstants';
 
 export interface RepresentativeFields {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-  representativeLegalRepresentative?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
+  representativeAddressType?: string | null;
+  representativeAddress?: string | null;
+  representativeLegalRepresentative?: string | null;
 }
 
 /**

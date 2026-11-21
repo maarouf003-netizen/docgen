@@ -1,13 +1,13 @@
 export type PersonFields = {
-  name?: string;
-  father?: string;
-  family?: string;
-  mother?: string;
-  birth?: string;
-  register?: string;
-  nationalId?: string;
-  addressType?: string;
-  address?: string;
+  name?: string | null;
+  father?: string | null;
+  family?: string | null;
+  mother?: string | null;
+  birth?: string | null;
+  register?: string | null;
+  nationalId?: string | null;
+  addressType?: string | null;
+  address?: string | null;
 };
 
 export type HeirLine = { name: string; detail: string };

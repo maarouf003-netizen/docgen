@@ -116,7 +116,7 @@ export function fullName(person: PersonFields): string {
 }
 
 /** تفصيل عنوان/وكيل الوريث: «عنوان: …» أو «يمثله …» (بدون تكرار السابقة إن كانت في القيمة). */
-export function heirLineDetail(addressType: string | undefined, address: string | undefined): string {
+export function heirLineDetail(addressType: string | null | undefined, address: string | null | undefined): string {
   const value = (address ?? '').trim();
   if (!value) return '';
   if (addressType === 'وكيل') {
@@ -146,12 +146,12 @@ export function buildExecutedHeirLines(heirs: ExecutedHeirDto[] | undefined): He
 
 /** تفصيل الممثل الشرعي للوريث: «ممثله الشرعي الولي …، عنوانه …» — أو فارغ إن غاب. */
 export function heirRepresentativeDetail(h: {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
+  representativeAddressType?: string | null;
+  representativeAddress?: string | null;
 }): string {
   const line = representativeLine(h);
   if (!line) return '';
@@ -204,10 +204,10 @@ export function executedPersonRows(person: ExecutedNaturalPersonDto): DetailsRow
 
 /** سابقة التمثيل في السطر الفرعي للطرف: «إضافة لتركة المتوفى فلان» أو «أصالة وإضافة لتركة المتوفى فلان». */
 export function representationSuffix(p: {
-  representationType?: string;
-  deceasedName?: string;
-  deceasedFather?: string;
-  deceasedFamily?: string;
+  representationType?: string | null;
+  deceasedName?: string | null;
+  deceasedFather?: string | null;
+  deceasedFamily?: string | null;
 }): string {
   const type = p.representationType;
   if (type !== 'إضافة لتركة' && type !== 'أصالة وإضافة') return '';
@@ -220,10 +220,10 @@ export function representationSuffix(p: {
 
 /** سطر الممثل الشرعي: «ممثله الشرعي الولي فلان الفلاني» (أو الوصي/القيم) — أو فارغ إن غاب. */
 export function representativeLine(p: {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
 }): string {
   const name = fullName({ name: p.representativeName, father: p.representativeFather, family: p.representativeFamily });
   if (!name) return '';
@@ -233,12 +233,12 @@ export function representativeLine(p: {
 
 /** صفوف الممثل الشرعي في نافذة التفاصيل (الاسم والصّفة وعنوانه/وكيله القانوني) — أو فارغة إن غاب. */
 export function representativeRows(p: {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
+  representativeAddressType?: string | null;
+  representativeAddress?: string | null;
 }): DetailsRow[] {
   const name = fullName({ name: p.representativeName, father: p.representativeFather, family: p.representativeFamily });
   if (!name) return [];
@@ -258,19 +258,19 @@ export function representativeRows(p: {
 
 /** صفوف الهوية الكاملة لطالب تنفيذ طبيعي في وضع «منفذ عليه». */
 export function applicantNaturalRows(a: {
-  name?: string;
-  father?: string;
-  family?: string;
-  legalRepresentative?: string;
-  representationType?: string;
-  deceasedName?: string;
-  deceasedFather?: string;
-  deceasedFamily?: string;
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeLegalRepresentative?: string;
+  name?: string | null;
+  father?: string | null;
+  family?: string | null;
+  legalRepresentative?: string | null;
+  representationType?: string | null;
+  deceasedName?: string | null;
+  deceasedFather?: string | null;
+  deceasedFamily?: string | null;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
+  representativeLegalRepresentative?: string | null;
 }): DetailsRow[] {
   const rows: DetailsRow[] = [
     { label: 'الاسم الثلاثي', value: fullName(a) },
@@ -311,12 +311,12 @@ export function formatCollectedAmounts(doc: DocumentResponse): string {
 
 /** أحدث وقعة «استرداد» على الملف (تفاصيل F2): سبب الاسترداد + كتاب براءة الذمة أو تحويل البدل + رقم أساس المنيب. */
 function latestRecovery(doc: DocumentResponse): {
-  recoveryReason?: string;
-  baraetNumber?: string;
-  baraetDate?: string;
-  forcibleTransferDate?: string;
-  forcibleTransferNoticeNumber?: string;
-  sourceFileNumber?: string;
+  recoveryReason?: string | null;
+  baraetNumber?: string | null;
+  baraetDate?: string | null;
+  forcibleTransferDate?: string | null;
+  forcibleTransferNoticeNumber?: string | null;
+  sourceFileNumber?: string | null;
 } | undefined {
   const recovered = (doc.occurrences ?? []).filter((o) => o.occurrenceType === 'recovered');
   const last = recovered[recovered.length - 1];
@@ -570,7 +570,7 @@ export function buildOccurrenceLines(occurrences: DocumentOccurrenceDto[] | unde
 }
 
 /** تسمية حقل عنوان الشخص الاعتباري: «وكيله القانوني»/«الموطن المختار»/«العنوان». */
-export function legalAddressLabel(addressType: string | undefined): string {
+export function legalAddressLabel(addressType: string | null | undefined): string {
   if (addressType === 'يمثله') return 'وكيله القانوني';
   if (addressType === 'موطن مختار') return 'الموطن المختار';
   return 'العنوان';
@@ -578,12 +578,12 @@ export function legalAddressLabel(addressType: string | undefined): string {
 
 /** حقول الشخص الاعتباري (شركة/مؤسسة): الاسم ورقم التسجيل ومن يمثلها ومحافظتها وعنوانها. */
 export function legalPartyRows(party: {
-  name?: string;
-  registrationNumber?: string;
-  representedBy?: string;
-  addressType?: string;
-  address?: string;
-  governorate?: string;
+  name?: string | null;
+  registrationNumber?: string | null;
+  representedBy?: string | null;
+  addressType?: string | null;
+  address?: string | null;
+  governorate?: string | null;
 }): DetailsRow[] {
   const rows: DetailsRow[] = [];
   const name = (party.name ?? '').trim();

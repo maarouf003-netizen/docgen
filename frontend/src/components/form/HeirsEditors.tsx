@@ -29,7 +29,7 @@ const labelCls = 'block text-xs font-bold text-gray-600 mb-1';
  * `key` ولا `htmlFor` إلى وريث آخر (ومعهما حالة الحقل وقراءة قارئ الشاشة). الصف الجديد
  * (بلا `id`) يبقى موضعيًا حتى يُحفظ فيأخذ هويته؛ ولا تصادم لأن معرّفات القاعدة تبدأ من 1.
  */
-function heirRowKey(heirId: number | undefined, index: number): string {
+function heirRowKey(heirId: number | null | undefined, index: number): string {
   return heirId != null ? `id${heirId}` : String(index);
 }
 
@@ -55,7 +55,7 @@ function useDraftRepresentatives() {
   const [drafts, setDrafts] = useState<ReadonlySet<number>>(() => new Set());
 
   return {
-    isLocked: (heirId: number | undefined, locked: boolean) =>
+    isLocked: (heirId: number | null | undefined, locked: boolean) =>
       locked && heirId != null && !drafts.has(heirId),
     mark: (heirId: number) =>
       setDrafts((prev) => {
