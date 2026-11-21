@@ -952,7 +952,9 @@
     النماذج لتقبل `string | null` (25 خطأ `tsc` أُصلحت من الجذر بلا `as`/`any`)؛
     `vitest` 1808/1808 و`build` ناجح. التفاصيل:
     `docs/audit/84-p6-06-generated-heir-20261121.md`.
-  - **الجزء الرابع (2026-11-21):** إحالة `ExecutedHeirDto` إلى المولَّد وتوسيع `heirOption`
+  - **الجزء الرابع (2026-11-21):** PR
+    [`#246`](https://github.com/maarouf003-netizen/docgen/pull/246) — إحالة
+    `ExecutedHeirDto` إلى المولَّد وتوسيع `heirOption`
     في `appealOptions` ليقبل `string | null` (خطآن `tsc` فقط)؛ `vitest` 1808/1808.
     التفاصيل: `docs/audit/85-p6-06-generated-executed-heir-20261121.md`.
   - **متبقٍ:** إحلال بقية `types/document.ts` (797 سطرًا) تدريجيًا، ومراجعة أي نوع

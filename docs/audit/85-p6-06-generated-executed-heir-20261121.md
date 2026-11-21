@@ -3,6 +3,7 @@
 > **النطاق:** إحالة `ExecutedHeirDto` اليدوي في `frontend/src/types/document.ts` إلى
 > `components['schemas']['ExecutedHeirDto']`، وتوسيع مساعد خيارات الاستئناف ليقبل
 > `string | null`. **لا تغيير في `API`/`DTO`/`backend`.**
+> **PR:** [#246](https://github.com/maarouf003-netizen/docgen/pull/246).
 
 ## 1. ما نُفِّذ
 
