@@ -1,8 +1,17 @@
 name: CI
 
 on:
+  # فرع `master` فقط: دفعات فروع الميزات تُفحص عبر `pull_request` وحدها،
+  # فلا تُشغَّل الدورة الكاملة مرتين لنفس الـcommit (push + PR synchronize).
   push:
+    branches: [master]
   pull_request:
+    branches: [master]
+
+# دفعة جديدة على نفس الـPR تُلغي التشغيل السابق غير المكتمل.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
