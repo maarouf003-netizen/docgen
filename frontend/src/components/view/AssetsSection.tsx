@@ -52,7 +52,7 @@ function AssetRow({ asset: r, delegated }: { asset: AssetDto; delegated: boolean
   );
 }
 
-function Row({ label, value }: { label: string; value: string | undefined }) {
+function Row({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <span className="inline-flex items-center gap-1">
       <span className="text-gray-500">{label}</span>
@@ -62,7 +62,7 @@ function Row({ label, value }: { label: string; value: string | undefined }) {
 }
 
 /** صفوف العرض الخاصة بكل نوع أصل. */
-function Rows({ kind, asset: r }: { kind: string | undefined; asset: AssetDto }) {
+function Rows({ kind, asset: r }: { kind: string | null | undefined; asset: AssetDto }) {
   if (kind === ASSET_KINDS.realEstate) {
     return (
       <>

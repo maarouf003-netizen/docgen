@@ -19,8 +19,8 @@ export function EstateSelection({
         <label key={r.id ?? i} className="inline-flex items-center gap-2 text-sm cursor-pointer min-h-11">
           <input
             type="checkbox"
-            checked={r.id !== undefined && selected.includes(r.id)}
-            onChange={() => r.id !== undefined && onToggle(r.id)}
+            checked={r.id != null && selected.includes(r.id)}
+            onChange={() => r.id != null && onToggle(r.id)}
           />
           {r.property} — {(r.owners ?? []).join(' و ')}
         </label>

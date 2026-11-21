@@ -265,7 +265,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
   // التوليد الحالي للعقار فقط؛ تُفلتر الأموال لنوع «عقار» (توليد بقية الأنواع يُهيكل لاحقًا).
   const realEstateAssets = (doc.assets ?? []).filter((a) => a.assetKind === ASSET_KINDS.realEstate);
   const selectedEstates = realEstateAssets.filter(
-    (r) => r.id !== undefined && estateSel.includes(r.id),
+    (r) => r.id != null && estateSel.includes(r.id),
   );
   const estateOwnersKey = (r: AssetDto) => [...(r.owners ?? [])].sort().join('|');
   const multiOwner = new Set(selectedEstates.map(estateOwnersKey)).size > 1;
