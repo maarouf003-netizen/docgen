@@ -177,6 +177,8 @@ export default function DocumentForm() {
     executionApplicants: [],
     executedPublicEntities: [],
     executedNaturalPersons: [],
+    applicantPublicEntities: [],
+    borrowerHeirs: [],
     annexes: [],
   });
 // تحميل كامل للمستند عند دخول وضع التعديل.
@@ -202,6 +204,8 @@ export default function DocumentForm() {
       executionApplicants: [],
       executedPublicEntities: [],
       executedNaturalPersons: [],
+      applicantPublicEntities: [],
+      borrowerHeirs: [],
       annexes: [],
     });
     setGuarantors([emptyGuarantor()]);

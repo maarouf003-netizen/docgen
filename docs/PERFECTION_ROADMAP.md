@@ -974,11 +974,17 @@
     (`Omit` + تضييق `nature` إلى `PartyNature | null`)؛ أُصلحت nullability من الجذر
     (39 خطأ `tsc` أوليًا، صفر `as`/`any`)، وأُصلح فحص `id != null` في مساري اختيار الأموال؛
     `vitest` 1808/1808. التفاصيل: `docs/audit/90-p6-06-asset-applicant-20261121.md`.
-  - **متبقٍ:** `DocumentInterventionDto`/`DocumentInterventionUpsertRequest`,
-    `DocumentUpsertRequest`، و`DocumentResponse` (**لا مخطط مولَّد له**)، وأنواع الطلبات
-    بلا مخططات (`InitialActionRequest`, `DocumentFilterOptionsDto`, `RotationDocumentDto`,
-    `BaseNumberHistoryDto`, `CorrectBaseNumberRequest`) تبقى يدوية موثّقة. ومراجعة أي نوع
-    يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
+  - **الجزء الثامن (2026-11-21):** إحالة عقود الطلبات المولَّدة
+    (`DocumentUpsertRequest`, `DocumentInterventionUpsertRequest`, `InitialActionRequest`
+    كـ`AddExecutionActionRequest`) مع تضييق `PartyNature`/`GeneralEntitySide`/`InterventionNature`؛
+    حُذف `applicantRegistryId` الوهمي (غير موجود خلفيًا ولا مستخدم)، وأُصلحت nullability
+    (`trimNull`, `NamedInput`, القوائم المطلوبة)؛ `vitest` 1808/1808. التفاصيل:
+    `docs/audit/91-p6-06-request-types-20261121.md`.
+  - **متبقٍ:** `DocumentResponse` (**لا مخطط مولَّد له**) و`DocumentInterventionDto`
+    (استجابة غير موثّقة بالمخطط)، وأنواع بلا مخططات (`DocumentFilterOptionsDto`,
+    `RotationDocumentDto`, `BaseNumberHistoryDto`, `CorrectBaseNumberRequest`) تبقى يدوية
+    موثّقة. ومراجعة أي نوع يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند
+    ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
 - **العمل:** استبدال `types/document.ts` (797 سطرًا) بأنواع مولّدة؛ `openapi-typescript`؛ CI يفشل عند الانحراف.
 - **DoD:** عقد واحد بين الخلفية والواجهة — **جزئي** (نوع واحد + الحارس؛ البقية لاحقًا).

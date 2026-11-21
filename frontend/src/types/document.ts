@@ -119,42 +119,18 @@ export interface DocumentInterventionDto {
   version?: number;
 }
 
-/** طلب إضافة/تعديل متدخل — التواريخ نصوص حرة تُفسَّر خادميًا. */
-export interface DocumentInterventionUpsertRequest {
+/**
+ * طلب إضافة/تعديل متدخل — حقوله مولَّدة من OpenAPI (P6-06)، مع تضييق `nature` إلى
+ * الاتحاد المعروف. `heirs` يبقى اختياريًا واجهةً (الخلفية تقبل غيابه وتعتبره فارغًا)،
+ * والتواريخ نصوص حرة تُفسَّر خادميًا.
+ */
+export type DocumentInterventionUpsertRequest = Omit<
+  components['schemas']['DocumentInterventionUpsertRequest'],
+  'nature' | 'heirs'
+> & {
   nature: InterventionNature;
-  /** عدّاد التزامن المتفائل (P0-06) — يُفحص في التعديل فقط. */
-  version?: number | null;
-  receiptNumber?: string;
-  receiptDate?: string;
-  acceptanceDate?: string;
-  subject?: string;
-  notes?: string;
-
-  name?: string;
-  father?: string;
-  family?: string;
-  mother?: string;
-  birth?: string;
-  register?: string;
-  nationalId?: string;
-  addressType?: string;
-  address?: string;
-
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-
-  entityName?: string;
-  entityBranch?: string;
-  registrationNumber?: string;
-  representedBy?: string;
-  governorate?: string;
-  registryId?: number | null;
   heirs?: HeirDto[];
-}
+};
 
 /** سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer). */
 export interface DocumentAssignmentDto {  id: number;
@@ -167,13 +143,8 @@ export interface DocumentAssignmentDto {  id: number;
 /** الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). نوعه مولَّد من OpenAPI (P6-06). */
 export type ExecutedNaturalPersonDto = components['schemas']['ExecutedNaturalPersonDto'];
 
-export interface InitialActionRequest {
-  type: 'action' | 'note';
-  text: string;
-  actionDate?: string | null;
-  reminderDuration?: string | null;
-  reminderColor?: string | null;
-}
+/** إجراء/ملاحظة تُزرع مع إنشاء المستند — نوعه مولَّد من OpenAPI (P6-06). */
+export type InitialActionRequest = components['schemas']['AddExecutionActionRequest'];
 
 /** ملحق السند التنفيذي — صف واحد بترتيبه (Sequence يبدأ من 1). نوعه مولَّد من OpenAPI (P6-06). */
 export type DocumentAnnexDto = components['schemas']['DocumentAnnexDto'];
@@ -402,144 +373,17 @@ fileNumber?: string;
   matchedAppealId?: number;
 }
 
-export interface DocumentUpsertRequest {
-  /** رمز تحذير إعادة استخدام رقم أساس الصادر مع 409. */
-  warningToken?: string | null;
-  documentType?: string;
-  borrowerName?: string;
-  borrowerFather?: string;
-  borrowerFamily?: string;
-  borrowerMother?: string;
-  borrowerBirth?: string;
-  borrowerRegister?: string;
-  borrowerNationalId?: string;
-  borrowerAddress?: string;
-  borrowerAddressType?: string;
-  borrowerRepresentativeName?: string;
-  borrowerRepresentativeFather?: string;
-  borrowerRepresentativeFamily?: string;
-  borrowerRepresentativeCapacity?: string;
-  borrowerRepresentativeAddressType?: string;
-  borrowerRepresentativeAddress?: string;
+export type DocumentUpsertRequest = Omit<
+  components['schemas']['DocumentUpsertRequest'],
+  'borrowerNature' | 'generalEntitySide' | 'initialActions'
+> & {
   /** طبيعة المقترض/المنفذ عليه: شخص طبيعي (natural) أو شخص اعتباري (legal). */
   borrowerNature?: PartyNature;
-  /** رقم تسجيل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  borrowerRegistrationNumber?: string;
-  /** من يمثل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  borrowerRepresentedBy?: string;
-  contractType?: string;
-  contractTypeSelector?: string;
-  contractNumber?: string;
-  contractDate?: string;
-  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه — أول ملحق للتوافق. */
-  annexType?: string;
-  annexNumber?: string;
-  annexDate?: string;
-  /** ملاحق السند التنفيذي (المصدر الحقيقي — حتى 5). */
-  annexes?: DocumentAnnexDto[];
-  inclusionText?: string;
-  /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
-  inclusionNotes?: string;
-  amountNumeric?: number;
-  // حقول «المبلغ كتابة» ليست في عقد الطلب: التفقيط مشتقّ خادميًا من الرقم والعملة.
-  currency?: string;
-  amount2Numeric?: number;
-  currency2?: string;
-  amount3Numeric?: number;
-  currency3?: string;
-  inclusionAmountNumeric?: number;
-  inclusionCurrency?: string;
-  inclusionAmount2Numeric?: number;
-  inclusionCurrency2?: string;
-  inclusionAmount3Numeric?: number;
-  inclusionCurrency3?: string;
-  court?: string;
-  /** دائرة التنفيذ (سجل الدوائر): إلزامية — الخادم يشتق court منها ويتجاهل النص دائمًا. */
-  executionCircuitId?: number | null;
-  applicant?: string;
-  /** نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل — تُحدَّث عند الحفظ (للفلترة في البوابة). */
-  applicantRegistryId?: number | null;
-  fileNumber?: string;
-  fileType?: string;
-  fileYear?: string;
-  fileIncoming?: string;
-  fileIncomingDate?: string;
-  underFilingNumber?: string;
-  fileRegistrationDate?: string;
-  branchName?: string;
-  seizureDate?: string;
-  immediateActions?: string;
-  notes?: string;
-  guarantors: GuarantorDto[];
-  assets: AssetDto[];
-  borrowerHeirs?: HeirDto[];
-  initialActions?: InitialActionRequest[];
   /** صفة الملف: تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل. */
   generalEntitySide?: GeneralEntitySide;
-  /** حالة وضع «الجهة العامة منفذ عليها»: متداول (فارغ) / منفذ / مشطوب. */
-  executedStatus?: string;
-  /** تاريخ الشطب (يُدخل عند اختيار «مشطوب»). */
-  struckOffDate?: string;
-  /** رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري). */
-  renewalFileReceiptNumber?: string;
-  /** تاريخ ورود اخطار التجديد عند إعادة الملف المشطوب (اختياري). */
-  renewalFileReceiptDate?: string;
-  /** رقم الملف الجديد عند إعادة الملف المشطوب (إلزامي) — يعود الملف به لسنة الإعادة. */
-  renewalFileNumber?: string;
-  /** نوع الملف الجديد عند إعادة الملف المشطوب (اختياري). */
-  renewalFileType?: string;
-  /** سنة الإعادة (إلزامية في نظام «طالبة تنفيذ» عند إعادة ملف مشطوب). */
-  renewalYear?: number;
-  /** تاريخ التجديد عند إعادة الملف المشطوب (اختياري). */
-  renewalDate?: string;
-  /** وصف/بيان إضافي في وضع «الجهة العامة منفذ عليها». */
-  executedDescription?: string;
-  /** تاريخ ورود الاخطار في وضع «الجهة العامة منفذ عليها». */
-  fileReceiptDate?: string;
-  /** رقم ورود الإخطار التنفيذي في وضع «الجهة العامة منفذ عليها». */
-  fileReceiptNumber?: string;
-  /** المبلغ المطلوب دفعه من الجهة العامة في وضع «الجهة العامة منفذ عليها». */
-  executedRequiredAmount?: number;
-  /** عملة المبلغ المطلوب الأول في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
-  executedRequiredCurrency?: string;
-  /** المبلغ المطلوب الثاني (اختياري) في وضع «الجهة العامة منفذ عليها». */
-  executedRequiredAmount2?: number;
-  /** عملة المبلغ المطلوب الثاني في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
-  executedRequiredCurrency2?: string;
-  /** المبلغ المطلوب الثالث (اختياري) في وضع «الجهة العامة منفذ عليها». */
-  executedRequiredAmount3?: number;
-  /** عملة المبلغ المطلوب الثالث في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
-  executedRequiredCurrency3?: string;
-  /** المبلغ الذي دفعته الجهة العامة في وضع «الجهة العامة منفذ عليها». */
-  executedPaidAmount?: number;
-  /** عملة المبلغ المدفوع الأول في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
-  executedPaidCurrency?: string;
-  /** المبلغ المدفوع الثاني (اختياري) في وضع «الجهة العامة منفذ عليها». */
-  executedPaidAmount2?: number;
-  /** عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية). */
-  executedPaidCurrency2?: string;
-  /** المبلغ المدفوع الثالث (اختياري) في وضع «الجهة العامة منفذ عليها». */
-  executedPaidAmount3?: number;
-  /** عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية). */
-  executedPaidCurrency3?: string;
-  /** تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع». */
-  executedDepositDate?: string;
-  /** تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها». */
-  executedExecutionDate?: string;
-  /** تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر). */
-  forcedExecutionDate?: string;
-  executionApplicants: ExecutionApplicantDto[];
-  executedPublicEntities: ExecutedPublicEntityDto[];
-  executedNaturalPersons: ExecutedNaturalPersonDto[];
-  /** الجهات العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (واحدة أو أكثر). */
-  applicantPublicEntities?: ApplicantPublicEntityDto[];
-  /** رقم ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (اختياري). */
-  fileArrivalNumber?: string;
-  /** تاريخ ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (نص حر). */
-  fileArrivalDate?: string;
-  /** عدّاد التزامن المتفائل (RF-010) كما قُرئ عند الجلب — غيابه = قبول بلا فحص مبكر. */
-  version?: number | null;
-}
+  /** إجراءات/ملاحظات تُزرع مع الإنشاء فقط — اختيارية واجهةً (الخلفية تقبل غيابها). */
+  initialActions?: InitialActionRequest[];
+};
 
 export interface DocumentFilterOptionsDto {
   applicants: string[];
