@@ -4,6 +4,7 @@
 > عند `10,000` و`50,000` مستند، وقياس الاستعلامات الساخنة (`p50`/`p95`) مع
 > `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` ومحاولة `pg_stat_statements`.
 > **لا تغيير في كود الإنتاج، ولا في `DTO`، ولا في `frontend/`، ولا في `ci.yml`، ولا هجرة جديدة.**
+> **PR:** [#242](https://github.com/maarouf003-netizen/docgen/pull/242).
 
 ## 1. ما نُفِّذ
 

@@ -625,7 +625,9 @@
 
 #### `P3-01` — منصة قياس `PostgreSQL/Release`
 
-- **الحالة (2026-11-21):** **منفَّذ** على فرع `perf/p3-01-measurement-harness` — مشروع
+- **الحالة (2026-11-21):** **منفَّذ** — PR
+  [`#242`](https://github.com/maarouf003-netizen/docgen/pull/242) على فرع
+  `perf/p3-01-measurement-harness` — مشروع
   `backend/tools/DocGenerator.Benchmarks` (خارج `src`/`tests`، لا يمسّ كود الإنتاج ولا `ci.yml`):
   قاعدة معزولة + هجرات حقيقية + بذر حتمي (`10k`/`50k`) + `VACUUM (ANALYZE)` قبل القياس +
   `p50`/`p95` بعد إحماء + `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` لكل أمر فعلي.
