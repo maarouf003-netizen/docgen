@@ -7,8 +7,9 @@ using Microsoft.Extensions.Options;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// يحرس إعداد قاعدة مضيف الاختبار المشترك بعد P0-02: المخطط يُبنى بـ<see cref="EnsureCreatedDatabaseInitializer"/>
-/// (EnsureCreated) لا بالهجرات، والترحيل التلقائي معطَّل صراحةً.
+/// يحرس إعداد قاعدة مضيف الاختبار المشترك بعد `P1-08/8b`: قاعدة `PostgreSQL` حقيقية
+/// تُبنى **بالهجرات** (‏`AutoMigrate=true`) لا بـ`EnsureCreated`، ثم تُبذر بيانات
+/// التطوير — فما يمرّ هنا يمرّ على مخطط الإنتاج نفسه.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
 public sealed class ApiFactoryDatabaseConfigurationTests
@@ -17,14 +18,17 @@ public sealed class ApiFactoryDatabaseConfigurationTests
 
     public ApiFactoryDatabaseConfigurationTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
-    public void AutoMigrate_IsDisabled_AndEnsureCreatedSchemaIsPresent()
+    [PostgresFact]
+    public void AutoMigrate_IsEnabled_AndMigratedSchemaIsPresent()
     {
         using var scope = _factory.Services.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
-        Assert.False(options.AutoMigrate, "المضيف الاختباري يبني المخطط بـEnsureCreated لا بالهجرات.");
+        Assert.True(options.AutoMigrate, "مضيف التكامل يبني المخطط بالهجرات الحقيقية.");
 
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        Assert.True(db.Branches.Any(), "مخطط EnsureCreated لم يُنشأ قبل التهيئة/البذر.");
+        Assert.True(db.Branches.Any(), "المخطط المهاجَر لم يُنشأ قبل التهيئة/البذر.");
+        Assert.Contains(
+            db.Database.GetAppliedMigrations(),
+            migration => migration.EndsWith("InitialPostgresBaseline", StringComparison.Ordinal));
     }
 }

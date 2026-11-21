@@ -20,7 +20,7 @@ public class HstsProductionIntegrationTests : IClassFixture<ProductionSpaFactory
 
     public HstsProductionIntegrationTests(ProductionSpaFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public void EnabledHost_RegistersConfiguredHstsOptions()
     {
         using var factory = WithSettings(
@@ -36,7 +36,7 @@ public class HstsProductionIntegrationTests : IClassFixture<ProductionSpaFactory
         Assert.True(options.Preload);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HttpDocument_DoesNotCarryHstsEvenWhenEnabled()
     {
         using var factory = WithSettings(("Security:HstsEnabled", "true"));
@@ -48,7 +48,7 @@ public class HstsProductionIntegrationTests : IClassFixture<ProductionSpaFactory
         Assert.False(response.Headers.Contains("Strict-Transport-Security"));
     }
 
-    [Fact]
+    [PostgresFact]
     public void PreloadWithoutEnabled_FailsHostStartup()
     {
         using var factory = WithSettings(

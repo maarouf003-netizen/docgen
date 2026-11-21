@@ -16,7 +16,7 @@ namespace DocGenerator.Api.Tests;
 [Collection(ApiTestCollection.Name)]
 public class DevelopmentEnvironmentGuardTests
 {
-    [Fact]
+    [PostgresFact]
     public void DevelopmentWithoutExplicitFlag_RefusesToStart()
     {
         using var factory = new UnflaggedDevelopmentFactory();
@@ -41,31 +41,25 @@ public class DevelopmentEnvironmentGuardTests
     /// </summary>
     private sealed class UnflaggedDevelopmentFactory : WebApplicationFactory<Program>
     {
-        private readonly string _dbPath = Path.Combine(
-            Path.GetTempPath(), $"docgen_devguard_{Guid.NewGuid():N}.db");
         private readonly string _logDir = Path.Combine(
             Path.GetTempPath(), $"docgen_devguard_logs_{Guid.NewGuid():N}");
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
-            // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري.
-            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+            // الحارس يرفض الإقلاع قبل أي اتصال قاعدة؛ سلسلة شكلية صالحة نحويًا تكفي.
+            builder.UseSetting(
+                "ConnectionStrings:DefaultConnection",
+                PostgresHostDatabase.PlaceholderConnectionString);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
             builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "devguard-test-secret-0123456789-0123456789-0123456789");
-            builder.ConfigureTestServices(services =>
-                TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
         }
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-            }
             try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
         }
     }

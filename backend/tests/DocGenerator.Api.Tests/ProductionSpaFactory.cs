@@ -9,8 +9,8 @@ namespace DocGenerator.Api.Tests;
 /// مضيف إنتاجي معزول يخدم <c>index.html</c> من جذر ويب مؤقت — بروفة ما يراه المتصفح فعلًا
 /// عندما يخدم <c>Kestrel</c> مستند <c>SPA</c> المبني (لا <c>Vite</c>). مشترك بين بروفة
 /// <c>CSP</c> و<c>HSTS</c>؛ كل اختبار يضيف راياته عبر <c>WithWebHostBuilder</c>.
-/// سياق اختبار <c>SQLite</c> مؤقت (ADR-0001: لا مسار إنتاجي)، والحارس <c>H-02</c> لا يعنيه
-/// لأن البيئة إنتاج.
+/// قاعدة <c>PostgreSQL</c> معزولة مهاجَرة (‏`PostgresHostDatabase`؛ ADR-0001: لا مسار
+/// إنتاجي آخر)، والحارس <c>H-02</c> لا يعنيه لأن البيئة إنتاج.
 /// </summary>
 public class ProductionSpaFactory : WebApplicationFactory<Program>
 {
@@ -36,8 +36,7 @@ public class ProductionSpaFactory : WebApplicationFactory<Program>
         ("favicon.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n"),
     ];
 
-    private readonly string _dbPath = Path.Combine(
-        Path.GetTempPath(), $"docgen_prod_{Guid.NewGuid():N}.db");
+    private readonly PostgresHostDatabase _db = PostgresHostDatabase.Create();
     private readonly string _logDir = Path.Combine(
         Path.GetTempPath(), $"docgen_prod_logs_{Guid.NewGuid():N}");
     private readonly string _webRoot = Path.Combine(
@@ -62,25 +61,22 @@ public class ProductionSpaFactory : WebApplicationFactory<Program>
         // وضع أمني إنتاجي مكتمل (P2-03): الحارس يرفض الإقلاع بدونه، والاختبارات تتحقق
         // من الرؤوس/الرفض فوق إعداد صالح لا فوق إعداد ناقص.
         builder.UseSecureProductionDefaults();
-        builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+        builder.UseSetting("ConnectionStrings:DefaultConnection", _db.ConnectionString);
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
+        // القاعدة مهاجَرة مسبقًا؛ الإنتاج لا يرحّل تلقائيًا.
         builder.UseSetting("Database:AutoMigrate", "false");
-        // لا مشغّل صندوق صادر في الاختبار: لا اتصال حقيقي بقاعدة Postgres الشكلية.
+        // لا مشغّل صندوق صادر في الاختبار.
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "csp-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("Bootstrap:AdminPassword", "CspProbe123456!");
-        builder.ConfigureTestServices(services =>
-            TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
     }
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        foreach (var suffix in new[] { "", "-shm", "-wal" })
-        {
-            try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-        }
+        if (disposing)
+            _db.Dispose();
         try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
         try { if (Directory.Exists(_webRoot)) Directory.Delete(_webRoot, recursive: true); } catch { /* ignore */ }
     }

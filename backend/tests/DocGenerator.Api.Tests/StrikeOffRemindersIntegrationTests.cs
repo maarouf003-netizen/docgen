@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -56,7 +57,7 @@ public class StrikeOffRemindersIntegrationTests
         return page!;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OldAction_MakesFileDue_AndNewActionRemovesIt()
     {
         var (client, token) = await LawyerAsync();
@@ -72,7 +73,7 @@ public class StrikeOffRemindersIntegrationTests
         Assert.DoesNotContain(after.Items, d => d.Id == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NotesAreNotCounted_FileWithOldNoteIsNotDue()
     {
         var (client, token) = await LawyerAsync();
@@ -84,7 +85,7 @@ public class StrikeOffRemindersIntegrationTests
         Assert.DoesNotContain(due.Items, d => d.Id == id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Dismiss_HidesFile_AndCountMatchesList()
     {
         var (client, token) = await LawyerAsync();
@@ -109,7 +110,7 @@ public class StrikeOffRemindersIntegrationTests
     private sealed record CountDto(int Count);
 
     /// <summary>ملف قديم الإدخال بلا قيد ولا إجراءات: مصدر آخر نشاط = تاريخ الإدخال.</summary>
-    [Fact]
+    [PostgresFact]
     public async Task NoActionsAndNoRegistration_FallsBackToCreatedAt()
     {
         var (client, _) = await LawyerAsync();
@@ -118,10 +119,15 @@ public class StrikeOffRemindersIntegrationTests
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             var lawyer = db.Users.Single(u => u.Username == "lawyer1");
+            // القيد `CK_Documents_FileNumberRequiresCircuit` يفرض دائرة لملف مرقّم، كما
+            // في الإنتاج: تُنشأ/تُعاد دائرة اختبار للفرع ثم تُربط بالملف.
+            var circuitId = await _factory.EnsureCircuitForBranchAsync(
+                lawyer.BranchId!.Value, "دائرة تنفيذ اختبار التذكير");
             var doc = new Document
             {
                 CreatedById = lawyer.Id,
                 BranchId = lawyer.BranchId,
+                ExecutionCircuitId = circuitId,
                 GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
                 IsDraft = false,
                 ExecStatus = ExecutionStatusCatalog.None,
@@ -144,7 +150,7 @@ public class StrikeOffRemindersIntegrationTests
         Assert.Equal("created", row.LastActivitySource);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task OldestIdle_First()
     {
         var (client, token) = await LawyerAsync();
@@ -160,7 +166,7 @@ public class StrikeOffRemindersIntegrationTests
         Assert.True(olderIndex < newerIndex);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonLawyerRoles_Forbidden_AndOtherLawyer_CannotDismiss()
     {
         var (client, token) = await LawyerAsync();

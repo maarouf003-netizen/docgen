@@ -45,7 +45,7 @@ public class ActionReminderSeparationIntegrationTests
         return dto!;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Reschedule_KeepsActionDateVerbatim_AndMovesReminderDueDate()
     {
         var (client, documentId, _) = await CreateDocAsync();
@@ -70,7 +70,7 @@ public class ActionReminderSeparationIntegrationTests
         Assert.False(reminder.DueDateSuspect);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UpdateAction_DoesNotWriteReminder_AndDedicatedEndpointDoes()
     {
         var (client, documentId, _) = await CreateDocAsync();
@@ -110,7 +110,7 @@ public class ActionReminderSeparationIntegrationTests
         Assert.DoesNotContain(reminders!, r => r.ActionId == action.Id);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ReminderEndpoints_NonLawyer_Forbidden()
     {
         var (client, documentId, _) = await CreateDocAsync();
@@ -134,7 +134,7 @@ public class ActionReminderSeparationIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetReminder_UnknownAction_NotFound()
     {
         var (client, documentId, _) = await CreateDocAsync();
@@ -146,7 +146,7 @@ public class ActionReminderSeparationIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SetReminder_InvalidDuration_BadRequest()
     {
         var (client, documentId, _) = await CreateDocAsync();
@@ -164,7 +164,7 @@ public class ActionReminderSeparationIntegrationTests
     /// فلتر القراءة الموسّع: صف له تاريخ أساس صريح بلا مدة/لون لا يُنتجه الـAPI (القاعدة
     /// تمنع تذكيرًا بلا مدة/لون)، فيُزرع مباشرة لإثبات أن الفلتر لا يُسقط تذكيرًا مؤكدًا.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task Reminders_IncludeRowWithExplicitBaseOnly()
     {
         var (client, documentId, _) = await CreateDocAsync();

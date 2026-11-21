@@ -16,7 +16,7 @@ public class AppSuggestionsIntegrationTests
 
     public AppSuggestionsIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CreatesAndSeesOwnHistory()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -34,7 +34,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Contains(mine, s => s.Id == dto.Id && s.Message == "أضيفوا وضعًا ليليًا");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetById_OwnerAdminMissingAndForeignViews()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -65,7 +65,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync("/api/app-suggestions/999999")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CreateInvalid_BadRequest()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -78,7 +78,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonLawyerNonHead_CannotCreate()
     {
         foreach (var username in new[] { "manager", "admin" })
@@ -96,7 +96,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, delegateResponse.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Head_CreatesAndSeesOwnHistory()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -123,7 +123,7 @@ public class AppSuggestionsIntegrationTests
             (await head.PatchAsync($"/api/app-suggestions/{dto.Id}/read", null)).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_SeesAllAndMarksRead_LawyerSeesReadState()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -148,7 +148,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Contains(mine, s => s.Id == dto.Id && s.IsRead);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Admin_ListIsPaged()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -169,7 +169,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Equal(2, second!.RootElement.GetProperty("page").GetInt32());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnreadCount_ManagerAndAdminOnly_TracksUnreadDelta()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -203,7 +203,7 @@ public class AppSuggestionsIntegrationTests
         Assert.Equal(before, await ReadCount(admin));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task NonAdmin_CannotMarkRead()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");

@@ -22,13 +22,14 @@ namespace DocGenerator.Testing;
 /// <para>يفترض أن يستدعيه اختبار مُعلَّم بـ<see cref="PostgresFactAttribute"/>؛
 /// ويُرمى استثناء صريح إن غابت السلسلة كي لا يمرّ اختبار غير مُبوَّب صامتًا.</para>
 /// </summary>
-public sealed class PostgresTestDb : IAsyncDisposable
+public sealed class PostgresTestDb : IAsyncDisposable, IDisposable
 {
     private static readonly object TemplateGate = new();
     private static readonly object CleanupGate = new();
     private static readonly List<string> LiveDatabases = [];
     private static string? _baseConnectionString;
     private static string? _templateDatabase;
+    private static string? _migratedTemplateDatabase;
     private static bool _exitHookRegistered;
 
     private readonly string _databaseName;
@@ -162,6 +163,59 @@ public sealed class PostgresTestDb : IAsyncDisposable
     /// <summary>نظير غير المتزامن (لا يعتمد عليه مسار البناء لتجنّب حجب خيوط المجمّع).</summary>
     public static Task<PostgresTestDb> CreateAsync() => Task.FromResult(Create());
 
+    /// <summary>
+    /// نسخة من قالب **مهاجَر** (‏`Database.Migrate` مرة واحدة لكل تشغيل) بدل
+    /// `EnsureCreated` — لمصانع API التي تختبر مخطط الإنتاج نفسه، مع استنساخ ~1s بدل
+    /// تشغيل الهجرات (5–8s) في كل مصنع. يبقى مسار الهجرات الكامل مغطّى بـ
+    /// `DatabaseInitializerTests` و`PostgresBaselineTests`.
+    /// </summary>
+    public static PostgresTestDb CreateMigrated()
+    {
+        var baseConnectionString = PostgresTestEnvironment.RequireOrSkip()
+            ?? throw new InvalidOperationException(
+                $"PostgresTestDb يتطلب {PostgresTestEnvironment.ConnectionStringVariable} — "
+                + "علّم الاختبار بـ[PostgresFact] كي يُتخطّى صراحةً بدل الفشل.");
+
+        var template = EnsureMigratedTemplate(baseConnectionString);
+        var databaseName = "docgen_app_" + Guid.NewGuid().ToString("N")[..16];
+        var connectionString = PostgresTestDatabase.Clone(
+            baseConnectionString, template, databaseName);
+
+        lock (CleanupGate)
+        {
+            LiveDatabases.Add(databaseName);
+        }
+
+        return new PostgresTestDb(connectionString, databaseName);
+    }
+
+    private static string EnsureMigratedTemplate(string baseConnectionString)
+    {
+        lock (TemplateGate)
+        {
+            if (_migratedTemplateDatabase is not null)
+                return _migratedTemplateDatabase;
+
+            var templateName = "docgen_app_mig_" + Guid.NewGuid().ToString("N")[..12];
+            // غير مُجمَّع: `CREATE DATABASE … TEMPLATE` يرفض أي جلسة قائمة على القالب.
+            var connectionString = PostgresTestDatabase.Create(
+                baseConnectionString, templateName, pooling: false);
+
+            var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
+                .UseNpgsql(connectionString, npgsql => npgsql.CommandTimeout(180))
+                .Options;
+            using (var template = new DocGeneratorPostgresDbContext(options))
+            {
+                template.Database.Migrate();
+            }
+
+            _baseConnectionString = baseConnectionString;
+            _migratedTemplateDatabase = templateName;
+            RegisterExitHook();
+            return templateName;
+        }
+    }
+
     private static string EnsureTemplate(string baseConnectionString)
     {
         // قفل عادي لا `SemaphoreSlim`: مسارا الإنشاء (البناء المتزامن والاختبارات غير
@@ -241,9 +295,27 @@ public sealed class PostgresTestDb : IAsyncDisposable
                 // كما أعلاه.
             }
         }
+
+        if (_migratedTemplateDatabase is not null)
+        {
+            try
+            {
+                PostgresTestDatabase.Drop(_baseConnectionString, _migratedTemplateDatabase);
+            }
+            catch
+            {
+                // كما أعلاه.
+            }
+        }
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// تنظيف متزامن مقصود: يُستدعى من <c>Dispose</c> الخاص بمصانع الاختبار على خيط
+    /// xUnit الذي يلتقط <c>SynchronizationContext</c>، فأي `await` داخلي يعود إلى
+    /// السياق المحجوب نفسه ⇒ **جمود كامل** (موثَّق في `docs/audit/80-…` §3).
+    /// الإسقاط نفسه أمر SQL واحد على اتصال صيانة، فلا خسارة أداء.
+    /// </summary>
+    public void Dispose()
     {
         if (_disposed)
             return;
@@ -255,6 +327,12 @@ public sealed class PostgresTestDb : IAsyncDisposable
         }
 
         if (_baseConnectionString is not null)
-            await PostgresTestDatabase.DropAsync(_baseConnectionString, _databaseName);
+            PostgresTestDatabase.Drop(_baseConnectionString, _databaseName);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 }

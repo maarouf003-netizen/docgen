@@ -61,7 +61,7 @@ public sealed class MissingRoleClaimTests : IsolatedApiTestBase
         return client;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TokenWithoutRoleClaim_IsForbidden_NotServerError()
     {
         var response = await ClientWithRoleClaim(null).GetAsync("/api/correspondence");
@@ -69,7 +69,7 @@ public sealed class MissingRoleClaimTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TokenWithUnknownRole_IsForbidden_NotServerError()
     {
         var response = await ClientWithRoleClaim("ghost").GetAsync("/api/correspondence");
@@ -77,7 +77,7 @@ public sealed class MissingRoleClaimTests : IsolatedApiTestBase
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TokenWithValidRole_StillListsOwnScope()
     {
         // عاقل الضبط: الرمز السليم بالدور الصحيح يمرّ طبيعيًا (200 مع صفحة

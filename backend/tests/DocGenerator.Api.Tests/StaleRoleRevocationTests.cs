@@ -30,7 +30,7 @@ public class StaleRoleRevocationTests
     /// <summary>
     /// فرع معزول برئيسه الوحيد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26).
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task RoleDemotion_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"demote_{Guid.NewGuid():N}"[..16];
@@ -66,7 +66,7 @@ public class StaleRoleRevocationTests
         Assert.Equal(HttpStatusCode.OK, (await freshClient.GetAsync("/api/auth/me")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task BranchTransfer_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"move_{Guid.NewGuid():N}"[..16];
@@ -102,7 +102,7 @@ public class StaleRoleRevocationTests
     /// نقل رئيس القسم بين الفروع يُبطل توكن الفرع القديم (S1): الفرع جزء
     /// من هوية التوكن فيُعامَل كالدور — فلا يرى بيانات فرعه السابق بصمت.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task HeadBranchTransfer_InvalidatesPreviouslyIssuedTokens()
     {
         // نفس آلية S1 لكن بدور الرئيس محل التحقيق: نقل الرئيس بين الفروع
@@ -144,7 +144,7 @@ public class StaleRoleRevocationTests
     /// تغيير اسم الدخول يُبطل التوكنات (R2): الاسم جزء من هوية التوكن
     /// (<c>Name</c>/<c>UniqueName</c>) فيُعامَل كالدور/الفرع.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task UsernameRename_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"rnm_{Guid.NewGuid():N}"[..16];
@@ -173,7 +173,7 @@ public class StaleRoleRevocationTests
         Assert.Equal((int)HttpStatusCode.OK, fresh!.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task LawyerRenameViaBranchRoute_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"rnl_{Guid.NewGuid():N}"[..16];

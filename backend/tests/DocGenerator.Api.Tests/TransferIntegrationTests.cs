@@ -32,7 +32,7 @@ public class TransferIntegrationTests
         return (await response.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("lawyer1")]
     [InlineData("manager")]
     public async Task Transfer_NonHeadRoles_Forbidden(string username)
@@ -45,7 +45,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ByHead_ToOwnBranchLawyer_Succeeds()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -63,7 +63,7 @@ public class TransferIntegrationTests
         Assert.Equal("محامي النقل", doc.CreatedByName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToCurrentOwner_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -76,7 +76,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_ToOtherBranchLawyer_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -89,7 +89,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_NonExistentDocument_NotFound()
     {
         var head = _factory.AuthorizedClient("head1");
@@ -97,7 +97,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Transfer_DocumentFromAnotherBranch_Forbidden()
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -130,7 +130,7 @@ public class TransferIntegrationTests
 
     private sealed record CountResponse(int Count);
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("lawyer1")]
     [InlineData("manager")]
     [InlineData("admin")]
@@ -147,7 +147,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_Count_ByHead_ReturnsFileCount()
     {
         var source = await CreateLawyerAsync("DAM", "محامي العد");
@@ -163,7 +163,7 @@ public class TransferIntegrationTests
         Assert.Equal(2, result!.Count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_Count_FromAnotherBranch_BadRequest()
     {
         var aleppoLawyer = await CreateLawyerAsync("ALP", "محامي حلب الجماعي");
@@ -175,7 +175,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ByHead_Succeeds()
     {
         var source = await CreateLawyerAsync("DAM", "محامي النقل الجماعي");
@@ -216,7 +216,7 @@ public class TransferIntegrationTests
         auditBody.Dispose();
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ToOtherBranchLawyer_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -230,7 +230,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_ToInactiveLawyer_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -247,7 +247,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SourceFromAnotherBranch_BadRequest()
     {
         var aleppoLawyer = await CreateLawyerAsync("ALP", "محامي حلب الجماعي");
@@ -261,7 +261,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TransferAll_SourceIsTarget_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

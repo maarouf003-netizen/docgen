@@ -14,7 +14,7 @@ namespace DocGenerator.Api.Tests;
 public sealed class ProductionDatabaseGuardTests : IDisposable
 {
     private readonly List<WebApplicationFactory<Program>> _factories = new();
-    private readonly List<string> _tempDbPaths = new();
+    private readonly List<PostgresHostDatabase> _hostDatabases = new();
     private readonly List<string> _tempLogDirs = new();
 
     public void Dispose()
@@ -23,12 +23,9 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         {
             try { factory.Dispose(); } catch { /* best effort */ }
         }
-        foreach (var dbPath in _tempDbPaths)
+        foreach (var db in _hostDatabases)
         {
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(dbPath + suffix); } catch { /* best effort */ }
-            }
+            try { db.Dispose(); } catch { /* best effort */ }
         }
         foreach (var dir in _tempLogDirs)
         {
@@ -36,7 +33,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public void Production_WithoutPostgresConnection_RefusesToStart()
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -53,7 +50,7 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         Assert.Contains("PostgreSQL connection string is required", ex.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public void Production_OnSqliteConnectionString_RefusesToStart()
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -70,30 +67,26 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
         Assert.Contains("SQLite is not supported", ex.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Production_InfraEndpointsStayAnonymous()
     {
-        var dbPath = Path.Combine(Path.GetTempPath(), $"docgen_guard_{Guid.NewGuid():N}.db");
-        _tempDbPaths.Add(dbPath);
+        var hostDb = PostgresHostDatabase.Create();
+        _hostDatabases.Add(hostDb);
         var logDir = Path.Combine(Path.GetTempPath(), $"docgen_guard_logs_{Guid.NewGuid():N}");
         _tempLogDirs.Add(logDir);
 
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
-            // ADR-0001: سلسلة Postgres شكلية للحارس، والسياق الفعلي SQLite اختباري فقط.
             builder.UseSecureProductionDefaults();
-            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
-            // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
-            // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+            builder.UseSetting("ConnectionStrings:DefaultConnection", hostDb.ConnectionString);
+            // القاعدة مهاجَرة مسبقًا؛ الإنتاج لا يرحّل تلقائيًا.
             builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
             builder.UseSetting("Bootstrap:AdminPassword", "GuardAdminPass123");
             builder.UseSetting("Jwt:Secret", ApiFactory.TestJwtSecret);
             builder.UseSetting("Logging:File:Path", Path.Combine(logDir, "logs-.txt"));
             builder.UseSetting("Swagger:Enabled", "false");
-            builder.ConfigureTestServices(services =>
-                TestDatabase.UseSqlite(services, $"Data Source={dbPath}"));
         });
         _factories.Add(factory);
 

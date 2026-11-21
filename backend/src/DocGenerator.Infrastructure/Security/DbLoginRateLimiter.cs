@@ -21,10 +21,10 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     private static long _lastPruneTicks = DateTime.MinValue.Ticks;
 
     /// <summary>
-    /// إدراج مشروط ذرّي يعمل على SQLite وPostgres معًا: يُدرج السطر فقط إن كان عدد
-    /// المحاولات الفاشلة للمفتاح ضمن النافذة أقل من الحد. الفحص والتسجيل في جملة
-    /// واحدة يزيل سباق TOCTOU بين فحص مبدئي منفصل وتسجيل لاحق منفصل.
-    /// أسماء الأعمدة مقتبسة بـ "" (متوافق مع المزودين) والمعاملات @p0..@p3.
+    /// إدراج مشروط ذرّي: يُدرج السطر فقط إن كان عدد المحاولات الفاشلة للمفتاح ضمن النافذة
+    /// أقل من الحد. الفحص والتسجيل في جملة واحدة يزيل سباق TOCTOU بين فحص مبدئي منفصل
+    /// وتسجيل لاحق منفصل، لكنه وحده لا يكفي على `PostgreSQL` — يلزمه القفل أدناه.
+    /// أسماء الأعمدة مقتبسة بـ "" والمعاملات <c>@p0..@p3</c>.
     /// </summary>
     private const string InsertIfUnderLimitSql =
         "INSERT INTO \"LoginAttempts\" (\"Key\", \"AttemptedAtUtc\") " +
@@ -35,9 +35,9 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     /// <summary>
     /// على `PostgreSQL` الجملة أعلاه وحدها لا تكفي: تحت `READ COMMITTED` يأخذ كل
     /// `INSERT … SELECT` لقطةً عند بدء الجملة، فمحاولتان متزامنتان تقرآن العدّ نفسه
-    /// (مثلًا 4) وتُدرجان معًا فتتجاوز الحد — وهو ما لا يظهر على `SQLite` لأن كتابته
-    /// متسلسلة. قفل استشاري معاملاتي على المفتاح نفسه يُسلسل الإدراج للمفتاح الواحد
-    /// (المفاتيح المختلفة لا تتزاحم)، ويُحرَّر تلقائيًا بانتهاء المعاملة.
+    /// (مثلًا 4) وتُدرجان معًا فتتجاوز الحد. قفل استشاري معاملاتي على المفتاح نفسه
+    /// يُسلسل الإدراج للمفتاح الواحد (المفاتيح المختلفة لا تتزاحم)، ويُحرَّر تلقائيًا
+    /// بانتهاء المعاملة.
     /// </summary>
     private const string KeyScopedAdvisoryLockSql =
         "SELECT pg_advisory_xact_lock(hashtextextended(@p0, 0));";
@@ -66,9 +66,7 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         var cutoff = now - _window;
-        var inserted = _db.Database.IsNpgsql()
-            ? await RecordUnderKeyLockAsync(key, now, cutoff, ct)
-            : await ExecuteConditionalInsertAsync(key, now, cutoff, ct);
+        var inserted = await RecordUnderKeyLockAsync(key, now, cutoff, ct);
 
         await PruneOldAsync(ct);
         return inserted == 1;

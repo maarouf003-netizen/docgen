@@ -26,7 +26,7 @@ public class D11BranchlessReadContractTests
 
     public D11BranchlessReadContractTests(ApiFactory factory) => _factory = factory;
 
-    [Theory]
+    [PostgresTheory]
     [InlineData("/api/appeals")]
     [InlineData("/api/delegations/pending")]
     [InlineData("/api/delegations/pending-count")]

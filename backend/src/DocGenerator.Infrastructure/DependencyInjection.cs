@@ -63,7 +63,7 @@ public static class DependencyInjection
         // فيرى الحارس المعاملة النشطة فعلًا.
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
         services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
-        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, usePostgres: true, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
+        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
         services.AddScoped<ITokenService, TokenService>();
         return services;
     }

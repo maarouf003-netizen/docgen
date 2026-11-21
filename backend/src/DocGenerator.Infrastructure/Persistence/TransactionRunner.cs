@@ -40,13 +40,21 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
     }
 
     /// <summary>
-    /// قفل نطاق داخل المعاملة: في PostgreSQL قفل استشاري على مفتاح مستمد من النص
-    /// (يُحرَّر تلقائيًا عند نهاية المعاملة)، وفي SQLite لا شيء (كاتب واحد).
+    /// قفل نطاق داخل المعاملة: قفل استشاري على مفتاح مستمد من النص
+    /// (يُحرَّر تلقائيًا عند نهاية المعاملة). بعد <c>P1-08</c> لا مزوّد غير
+    /// <c>PostgreSQL</c>، فأي مزوّد آخر يُرفض صراحةً بدل تخطٍّ صامت بلا قفل.
     /// لا يفعل شيئًا بلا معاملة نشطة — والمسارات الملزمة تفتح معاملة قبل الاستدعاء.
     /// </summary>
     public async Task AcquireScopeLockAsync(string key, CancellationToken ct = default)
     {
-        if (!_db.Database.IsNpgsql() || _db.Database.CurrentTransaction is null)
+        if (!_db.Database.IsNpgsql())
+        {
+            throw new InvalidOperationException(
+                $"AcquireScopeLockAsync يتطلب مزوّد Npgsql (الحالي: {_db.Database.ProviderName ?? "غير محدد"}) — "
+                + "لا يوجد قفل نطاق بديل.");
+        }
+
+        if (_db.Database.CurrentTransaction is null)
             return;
         await _db.Database.ExecuteSqlRawAsync(
             "SELECT pg_advisory_xact_lock(hashtextextended({0}, 0))",

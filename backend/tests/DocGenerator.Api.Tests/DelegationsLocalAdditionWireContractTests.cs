@@ -32,7 +32,7 @@ public class DelegationsLocalAdditionWireContractTests
     private JsonSerializerOptions WireOptions
         => _factory.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
 
-    [Fact]
+    [PostgresFact]
     public void LocalAddition_UsesExactlyTheSharedManifestKeys()
     {
         var dto = new DelegationLocalAdditionDto(
@@ -50,7 +50,7 @@ public class DelegationsLocalAdditionWireContractTests
         Assert.Equal(expected, SortedKeys(doc.RootElement));
     }
 
-    [Fact]
+    [PostgresFact]
     public void LocalAddition_NullLastAt_SerializesAsJsonNull_NotOmitted()
     {
         // الغياب قيمةٌ دلالية في الواجهة (`lastAt && …`): حذف الحقل عند null أو تسلسله ""
@@ -63,7 +63,7 @@ public class DelegationsLocalAdditionWireContractTests
         Assert.Equal(JsonValueKind.Null, lastAt.ValueKind);
     }
 
-    [Fact]
+    [PostgresFact]
     public void LocalAddition_UtcLastAt_SerializesWithExplicitUtcDesignator()
     {
         // الواجهة تفكّ التاريخ بـ`new Date(...)`: بلا لاحقة `Z` يُقرأ محليًا فينزاح العرض

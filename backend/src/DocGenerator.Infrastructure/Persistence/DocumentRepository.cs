@@ -37,13 +37,18 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .FirstOrDefaultAsync(ct);
 
     /// <summary>
-    /// قراءة داخل معاملة مع قفل صف في PostgreSQL (`FOR UPDATE`) لمنع سباق العدّ/الإضافة.
-    /// SQLite لا يدعم `FOR UPDATE`؛ يعتمد قفل الكتابة عند أول تعديل في المعاملة.
+    /// قراءة داخل معاملة مع قفل صف (`FOR UPDATE`) لمنع سباق العدّ/الإضافة.
+    /// بعد <c>P1-08</c> لا مزوّد غير <c>PostgreSQL</c>؛ أي مزوّد آخر يُرفض صراحةً بدل
+    /// تنفيذ قراءة **بلا قفل** تُخفي السباق.
     /// </summary>
     public async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
     {
         if (Db.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) != true)
-            return await GetByIdAsync(id, ct);
+        {
+            throw new InvalidOperationException(
+                $"GetByIdForUpdateAsync يتطلب مزوّد Npgsql (الحالي: {Db.Database.ProviderName ?? "غير محدد"}) — "
+                + "لا يوجد مسار بديل بلا قفل صف.");
+        }
 
         // أمر خام مقصود: تركيب `FromSql` مع `FirstOrDefault` قد يلفّ SQL في استعلام فرعي
         // فتتغير دلالات القفل. هنا يُنفَّذ `FOR UPDATE` كما هو داخل معاملة الخدمة.

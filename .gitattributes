@@ -11,3 +11,6 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.md text eol=lf
+# سكربتات shell تُنفَّذ على Linux/WSL: يجب أن تبقى LF حتى في checkout على Windows،
+# وإلا صار السطر الأول `#!/usr/bin/env bash\r` وفشل التشغيل.
+*.sh text eol=lf

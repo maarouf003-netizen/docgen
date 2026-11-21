@@ -25,7 +25,7 @@ public class AuthorizationMatrixTests
 
     public AuthorizationMatrixTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task Documents_ReadAndDeleteMatrix_MatchesPolicy()
     {
         var ownerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

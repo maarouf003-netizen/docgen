@@ -26,7 +26,7 @@ public class ExceptionHandlerIntegrationTests
 
     public ExceptionHandlerIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public async Task UnhandledException_ThroughPipeline_ReturnsJson500WithMessage()
     {
         var fake = new ThrowingStatisticsService();
@@ -54,7 +54,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(message));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ArgumentException_MapsTo400AndEchoesMessage()
     {
         var (status, body) = await HandleAsync(new ArgumentException("قيمة غير صالحة"));
@@ -63,7 +63,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal("قيمة غير صالحة", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task KeyNotFoundException_MapsTo404AndEchoesMessage()
     {
         var (status, body) = await HandleAsync(new KeyNotFoundException("المستند غير موجود"));
@@ -72,7 +72,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal("المستند غير موجود", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GenericException_Production_Returns500GenericMessageWithoutLeak()
     {
         var (status, body) = await HandleAsync(new InvalidOperationException("تفاصيل داخلية حساسة"));
@@ -82,7 +82,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.DoesNotContain("تفاصيل داخلية حساسة", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GenericException_Development_Returns500WithExceptionMessage()
     {
         var (status, body) = await HandleAsync(
@@ -92,7 +92,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal("تفاصيل تصحيح", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GenericException_Development_IsSanitizedLike4xx()
     {
         // مسار التطوير يُعرض للتشخيص لكنه ليس استثناءً من سياسة `SEC-012`.
@@ -107,7 +107,7 @@ public class ExceptionHandlerIntegrationTests
         Assert.Contains("[بريد محجوب]", message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ClientDisconnect_Returns499WithoutBody()
     {
         using var aborted = new CancellationTokenSource();
@@ -130,41 +130,41 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal(0, ctx.Response.Body.Length);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbUpdateException_Development_ReturnsRealConstraintFromInnerException()
     {
         var inner = new InvalidOperationException(
-            "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.GroupId, PublicEntities.Governorate, PublicEntities.BranchName'");
+            "23505: duplicate key value violates unique constraint \"IX_PublicEntities_GroupId_Governorate_BranchName\"");
         var ex = new DbUpdateException(
             "An error occurred while saving the entity changes. See the inner exception for details.", inner);
 
         var (status, body) = await HandleAsync(ex, environment: "Development");
 
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
-        Assert.Contains("UNIQUE constraint failed", ReadMessage(body));
+        Assert.Contains("duplicate key value violates unique constraint", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbUpdateException_Development_PrefersDeepestInnerException()
     {
-        var sqlite = new InvalidOperationException(
-            "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.BranchName'");
-        var wrapped = new InvalidOperationException("السبب الوسيط بلا فائدة تشخيصية", sqlite);
+        var deepest = new InvalidOperationException(
+            "23505: duplicate key value violates unique constraint \"IX_PublicEntities_BranchName\"");
+        var wrapped = new InvalidOperationException("السبب الوسيط بلا فائدة تشخيصية", deepest);
         var ex = new DbUpdateException(
             "An error occurred while saving the entity changes. See the inner exception for details.", wrapped);
 
         var (status, body) = await HandleAsync(ex, environment: "Development");
 
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
-        Assert.Contains("UNIQUE constraint failed", ReadMessage(body));
+        Assert.Contains("duplicate key value violates unique constraint", ReadMessage(body));
         Assert.DoesNotContain("السبب الوسيط", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbUpdateException_Development_SanitizesDeepestMessage()
     {
         var deep = new InvalidOperationException(
-            "SQLite Error 19: 'UNIQUE constraint failed: Users.Email'\nuser@example.com");
+            "23505: duplicate key value violates unique constraint \"IX_Users_Email\"\nuser@example.com");
         var ex = new DbUpdateException(
             "An error occurred while saving the entity changes. See the inner exception for details.", deep);
 
@@ -172,43 +172,43 @@ public class ExceptionHandlerIntegrationTests
 
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
         var message = ReadMessage(body) ?? "";
-        Assert.Contains("UNIQUE constraint failed", message);
+        Assert.Contains("duplicate key value violates unique constraint", message);
         Assert.DoesNotContain('\n', message);
         Assert.DoesNotContain("user@example.com", message);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbUpdateException_Production_ReturnsGenericSaveMessageWithoutLeakingInner()
     {
         var ex = new DbUpdateException(
             "An error occurred while saving the entity changes. See the inner exception for details.",
-            new InvalidOperationException("SQLite Error 19: 'UNIQUE constraint failed: PublicEntities...'"));
+            new InvalidOperationException("23505: duplicate key value violates unique constraint \"IX_PublicEntities_GroupId\""));
 
         var (status, body) = await HandleAsync(ex, environment: "Production");
 
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
         Assert.Equal("فشل حفظ التغييرات في قاعدة البيانات", ReadMessage(body));
-        Assert.DoesNotContain("UNIQUE", body);
+        Assert.DoesNotContain("unique constraint", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DbUpdateException_UniqueViolation_MapsTo409WithGenericMessage()
     {
         // W1-7: حتى في Development لا تُعكس تفاصيل القيد للمستخدم — التفاصيل في السجل.
         var ex = new DbUpdateException(
             "An error occurred while saving the entity changes.",
-            new InvalidOperationException("SQLite Error 19: 'UNIQUE constraint failed: Users.Email'"));
+            new InvalidOperationException("23505: duplicate key value violates unique constraint \"IX_Users_Email\""));
 
         var (status, body) = await HandleAsync(
             ex, environment: "Development", uniqueViolation: true);
 
         Assert.Equal(StatusCodes.Status409Conflict, status);
         Assert.Equal("تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا", ReadMessage(body));
-        Assert.DoesNotContain("UNIQUE", body);
-        Assert.DoesNotContain("SQLite", body);
+        Assert.DoesNotContain("unique constraint", body);
+        Assert.DoesNotContain("IX_Users_Email", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentConflictException_MapsTo409AndEchoesMessage()
     {
         var (status, body) = await HandleAsync(
@@ -218,14 +218,14 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal("تغيّر المحامي المختص للملف أثناء النقل — أعد المحاولة", ReadMessage(body));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task DocumentConflictException_WithDbInnerChain_ProjectsFriendlyMessageWithoutLeak()
     {
         // الشكل الفعلي لمسار نفاد إعادة التوليد في المراسلات: غلاف الخدمة يحمل سلسلة
-        // DbUpdateException ← سبب SQL العميق (UNIQUE constraint failed). المعالج يجب
+        // DbUpdateException ← سبب SQL العميق (انتهاك قيد فريد). المعالج يجب
         // أن يردّ رسالة 409 الودّية لا أن يُسرّب تفاصيل القيد/المزود في الإنتاج.
         var deep = new InvalidOperationException(
-            "SQLite Error 19: 'UNIQUE constraint failed: Correspondences.CorrespondenceNumber'");
+            "23505: duplicate key value violates unique constraint \"IX_Correspondences_CorrespondenceNumber\"");
         var ex = new DocumentConflictException(
             "تعذر توليد رقم فريد للمراسلة، حاول مجدداً",
             new DbUpdateException("An error occurred while saving the entity changes.", deep));
@@ -234,11 +234,11 @@ public class ExceptionHandlerIntegrationTests
 
         Assert.Equal(StatusCodes.Status409Conflict, status);
         Assert.Equal("تعذر توليد رقم فريد للمراسلة، حاول مجدداً", ReadMessage(body));
-        Assert.DoesNotContain("UNIQUE", body);
-        Assert.DoesNotContain("SQLite", body);
+        Assert.DoesNotContain("unique constraint", body);
+        Assert.DoesNotContain("IX_Correspondences", body);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ResponseAlreadyStarted_ReturnsFalse()
     {
         var handler = new GlobalExceptionHandler(

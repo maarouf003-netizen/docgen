@@ -51,34 +51,24 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
     }
 
     /// <summary>
-    /// يلتقط المرشّح: صف واحد بالترتيب <c>Id ASC</c>. على PostgreSQL يُضاف
-    /// <c>FOR UPDATE SKIP LOCKED</c> كطبقة إضافية فوق قفل المعاملة (فلا يلتقط مشغّلان
-    /// الصف نفسه)؛ وعلى SQLite تكفي معاملة الكتابة + القفل على مستوى العملية.
+    /// يلتقط المرشّح: صف واحد بالترتيب <c>Id ASC</c> مع <c>FOR UPDATE SKIP LOCKED</c>
+    /// كطبقة إضافية فوق قفل المعاملة (فلا يلتقط مشغّلان الصف نفسه). بعد <c>P1-08</c>
+    /// لا مزوّد آخر، فأُزيل الفرع البديل الذي كان يقرأ **بلا** <c>SKIP LOCKED</c>.
     /// </summary>
     private async Task<HeadAlertOutboxMessage?> ClaimCandidateAsync(DateTime now, CancellationToken ct)
     {
-        if (_db.Database.IsNpgsql())
-        {
-            var sql = """
-                SELECT * FROM "HeadAlertOutboxMessages"
-                WHERE ("Status" = 'pending' AND "NextAttemptAt" <= {0})
-                   OR ("Status" = 'processing' AND "LockedUntil" IS NOT NULL AND "LockedUntil" <= {0})
-                ORDER BY "Id" ASC
-                FOR UPDATE SKIP LOCKED
-                LIMIT 1
-                """;
-            var rows = await _db.HeadAlertOutboxMessages
-                .FromSqlRaw(sql, now)
-                .ToListAsync(ct);
-            return rows.FirstOrDefault();
-        }
-
-        return await _db.HeadAlertOutboxMessages
-            .Where(m => (m.Status == HeadAlertOutboxStatus.Pending && m.NextAttemptAt <= now)
-                     || (m.Status == HeadAlertOutboxStatus.Processing
-                         && m.LockedUntil != null && m.LockedUntil <= now))
-            .OrderBy(m => m.Id)
-            .FirstOrDefaultAsync(ct);
+        var sql = """
+            SELECT * FROM "HeadAlertOutboxMessages"
+            WHERE ("Status" = 'pending' AND "NextAttemptAt" <= {0})
+               OR ("Status" = 'processing' AND "LockedUntil" IS NOT NULL AND "LockedUntil" <= {0})
+            ORDER BY "Id" ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+            """;
+        var rows = await _db.HeadAlertOutboxMessages
+            .FromSqlRaw(sql, now)
+            .ToListAsync(ct);
+        return rows.FirstOrDefault();
     }
 
     public async Task MarkProcessedAsync(long id, CancellationToken ct = default)

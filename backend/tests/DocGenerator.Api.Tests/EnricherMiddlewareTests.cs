@@ -72,7 +72,7 @@ public class EnricherMiddlewareTests
         return result;
     }
 
-    [Fact]
+    [PostgresFact]
     public void Authenticated_PushesTraceIdUserIdAndRole()
     {
         var context = BuildContext(authenticated: true);
@@ -84,7 +84,7 @@ public class EnricherMiddlewareTests
         Assert.Equal("Manager", props["UserRole"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public void Anonymous_PushesAnonymousFallbacks()
     {
         var context = BuildContext(authenticated: false);
@@ -96,7 +96,7 @@ public class EnricherMiddlewareTests
         Assert.Equal("none", props["UserRole"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public void CursorQuery_PushesCursorPagingTrue()
     {
         // وسم `PR‑6c` للرصد: يميّز طلب المؤشر من طلب الإزاحة في السجلات.
@@ -111,7 +111,7 @@ public class EnricherMiddlewareTests
         Assert.Equal("7", props["UserId"]);
     }
 
-    [Fact]
+    [PostgresFact]
     public void OffsetQuery_DoesNotPushCursorPaging()
     {
         var context = BuildContext(authenticated: true);
@@ -122,7 +122,7 @@ public class EnricherMiddlewareTests
         Assert.False(props.ContainsKey("CursorPaging"));
     }
 
-    [Fact]
+    [PostgresFact]
     public void IsCursorPaging_DetectsCursorKeyOnly()
     {
         var withCursor = new DefaultHttpContext();

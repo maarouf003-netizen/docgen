@@ -1,8 +1,8 @@
 namespace DocGenerator.Api.Tests.TestHelpers;
 
 /// <summary>
-/// قاعدة الفئات المعزولة (R1-3): مصنع `ApiFactory` خاص لكل نسخة اختبار
-/// (قاعدة SQLite مؤقتة معزولة لكل صنف) مع دورة حياة `IAsyncLifetime` —
+/// قاعدة الفئات المعزولة (R1-3): مصنع `PostgresApiFactory` خاص لكل نسخة اختبار
+/// (قاعدة `PostgreSQL` فريدة لكل صنف) مع دورة حياة `IAsyncLifetime` —
 /// ترثها الفئات ذات التهيئة الفارغة مباشرةً، وتُبقي `Correspondence`
 /// و`MissingRole` تهيئتهما عبر `override`. مصنع لكل نسخة = لا مشاركة
 /// حالة عبر الوراثة. مستثناة عمدًا: التجميعة المخصصة

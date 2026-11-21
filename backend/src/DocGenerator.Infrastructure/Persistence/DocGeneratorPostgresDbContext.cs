@@ -19,8 +19,9 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // «datetime2» نوع خاص بـ SQLite وغير معروف في Postgres؛ نستبدله بنوع زمني صالح
-        // أثناء بناء نموذج سياق Postgres فقط، دون المساس بنموذج SQLite وهجراته.
+        // تواريخ «حرة» بنوع صريح `timestamp with time zone` على Postgres (كان النموذج
+        // المشترك يعلن «datetime2» لدعم مزوّد أُزيل في P1-08)، فلا تتغيّر أنواع الأعمدة
+        // في الهجرات القائمة.
         modelBuilder.Entity<Document>()
             .Property(d => d.FileReceiptDate)
             .HasColumnType("timestamp with time zone");

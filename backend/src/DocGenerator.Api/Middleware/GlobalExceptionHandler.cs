@@ -68,11 +68,11 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // يُردّ 409 لا 500.
             DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
             // W1-7: تفرد غير ملتقط (سباق على قيد فريد لم يغطّه حارس خدمي) = تعارض بيانات
-            // لا عطل خادم. التصنيف من رموز المزود في `DbExceptionClassifier` (SQLite
-            // 19/2067 وPostgreSQL 23505) عبر `IDbExceptionClassifier`.
+            // لا عطل خادم. التصنيف من رموز المزوّد في `DbExceptionClassifier`
+            // (‏`PostgreSQL` 23505) عبر `IDbExceptionClassifier`.
             DbUpdateException when isUniqueViolation => StatusCodes.Status409Conflict,
             // قيد «رقم الملف يتطلب دائرة» حارس أخير في القاعدة: طلب غير صالح = 400،
-            // لا 500 (كُشف على PostgreSQL لأن SQLite الاختباري لا يحمل القيد).
+            // لا 500 (يُكتشف من `23514` + اسم القيد على `PostgreSQL` المهاجَر).
             DbUpdateException when isMissingDocumentCircuit => StatusCodes.Status400BadRequest,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
             // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6 مكتمل:
@@ -202,7 +202,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     /// رسالة فعلية من غلاف فشل الحفظ: غلاف <c>DbUpdateException</c> يردّ نصًا عامًا
     /// («An error occurred while saving the entity changes...») بلا فائدة تشخيصية، بينما
     /// يحمل الجذر الداخلي القيد المخالَف أو سبب SQL الحقيقي (مثل
-    /// <c>SQLite Error 19: UNIQUE constraint failed: ...</c>)، فيُمشى نحو أعمق استثناء
+    /// <c>23505: duplicate key value violates unique constraint "IX_…"</c>)، فيُمشى نحو أعمق استثناء
     /// داخلي. تُستخدم في بيئة التطوير فقط لتشخيص فوري دون كشف أي تفاصيل في الإنتاج،
     /// وتمرّ بالسياسة نفسها (<see cref="LogSanitizer.SanitizeForResponse"/>) قبل الرد.
     /// </summary>

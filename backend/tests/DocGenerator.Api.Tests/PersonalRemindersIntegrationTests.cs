@@ -26,7 +26,7 @@ public class PersonalRemindersIntegrationTests
         recurrenceEnd = (string?)null,
     };
 
-    [Fact]
+    [PostgresFact]
     public async Task NonLawyerRoles_Forbidden()
     {
         foreach (var username in new[] { "manager", "admin", "head1" })
@@ -38,7 +38,7 @@ public class PersonalRemindersIntegrationTests
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CreatesListsUpdatesAndDeletes()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -81,7 +81,7 @@ public class PersonalRemindersIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await lawyer.GetAsync($"/api/personal-reminders/{dto.Id}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_GetById_ReturnsOwnSingle()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -99,7 +99,7 @@ public class PersonalRemindersIntegrationTests
         Assert.Equal("تذكير مفرد", single.Title);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CreateInvalid_BadRequest()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");
@@ -119,7 +119,7 @@ public class PersonalRemindersIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, badDate.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_CannotTouchAnotherLawyerReminder()
     {
         var damId = await _factory.GetBranchIdAsync("DAM");
@@ -139,7 +139,7 @@ public class PersonalRemindersIntegrationTests
             (await otherClient.DeleteAsync($"/api/personal-reminders/{dto.Id}")).StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Lawyer_TogglesOccurrenceDone()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");

@@ -9,13 +9,13 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// قيد القاعدة <c>CK_Users_BranchRequiredForBranchRoles</c>: الصف الشاذ (محامٍ/رئيس
 /// بلا فرع) مرفوض على مستوى التخزين نفسه — يشمل الكتابة المباشرة والاستعادات،
-/// لا خدمة الإدارة وحدها. يعمل على قاعدة SQLite مهاجَّرة فعليًا (المصنع يطبق
-/// الهجرات عند الإقلاع)، والأدوار بلا فرع بالتصميم تبقى صالحة (ضباط شرعية).
+/// لا خدمة الإدارة وحدها. يعمل على قاعدة <c>PostgreSQL</c> مهاجَّرة فعليًا (المصنع
+/// يستنسخ قالبًا مهاجَرًا ثم يبذر)، والأدوار بلا فرع بالتصميم تبقى صالحة (ضباط شرعية).
 /// </summary>
 public sealed class UserBranchInvariantTests : IsolatedApiTestBase
 {
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Lawyer)]
     [InlineData(UserRole.Head)]
     [InlineData(UserRole.SubHead)]
@@ -27,7 +27,7 @@ public sealed class UserBranchInvariantTests : IsolatedApiTestBase
         Assert.Contains("CK_Users_BranchRequiredForBranchRoles", ex.ToString());
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]
     [InlineData(UserRole.EntityManager)]
@@ -39,7 +39,7 @@ public sealed class UserBranchInvariantTests : IsolatedApiTestBase
         Assert.Null(user.BranchId);
     }
 
-    [Theory]
+    [PostgresTheory]
     [InlineData(UserRole.Lawyer)]
     [InlineData(UserRole.Head)]
     public async Task BranchRole_WithBranch_InsertsFine(UserRole role)
@@ -68,7 +68,7 @@ public sealed class UserBranchInvariantTests : IsolatedApiTestBase
         Assert.Equal(branchId, user.BranchId);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SecondActiveHeadSameBranch_ViolatesPartialUniqueIndex()
     {
         // ظهر قاعدة البيانات للوحدانية (قرار §2.26): رئيسا قسم مفعّلان في الفرع
@@ -83,11 +83,14 @@ public sealed class UserBranchInvariantTests : IsolatedApiTestBase
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() =>
             Factory.CreateUserAsync($"dup_head_{Guid.NewGuid():N}"[..24], UserRole.Head, branchId: damascusId));
 
-        // `SQLite` يسمّي العمود لا الفهرس في رسالته.
-        Assert.Contains("UNIQUE constraint failed: Users.BranchId", ex.ToString());
+        // `PostgreSQL` يرفض التكرار عبر الفهرس الفريد الجزئي نفسه (فهرس `Users.BranchId`
+        // المفلتر على الرؤساء النشطين)، والتحقق على اسم القيد لا على نص مزوّد آخر.
+        var postgres = Assert.IsType<Npgsql.PostgresException>(ex.InnerException);
+        Assert.Equal("23505", postgres.SqlState);
+        Assert.Equal("IX_Users_BranchId", postgres.ConstraintName);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SectionlessSubHead_HeadEndpoints_Forbidden()
     {
         // الحالة الانتقالية (1أ–1ج) مغلقة: حساب رئيس شعبة بفرع وبلا شعبة يدخل

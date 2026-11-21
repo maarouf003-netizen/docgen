@@ -31,20 +31,20 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
         return response.StatusCode;
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ListedHost_IsServed()
     {
         Assert.Equal(HttpStatusCode.OK, await GetHealthAsync("docgen.test"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task HealthCheckHostWithPort_IsServed_WhenBareAddressIsListed()
     {
         // جوهر البند: بلا هذه المطابقة ينكسر فحص الصحة لحظة تحويل حركة الوكيل.
         Assert.Equal(HttpStatusCode.OK, await GetHealthAsync("127.0.0.1:8080"));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnknownHost_IsRejected()
     {
         Assert.Equal(HttpStatusCode.BadRequest, await GetHealthAsync("evil.example"));
@@ -56,8 +56,7 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
     /// </summary>
     public sealed class HostFilteringFactory : WebApplicationFactory<Program>
     {
-        private readonly string _dbPath = Path.Combine(
-            Path.GetTempPath(), $"docgen_hostfilter_{Guid.NewGuid():N}.db");
+        private readonly PostgresHostDatabase _db = PostgresHostDatabase.Create();
         private readonly string _logDir = Path.Combine(
             Path.GetTempPath(), $"docgen_hostfilter_logs_{Guid.NewGuid():N}");
 
@@ -65,8 +64,8 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
         {
             builder.UseEnvironment("Production");
             builder.UseSecureProductionDefaults(allowedHosts: AllowedList);
-            // ADR-0001: سلسلة Postgres شكلية للحارس + سياق SQLite اختباري.
-            builder.UseSetting("ConnectionStrings:DefaultConnection", TestDatabase.PostgresPlaceholder);
+            // قاعدة Postgres معزولة مهاجَرة مسبقًا: الإنتاج لا يرحّل تلقائيًا هنا.
+            builder.UseSetting("ConnectionStrings:DefaultConnection", _db.ConnectionString);
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
             builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
@@ -74,17 +73,13 @@ public class AllowedHostsIntegrationTests : IClassFixture<AllowedHostsIntegratio
             builder.UseSetting("Jwt:Secret", "hostfilter-test-secret-0123456789-0123456789-0123456789");
             builder.UseSetting("Bootstrap:AdminPassword", "HostFilter123456!");
             builder.UseSetting("Security:KnownProxies:0", "127.0.0.1");
-            builder.ConfigureTestServices(services =>
-                TestDatabase.UseSqlite(services, $"Data Source={_dbPath}"));
         }
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-            }
+            if (disposing)
+                _db.Dispose();
             try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
         }
     }

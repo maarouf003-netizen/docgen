@@ -20,7 +20,7 @@ public class AuthzDefaultsTests
 
     public AuthzDefaultsTests(ApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [PostgresFact]
     public void EveryControllerAction_IsAuthorizedOrExplicitlyAnonymous()
     {
         var dataSource = _factory.Services.GetRequiredService<EndpointDataSource>();
