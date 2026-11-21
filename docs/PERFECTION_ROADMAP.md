@@ -1071,10 +1071,16 @@
 
 #### `P7-05` — صيانة CI (تحذيرات Node 20 وUbuntu 26)
 
+- **الحالة (2026-11-22):** **منفّذ** — `ubuntu-24.04` مثبتة في الوظائف التسع،
+  والإجراءات رُقّيت إلى `checkout@v7`/`setup-dotnet@v6`/`setup-node@v7`/
+  `upload-artifact@v7`/`codeql-action@v4`/`dependency-review@v5` (‏`Node 24`)،
+  وصورة `backend-postgres` رُفعت من `15` إلى **`16`** لمطابقة القياس/الإنتاج
+  (تصحيح تناقض موثّق في `docs/audit/95`).
 - **العمل:** ترقية `actions/checkout@v4` و`actions/setup-dotnet@v4` و`actions/setup-node@v4`
   إلى إصدارات لا تعتمد Node 20 (Node 24)؛ وتثبيت صورة `runs-on` صريحة بدل `ubuntu-latest`
   قبل تحولها إلى Ubuntu 26؛ ومراجعة صورة `postgres` في `backend-postgres`.
-- **DoD:** لا تحذيرات إهمال في سجلات CI، وبيئة تشغيل/صورة مثبتة الإصدار.
+- **`DoD`:** لا تحذيرات إهمال في سجلات CI، وبيئة تشغيل/صورة مثبتة الإصدار — **متحقق**
+  (التحقق النهائي على بوابات الـ`PR`).
 
 ---
 

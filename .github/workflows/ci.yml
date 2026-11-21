@@ -15,12 +15,12 @@ concurrency:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # مهلة صريحة: شبكة أمان ضد أي تعليق مستقبلي بدل حجب المجموعة ساعات بصمت.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
       # -warnaserror: يكمل خواص Directory.Build.props — تحذيرات تقييم المشروع المبكرة
@@ -46,15 +46,15 @@ jobs:
       # مع `DOCGEN_REQUIRE_POSTGRES=1`، فلا تُكرَّر هنا بتخطٍّ صامت.
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # شجرة الاعتماديات المثبتة (jsdom 30 + undici 8) تتطلب Node ≥ 22 وقت التشغيل —
       # التثبيت على 20 يُسقط كل ملفات vitest بخطأ `markAsUncloneable` ( undici/jsdom ).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -84,10 +84,10 @@ jobs:
   # حراس انحدار خطة رئيس الشعبة (المرحلة 9 — بند 4): يفشل عند أي تضييق
   # منسي (نداء محامين بلا mode، فحص head منفرد، سمة بلا subhead).
   guards:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: SubHead regression guards
@@ -116,10 +116,10 @@ jobs:
   # فحص الاعتماديات حاجب للدمج (RF-002 — شُدِّد بعد تثبيت خط الأساس الأخضر في RF-001).
   # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا (مهمة المالك).
   audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
       # P4-06b: `dotnet list package` يُعيد التهيئة تلقائيًا؛ نتحقق من الأقفال أولًا
@@ -132,7 +132,7 @@ jobs:
         run: node scripts/dependency-audit.mjs --self-test
       - name: Dependency gate (High/Critical)
         run: node scripts/dependency-audit.mjs
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Self-test npm audit guard
@@ -162,7 +162,7 @@ jobs:
         working-directory: frontend
         run: npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --ignore-npm-errors --output-file ../artifacts/sbom/frontend-bom.json --output-format JSON
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: artifacts/sbom
@@ -172,11 +172,11 @@ jobs:
   # (`datetime2` وأخواتها) في DDL قبل أن تصل أي قاعدة. لا يتصل بأي قاعدة —
   # سلسلة الاتصال الوهمية لتلبية مصنع وقت التصميم فقط.
   migration-guard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
       # مثبت برقم دقيق: الأحدث (11.x) يتطلب Runtime أحدث ويفشل على SDK ‏10 — ‏الرئيسي يجب أن يطابق الـSDK.
@@ -210,7 +210,7 @@ jobs:
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet ef migrations script --idempotent --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api -o artifacts/migrations/pg-idempotent.sql
       - name: Upload migration SQL artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: migrations-sql
           path: artifacts/migrations
@@ -219,11 +219,13 @@ jobs:
   # اختبارات البوابة الحية لـ Postgres (FR-002): الاختبارات المبوبة بـ
   # DOCGEN_TEST_POSTGRES (مهاجرة + مسح) تعمل هنا فعليًا بدل تخطيها الصامت محليًا.
   backend-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     services:
       postgres:
-        image: postgres:15
+        # P7-05: مطابقة إصدار القياس/الإنتاج (PostgreSQL 16) بدل 15؛ كانت اللقطة
+        # `docs/audit/82` تفترض 16 بينما الـCI على 15 — صُحّح هنا.
+        image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
         options: >-
@@ -238,8 +240,8 @@ jobs:
       # يمنع «الخضرة الكاذبة»: غياب السلسلة أو تعذّر الاتصال = فشل صريح لا Skip.
       DOCGEN_REQUIRE_POSTGRES: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
       # P4-06b: نفس التحقق من الأقفال في وظيفة Postgres كي لا يمرّ انحراف هنا.
@@ -277,7 +279,7 @@ jobs:
       # تقرير التغطية إعلامي: يُرفع كأثر للتنزيل والمراجعة، ولا يفشل البناء عند انخفاضه.
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: backend/tests/**/TestResults/**/coverage.cobertura.xml
