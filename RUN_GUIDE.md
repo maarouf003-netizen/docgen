@@ -394,10 +394,18 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - أثناء نافذة نشر خاضعة للتحكم (من مجلد `backend\`):
   1. نسخة احتياطية + استعادة مجرَّبة.
   2. `dotnet ef database update --context DocGeneratorPostgresDbContext`.
-  3. تحقق: `__EFMigrationsHistory` = صف واحد، و51 جدولًا في `public`، والمشغّلات
-     الأربعة موجودة.
+  3. تحقق: `__EFMigrationsHistory` = **7 صفوف** (Baseline + ست هجرات لاحقة حتى `P3-02`)،
+     و51 جدولًا في `public`، والمشغّلات الأربعة موجودة.
   4. **ثم** شغّل النسخة الجديدة (`Database:AutoMigrate=false` يرفض الإقلاع إن كان
      المخطط ناقصًا).
+- **تحقق آلي من تاريخ الهجرات (`P7-02b`):** بعد تطبيق الهجرات على القاعدة المستهدفة، شغّل:
+  ```powershell
+  $env:DOCGEN_MIGRATION_CONNECTION="Host=...;Port=...;Database=...;Username=...;Password=..."
+  node scripts/migration-history-check.mjs
+  ```
+  يفشل عند أي هجرة معلّقة (`Pending`)، أو ملف بلا صف في `__EFMigrationsHistory`، أو صف
+  بلا ملف. يُشغَّل في `CI` داخل `backend-postgres` بعد الاختبارات (قاعدة `docgen_test`)،
+  ويكمل `migration-watchlist-guard` (الذي يتحقق من التوثيق فقط).
 - تتصل أوامر التصميم بسلسلة `PostgreSQL` من `POSTGRES_CONNECTION` (يقرأها
   `PostgresDbContextFactory` حصرًا)؛ أما التشغيل فيقرأ `DATABASE_URL` أو
   `ConnectionStrings__DefaultConnection`. إن لم يكن `dotnet-ef` مثبتًا عالميًا:

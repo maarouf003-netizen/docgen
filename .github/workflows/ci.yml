@@ -276,6 +276,21 @@ jobs:
           trx=$(find . -name api-postgres.trx -print -quit)
           test -n "$trx"
           node scripts/postgres-suite-guard.mjs "$trx"
+      # P7-02b: تطبيق الهجرات على قاعدة الفحص ثم مقارنة __EFMigrationsHistory بالملفات.
+      # يفشل عند هجرة معلّقة أو انحراف تاريخ — لا يكفي حارس التوثيق (P7-02a).
+      - name: Install dotnet-ef (migration history check)
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.10
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Apply migrations to the history-check database
+        run: |
+          export POSTGRES_CONNECTION="$DOCGEN_TEST_POSTGRES"
+          dotnet ef database update --context DocGeneratorPostgresDbContext \
+            --project backend/src/DocGenerator.Infrastructure/DocGenerator.Infrastructure.csproj \
+            --startup-project backend/src/DocGenerator.Api/DocGenerator.Api.csproj \
+            --connection "$DOCGEN_TEST_POSTGRES" --no-build
+      - name: Assert database history matches migration files
+        run: node scripts/migration-history-check.mjs
       # تقرير التغطية إعلامي: يُرفع كأثر للتنزيل والمراجعة، ولا يفشل البناء عند انخفاضه.
       - name: Upload coverage report
         if: always()
