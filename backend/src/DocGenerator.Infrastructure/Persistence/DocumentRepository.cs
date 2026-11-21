@@ -408,7 +408,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// وحدها تستخدم الكتلة المضيَّقة (ApplyReferredPersonNameSearch).
     /// </summary>
     private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
-        => DocumentPartySearch.Apply(q, Db.DocumentAppeals, term, includeExecutedFamily: true, includeAppeals: true);
+        => DocumentPartySearch.Apply(q, Db, term, includeExecutedFamily: true, includeAppeals: true);
 
     /// <summary>
     /// كتلة البحث الخاصة بصفحة «محال الى البداية»: تفويض إلى <see cref="DocumentPartySearch"/>
@@ -417,7 +417,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// وArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables.
     /// </summary>
     private IQueryable<Document> ApplyReferredPersonNameSearch(IQueryable<Document> q, string term)
-        => DocumentPartySearch.Apply(q, Db.DocumentAppeals, term, includeExecutedFamily: false, includeAppeals: true);
+        => DocumentPartySearch.Apply(q, Db, term, includeExecutedFamily: false, includeAppeals: true);
 
     /// <summary>
     /// شجرة التحميل المسبق (Include) المعتمدة لكائن Document كاملًا،

@@ -106,7 +106,7 @@ try
     var serverSettings = await database.ReadServerSettingsAsync(CancellationToken.None);
     var report = new BenchmarkReport(
         SchemaVersion: 1,
-        Task: "P3-01",
+        Task: options.Task,
         GeneratedAtUtc: DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         Environment: new EnvironmentInfo(
             OperatingSystem: RuntimeInformation.OSDescription,
@@ -203,6 +203,7 @@ static void PrintHelp()
           --iterations <n>        عدد تكرارات القياس بعد الإحماء (افتراضي 20).
           --warmup <n>            عدد تكرارات الإحماء (افتراضي 5).
           --seed <n>              بذرة البذر الحتمي (افتراضي 20261121).
+          --task <P3-01|P3-02>    وسم المهمة في أسماء التقارير (افتراضي P3-01).
           --connection <string>   سلسلة اتصال PostgreSQL (أو DOCGEN_BENCH_POSTGRES / DOCGEN_TEST_POSTGRES).
           --output <dir>          مجلد النتائج (افتراضي docs/audit/measurements).
           --keep-database         لا تُسقط قاعدة القياس بعد الانتهاء.

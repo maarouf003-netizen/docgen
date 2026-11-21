@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using DocGenerator.Application.Common;
 using DocGenerator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
@@ -23,76 +24,99 @@ namespace DocGenerator.Infrastructure.Persistence;
 /// بينما تعتمد البوابة على `SearchText` وحده لهذا البند (`includeAppeals: false`).</item>
 /// </list></para>
 ///
-/// <para>تُبنى الفروع المشروطة في شجرة التعبير نفسها (لا كمعاملات `bool` في SQL)،
-/// فلا تصل فروع ميتة إلى قاعدة البيانات في مسار لا يحتاجها.</para>
+/// <para><b>P3-02:</b> بقي مسند `SearchText`/المقترض على `Documents` كما هو (مسار واحد)،
+/// أما فروع جداول الأطراف (التي كانت `OR` متكررًا مع `EXISTS`) فصارت **مجموعات مرشّحين
+/// مستقلة** تُجمع بـ`UNION ALL` (`Concat`) على `DocumentId` فقط، ثم تُضاف للمسند
+/// بمساواة واحدة. هذا يقلّل مسح `Documents` المتكرر ويُبقي النطاق (المالك/الفرع/الحالة)
+/// مطبَّقًا مرة واحدة عبر `q`، فلا يتوسّع البحث خارج نطاق المستدعي.</para>
 /// </summary>
 internal static class DocumentPartySearch
 {
     public static IQueryable<Document> Apply(
         IQueryable<Document> q,
-        IQueryable<DocumentAppeal> appeals,
+        DocGeneratorDbContext db,
         string term,
         bool includeExecutedFamily,
         bool includeAppeals)
     {
         var normTerm = ArabicNameNormalizer.Normalize(term);
-        var branches = new List<Expression<Func<Document, bool>>>
-        {
-            d => d.SearchText != null && d.SearchText.Contains(normTerm),
-            d => d.BorrowerName != null &&
+
+        // المسار الأساسي على `Documents` يبقى مسندًا واحدًا: `SearchText` (مطبَّع، مدعوم
+        // بفهرس GIN ثلاثي) أو اسم المقترض الخام. تكراره لكل فرع يمسح الجدول عشر مرات.
+        Expression<Func<Document, bool>> basePredicate = d =>
+            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
+            (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term)),
-        };
+                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term)));
+
+        var childIds = new List<IQueryable<int>>();
 
         if (includeExecutedFamily)
         {
-            branches.Add(d => d.ExecutionApplicants.Any(a =>
-                (a.Name != null &&
-                    ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
-                     (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
-                ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)));
-            branches.Add(d => d.ExecutedPublicEntities.Any(e =>
-                e.EntityName != null && e.EntityName.Contains(term)));
-            branches.Add(d => d.ExecutedNaturalPersons.Any(p =>
-                p.Name != null &&
-                ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
-                 (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))));
+            childIds.Add(db.ExecutionApplicants.AsNoTracking()
+                .Where(a =>
+                    (a.Name != null &&
+                        ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
+                         (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
+                    ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term))
+                .Select(a => a.DocumentId));
+            childIds.Add(db.ExecutedPublicEntities.AsNoTracking()
+                .Where(e => e.EntityName != null && e.EntityName.Contains(term))
+                .Select(e => e.DocumentId));
+            childIds.Add(db.ExecutedNaturalPersons.AsNoTracking()
+                .Where(p => p.Name != null &&
+                    ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
+                     (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term)))
+                .Select(p => p.DocumentId));
         }
 
-        branches.Add(d => d.ExecutedHeirs.Any(h =>
-            h.HeirName != null &&
-            ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-             (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
-        branches.Add(d => d.ApplicantPublicEntities.Any(a =>
-            a.Name != null && a.Name.Contains(term)));
-        branches.Add(d => d.Guarantors.Any(g =>
-            g.GuarantorName != null &&
-            ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-             (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))));
-        branches.Add(d => d.Heirs.Any(h =>
-            h.HeirName != null &&
-            ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-             (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
-        branches.Add(d => d.Interventions.Any(i =>
-            (i.Name != null &&
-                ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
-                 (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
-            (i.EntityName != null && i.EntityName.Contains(term)) ||
-            i.Heirs.Any(h =>
-                h.HeirName != null &&
+        childIds.Add(db.ExecutedHeirs.AsNoTracking()
+            .Where(h => h.HeirName != null &&
                 ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))));
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))
+            .Select(h => h.DocumentId));
+        childIds.Add(db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => a.Name != null && a.Name.Contains(term))
+            .Select(a => a.DocumentId));
+        childIds.Add(db.Guarantors.AsNoTracking()
+            .Where(g => g.GuarantorName != null &&
+                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
+                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term)))
+            .Select(g => g.DocumentId));
+        childIds.Add(db.Heirs.AsNoTracking()
+            .Where(h => h.HeirName != null &&
+                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term)))
+            .Select(h => h.DocumentId));
+        childIds.Add(db.DocumentInterventions.AsNoTracking()
+            .Where(i =>
+                (i.Name != null &&
+                    ((i.Name + " " + (i.Family ?? string.Empty)).Contains(term) ||
+                     (i.Name + " " + (i.Father ?? string.Empty) + " " + (i.Family ?? string.Empty)).Contains(term))) ||
+                (i.EntityName != null && i.EntityName.Contains(term)) ||
+                i.Heirs.Any(h =>
+                    h.HeirName != null &&
+                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))))
+            .Select(i => i.DocumentId));
 
         if (includeAppeals)
         {
-            branches.Add(d => appeals.Any(a =>
-                a.DocumentId == d.Id &&
-                ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
-                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
+            childIds.Add(db.DocumentAppeals.AsNoTracking()
+                .Where(a =>
+                    (a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
+                    (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))
+                .Select(a => a.DocumentId));
         }
 
-        var predicate = branches.Aggregate(Or);
-        return q.Where(predicate);
+        // P3-02: `UNION ALL` صريح (`Concat`) على معرّفات جداول الأطراف فقط.
+        var union = childIds[0];
+        for (var i = 1; i < childIds.Count; i++)
+            union = union.Concat(childIds[i]);
+
+        // يُضاف المسند الأساسي مرة واحدة؛ النطاق يُطبَّق عبر `q` نفسه.
+        var childPredicate = (Expression<Func<Document, bool>>)(d => union.Contains(d.Id));
+        return q.Where(Or(basePredicate, childPredicate));
     }
 
     /// <summary>يجمع شرطين بـ`OR` بعد توحيد معامل المستند — بلا مكتبات خارجية.</summary>

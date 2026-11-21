@@ -645,6 +645,19 @@
 
 #### `P3-02` — إعادة كتابة بحث البوابة
 
+- **الحالة (2026-11-21):** **منفَّذ** — PR
+  [`#243`](https://github.com/maarouf003-netizen/docgen/pull/243) على فرع
+  `perf/p3-02-portal-search`:
+  - هجرتان: `20261121025258_P3_02_PortalSearchIndexes` (`pg_trgm`) و
+    `20261121034750_P3_02_PortalSearchIndex` (فهرس GIN جزئي على `SearchText`
+    داخل معاملة الهجرة؛ لا `CONCURRENTLY` بسبب سكربت الهجرات الـidempotent).
+  - `UNION ALL` لمجموعات مرشّحي جداول الأطراف في `DocumentPartySearch`، مع إبقاء مسند
+    `SearchText`/المقترض واحدًا (المحاولة الشاملة رُفضت بالقياس: تدهور إلى `1040ms`).
+  - **النتيجة (p95):** `documents-list-text` عند `10k`: `462.9ms → 401.7ms` (−13.2%)؛
+    وعند `50k`: `1317ms → 1245ms`. البوابة عند `10k`: `194.3ms → 185.1ms`.
+  - **DoD متحقّق** عند `10k` (`<500ms`) مع نتيجة صحيحة وعزل تام (اختبار تكرار/عزل جديد).
+  - التفاصيل: `docs/audit/82-p3-02-portal-search-20261121.md`، والنتائج:
+    `docs/audit/measurements/20261121-p3-02-{10000,50000}.{json,md}`.
 - **خط الأساس (`P3-01`، 2026-11-21):** `documents-list-text` `p95 = 462.9ms` عند `10k`
   و`1317ms` عند `50k`؛ `portal-list-text` `p95 = 194.3ms` عند `10k` و`661.3ms` عند `50k`
   (`docs/audit/measurements/20261121-p3-01-*.json`). القياس هو مرجع «قبل».

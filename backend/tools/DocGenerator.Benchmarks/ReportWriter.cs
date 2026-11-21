@@ -22,7 +22,7 @@ public static class ReportWriter
     {
         Directory.CreateDirectory(outputDirectory);
         var date = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-        var stem = $"{date}-p3-01-{report.Environment.Scale.ToString(CultureInfo.InvariantCulture)}";
+        var stem = $"{date}-{report.Task.ToLowerInvariant()}-{report.Environment.Scale.ToString(CultureInfo.InvariantCulture)}";
         var jsonPath = Path.Combine(outputDirectory, stem + ".json");
         var markdownPath = Path.Combine(outputDirectory, stem + ".md");
 
@@ -38,7 +38,7 @@ public static class ReportWriter
         var env = report.Environment;
         var builder = new System.Text.StringBuilder();
 
-        builder.AppendLine($"# `P3-01` — قياس `PostgreSQL/Release` عند {env.Scale:N0} مستندًا — {report.GeneratedAtUtc[..10]}");
+        builder.AppendLine($"# `{report.Task}` — قياس `PostgreSQL/Release` عند {env.Scale:N0} مستندًا — {report.GeneratedAtUtc[..10]}");
         builder.AppendLine();
         builder.AppendLine("> مولَّد آليًا بـ`backend/tools/DocGenerator.Benchmarks` (لا تُحرَّر الأرقام يدويًا).");
         builder.AppendLine("> القياس على `PostgreSQL` حقيقي وبناء `Release` بعد إحماء؛ `p50`/`p95` بطريقة الاستيفاء الخطي.");

@@ -516,6 +516,14 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
   `scripts/p0-07b-preflight.sql` على **مشروع الإنتاج الفعلي** قبل التطبيق؛ أي قيمة سالبة
   تُفشل الهجرة. الهجرة إلزامية قبل نشر نسخة `P0-07b`:
   `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+- [ ] **2026-11-21 — `P3_02_PortalSearchIndexes` + `P3_02_PortalSearchIndex` (`P3-02`)** —
+  الأولى تفعّل إضافة `pg_trgm` (contrib قياسية في PostgreSQL)، والثانية تضيف فهرس
+  `GIN ("SearchText" gin_trgm_ops)` جزئيًا (`SearchText IS NOT NULL AND NOT "IsDeleted"`)
+  بـ`CREATE INDEX` داخل معاملة الهجرة (لا `CONCURRENTLY` لأن سكربت الهجرات الـidempotent
+  يلفّ الأوامر في `DO`/معاملة). **إلزاميتان قبل نشر نسخة `P3-02`** في نافذة نشر، ويجب أن
+  تتوفر `pg_trgm` على الخادم (متوفرة في صورة `postgres:16` الرسمية و`PostgreSQL` الكامل).
+  التطبيق: `dotnet ef database update --context DocGeneratorPostgresDbContext`. المرجع:
+  `docs/audit/82-p3-02-portal-search-20261121.md`.
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 
