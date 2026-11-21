@@ -1,7 +1,7 @@
 import type { DocumentResponse } from '../types';
 
 /** الاسم الثلاثي من مكوناته، متجاهلًا أي مكوّن فارغ. */
-export function tripleName(name?: string, father?: string, family?: string): string {
+export function tripleName(name?: string | null, father?: string | null, family?: string | null): string {
   return [name, father, family].filter(Boolean).join(' ');
 }
 

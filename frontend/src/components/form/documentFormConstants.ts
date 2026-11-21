@@ -289,14 +289,14 @@ export function addressLabelOf(addressType: string | undefined): string {
 }
 
 /** تسمية حقل عنوان الوريث: «الوكيل القانوني»/«الموطن المختار»/«العنوان» حسب النوع المخزن. */
-export function heirAddressLabelOf(addressType: string | undefined): string {
+export function heirAddressLabelOf(addressType: string | null | undefined): string {
   if (addressType === 'وكيل') return 'الوكيل القانوني';
   if (addressType === 'موطن مختار') return 'الموطن المختار';
   return 'العنوان';
 }
 
 /** تسمية حقل عنوان الممثل الشرعي: «الوكيل القانوني»/«الموطن المختار»/«العنوان». */
-export function representativeAddressLabelOf(addressType: string | undefined): string {
+export function representativeAddressLabelOf(addressType: string | null | undefined): string {
   if (addressType === 'وكيل قانوني') return 'الوكيل القانوني';
   if (addressType === 'موطن مختار') return 'الموطن المختار';
   return 'العنوان';
@@ -305,10 +305,10 @@ export function representativeAddressLabelOf(addressType: string | undefined): s
 /** هل الممثل الشرعي حاضر واجهةً (أي حقل من اسمه الثلاثي أو صفته غير فارغ)؟
  * للعرض فقط (إظهار المحرر/إخفاء العنوان) — لا يُستخدم لقرارات الحمولة. */
 export function hasRepresentative(rep: {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
 }): boolean {
   return Boolean(
     (rep.representativeName ?? '').trim()
@@ -323,9 +323,9 @@ export function hasRepresentative(rep: {
  * يُستخدم حصرًا عند بناء الحمولة: تصفير العناوين لممثل لن يُحفظ يُفقد بيانات،
  * بينما إبقاؤها يحفظها والخلفية تُصفّر الشبح تلقائيًا فيعيد التحميل نظيفًا. */
 export function hasStoredRepresentative(rep: {
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
 }): boolean {
   return Boolean(
     (rep.representativeName ?? '').trim()
@@ -335,7 +335,7 @@ export function hasStoredRepresentative(rep: {
 }
 
 /** هل الوريث حاضر (اسمه أو أبيه أو نسبته غير فارغ)؟ */
-export function hasHeirName(h: { name?: string; father?: string; family?: string }): boolean {
+export function hasHeirName(h: { name?: string | null; father?: string | null; family?: string | null }): boolean {
   return Boolean((h.name ?? '').trim() || (h.father ?? '').trim() || (h.family ?? '').trim());
 }
 
