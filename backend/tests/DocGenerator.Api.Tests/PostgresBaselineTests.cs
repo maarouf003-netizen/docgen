@@ -36,12 +36,31 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(5, migrations.Count);
+            Assert.Equal(7, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_07_SafeConstraints", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_07b_AmountConstraints", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndexes", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndex", StringComparison.Ordinal));
+
+            // P3-02: الإضافة والفهرس موجودان بعد الهجرة (وإلا فشل البحث الانتقائي صامتًا).
+            var trigramExtension = await db.Database
+                .SqlQueryRaw<long>(
+                    """SELECT COUNT(*)::bigint AS "Value" FROM pg_extension WHERE extname = 'pg_trgm'""")
+                .SingleAsync();
+            Assert.Equal(1, trigramExtension);
+
+            var trigramIndex = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM pg_indexes
+                    WHERE indexname = 'IX_Documents_SearchText_Trgm'
+                    """)
+                .SingleAsync();
+            Assert.Equal(1, trigramIndex);
 
             // P0-06: عمود Version على الكيانات الاثني عشر القابلة للتحرير.
             var versionColumns = await db.Database

@@ -175,7 +175,7 @@ public class PortalRepository : IPortalRepository
     /// `SearchText` يغطيها في البوابة، بخلاف قوائم المحامين.
     /// </summary>
     private IQueryable<Document> ApplyScopedPersonNameSearch(IQueryable<Document> q, string term)
-        => DocumentPartySearch.Apply(q, _db.DocumentAppeals, term, includeExecutedFamily: true, includeAppeals: false);
+        => DocumentPartySearch.Apply(q, _db, term, includeExecutedFamily: true, includeAppeals: false);
 
     // ── مساعدات خاصة ──
 

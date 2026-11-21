@@ -12,6 +12,7 @@ public sealed record BenchmarkOptions(
     int Iterations,
     int Warmup,
     int Seed,
+    string Task,
     string ConnectionString,
     string OutputDirectory,
     bool KeepDatabase,
@@ -30,6 +31,7 @@ public sealed record BenchmarkOptions(
         var iterations = DefaultIterations;
         var warmup = DefaultWarmup;
         var seed = DefaultSeed;
+        var task = "P3-01";
         string? connection = null;
         string? output = null;
         var keepDatabase = false;
@@ -55,6 +57,9 @@ public sealed record BenchmarkOptions(
                 case "--seed":
                     seed = int.Parse(Next(), CultureInfo.InvariantCulture);
                     break;
+                case "--task":
+                    task = Next().Trim();
+                    break;
                 case "--connection":
                     connection = Next();
                     break;
@@ -77,6 +82,8 @@ public sealed record BenchmarkOptions(
             throw new ArgumentException("--iterations يجب أن يكون 1 على الأقل.");
         if (warmup < 0)
             throw new ArgumentException("--warmup لا يكون سالبًا.");
+        if (task is not ("P3-01" or "P3-02"))
+            throw new ArgumentException("--task يجب أن يكون P3-01 أو P3-02.");
 
         connection ??= Environment.GetEnvironmentVariable("DOCGEN_BENCH_POSTGRES")
             ?? Environment.GetEnvironmentVariable("DOCGEN_TEST_POSTGRES");
@@ -94,7 +101,7 @@ public sealed record BenchmarkOptions(
             : Path.GetFullPath(output, root);
 
         return new BenchmarkOptions(
-            scale.Value, iterations, warmup, seed, connection.Trim(), outputDirectory, keepDatabase, false);
+            scale.Value, iterations, warmup, seed, task, connection.Trim(), outputDirectory, keepDatabase, false);
     }
 
     public static BenchmarkOptions Defaults() => new(
@@ -102,6 +109,7 @@ public sealed record BenchmarkOptions(
         Iterations: DefaultIterations,
         Warmup: DefaultWarmup,
         Seed: DefaultSeed,
+        Task: "P3-01",
         ConnectionString: string.Empty,
         OutputDirectory: string.Empty,
         KeepDatabase: false,
