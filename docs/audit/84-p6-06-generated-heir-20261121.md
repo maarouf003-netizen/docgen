@@ -3,6 +3,7 @@
 > **النطاق:** إحالة `HeirDto` اليدوي في `frontend/src/types/document.ts` إلى النوع المولَّد
 > `components['schemas']['HeirDto']`، ثم توسيع أنواع المساعدات المشتركة لتقبل `null`
 > بدل `undefined` (المولَّد يصدّر `string | null`). **لا تغيير في `API`/`DTO`/`backend`.**
+> **PR:** [#245](https://github.com/maarouf003-netizen/docgen/pull/245).
 
 ## 1. ما نُفِّذ
 
