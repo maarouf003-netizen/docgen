@@ -154,6 +154,9 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - كل تشغيل ينشئ قاعدة باسم مؤقت ويسقطها في النهاية؛ `--keep-database` يبقيها للتشخيص.
 - تُفحص `pg_stat_statements` فعليًا؛ إن غابت تُسجَّل الحالة صراحةً في التقرير ولا تُختلق أرقام.
 - النتائج تُكتب في `docs/audit/measurements/<YYYYMMDD>-p3-01-<scale>.{json,md}`.
+- **الاحتفاظ:** خط أساس واحد لكل `(task, scale)`؛ إعادات التشغيل إلى `%TEMP%`/`artifacts`،
+  لا إلى المستودع. لا تُشغّل البذر على بيانات إنتاج (الأثر يحفظ قيم معاملات `EXPLAIN`).
+  التفاصيل: `docs/audit/measurements/README.md`.
 - المرجع: `docs/audit/81-p3-01-measurement-harness-20261121.md` و`P3-01` في الخريطة.
 
 ## 7) Swagger (توثيق API)
