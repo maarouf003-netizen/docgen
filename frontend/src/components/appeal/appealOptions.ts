@@ -112,7 +112,7 @@ export function buildAppellantOptions(doc: DocumentResponse, direction: AppealDi
     // تبني خياراتها من الجمع الكامل لهم).
     const naturalPersons = doc.executedNaturalPersons ?? [];
     const applicants = doc.executionApplicants ?? [];
-    const heirOption = (h: { id?: number; heirName?: string; heirFather?: string; heirFamily?: string }) => ({
+    const heirOption = (h: { id?: number | null; heirName?: string | null; heirFather?: string | null; heirFamily?: string | null }) => ({
       kind: 'executed-heir',
       partyId: h.id ?? 0,
       name: triple(h.heirName, h.heirFather, h.heirFamily),
