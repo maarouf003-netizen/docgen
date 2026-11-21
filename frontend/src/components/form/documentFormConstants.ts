@@ -512,13 +512,13 @@ export const ordinaryCurrencyKeys = [
 
 /** صف ملحق جديد فارغ — الترتيب يُحسب عند الحفظ. */
 export function emptyAnnex(): DocumentAnnexDto {
-  return { annexType: '', annexNumber: '', annexDate: '' };
+  return { sequence: 0, annexType: '', annexNumber: '', annexDate: '' };
 }
 
 /** توافق خلفي: الملحق المفرد القديم يُقرأ كصف واحد عند غياب القائمة. */
 export function legacyToAnnexes(d: Pick<DocumentResponse, 'annexType' | 'annexNumber' | 'annexDate'>): DocumentAnnexDto[] {
   if (![d.annexType, d.annexNumber, d.annexDate].some((v) => (v ?? '').trim())) return [];
-  return [{ annexType: d.annexType ?? '', annexNumber: d.annexNumber ?? '', annexDate: d.annexDate ?? '' }];
+  return [{ sequence: 0, annexType: d.annexType ?? '', annexNumber: d.annexNumber ?? '', annexDate: d.annexDate ?? '' }];
 }
 
 /** تحويل مستند مُحمَّل إلى طلب تحديث يملأ النموذج، مع ترك القوائم المركّبة فارغة تنتظر تفصيلها. */

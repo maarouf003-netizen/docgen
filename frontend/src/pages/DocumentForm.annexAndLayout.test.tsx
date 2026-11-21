@@ -143,7 +143,7 @@ render(<DocumentForm />);
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
     expect(payload.annexes).toEqual([
-      { annexType: 'تعديل', annexNumber: 'A-42', annexDate: '15/3/2026' },
+      { sequence: 0, annexType: 'تعديل', annexNumber: 'A-42', annexDate: '15/3/2026' },
     ]);
     // الحقول المفردة القديمة تُرسل فارغة (قراءة فقط خادميًا).
     expect(payload.annexType).toBe('');
@@ -172,8 +172,8 @@ render(<DocumentForm />);
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
     expect(payload.annexes).toEqual([
-      { annexType: 'تعديل', annexNumber: 'A-1', annexDate: '1/1/2026' },
-      { annexType: 'تمديد', annexNumber: 'A-2', annexDate: '2/2/2026' },
+      { sequence: 0, annexType: 'تعديل', annexNumber: 'A-1', annexDate: '1/1/2026' },
+      { sequence: 0, annexType: 'تمديد', annexNumber: 'A-2', annexDate: '2/2/2026' },
     ]);
   });
 
