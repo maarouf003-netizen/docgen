@@ -639,6 +639,8 @@
   - **فخ أُصلح:** أول استعلام بعد بذر كثيف كان يتجاوز `30s` لغياب إحصاءات حديثة؛
     `VACUUM (ANALYZE)` قبل القياس أعاد الخطة المستقرة.
   - التفاصيل والمراجعة النقدية: `docs/audit/81-p3-01-measurement-harness-20261121.md`.
+  - **الاحتفاظ:** خط أساس واحد لكل `(task, scale)`؛ إعادات التشغيل إلى `%TEMP%`/`artifacts`.
+    سياسة الخصوصية/الحجم: `docs/audit/measurements/README.md`.
 - **العمل:** harness على Postgres/Release مع 10k/50k؛ `pg_stat_statements`، `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`، p50/p95؛ تخزين النتائج.
 - **DoD:** قياس موثّق لكل استعلام ساخن؛ لا أرقام من `SQLite/Debug` كحكم إنتاجي. **متحقّق**
   للاستعلامات العشرة المطلوبة على `10k`/`50k`؛ ويبقى قياس `staging` عند توفره.
