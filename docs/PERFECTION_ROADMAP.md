@@ -964,6 +964,11 @@
     `ExecutedNaturalPersonDto` إلى المولَّد —
     **صفر أخطاء `tsc`** بفضل nullability الجذرية في الجزء الثالث؛ `vitest` 1808/1808.
     التفاصيل: `docs/audit/86-p6-06-generated-executed-natural-20261121.md`.
+  - **الجزء السادس (2026-11-21):** دفعة واحدة لإحالة `GuarantorDto`/`ExecutedPublicEntityDto`/
+    `ApplicantPublicEntityDto`/`BaseNumberEntry` مع تضييق `PartyNature`/`EntityNature`؛
+    `vitest` 1808/1808. وبروتوكول تسريع الجولات في `RUN_GUIDE §6` (PR واحد لكل بند،
+    ولا مصفوفة خلفية لـ`frontend/` فقط). التفاصيل:
+    `docs/audit/88-p6-06-batch-types-20261121.md`.
   - **متبقٍ:** إحلال بقية `types/document.ts` (797 سطرًا) تدريجيًا، ومراجعة أي نوع
     يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.

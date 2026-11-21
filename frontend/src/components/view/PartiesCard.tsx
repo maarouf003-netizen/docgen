@@ -71,21 +71,21 @@ function applicantEntityName(e: ApplicantPublicEntityDto): string {
 
 /** صفوف الهوية الكاملة لطرف طبيعي (مقترض/كفيل) في وضع «طالبة تنفيذ» مع الممثل الشرعي. */
 function naturalRows(p: {
-  name?: string;
-  father?: string;
-  family?: string;
-  mother?: string;
-  birth?: string;
-  register?: string;
-  nationalId?: string;
-  addressType?: string;
-  address?: string;
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
+  name?: string | null;
+  father?: string | null;
+  family?: string | null;
+  mother?: string | null;
+  birth?: string | null;
+  register?: string | null;
+  nationalId?: string | null;
+  addressType?: string | null;
+  address?: string | null;
+  representativeName?: string | null;
+  representativeFather?: string | null;
+  representativeFamily?: string | null;
+  representativeCapacity?: string | null;
+  representativeAddressType?: string | null;
+  representativeAddress?: string | null;
 }) {
   return [...personRows(p), ...representativeRows(p)];
 }
@@ -160,7 +160,7 @@ function ExecutedDebtors({
             onOpen({
               kind: 'person',
               title: 'شخص اعتباري',
-              rows: legalPartyRows({ name: e.entityName, registrationNumber: e.registrationNumber, representedBy: e.representedBy, addressType: e.addressType, address: e.address, governorate: e.governorate }),
+              rows: legalPartyRows({ name: e.entityName, registrationNumber: e.registrationNumber, representedBy: e.representedBy, addressType: e.addressType, address: e.address, governorate: e.governorate ?? undefined }),
             })
           }
         />,
@@ -172,7 +172,7 @@ function ExecutedDebtors({
           label="المنفذ عليه"
           name={`${e.entityName || '—'}${e.entityBranch ? ` (${e.entityBranch})` : ''}`}
           subtitle={e.governorate ? `محافظة ${e.governorate}` : undefined}
-          onClick={() => onOpen({ kind: 'entity', name: e.entityName ?? '', branch: e.entityBranch ?? '', governorate: e.governorate })}
+          onClick={() => onOpen({ kind: 'entity', name: e.entityName ?? '', branch: e.entityBranch ?? '', governorate: e.governorate ?? undefined })}
         />,
       );
     }

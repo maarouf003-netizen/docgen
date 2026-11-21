@@ -1,31 +1,13 @@
 import type { components } from '../api/generated';
 
-export interface GuarantorDto {
-  id?: number;
-  guarantorNumber: number;
-  name?: string;
-  father?: string;
-  family?: string;
-  mother?: string;
-  birth?: string;
-  register?: string;
-  nationalId?: string;
-  address?: string;
-  addressType?: string;
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-  heirs?: HeirDto[];
-  /** طبيعة الكفيل: شخص طبيعي (natural) أو شخص اعتباري (legal). */
-  nature?: PartyNature;
-  /** رقم تسجيل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  registrationNumber?: string;
-  /** من يمثل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  representedBy?: string;
-}
+/**
+ * الكفيل: العقود المولَّدة من `OpenAPI`، مع تضييق `nature` إلى الاتحاد المعروف
+ * (المولَّد يصدّره `string | null`) و`heirs` إلى `HeirDto` (P6-06).
+ */
+export type GuarantorDto = Omit<components['schemas']['GuarantorDto'], 'nature' | 'heirs'> & {
+  nature?: PartyNature | null;
+  heirs?: HeirDto[] | null;
+};
 
 /** وريث لمنفذ عليه متوفى (المقترض أو أحد الكفلاء). نوعه مولَّد من OpenAPI (P6-06). */
 export type HeirDto = components['schemas']['HeirDto'];
@@ -128,37 +110,13 @@ export interface ExecutionApplicantDto {
   address?: string;
 }
 
-/** المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. */
-export interface ExecutedPublicEntityDto {
-  id?: number;
-  entityName?: string;
-  entityBranch?: string;
-  /** المحافظة التي تتبع لها الجهة العامة أو الشخص الاعتباري (مثل: دمشق/اللاذقية). */
-  governorate?: string;
-  /** طبيعة المنفذ عليه: جهة عامة (public) أو شخص اعتباري (legal). */
-  nature?: EntityNature;
-  /** رقم تسجيل الشخص الاعتباري عند الطبيعة (legal). */
-  registrationNumber?: string;
-  /** من يمثل الشخص الاعتباري عند الطبيعة (legal). */
-  representedBy?: string;
-  /** نوع عنوان الشخص الاعتباري: موطن مختار / عنوان / وكيل قانوني. */
-  addressType?: string;
-  /** عنوان الشخص الاعتباري أو وكيله القانوني. */
-  address?: string;
-  /** معرّف قيد الجهة في السجل المرجعي (من نافذة الاختيار) — يُفكّ بزر «فك الربط». */
-  registryId?: number | null;
-}
+/** المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. نوعه مولَّد مع تضييق `nature` (P6-06). */
+export type ExecutedPublicEntityDto = Omit<components['schemas']['ExecutedPublicEntityDto'], 'nature'> & {
+  nature?: EntityNature | null;
+};
 
-/** الجهة العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (اسم الجهة + فرعها + محافظتها). */
-export interface ApplicantPublicEntityDto {
-  id?: number;
-  name?: string;
-  branch?: string;
-  /** المحافظة التي تتبع لها الجهة (مثل: دمشق/اللاذقية) — تُملأ تلقائيًا من فرع المحامي وقابلة للتعديل. */
-  governorate?: string;
-  /** معرّف قيد الجهة في السجل المرجعي (من نافذة الاختيار) — يُفكّ حصرًا بزر «فك الربط». */
-  registryId?: number | null;
-}
+/** الجهة العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ». نوعها مولَّد من OpenAPI (P6-06). */
+export type ApplicantPublicEntityDto = components['schemas']['ApplicantPublicEntityDto'];
 
 /** صفة المتدخل في الملف: شخص طبيعي / شخص اعتباري / جهة عامة. */
 export type InterventionNature = 'natural' | 'legal' | 'public';
@@ -660,10 +618,8 @@ export interface RotationDocumentDto {
   effectiveFileYear?: string;
 }
 
-export interface BaseNumberEntry {
-  documentId: number;
-  baseNumber?: string | null;
-}
+/** مدخل رقم أساس في طلب الحفظ — نوعه مولَّد من OpenAPI (P6-06). */
+export type BaseNumberEntry = components['schemas']['BaseNumberEntry'];
 
 export interface SaveBaseNumbersRequest {
   entries: BaseNumberEntry[];
