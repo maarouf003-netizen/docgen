@@ -1,3 +1,5 @@
+import type { components } from '../api/generated';
+
 export interface GuarantorDto {
   id?: number;
   guarantorNumber: number;
@@ -313,14 +315,8 @@ export interface InitialActionRequest {
   reminderColor?: string | null;
 }
 
-/** ملحق السند التنفيذي — صف واحد بترتيبه (Sequence يبدأ من 1). */
-export interface DocumentAnnexDto {
-  id?: number;
-  sequence?: number;
-  annexType?: string;
-  annexNumber?: string;
-  annexDate?: string;
-}
+/** ملحق السند التنفيذي — صف واحد بترتيبه (Sequence يبدأ من 1). نوعه مولَّد من OpenAPI (P6-06). */
+export type DocumentAnnexDto = components['schemas']['DocumentAnnexDto'];
 
 /** مصدر تاريخ «آخر نشاط» المحسوب خلفيًا لبطاقة تذكيرات الشطب (يُعرض صراحةً عند عدم كونه إجراءً). */
 export type LastActivitySource = 'action' | 'registration' | 'created';

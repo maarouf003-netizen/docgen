@@ -890,6 +890,7 @@ export default function DocumentForm() {
         annexNumber: '',
         annexDate: '',
         annexes: (form.annexes ?? []).map((a) => ({
+          sequence: a.sequence ?? 0,
           annexType: (a.annexType ?? '').trim(),
           annexNumber: (a.annexNumber ?? '').trim(),
           annexDate: normalizeArabicDigits(a.annexDate ?? '').trim(),
