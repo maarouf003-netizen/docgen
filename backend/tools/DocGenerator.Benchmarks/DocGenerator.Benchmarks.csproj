@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DocGenerator.Benchmarks</RootNamespace>
+    <AssemblyName>DocGenerator.Benchmarks</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- P1-08 §2.5: إشارة مباشرة ترفع EF Core إلى 10.0.10 مع مزوّد Npgsql 10.0.3 (كما في TestSupport). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DocGenerator.Infrastructure\DocGenerator.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

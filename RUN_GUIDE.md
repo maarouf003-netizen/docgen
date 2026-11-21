@@ -137,6 +137,25 @@ npm test
 
 النتيجة المتوقعة: ما يزيد على `1500` اختبار (Vitest + Testing Library) تغطي النماذج والصفحات والمنطق (الرقم تقريبي بتاريخ 2026-10-16).
 
+## 6.1) منصة قياس الأداء (PostgreSQL/Release — P3-01)
+
+لا تُستخدم أزمنة `SQLite` أو بناء `Debug` كحكم إنتاجي. منصة القياس المستقلة في
+`backend/tools/DocGenerator.Benchmarks` تنشئ قاعدة `PostgreSQL` معزولة، تُهاجرها بهجرات EF
+الحقيقية، تبذرها حتميًا، تثبّت الإحصاءات بـ`VACUUM (ANALYZE)`، ثم تقيس الاستعلامات الساخنة
+بعد إحماء وتلتقط `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`:
+
+```powershell
+$env:DOCGEN_BENCH_POSTGRES = "Host=127.0.0.1;Port=55432;Database=postgres;Username=postgres"
+dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --scale 10000 --iterations 20 --warmup 5
+dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --scale 50000 --iterations 20 --warmup 5
+dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-test
+```
+
+- كل تشغيل ينشئ قاعدة باسم مؤقت ويسقطها في النهاية؛ `--keep-database` يبقيها للتشخيص.
+- تُفحص `pg_stat_statements` فعليًا؛ إن غابت تُسجَّل الحالة صراحةً في التقرير ولا تُختلق أرقام.
+- النتائج تُكتب في `docs/audit/measurements/<YYYYMMDD>-p3-01-<scale>.{json,md}`.
+- المرجع: `docs/audit/81-p3-01-measurement-harness-20261121.md` و`P3-01` في الخريطة.
+
 ## 7) Swagger (توثيق API)
 
 الخلفية شغّالة → افتح `http://localhost:5199/swagger` في المتصفح لاستعراض/تجربة كل نقاط النهاية
