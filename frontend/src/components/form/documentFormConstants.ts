@@ -609,6 +609,7 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     executedPublicEntities: [],
     executedNaturalPersons: [],
     applicantPublicEntities: [],
+    borrowerHeirs: [],
     fileArrivalNumber: d.fileArrivalNumber ?? '',
     fileArrivalDate: d.fileArrivalDate ?? '',
     // عدّاد التزامن المتفائل (RF-010): يُحفَظ من الجلب ويُرسَل في `PUT` — غيابه توافق (بلا فحص).

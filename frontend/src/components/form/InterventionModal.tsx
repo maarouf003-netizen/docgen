@@ -627,7 +627,7 @@ function NamedInput({
 }: {
   id: string;
   label: string;
-  value?: string;
+  value?: string | null;
   onChange: (value: string) => void;
   maxLength?: number;
 }) {
