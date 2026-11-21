@@ -3,6 +3,7 @@
 > **النطاق:** إحلال نوع `DocumentAnnexDto` اليدوي في `frontend/src/types/document.ts`
 > بنظيره المولَّد من `OpenAPI` (`components['schemas']['DocumentAnnexDto']`)، مع الحفاظ
 > على السلوك. **لا تغيير في `API`/`DTO`/`backend`.**
+> **PR:** [#244](https://github.com/maarouf003-netizen/docgen/pull/244).
 
 ## 1. لماذا هذا النوع؟
 

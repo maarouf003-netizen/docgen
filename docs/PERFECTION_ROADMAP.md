@@ -939,7 +939,9 @@
   - **التثبيت:** `CI`/`Dockerfile` يستخدمان `npm ci --legacy-peer-deps` لأن
     `openapi-typescript` يعلن peer `typescript ^5.x` والمشروع على 6؛ التحقق الحقيقي هو
     `tsc -b` (يمر). أُضيف `@testing-library/dom` صراحةً كي لا يحذفه تثبيت الـpeer legacy.
-  - **الجزء الثاني (2026-11-21):** إحالة `DocumentAnnexDto` إلى النوع المولَّد
+  - **الجزء الثاني (2026-11-21):** PR
+    [`#244`](https://github.com/maarouf003-netizen/docgen/pull/244) — إحالة
+    `DocumentAnnexDto` إلى النوع المولَّد
     (`components['schemas']['DocumentAnnexDto']`) وإزالة تعريفه اليدوي؛ `sequence` صار
     مطلوبًا (مطابق `Sequence = 0` الخلفي) وحُدِّثت حمولات النموذج/الاختبارات. `tsc` و
     `oxlint` و`vitest` (1808/1808) و`build` خضراء، وحارس التوليد لا انحراف.
