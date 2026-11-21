@@ -284,7 +284,7 @@ export function emptyHeir(): HeirDto {
   };
 }
 
-export function addressLabelOf(addressType: string | undefined): string {
+export function addressLabelOf(addressType: string | null | undefined): string {
   return addressType === 'يمثله' ? 'الوكيل القانوني' : 'العنوان';
 }
 
