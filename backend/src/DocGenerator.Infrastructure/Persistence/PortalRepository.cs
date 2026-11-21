@@ -81,7 +81,7 @@ public class PortalRepository : IPortalRepository
         return new DocumentScopeKeys(entryIds, groupIds);
     }
 
-    public async Task<(int TotalCount, List<Document> Items)> SearchScopedAsync(
+    public async Task<(int TotalCount, List<PortalListRow> Items)> SearchScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status,
         int page, int perPage, CancellationToken ct = default)
     {
@@ -93,11 +93,60 @@ public class PortalRepository : IPortalRepository
             .ThenByDescending(d => d.Id)
             .Skip((page - 1) * perPage)
             .Take(perPage)
-            .Include(d => d.ApplicantPublicEntities)
-            .Include(d => d.ExecutedPublicEntities)
-            .Include(d => d.ExecutionApplicants)
-            .Include(d => d.BaseNumbers)
+            // P3-04: إسقاط أعمدة بطاقة القائمة فقط — لا `Include` ولا كيان كامل.
+            .Select(d => new PortalListRow(
+                d.Id,
+                d.DocumentType,
+                d.IsDraft,
+                d.BorrowerName,
+                d.Applicant,
+                d.AmountNumeric,
+                d.Currency,
+                d.ExecStatus,
+                d.ExecSubStatus,
+                d.ExecutedStatus,
+                d.GeneralEntitySide,
+                d.CreatedAt,
+                d.UpdatedAt,
+                d.BorrowerFather,
+                d.BorrowerFamily,
+                d.FileType,
+                d.Court,
+                d.FileNumber,
+                d.FileYear,
+                d.ExecutionCircuitId))
             .ToListAsync(ct);
+
+        if (items.Count > 0)
+        {
+            var ids = items.Select(i => i.Id).ToList();
+            // ثلاث قراءات مفهرسة بـ`DocumentId` بدل خمسة `Include` على الكيان الكامل.
+            var baseNumbers = await _db.BaseNumbers.AsNoTracking()
+                .Where(b => ids.Contains(b.DocumentId))
+                .ToListAsync(ct);
+            var applicantRefs = await _db.ApplicantPublicEntities.AsNoTracking()
+                .Where(a => ids.Contains(a.DocumentId))
+                .Select(a => new PortalRegistryRef(a.DocumentId, a.RegistryId))
+                .ToListAsync(ct);
+            var executedRefs = await _db.ExecutedPublicEntities.AsNoTracking()
+                .Where(e => ids.Contains(e.DocumentId))
+                .Select(e => new PortalRegistryRef(
+                    e.DocumentId, e.RegistryId, e.EntityNature, e.EntityName, e.EntityBranch))
+                .ToListAsync(ct);
+
+            var baseLookup = baseNumbers.ToLookup(b => b.DocumentId);
+            var applicantLookup = applicantRefs.ToLookup(a => a.DocumentId);
+            var executedLookup = executedRefs.ToLookup(e => e.DocumentId);
+            items = items
+                .Select(i => i with
+                {
+                    BaseNumbers = baseLookup[i.Id].ToList(),
+                    ApplicantEntities = applicantLookup[i.Id].ToList(),
+                    ExecutedEntities = executedLookup[i.Id].ToList(),
+                })
+                .ToList();
+        }
+
         return (total, items);
     }
 

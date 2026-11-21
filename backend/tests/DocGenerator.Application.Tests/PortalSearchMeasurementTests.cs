@@ -124,7 +124,7 @@ public sealed class PortalSearchMeasurementTests : IAsyncLifetime
         _output.WriteLine(
             $"F-03: SearchScopedAsync over {Count + 2} docs took {sw.ElapsedMilliseconds} ms (total={total})");
 
-        var plan = ExplainLastCommand();
+        var plan = ExplainCommandContaining("Guarantors");
         _output.WriteLine("F-03: plan = " + string.Join(" | ", plan));
         // بنيوي فقط (نص الخطة يتبدل بين الإصدارات والمزوّدين): فرع الكفيل يجب أن
         // يظهر في الخطة ولا تُختصر النتيجة قبل الوصول إليه. حارس «الفهرس بدل المسح
@@ -178,20 +178,24 @@ public sealed class PortalSearchMeasurementTests : IAsyncLifetime
         return doc;
     }
 
-    private List<string> ExplainLastCommand()
+    private List<string> ExplainCommandContaining(string fragment)
     {
-        var sql = _capture.LastCommandText
-            ?? throw new InvalidOperationException("لم يُلتقط استعلام البحث");
+        var matches = _capture.Commands
+            .Where(c => c.Text.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matches.Count == 0)
+            throw new InvalidOperationException($"لم يُلتقط استعلام يحتوي «{fragment}»");
+        var captured = matches[^1];
 
         using var connection = new NpgsqlConnection(_db.ConnectionString);
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "EXPLAIN " + sql;
-        foreach (var (name, value) in _capture.LastParameters)
+        command.CommandText = "EXPLAIN " + captured.Text;
+        foreach (var parameterInfo in captured.Parameters)
         {
             var parameter = command.CreateParameter();
-            parameter.ParameterName = name;
-            parameter.Value = value ?? DBNull.Value;
+            parameter.ParameterName = parameterInfo.Name;
+            parameter.Value = parameterInfo.Value ?? DBNull.Value;
             command.Parameters.Add(parameter);
         }
 
@@ -202,18 +206,12 @@ public sealed class PortalSearchMeasurementTests : IAsyncLifetime
         return details;
     }
 
-    /// <summary>يلتقط نص آخر استعلام ووسائطه لتمريره إلى <c>EXPLAIN</c>.</summary>
+    /// <summary>يلتقط نصوص الاستعلامات ووسائطها لتمرير أحدها إلى <c>EXPLAIN</c>.</summary>
     private sealed class SqlCaptureInterceptor : DbCommandInterceptor
     {
-        public string? LastCommandText { get; private set; }
-        public IReadOnlyList<(string Name, object? Value)> LastParameters { get; private set; } =
-            Array.Empty<(string, object?)>();
+        public List<(string Text, IReadOnlyList<(string Name, object? Value)> Parameters)> Commands { get; } = new();
 
-        public void Reset()
-        {
-            LastCommandText = null;
-            LastParameters = Array.Empty<(string, object?)>();
-        }
+        public void Reset() => Commands.Clear();
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(
             DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
@@ -232,11 +230,10 @@ public sealed class PortalSearchMeasurementTests : IAsyncLifetime
 
         private void Capture(DbCommand command)
         {
-            LastCommandText = command.CommandText;
-            LastParameters = command.Parameters
+            Commands.Add((command.CommandText, command.Parameters
                 .Cast<DbParameter>()
                 .Select(p => (p.ParameterName, p.Value))
-                .ToList();
+                .ToList()));
         }
     }
 }

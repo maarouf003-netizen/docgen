@@ -52,6 +52,51 @@ public sealed record PortalAmountRow(
     decimal InclusionAmount3Numeric);
 
 /// <summary>
+/// صف قائمة بوابة مُسقَط (بلا كيان <see cref="Document"/> كامل): الحقول التي تستهلكها
+/// بطاقة القائمة فقط، مع مراجع الأطراف وأرقام الأساس المحمّلة دفعةً واحدة. يحقّق
+/// <see cref="IDocumentExecutionState"/> لتُشتق حالة العرض من المصدر الوحيد نفسه.
+/// </summary>
+public sealed record PortalListRow(
+    int Id,
+    string? DocumentType,
+    bool IsDraft,
+    string? BorrowerName,
+    string? Applicant,
+    decimal AmountNumeric,
+    string? Currency,
+    string? ExecStatus,
+    string? ExecSubStatus,
+    string? ExecutedStatus,
+    string? GeneralEntitySide,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    string? BorrowerFather,
+    string? BorrowerFamily,
+    string? FileType,
+    string? Court,
+    string? FileNumber,
+    string? FileYear,
+    int? ExecutionCircuitId) : IDocumentExecutionState
+{
+    /// <summary>أرقام أساس الملف (الرقم/السنة/الدائرة/الإلغاء) — ينتخب منها `EffectiveFileIdentity`.</summary>
+    public List<DocumentBaseNumber> BaseNumbers { get; init; } = new();
+
+    /// <summary>مراجع أطراف الطالب داخل النطاق (RegistryId فقط) لبناء «الفرع المطابق».</summary>
+    public List<PortalRegistryRef> ApplicantEntities { get; init; } = new();
+
+    /// <summary>مراجع أطراف المنفذ عليه (مع الاسم/الفرع/الطبيعة) لسطر «المنفذ عليهم».</summary>
+    public List<PortalRegistryRef> ExecutedEntities { get; init; } = new();
+}
+
+/// <summary>مرجع طرف عام في ملف لقائمة البوابة: القيد والطبيعة والاسم/الفرع عند الحاجة.</summary>
+public sealed record PortalRegistryRef(
+    int DocumentId,
+    int? RegistryId,
+    string? Nature = null,
+    string? EntityName = null,
+    string? EntityBranch = null);
+
+/// <summary>
 /// مستودع بوابة مندوب الجهة: استعلامات الملفات المقيّدة بنطاق المندوب
 /// (أي تطابق طرفي بقيد نهائي — د1/د4) والتصدير منها.
 /// </summary>
@@ -69,8 +114,8 @@ public interface IPortalRepository
     /// </summary>
     Task<DocumentScopeKeys> GetDocumentScopeKeysAsync(int documentId, CancellationToken ct = default);
 
-    /// <summary>قائمة ملفات النطاق مع عدّادها الكامل.</summary>
-    Task<(int TotalCount, List<Document> Items)> SearchScopedAsync(
+    /// <summary>قائمة ملفات النطاق مع عدّادها الكامل — إسقاط قراءة بلا كيان كامل.</summary>
+    Task<(int TotalCount, List<PortalListRow> Items)> SearchScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status,
         int page, int perPage, CancellationToken ct = default);
 

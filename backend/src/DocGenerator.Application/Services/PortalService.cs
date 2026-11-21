@@ -575,7 +575,7 @@ public sealed class PortalService : IPortalService
         return series;
     }
 
-    private static PortalFileListItemDto ToListItem(Document d, PortalScopeResolution? scope = null)
+    private static PortalFileListItemDto ToListItem(PortalListRow d, PortalScopeResolution? scope = null)
     {
         // أحدث رقم أساس دائمًا (غير مقيّد بسنة الفحص) — وإلا رقم الملف/سنة قيده الأصلية.
         // انحراف مقصود وموثّق عن بقية النظام (as-of السنة الحالية): قرار صاحب المشروع
@@ -620,17 +620,32 @@ public sealed class PortalService : IPortalService
     /// أخرى (فرع إداري أو فرع طرف ثالث) مهما بلغ عدد أطراف الملف.
     /// </summary>
     private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(Document d, PortalScopeResolution? scope)
+        => BuildMatchedEntries(
+            d.ApplicantPublicEntities.Select(a => a.RegistryId),
+            d.ExecutedPublicEntities.Select(e => e.RegistryId),
+            scope);
+
+    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(PortalListRow d, PortalScopeResolution? scope)
+        => BuildMatchedEntries(
+            d.ApplicantEntities.Select(a => a.RegistryId),
+            d.ExecutedEntities.Select(e => e.RegistryId),
+            scope);
+
+    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(
+        IEnumerable<int?> applicantRegistryIds,
+        IEnumerable<int?> executedRegistryIds,
+        PortalScopeResolution? scope)
     {
         if (scope is null)
             return Array.Empty<PortalScopeEntryDto>();
         var byId = scope.Entries.ToDictionary(e => e.Id);
         var matchedIds = new HashSet<int>();
-        foreach (var a in d.ApplicantPublicEntities)
-            if (a.RegistryId.HasValue && byId.ContainsKey(a.RegistryId.Value))
-                matchedIds.Add(a.RegistryId.Value);
-        foreach (var e in d.ExecutedPublicEntities)
-            if (e.RegistryId.HasValue && byId.ContainsKey(e.RegistryId.Value))
-                matchedIds.Add(e.RegistryId.Value);
+        foreach (var registryId in applicantRegistryIds)
+            if (registryId.HasValue && byId.ContainsKey(registryId.Value))
+                matchedIds.Add(registryId.Value);
+        foreach (var registryId in executedRegistryIds)
+            if (registryId.HasValue && byId.ContainsKey(registryId.Value))
+                matchedIds.Add(registryId.Value);
         return matchedIds
             .Select(id => byId[id])
             // الترتيب العربي الوحيد نفسه (`PortalScopeOrdering`): خلية التصدير
@@ -641,9 +656,9 @@ public sealed class PortalService : IPortalService
             .ToList();
     }
 
-    private static string ExecutedSummary(Document d) =>
-        string.Join("؛ ", d.ExecutedPublicEntities
-            .Where(e => e.EntityNature == PartyNatureCatalog.PublicEntity)
+    private static string ExecutedSummary(PortalListRow d) =>
+        string.Join("؛ ", d.ExecutedEntities
+            .Where(e => e.Nature == PartyNatureCatalog.PublicEntity)
             .Select(e => string.Join(' ', new[] { e.EntityName, e.EntityBranch }.Where(p => !string.IsNullOrWhiteSpace(p))))
             .Where(v => v.Length > 0));
 }
