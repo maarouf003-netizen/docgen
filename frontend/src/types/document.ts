@@ -16,45 +16,12 @@ export type HeirDto = components['schemas']['HeirDto'];
  * مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)
  * بترتيب الاختيار، وتُستخدم في النصوص والتوليد مجمعةً، ويُوجَّه توليد 005/006 لكل وريثٍ من الورثة.
  * الحقول غير المعنية بنوع الأصل تبقى فارغة.
+ *
+ * نوعه مولَّد من OpenAPI (P6-06) — `owners` قائمة أسماء أو `null` (كما في `AssetDto.Owners`
+ * الخلفي)، و`assetKind` نص حر يُطبَّع في الخدمة. تفاصيل كل حقل موثّقة في
+ * `backend/src/DocGenerator.Application/DTOs/DocumentPartyDtos.cs`.
  */
-export interface AssetDto {
-  id?: number;
-  /** نوع الأصل: عقار / مركبة / متجر / كفالة رواتب / متجر غير مسجل. */
-  assetKind?: string;
-  owners?: string[];
-  /** مقدار الحصة (تمام العقار/المركبة/المتجر أو حصة سهمية) — بلا قيمة لكفالة الرواتب والمتجر غير المسجل. */
-  shareType?: string;
-  // العقار
-  property?: string;
-  propertyNumber?: string;
-  /** رقم المحضر (العقار فقط) — نص حر يحفظ صيغًا مثل «123/2026». */
-  caseNumber?: string;
-  propertyDistrict?: string;
-  landRegistry?: string;
-  /** نوع الحق (العقار/المركبة): «حق رقبة» أو «حق انتفاع». */
-  rightType?: string;
-  // المركبة
-  vehicleType?: string;
-  vehicleClass?: string;
-  plateNumber?: string;
-  vehicleGovernorate?: string;
-  // المتجر المسجل
-  registerNumber?: string;
-  registrationDate?: string;
-  shopGovernorate?: string;
-  shopDescription?: string;
-shopLocation?: string;
-  // كفالة الرواتب
-  publicEntity?: string;
-  // المتجر غير المسجل
-  licenseNumber?: string;
-  /** تاريخ القاء الحجز على الأصل — نص حر يُفسَّر زمنيًا بالخلفية. */
-  seizureDate?: string;
-  licenseDate?: string;
-  licenseIssuer?: string;
-  // الملاحظات (كفالة الرواتب والمتجر غير المسجل)
-  notes?: string;
-}
+export type AssetDto = components['schemas']['AssetDto'];
 
 export interface ExecutionActionDto {
   id: number;
@@ -81,34 +48,17 @@ export type EntityNature = 'public' | 'legal';
 /** وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). نوعه مولَّد من OpenAPI (P6-06). */
 export type ExecutedHeirDto = components['schemas']['ExecutedHeirDto'];
 
-/** طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). */
-export interface ExecutionApplicantDto {
-  id?: number;
-  name?: string;
-  father?: string;
-  family?: string;
-  legalRepresentative?: string;
-  representationType?: string;
-  deceasedName?: string;
-  deceasedFather?: string;
-  deceasedFamily?: string;
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeLegalRepresentative?: string;
-  heirs?: ExecutedHeirDto[];
-  /** طبيعة طالب التنفيذ/العرض: شخص طبيعي (natural) أو شخص اعتباري (legal). */
-  nature?: PartyNature;
-  /** رقم تسجيل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  registrationNumber?: string;
-  /** من يمثل الشخص الاعتباري عند الطبيعة الاعتبارية. */
-  representedBy?: string;
-  /** نوع عنوان الشخص الاعتباري: موطن مختار / عنوان / وكيل قانوني. */
-  addressType?: string;
-  /** عنوان الشخص الاعتباري أو وكيله القانوني. */
-  address?: string;
-}
+/**
+ * طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»).
+ * حقوله مولَّدة من OpenAPI (P6-06)، مع تضييق `nature` إلى الاتحاد المعروف
+ * (المولَّد يصدّره `string | null`).
+ */
+export type ExecutionApplicantDto = Omit<
+  components['schemas']['ExecutionApplicantDto'],
+  'nature'
+> & {
+  nature?: PartyNature | null;
+};
 
 /** المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. نوعه مولَّد مع تضييق `nature` (P6-06). */
 export type ExecutedPublicEntityDto = Omit<components['schemas']['ExecutedPublicEntityDto'], 'nature'> & {

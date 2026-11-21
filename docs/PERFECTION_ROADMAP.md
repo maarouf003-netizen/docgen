@@ -969,7 +969,15 @@
     `vitest` 1808/1808. وبروتوكول تسريع الجولات في `RUN_GUIDE §6` (PR واحد لكل بند،
     ولا مصفوفة خلفية لـ`frontend/` فقط). التفاصيل:
     `docs/audit/88-p6-06-batch-types-20261121.md`.
-  - **متبقٍ:** إحلال بقية `types/document.ts` (797 سطرًا) تدريجيًا، ومراجعة أي نوع
+  - **الجزء السابع (2026-11-21):** إحالة `AssetDto` (المولَّد يطابق `DocumentPartyDtos.cs`
+    بما فيه `owners: string[] | null` و`id: number | null`) و`ExecutionApplicantDto`
+    (`Omit` + تضييق `nature` إلى `PartyNature | null`)؛ أُصلحت nullability من الجذر
+    (39 خطأ `tsc` أوليًا، صفر `as`/`any`)، وأُصلح فحص `id != null` في مساري اختيار الأموال؛
+    `vitest` 1808/1808. التفاصيل: `docs/audit/90-p6-06-asset-applicant-20261121.md`.
+  - **متبقٍ:** `DocumentInterventionDto`/`DocumentInterventionUpsertRequest`,
+    `DocumentUpsertRequest`، و`DocumentResponse` (**لا مخطط مولَّد له**)، وأنواع الطلبات
+    بلا مخططات (`InitialActionRequest`, `DocumentFilterOptionsDto`, `RotationDocumentDto`,
+    `BaseNumberHistoryDto`, `CorrectBaseNumberRequest`) تبقى يدوية موثّقة. ومراجعة أي نوع
     يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
 - **العمل:** استبدال `types/document.ts` (797 سطرًا) بأنواع مولّدة؛ `openapi-typescript`؛ CI يفشل عند الانحراف.

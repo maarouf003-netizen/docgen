@@ -2,7 +2,7 @@ import { ASSET_KINDS } from '../components/form/documentFormConstants';
 import type { AssetDto } from '../types';
 
 /** تسمية نوع الأصل للعرض داخل بطاقته (عقار / مركبة / متجر / كفالة رواتب / متجر غير مسجل). */
-export function assetKindLabel(kind: string | undefined): string {
+export function assetKindLabel(kind: string | null | undefined): string {
   switch (kind) {
     case ASSET_KINDS.vehicle:
       return 'مركبة';
@@ -21,7 +21,7 @@ export function assetKindLabel(kind: string | undefined): string {
  * تسمية قراءة للأصل في قوائم الاختيار والعرض (مثال: «مركبة سيارة — لوحة 123»):
  * تُستعمل في «منفذ جبريا» وفي بطاقات الأموال. قيمة النوع تُقدَّم قبل التفاصيل الخاصة به.
  */
-export function assetDisplayName(a: AssetDto & { id?: number }): string {
+export function assetDisplayName(a: AssetDto): string {
   if (a.assetKind === ASSET_KINDS.vehicle) {
     const type = (a.vehicleType ?? '').trim();
     const plate = (a.plateNumber ?? '').trim();

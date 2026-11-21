@@ -255,7 +255,7 @@ export function guarantorAddState(
 }
 
 /** أنواع الأموال التي تُعرض في «منفذ جبريا» (كفالة الرواتب مستثناة). */
-export function isAuctionableKind(kind: string | undefined): boolean {
+export function isAuctionableKind(kind: string | null | undefined): boolean {
   return Boolean(kind && kind !== ASSET_KINDS.salaryGuarantee);
 }
 
