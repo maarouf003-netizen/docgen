@@ -25,6 +25,11 @@ public class Repository<T> : IRepository<T> where T : class
         return await WithIncludes().ToListAsync(ct);
     }
 
+    public async Task<List<T>> ListNoTrackingAsync(CancellationToken ct = default)
+    {
+        return await WithIncludes().AsNoTracking().ToListAsync(ct);
+    }
+
     public async Task AddAsync(T entity, CancellationToken ct = default)
     {
         await Set.AddAsync(entity, ct);

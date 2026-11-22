@@ -80,6 +80,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     private readonly TimeZoneInfo _timeZone;
     private readonly IDocumentNumberRegistry? _numberRegistry;
     private readonly IDocumentBaseNumberRepository? _baseNumberRepository;
+    private readonly IReferenceDataCache? _cache;
 
     public ExecutionCircuitService(
         IRepository<ExecutionCircuit> circuits,
@@ -102,7 +103,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         TimeZoneInfo timeZone,
         IIdempotencyStore? idempotency = null,
         IDocumentNumberRegistry? numberRegistry = null,
-        IDocumentBaseNumberRepository? baseNumberRepository = null)
+        IDocumentBaseNumberRepository? baseNumberRepository = null,
+        IReferenceDataCache? cache = null)
     {
         _circuits = circuits;
         _branches = branches;
@@ -125,7 +127,24 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         _timeZone = timeZone;
         _numberRegistry = numberRegistry;
         _baseNumberRepository = baseNumberRepository;
+        _cache = cache;
     }
+
+    // قراءات مرجعية بحتة (أسماء/معرّفات) — العدّادات الحيّة تُحسب خارج الكاش دائمًا.
+    private Task<List<ExecutionCircuit>> ListCircuitsAsync(CancellationToken ct)
+        => _cache is null
+            ? _circuits.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Circuits, "all", _circuits.ListNoTrackingAsync, ct);
+
+    private Task<List<Section>> ListSectionsAsync(CancellationToken ct)
+        => _cache is null
+            ? _sections.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Sections, "all", _sections.ListNoTrackingAsync, ct);
+
+    private Task<List<Branch>> ListBranchesAsync(CancellationToken ct)
+        => _cache is null
+            ? _branches.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Branches, "all", _branches.ListNoTrackingAsync, ct);
 
     private async Task<Branch> RequireBranchWithGovernorateAsync(int branchId, CancellationToken ct)
     {
@@ -194,7 +213,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     private async Task<ExecutionCircuit?> FindCircuitByNameAsync(
         int branchId, string nameNorm, int? excludeCircuitId, CancellationToken ct)
     {
-        var all = await _circuits.ListAsync(ct);
+        var all = await ListCircuitsAsync(ct);
         return all.FirstOrDefault(c => c.BranchId == branchId
             && c.NameNorm == nameNorm
             && (!excludeCircuitId.HasValue || c.Id != excludeCircuitId.Value));
@@ -216,7 +235,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     public async Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
-        var all = await _circuits.ListAsync(ct);
+        var all = await ListCircuitsAsync(ct);
         var circuits = all
             .Where(c => c.BranchId == branchId && c.SectionId == ownerSectionId)
             .OrderBy(c => c.Name)
@@ -234,7 +253,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
     private async Task<Dictionary<int, string>> SectionNamesAsync(CancellationToken ct)
     {
-        var sections = await _sections.ListAsync(ct);
+        var sections = await ListSectionsAsync(ct);
         return sections.ToDictionary(s => s.Id, s => s.Name);
     }
 
@@ -288,6 +307,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                         await DuplicateCircuitMessageAsync(existing, ownerSection?.Id, token));
                 await _circuits.AddAsync(circuit, token);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Circuits);
                 await _audit.LogAsync(actorName, "create_circuit", null, null,
                     $"أدخل دائرة تنفيذ «{trimmed}» في فرعه", token);
             }, ct);
@@ -382,6 +402,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                         token);
                     _circuits.Update(circuit);
                     await _uow.SaveChangesAsync(token);
+                    _cache?.Invalidate(ReferenceDataGroups.Circuits);
                     // تدقيق حقلي لكل ملف (S5) — داخل المعاملة بعد الحفظ الرئيسي.
                     foreach (var (doc, before) in renamedAudit)
                         await LogCircuitDocumentChangeAsync(doc, actorName, "rename_circuit",
@@ -415,6 +436,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             tracked.Version++;
             _circuits.Update(tracked);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
             await _audit.LogAsync(actorName, isActive ? "activate_circuit" : "deactivate_circuit",
                 null, null, $"{(isActive ? "فعّل" : "عطّل")} دائرة التنفيذ «{tracked.Name}»", token);
             result = await ToDtoAsync(tracked, token);
@@ -510,6 +532,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             }
             _circuits.Remove(circuit);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
             // عبارة التطهير تُلحق للتدقيق فقط عند purged > 0 (لا «مع» مكررة ولا «تطهير 0»).
             var purgeClause = purged > 0 ? $"، وطُهِّر نهائيًا {purged} ملفًا محذوفًا" : string.Empty;
             await _audit.LogAsync(actorName, "delete_circuit", null, null,
@@ -563,6 +586,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 circuit.Version++;
                 _circuits.Update(circuit);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Circuits);
                 // النتيجة تُثبَّت هنا قبل أي خروج مبكر (مالك بلا رئيس) — وإلا عاد
                 // `null` فتحوّل `Ok` إلى `204`.
                 result = await ToDtoAsync(circuit, token);
@@ -617,6 +641,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     occurredAt: DateTime.UtcNow,
                     ct: token);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Circuits);
             }, ct);
         }
         catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
@@ -634,7 +659,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     /// </summary>
     public async Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default)
     {
-        var all = await _circuits.ListAsync(ct);
+        var all = await ListCircuitsAsync(ct);
         var sectionNames = await SectionNamesAsync(ct);
         return all.Where(c => c.BranchId == branchId && c.IsActive && (!limitToOwner || c.SectionId == ownerSectionId))
             .OrderBy(c => c.Name)
@@ -648,10 +673,10 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (string.IsNullOrWhiteSpace(governorate) || !GovernorateCatalog.IsGovernorate(governorate!.Trim()))
             return new List<ExecutionCircuitDto>();
         var gov = governorate!.Trim();
-        var branches = await _branches.ListAsync(ct);
+        var branches = await ListBranchesAsync(ct);
         var branchIds = branches.Where(b => b.Governorate == gov).Select(b => b.Id).ToHashSet();
         if (branchIds.Count == 0) return new List<ExecutionCircuitDto>();
-        var all = await _circuits.ListAsync(ct);
+        var all = await ListCircuitsAsync(ct);
         return all.Where(c => branchIds.Contains(c.BranchId) && c.IsActive)
             .OrderBy(c => c.Name)
             .Select(c => new ExecutionCircuitDto(
@@ -895,6 +920,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 referred++;
             }
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
 
             // الواردة المعلقة بلا ملف مناب تُعاد توجيهها للدائرة الجديدة.
             var incoming = await _delegations.ListByDelegatedCircuitAsync(sourceCircuitId, token);
@@ -908,6 +934,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 _delegations.Update(g);
             }
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
 
             // تدقيق حقلي لكل ملف محال (S5) — داخل المعاملة بعد الحفظ الرئيسي.
             foreach (var (doc, before) in referredAudit)
@@ -927,6 +954,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 now,
                 token);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
 
             var counts = await _documents.CountByCircuitsAsync(new List<int> { sourceCircuitId }, token);
             remaining = counts.TryGetValue(sourceCircuitId, out var v) ? v.FileCount : 0;
@@ -1001,6 +1029,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         }
         await CleanupPendingAlertsAsync(sourceOwnerId, token);
         await _uow.SaveChangesAsync(token);
+        _cache?.Invalidate(ReferenceDataGroups.Circuits);
     }
 
     public async Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default)
@@ -1011,7 +1040,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         var referralByDoc = referrals
             .GroupBy(o => o.DocumentId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(o => o.Id).First());
-        var circuits = await _circuits.ListAsync(ct);
+        var circuits = await ListCircuitsAsync(ct);
         var circuitNames = circuits.ToDictionary(c => c.Id, c => c.Name);
         return docs.OrderBy(d => d.Id).Select(d =>
         {
@@ -1121,6 +1150,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     saved++;
                 }
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Circuits);
                 // تدقيق حقلي لكل ملف (S5) — داخل المعاملة بعد الحفظ الرئيسي.
                 foreach (var (doc, before, number, type, year) in completedAudit)
                     await LogCircuitDocumentChangeAsync(doc, actorName, "complete_registrations",
@@ -1131,6 +1161,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 // خطاف التنظيف DeleteByPendingRegistration: يُستدعى عند اكتمال إعادة قيد آخر ملف معلق للمحامي.
                 await CleanupPendingAlertsAsync(lawyerId, token);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Circuits);
             }, ct);
         }
         catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
@@ -1152,6 +1183,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             removed = await CleanupPendingAlertsAsync(lawyerId, token);
             if (removed)
                 await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Circuits);
         }, ct);
         return removed;
     }
@@ -1191,15 +1223,15 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     /// </summary>
     public async Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default)
     {
-        var all = await _circuits.ListAsync(ct);
+        var all = await ListCircuitsAsync(ct);
         var circuits = (branchId is null ? all : all.Where(c => c.BranchId == branchId.Value));
         if (!fullAccess)
             circuits = circuits.Where(c => c.SectionId == ownerSectionId);
         var ordered = circuits.OrderBy(c => c.BranchId).ThenBy(c => c.Name).ToList();
-        var branches = await _branches.ListAsync(ct);
+        var branches = await ListBranchesAsync(ct);
         var branchNames = branches.ToDictionary(b => b.Id, b => b.Name);
         // أسماء الشعب دفعة واحدة — بلا استعلام لكل دائرة (N+1).
-        var sectionNames = (await _sections.ListAsync(ct))
+        var sectionNames = (await ListSectionsAsync(ct))
             .Where(s => ordered.Any(c => c.SectionId == s.Id))
             .ToDictionary(s => s.Id, s => s.Name);
         var counts = await _documents.CountByCircuitsAsync(ordered.Select(c => c.Id).ToList(), ct);

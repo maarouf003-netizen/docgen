@@ -43,6 +43,37 @@ public class SectionServiceTests : PostgresDbTest
             uow, tx, _audit, new DbExceptionClassifier());
     }
 
+    [PostgresFact]
+    public async Task ListSections_CacheInvalidatedAfterCreateAndRename()
+    {
+        var cache = new DocGenerator.Infrastructure.Caching.ReferenceDataCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var cachedService = new SectionService(
+            new Repository<Section>(_db),
+            new Repository<Branch>(_db),
+            new Repository<ExecutionCircuit>(_db),
+            new UserRepository(_db),
+            new Repository<HeadSuccession>(_db),
+            new UnitOfWork(_db),
+            new TransactionRunner(_db),
+            _audit,
+            new DbExceptionClassifier(),
+            cache);
+
+        _ = await cachedService.ListSectionsAsync(_damascusId);
+        _ = await cachedService.ListSectionsAsync(_damascusId);
+
+        var created = await cachedService.CreateSectionAsync(_damascusId, "شعبة الكاش", "admin");
+        var afterCreate = await cachedService.ListSectionsAsync(_damascusId);
+        Assert.Contains(afterCreate, s => s.Id == created.Id);
+
+        var renamed = await cachedService.RenameSectionAsync(created.Id, "شعبة الكاش 2", "admin", created.Version);
+        Assert.NotNull(renamed);
+        var afterRename = await cachedService.ListSectionsAsync(_damascusId);
+        Assert.Contains(afterRename, s => s.Name == "شعبة الكاش 2");
+    }
+
 
     private async Task<User> AddHeadAsync(string username, int branchId, int? sectionId)
     {

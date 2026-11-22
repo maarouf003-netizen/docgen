@@ -26,22 +26,31 @@ public sealed class BranchManagementService : IBranchManagementService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IReferenceDataCache? _cache;
 
     public BranchManagementService(
         IBranchRepository branches,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        IReferenceDataCache? cache = null)
     {
         _branches = branches;
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _cache = cache;
     }
+
+    // الأسماء/الترتيب مرجعي؛ عدّادات المستخدمين/المستندات تُحسب حيّة بعد القراءة.
+    private Task<List<Branch>> ListBranchesTrackedAsync(CancellationToken ct)
+        => _cache is null
+            ? _branches.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Branches, "all", _branches.ListNoTrackingAsync, ct);
 
     public async Task<List<BranchDto>> ListBranchesAsync(CancellationToken ct = default)
     {
-        var branches = await _branches.ListAsync(ct);
+        var branches = await ListBranchesTrackedAsync(ct);
         var userCounts = await _branches.CountUsersByBranchAsync(ct);
         var documentCounts = await _branches.CountDocumentsByBranchAsync(ct);
 
@@ -83,6 +92,7 @@ public sealed class BranchManagementService : IBranchManagementService
         {
             await _branches.AddAsync(branch, token);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Branches);
             await _audit.LogAsync(actorName, "create_branch",
                 details: $"أنشأ فرعاً: {branch.Name} ({branch.Code})", ct: token);
         }, ct);
@@ -125,6 +135,7 @@ public sealed class BranchManagementService : IBranchManagementService
         {
             _branches.Update(branch);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Branches);
             await _audit.LogAsync(actorName, "update_branch",
                 details: $"عدّل الفرع: {branch.Name} ({branch.Code})", ct: token);
             return ToDto(
@@ -149,6 +160,7 @@ public sealed class BranchManagementService : IBranchManagementService
         {
             _branches.Remove(branch);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Branches);
             await _audit.LogAsync(actorName, "delete_branch",
                 details: $"حذف الفرع: {branch.Name} ({branch.Code})", ct: token);
             return true;

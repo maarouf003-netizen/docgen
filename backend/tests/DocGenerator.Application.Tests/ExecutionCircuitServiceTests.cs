@@ -1457,4 +1457,41 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new IdempotencyStore(_db),
             baseNumberRepository: new DocumentBaseNumberRepository(_db));
     }
+
+    private IExecutionCircuitService BuildServiceWithCache(IReferenceDataCache cache)
+    {
+        var documents = new DocumentRepository(_db);
+        var users = new UserRepository(_db);
+        var uow = new UnitOfWork(_db);
+        var tx = new TransactionRunner(_db);
+        var classifier = new DbExceptionClassifier();
+        return new ExecutionCircuitService(
+            new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
+            new Repository<Section>(_db),
+            documents, new DelegationRepository(_db),
+            new AppealRepository(_db),
+            new Repository<DocumentOccurrence>(_db), new Repository<DocumentBaseNumber>(_db),
+            new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
+            uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
+            classifier, TestClock.Provider, TestClock.TimeZone,
+            new IdempotencyStore(_db),
+            baseNumberRepository: new DocumentBaseNumberRepository(_db),
+            cache: cache);
+    }
+
+    [PostgresFact]
+    public async Task ListMine_CacheInvalidatedAfterCircuitCreate()
+    {
+        var cache = new DocGenerator.Infrastructure.Caching.ReferenceDataCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var service = BuildServiceWithCache(cache);
+
+        var before = await service.ListMineAsync(_branchId, null);
+        var created = await service.CreateAsync(_branchId, _headId, "head1", "دائرة الكاش");
+        var after = await service.ListMineAsync(_branchId, null);
+
+        Assert.Contains(after, c => c.Id == created.Id);
+        Assert.Equal(before.Count + 1, after.Count);
+    }
 }

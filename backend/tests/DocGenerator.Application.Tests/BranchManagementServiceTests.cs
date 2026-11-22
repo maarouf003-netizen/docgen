@@ -34,6 +34,23 @@ public class BranchManagementServiceTests : PostgresDbTest
         _service = new BranchManagementService(branches, uow, tx, _audit);
     }
 
+    [PostgresFact]
+    public async Task ListBranches_CacheInvalidatedAfterCreate()
+    {
+        var cache = new DocGenerator.Infrastructure.Caching.ReferenceDataCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var cachedService = new BranchManagementService(
+            new BranchRepository(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit, cache);
+
+        _ = await cachedService.ListBranchesAsync();
+        var created = await cachedService.CreateBranchAsync(
+            new CreateBranchRequest("طرطوس", "TRT", null, null, "طرطوس"), "admin");
+        var after = await cachedService.ListBranchesAsync();
+
+        Assert.Contains(after, b => b.Id == created.Id);
+    }
+
 
     private int DamascusId => _damascusId;
     private int AleppoId => _aleppoId;

@@ -940,6 +940,8 @@ public class CorrespondenceServiceTests : PostgresDbTest
 
         public Task<List<Correspondence>> ListAsync(CancellationToken ct = default) => _inner.ListAsync(ct);
 
+        public Task<List<Correspondence>> ListNoTrackingAsync(CancellationToken ct = default) => _inner.ListNoTrackingAsync(ct);
+
         public Task AddAsync(Correspondence entity, CancellationToken ct = default) => _inner.AddAsync(entity, ct);
 
         public void Update(Correspondence entity) => _inner.Update(entity);

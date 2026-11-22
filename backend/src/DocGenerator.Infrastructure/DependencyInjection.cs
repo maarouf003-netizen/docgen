@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<ITransactionRunner, TransactionRunner>();
         services.AddSingleton<INumberWarningTokenService, DocGenerator.Infrastructure.Security.NumberWarningTokenService>();
         services.AddSingleton<IKeysetCursorCodec, DocGenerator.Infrastructure.Security.KeysetCursorCodec>();
+        services.AddSingleton<IReferenceDataCache, DocGenerator.Infrastructure.Caching.ReferenceDataCache>();
         // حالة المعاملة: نفس مُنفِّذ ITransactionRunner (نفس النطاق ونفس DbContext)
         // فيرى الحارس المعاملة النشطة فعلًا.
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());

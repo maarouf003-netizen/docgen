@@ -34,6 +34,7 @@ public sealed class SectionService : ISectionService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IDbExceptionClassifier _dbErrors;
+    private readonly IReferenceDataCache? _cache;
 
     public SectionService(
         IRepository<Section> sections,
@@ -44,7 +45,8 @@ public sealed class SectionService : ISectionService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        IDbExceptionClassifier dbErrors)
+        IDbExceptionClassifier dbErrors,
+        IReferenceDataCache? cache = null)
     {
         _sections = sections;
         _branches = branches;
@@ -55,18 +57,30 @@ public sealed class SectionService : ISectionService
         _tx = tx;
         _audit = audit;
         _dbErrors = dbErrors;
+        _cache = cache;
     }
+
+    // قراءات مرجعية بحتة — العدّادات الحيّة (الدوائر/الرؤساء) تُحسب خارج الكاش.
+    private Task<List<Section>> ListSectionsAsync(CancellationToken ct)
+        => _cache is null
+            ? _sections.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Sections, "all", _sections.ListNoTrackingAsync, ct);
+
+    private Task<List<ExecutionCircuit>> ListCircuitsAsync(CancellationToken ct)
+        => _cache is null
+            ? _circuits.ListAsync(ct)
+            : _cache.GetOrCreateAsync(ReferenceDataGroups.Circuits, "all", _circuits.ListNoTrackingAsync, ct);
 
     public async Task<List<SectionDto>> ListSectionsAsync(int branchId, CancellationToken ct = default)
     {
         var branch = await _branches.GetByIdAsync(branchId, ct)
             ?? throw new ArgumentException("الفرع غير موجود");
-        var all = await _sections.ListAsync(ct);
+        var all = await ListSectionsAsync(ct);
         var sections = all.Where(s => s.BranchId == branchId).OrderBy(s => s.Name).ToList();
         if (sections.Count == 0)
             return new List<SectionDto>();
 
-        var circuits = await _circuits.ListAsync(ct);
+        var circuits = await ListCircuitsAsync(ct);
         var circuitCounts = circuits
             .Where(c => c.SectionId.HasValue)
             .GroupBy(c => c.SectionId!.Value)
@@ -123,6 +137,7 @@ public sealed class SectionService : ISectionService
             {
                 await _sections.AddAsync(section, token);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Sections);
                 await _audit.LogAsync(actorName, "create_section", null, null,
                     $"أنشأ شعبة «{trimmed}» في فرع {branch.Name}", token);
             }, ct);
@@ -160,6 +175,7 @@ public sealed class SectionService : ISectionService
                 section.UpdatedAt = DateTime.UtcNow;
                 _sections.Update(section);
                 await _uow.SaveChangesAsync(token);
+                _cache?.Invalidate(ReferenceDataGroups.Sections);
                 await _audit.LogAsync(actorName, "rename_section", null, null,
                     $"أعاد تسمية الشعبة من «{oldName}» إلى «{trimmed}»", token);
                 // سجل التعاقب عند وجود رئيس شاغل (§9.5 — تعديل اسم)؛ بلا رئيس
@@ -182,6 +198,7 @@ public sealed class SectionService : ISectionService
                         Reason = $"أُعيدت تسمية الشعبة من «{oldName}» إلى «{trimmed}»",
                     }, token);
                     await _uow.SaveChangesAsync(token);
+                    _cache?.Invalidate(ReferenceDataGroups.Sections);
                 }
                 return await ToDtoAsync(section, token);
             }, ct);
@@ -201,7 +218,7 @@ public sealed class SectionService : ISectionService
         OptimisticConcurrencyGuard.EnsureCurrent(section, version, "الشعبة");
         if (!isActive)
         {
-            var circuitCount = (await _circuits.ListAsync(ct)).Count(c => c.SectionId == section.Id);
+            var circuitCount = (await ListCircuitsAsync(ct)).Count(c => c.SectionId == section.Id);
             if (circuitCount > 0)
                 throw new ArgumentException($"لا يمكن تعطيل الشعبة — انقل دوائرها أولًا (بها {circuitCount} دائرة)");
         }
@@ -212,6 +229,7 @@ public sealed class SectionService : ISectionService
             section.UpdatedAt = DateTime.UtcNow;
             _sections.Update(section);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Sections);
             await _audit.LogAsync(actorName, isActive ? "activate_section" : "deactivate_section",
                 null, null,
                 $"{(isActive ? "فعّل" : "عطّل")} الشعبة «{section.Name}» — التعطيل إخفاء من القوائم فقط ولا يوقف عمل رئيسها", token);
@@ -224,7 +242,7 @@ public sealed class SectionService : ISectionService
         var section = await _sections.GetByIdAsync(sectionId, ct);
         if (section is null)
             return false;
-        var circuitCount = (await _circuits.ListAsync(ct)).Count(c => c.SectionId == section.Id);
+        var circuitCount = (await ListCircuitsAsync(ct)).Count(c => c.SectionId == section.Id);
         if (circuitCount > 0)
             throw new ArgumentException($"لا يمكن حذف الشعبة — انقل دوائرها أولًا (بها {circuitCount} دائرة)");
         var users = await _users.ListUsersBySectionAsync(section.Id, ct);
@@ -235,6 +253,7 @@ public sealed class SectionService : ISectionService
         {
             _sections.Remove(section);
             await _uow.SaveChangesAsync(token);
+            _cache?.Invalidate(ReferenceDataGroups.Sections);
             await _audit.LogAsync(actorName, "delete_section", null, null,
                 $"حذف الشعبة «{section.Name}»", token);
             return true;
@@ -253,7 +272,7 @@ public sealed class SectionService : ISectionService
 
     private async Task<bool> NameExistsAsync(int branchId, string norm, int? excludeId, CancellationToken ct)
     {
-        var all = await _sections.ListAsync(ct);
+        var all = await ListSectionsAsync(ct);
         return all.Any(s => s.BranchId == branchId
             && s.NameNorm == norm
             && (excludeId == null || s.Id != excludeId.Value));
@@ -262,7 +281,7 @@ public sealed class SectionService : ISectionService
     private async Task<SectionDto> ToDtoAsync(Section section, CancellationToken ct)
     {
         var branch = await _branches.GetByIdAsync(section.BranchId, ct);
-        var circuits = await _circuits.ListAsync(ct);
+        var circuits = await ListCircuitsAsync(ct);
         var head = (await _users.ListUsersBySectionAsync(section.Id, ct))
             .Where(u => u.IsActive && u.Role == UserRole.SubHead)
             .OrderBy(u => u.Id)

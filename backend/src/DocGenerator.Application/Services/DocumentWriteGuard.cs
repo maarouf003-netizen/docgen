@@ -27,6 +27,7 @@ internal sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircu
     public Task AddAsync(ExecutionCircuit entity, CancellationToken ct = default) => Task.CompletedTask;
     public Task<ExecutionCircuit?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<ExecutionCircuit?>(null);
     public Task<List<ExecutionCircuit>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<ExecutionCircuit>());
+    public Task<List<ExecutionCircuit>> ListNoTrackingAsync(CancellationToken ct = default) => ListAsync(ct);
     public void Remove(ExecutionCircuit entity) { }
     public void Update(ExecutionCircuit entity) { }
 }
