@@ -952,8 +952,16 @@
 
 #### `P6-05` — ميزانية الأداء والحزمة
 
+- **الحالة (2026-11-22):** **جزئيًا — حارس الحزمة مثبت، وقياس الويب الحي متبقٍ.**
+  - `vite.config.ts` يكتب `dist/bundle-report.json` (Plugin داخلي بلا اعتمادية)،
+    و`npm run budget` يفرض: إجمالي ≤2.0MB، أكبر حزمة ≤460kB، الدخول ≤300kB.
+  - القياس: `JS=91` · إجمالي **1725.2kB** · أكبر **388.2kB** · دخول **249.3kB**.
+  - خطوة `Bundle budget` في `CI` (وظيفة `frontend`) بعد البناء؛ تحقق سلبي موثّق.
+  - المسارات lazy والصور بأبعاد/`alt` كانت مكتملة مسبقًا.
+  - **متبقٍ:** `LCP/INP/CLS` عبر Lighthouse/staging، و`content-visibility` بعد قياس INP.
+  - التفاصيل: `docs/audit/99-p6-05-bundle-budget-20261122.md`.
 - **العمل:** `rollup-plugin-visualizer`؛ حد للحزمة؛ lazy routes؛ صور بأبعاد؛ `content-visibility`.
-- **DoD:** LCP/INP/CLS ضمن الميزانية.
+- **`DoD`:** LCP/INP/CLS ضمن الميزانية — **جزئي** (الحجم محروس؛ القياس الحي لاحقًا).
 
 #### `P6-06` — عميل API مولّد
 

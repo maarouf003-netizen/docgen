@@ -70,6 +70,9 @@ jobs:
         run: npx vitest run
       - name: Build
         run: npm run build
+      # P6-05: سقوف الحزمة (إجمالي/أكبر حزمة/الدخول) — تفشل عند أي قفزة غير مقصودة.
+      - name: Bundle budget
+        run: npm run budget
       # P6-06: الأنواع المولَّدة من لقطة OpenAPI يجب أن تكون مطابقة لها. توليد مختلف
       # عن الملف المتتبَّع = إما لقطة لم تُحدَّث بعد تغيير API أو تعديل يدوي للأنواع.
       - name: Generated API types are current
