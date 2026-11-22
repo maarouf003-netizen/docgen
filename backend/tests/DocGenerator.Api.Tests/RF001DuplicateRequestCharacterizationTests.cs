@@ -83,7 +83,8 @@ public class RF001DuplicateRequestCharacterizationTests : IAsyncLifetime
     public async Task TransferAll_TwiceInARow_SecondTransfersZero_CurrentBehavior()
     {
         // النقل الجماعي آمن نسبيًا اليوم: التنفيذ الثاني يجد المصدر فارغًا فيعيد صفرًا
-        // (DocumentService.cs:450-452) — لكن نقرة أثناء الانتظار قد تُدقق مرتين (:459-466).
+        // (`DocumentService.Transfer.cs` — نواة النقل الجماعي) — لكن نقرة أثناء الانتظار
+        // قد تُدقق مرتين.
         // فرع معزول بمحامييه ورئيسه (لا دمشق — عزل النطاق والتدقيق معًا).
         var branchCode = await CreateBranchCodeAsync();
         var source = await CreateLawyerAsync(branchCode, "محامي المصدر المكرر");
