@@ -209,6 +209,8 @@ public class StrikeOffRemindersIntegrationTests
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await other.GetAsync("/api/documents/strike-off-reminders")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
+                (await other.GetAsync("/api/documents/strike-off-reminders/list")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden,
                 (await other.GetAsync("/api/documents/strike-off-reminders/count")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await other.PostAsync($"/api/documents/{id}/strike-off-reminder/dismiss", null)).StatusCode);

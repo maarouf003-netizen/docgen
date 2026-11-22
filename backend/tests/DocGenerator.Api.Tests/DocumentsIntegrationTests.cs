@@ -551,6 +551,30 @@ public class DocumentsIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task ArchiveListEndpoints_ShareLegacyAuthorization()
+    {
+        // مسارات /list إضافية، فتكافؤ الصلاحيات يجب أن يبقى صريحًا: المحامي/رئيس
+        // القسم/المدير يقرؤون القوائم الأربع (كما في المسارات القديمة).
+        string[] paths =
+        [
+            "/api/documents/deleted/list",
+            "/api/documents/struck-off/list",
+            "/api/documents/executed/list",
+            "/api/documents/referred-to-start/list",
+        ];
+
+        foreach (var username in new[] { "lawyer1", "head1", "manager" })
+        {
+            var client = _factory.AuthorizedClient(username);
+            foreach (var path in paths)
+            {
+                var response = await client.GetAsync(path);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+        }
+    }
+
+    [PostgresFact]
     public async Task ArchiveListEndpoints_ReturnProjectedCardShape_WithListSpecificFields()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

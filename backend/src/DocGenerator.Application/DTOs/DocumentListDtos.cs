@@ -52,6 +52,59 @@ public sealed class DocumentListRow : IDocumentExecutionState
     public List<ExecutedPublicEntity> ExecutedPublicEntities { get; set; } = new();
     public List<ExecutionApplicant> ExecutionApplicants { get; set; } = new();
     public List<ApplicantPublicEntity> ApplicantPublicEntities { get; set; } = new();
+
+    /// <summary>
+    /// كيان مؤقت (غير متتبَّع) يُجمَّع في الذاكرة من الحقول المسقطة + العناصر الدفعية —
+    /// يُمرَّر إلى <see cref="DocumentResponse.FromEntity"/> فيبقى مصدر قواعد العرض واحدًا.
+    /// مصدر مشترك لقوائم الملفات (`P3-04b`/`P3-04c`) وتصدير البوابة (`P3-04d`).
+    /// </summary>
+    public Document ToDocumentStub() => new()
+    {
+        Id = Id,
+        Version = Version,
+        CreatedAt = CreatedAt,
+        UpdatedAt = UpdatedAt,
+        DocumentType = DocumentType,
+        IsDraft = IsDraft,
+        BorrowerName = BorrowerName,
+        BorrowerFather = BorrowerFather,
+        BorrowerFamily = BorrowerFamily,
+        Applicant = Applicant,
+        Lawyer = Lawyer,
+        Court = Court,
+        ExecutionCircuitId = ExecutionCircuitId,
+        GeneralEntitySide = GeneralEntitySide ?? GeneralEntitySideCatalog.Applicant,
+        ExecStatus = ExecStatus,
+        ExecSubStatus = ExecSubStatus,
+        ExecutedStatus = ExecutedStatus,
+        FileNumber = FileNumber,
+        FileType = FileType,
+        FileYear = FileYear,
+        BranchName = BranchName,
+        SourceDelegationId = SourceDelegationId,
+        Branch = AdministrativeBranchName is null
+            ? null
+            : new Branch { Name = AdministrativeBranchName },
+        RegistrationDate = RegistrationDate is null
+            ? null
+            : new DocumentRegistrationDate { DateParsed = RegistrationDate },
+        SourceDelegation = DelegationReturnDate is null
+            ? null
+            : new DocumentDelegation { ReturnDate = DelegationReturnDate },
+        DeletedAt = DeletedAt,
+        StruckOffDate = StruckOffDate,
+        ExecutedExecutionDate = ExecutedExecutionDate,
+        ExecutedDepositDate = ExecutedDepositDate,
+        ForcedExecutionDate = ForcedExecutionDate,
+        BaraetDate = BaraetDate,
+        StartReferralDate = StartReferralDate,
+        BaseNumbers = BaseNumbers,
+        ExecutionActions = ExecutionActions,
+        ExecutedNaturalPersons = ExecutedNaturalPersons,
+        ExecutedPublicEntities = ExecutedPublicEntities,
+        ExecutionApplicants = ExecutionApplicants,
+        ApplicantPublicEntities = ApplicantPublicEntities,
+    };
 }
 
 /// <summary>
@@ -114,55 +167,7 @@ public sealed class DocumentListItemDto
     /// </summary>
     public static DocumentListItemDto FromRow(DocumentListRow row, int currentYear)
     {
-        var stub = new Document
-        {
-            Id = row.Id,
-            Version = row.Version,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt,
-            DocumentType = row.DocumentType,
-            IsDraft = row.IsDraft,
-            BorrowerName = row.BorrowerName,
-            BorrowerFather = row.BorrowerFather,
-            BorrowerFamily = row.BorrowerFamily,
-            Applicant = row.Applicant,
-            Lawyer = row.Lawyer,
-            Court = row.Court,
-            ExecutionCircuitId = row.ExecutionCircuitId,
-            GeneralEntitySide = row.GeneralEntitySide ?? GeneralEntitySideCatalog.Applicant,
-            ExecStatus = row.ExecStatus,
-            ExecSubStatus = row.ExecSubStatus,
-            ExecutedStatus = row.ExecutedStatus,
-            FileNumber = row.FileNumber,
-            FileType = row.FileType,
-            FileYear = row.FileYear,
-            BranchName = row.BranchName,
-            SourceDelegationId = row.SourceDelegationId,
-            Branch = row.AdministrativeBranchName is null
-                ? null
-                : new Branch { Name = row.AdministrativeBranchName },
-            RegistrationDate = row.RegistrationDate is null
-                ? null
-                : new DocumentRegistrationDate { DateParsed = row.RegistrationDate },
-            SourceDelegation = row.DelegationReturnDate is null
-                ? null
-                : new DocumentDelegation { ReturnDate = row.DelegationReturnDate },
-            DeletedAt = row.DeletedAt,
-            StruckOffDate = row.StruckOffDate,
-            ExecutedExecutionDate = row.ExecutedExecutionDate,
-            ExecutedDepositDate = row.ExecutedDepositDate,
-            ForcedExecutionDate = row.ForcedExecutionDate,
-            BaraetDate = row.BaraetDate,
-            StartReferralDate = row.StartReferralDate,
-        };
-        stub.BaseNumbers = row.BaseNumbers;
-        stub.ExecutionActions = row.ExecutionActions;
-        stub.ExecutedNaturalPersons = row.ExecutedNaturalPersons;
-        stub.ExecutedPublicEntities = row.ExecutedPublicEntities;
-        stub.ExecutionApplicants = row.ExecutionApplicants;
-        stub.ApplicantPublicEntities = row.ApplicantPublicEntities;
-
-        var full = DocumentResponse.FromEntity(stub, currentYear);
+        var full = DocumentResponse.FromEntity(row.ToDocumentStub(), currentYear);
         return new DocumentListItemDto
         {
             Id = full.Id,

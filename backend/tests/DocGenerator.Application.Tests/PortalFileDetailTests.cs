@@ -543,6 +543,58 @@ public class PortalFileDetailTests : PostgresDbTest
             headers);
     }
 
+    [PostgresFact]
+    public async Task Export_ProjectsExecutedSidePartiesAndStatus_FromListRows()
+    {
+        // ملف «منفذ عليه» بحالة «منفذ»: الاسم وفرع الجهة والحالة تُبنى من صف القائمة
+        // المُسقَط (P3-04d) — لا من شجرة تحميل كاملة.
+        var doc = new Document
+        {
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+            ExecutedStatus = ExecutedStatusCatalog.Executed,
+            Applicant = "الجهة الطالبة",
+            Court = "دمشق",
+        };
+        doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            EntityName = "المصرف العقاري",
+            EntityBranch = "فرع المزة",
+            Governorate = "دمشق",
+            RegistryId = _entryAId,
+        });
+        doc.ExecutionApplicants.Add(new ExecutionApplicant
+        {
+            Name = "أحمد",
+            Father = "خالد",
+            Family = "الخطيب",
+            RepresentationType = "أصالة",
+        });
+        doc.ExecutedNaturalPersons.Add(new ExecutedNaturalPerson
+        {
+            Name = "سامر",
+            Father = "حسن",
+            Family = "علي",
+            AddressType = "عنوان",
+            AddressOrRepresentative = "دمشق",
+            RepresentationType = "أصالة",
+        });
+        doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
+        Assert.Equal("منفذ", dataRow[0]);
+        Assert.Equal("دمشق/الفرع الرئيسي", dataRow[2]);
+        // العمودان «طالب التنفيذ» و«المنفذ عليه» في تصدير البوابة يعرضان طرف
+        // التنفيذ أولًا لعائلة «منفذ عليه» — وكلاهما من `ExecutionApplicants` المُسقَطة.
+        Assert.Equal("أحمد خالد الخطيب", dataRow[1]);
+        Assert.Equal("أحمد خالد الخطيب", dataRow[3]);
+    }
+
     private static UpsertAppealRequest Request(int entityId) => new(
         Direction: AppealDirectionCatalog.Appellants,
         Appellants: new List<AppealPartySelectionDto> { new("applicant-entity", entityId) },
