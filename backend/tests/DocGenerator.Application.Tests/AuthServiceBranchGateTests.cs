@@ -40,6 +40,7 @@ public class AuthServiceBranchGateTests
         public Task<User?> GetByIdAsync(int id, CancellationToken ct = default)
             => Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
         public Task<List<User>> ListAsync(CancellationToken ct = default) => Task.FromResult(_users.ToList());
+        public Task<List<User>> ListNoTrackingAsync(CancellationToken ct = default) => ListAsync(ct);
         public Task AddAsync(User entity, CancellationToken ct = default) { _users.Add(entity); return Task.CompletedTask; }
         public void Update(User entity) { }
         public void Remove(User entity) => _users.Remove(entity);

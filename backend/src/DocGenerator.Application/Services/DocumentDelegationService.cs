@@ -78,6 +78,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         public Task AddAsync(Section entity, CancellationToken ct = default) => Task.CompletedTask;
         public Task<Section?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<Section?>(null);
         public Task<List<Section>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<Section>());
+        public Task<List<Section>> ListNoTrackingAsync(CancellationToken ct = default) => ListAsync(ct);
         public void Remove(Section entity) { }
         public void Update(Section entity) { }
     }
