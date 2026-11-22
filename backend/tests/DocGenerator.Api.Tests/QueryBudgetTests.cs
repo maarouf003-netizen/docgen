@@ -48,6 +48,21 @@ public class QueryBudgetTests
     /// <summary>سقف قائمة البوابة (15 صفًا): القياس 14 + هامش 4.</summary>
     private const int PortalListBudgetForFifteenRows = 18;
 
+    /// <summary>سقف قائمة الملفات المُسقَطة (15 صفًا) — P3-08d: القياس ~12 + هامش.</summary>
+    private const int ProjectedListBudgetForFifteenRows = 20;
+
+    /// <summary>سقف صفحة المؤشر (15 صفًا) — نفس مسار الإسقاط بلا إزاحة.</summary>
+    private const int ProjectedCursorBudgetForFifteenRows = 20;
+
+    /// <summary>سقف القوائم الأرشيفية المُسقَطة (15 صفًا) — بلا إثراء استئناف.</summary>
+    private const int ArchiveListBudgetForFifteenRows = 18;
+
+    /// <summary>سقف تذكيرات الشطب (15 صفًا) — استعلام اختيار + تحميل دفعي.</summary>
+    private const int RemindersListBudgetForFifteenRows = 18;
+
+    /// <summary>سقف تصدير البوابة المُسقَط (15 صفًا) — P3-04d.</summary>
+    private const int PortalExportBudgetForFifteenRows = 20;
+
     [PostgresFact]
     public async Task DocumentsList_PageOfFifteen_StaysWithinQueryBudget()
     {
@@ -223,7 +238,31 @@ public class QueryBudgetTests
     {
         using var factory = new ApiFactory();
         var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var delegateUsername = await SeedPortalScopeAsync(factory, lawyerToken, 15);
 
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.AuthorizedClient(delegateUsername)
+            .GetAsync("/api/portal/files?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("items").GetArrayLength() >= 15,
+                $"قائمة البوابة أعادت {json.RootElement.GetProperty("items").GetArrayLength()} صفًا والمطلوب ≥15.");
+        }
+
+        Assert.True(
+            counter.Count <= PortalListBudgetForFifteenRows,
+            $"تجاوزت قائمة البوابة ميزانية الاستعلامات: {counter.Count} > {PortalListBudgetForFifteenRows}");
+    }
+
+    /// <summary>تهيئة نطاق مندوب (جهة نهائية + مستخدم مندوب + 15 ملفًا مرتبطًا) لاختبارات ميزانية البوابة.</summary>
+    private static async Task<string> SeedPortalScopeAsync(
+        ApiFactory factory, string lawyerToken, int count)
+    {
         string delegateUsername;
         using (var scope = factory.Services.CreateScope())
         {
@@ -252,7 +291,7 @@ public class QueryBudgetTests
             db.Users.Single(u => u.Id == delegateUser.Id).PortalEntryId = entryId;
             await db.SaveChangesAsync();
 
-            for (var i = 1; i <= 15; i++)
+            for (var i = 1; i <= count; i++)
             {
                 var documentId = await factory.CreateDocumentAsync(
                     lawyerToken, borrowerName: $"ملف بوابة {i}");
@@ -269,22 +308,212 @@ public class QueryBudgetTests
             await db.SaveChangesAsync();
         }
 
+        return delegateUsername;
+    }
+
+    /// <summary>تصدير البوابة المُسقَط (P3-04d): 15 صفًا بنفس ميزانية القائمة بلا شجرة تحميل كاملة.</summary>
+    [PostgresFact]
+    public async Task PortalExport_WithFifteenRows_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var delegateUsername = await SeedPortalScopeAsync(factory, lawyerToken, 15);
+
         var counter = factory.Services.GetRequiredService<QueryCounter>();
         counter.Reset();
 
         var response = await factory.AuthorizedClient(delegateUsername)
-            .GetAsync("/api/portal/files?perPage=15");
+            .GetAsync("/api/portal/export");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        Assert.True(
+            counter.Count <= PortalExportBudgetForFifteenRows,
+            $"تجاوز تصدير البوابة ميزانية الاستعلامات: {counter.Count} > {PortalExportBudgetForFifteenRows}");
+    }
+
+    // ── P3-08d: ميزانيات مسارات القراءة المُسقَطة/المؤشر (P3-04/P3-05) ──
+
+    private static async Task<List<int>> CreateFifteenDocumentsAsync(
+        ApiFactory factory, string token, string prefix, bool registered = true)
+    {
+        var ids = new List<int>(15);
+        for (var i = 1; i <= 15; i++)
+            ids.Add(await factory.CreateDocumentAsync(token, $"{prefix} {i}", registered: registered));
+        return ids;
+    }
+
+    [PostgresFact]
+    public async Task DocumentsProjectedList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await CreateFifteenDocumentsAsync(factory, token, "قائمة مُسقَطة");
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.ClientWithToken(token).GetAsync("/api/documents/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ProjectedListBudgetForFifteenRows,
+            $"تجاوزت القائمة المُسقَطة ميزانية الاستعلامات: {counter.Count} > {ProjectedListBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task DocumentsProjectedList_CursorPage_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await CreateFifteenDocumentsAsync(factory, token, "صفحة مؤشر");
+        var client = factory.ClientWithToken(token);
+
+        var first = await client.GetAsync("/api/documents/list?perPage=10");
+        using var firstBody = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        var cursor = firstBody.RootElement.GetProperty("nextCursor").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(cursor));
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await client.GetAsync(
+            "/api/documents/list?perPage=10&cursor=" + Uri.EscapeDataString(cursor!));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ProjectedCursorBudgetForFifteenRows,
+            $"تجاوزت صفحة المؤشر ميزانية الاستعلامات: {counter.Count} > {ProjectedCursorBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task StruckOffList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = factory.ClientWithToken(token);
+        foreach (var id in await CreateFifteenDocumentsAsync(factory, token, "مشطوبة"))
         {
-            Assert.True(
-                json.RootElement.GetProperty("items").GetArrayLength() >= 15,
-                $"قائمة البوابة أعادت {json.RootElement.GetProperty("items").GetArrayLength()} صفًا والمطلوب ≥15.");
+            var strike = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+                new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
+            Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
         }
 
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+        var response = await client.GetAsync("/api/documents/struck-off/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(
-            counter.Count <= PortalListBudgetForFifteenRows,
-            $"تجاوزت قائمة البوابة ميزانية الاستعلامات: {counter.Count} > {PortalListBudgetForFifteenRows}");
+            counter.Count <= ArchiveListBudgetForFifteenRows,
+            $"تجاوزت قائمة المشطوبة ميزانية الاستعلامات: {counter.Count} > {ArchiveListBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task ExecutedList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = factory.ClientWithToken(token);
+        foreach (var id in await CreateFifteenDocumentsAsync(factory, token, "منفذة"))
+        {
+            var run = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+                new { status = "منفذ بالتسوية", fields = new { baraetNumber = "1", baraetDate = "1/3/2026" } });
+            Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+        }
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+        var response = await client.GetAsync("/api/documents/executed/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ArchiveListBudgetForFifteenRows,
+            $"تجاوزت قائمة المنفذة ميزانية الاستعلامات: {counter.Count} > {ArchiveListBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task ReferredToStartList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = factory.ClientWithToken(token);
+        foreach (var id in await CreateFifteenDocumentsAsync(factory, token, "محالة"))
+        {
+            var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+                new
+                {
+                    status = "محال الى البداية",
+                    fields = new
+                    {
+                        noFundsDemandNumber = "5",
+                        noFundsDemandDate = "1/1/2024",
+                        startReferralNumber = "6",
+                        startReferralDate = "2/1/2024",
+                    },
+                });
+            Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+        }
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+        var response = await client.GetAsync("/api/documents/referred-to-start/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ArchiveListBudgetForFifteenRows,
+            $"تجاوزت قائمة المحالة ميزانية الاستعلامات: {counter.Count} > {ArchiveListBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task DeletedList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = factory.ClientWithToken(token);
+        foreach (var id in await CreateFifteenDocumentsAsync(factory, token, "محذوفة"))
+        {
+            var delete = await client.DeleteAsync($"/api/documents/{id}");
+            Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        }
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+        var response = await client.GetAsync("/api/documents/deleted/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= ArchiveListBudgetForFifteenRows,
+            $"تجاوزت قائمة المحذوفة ميزانية الاستعلامات: {counter.Count} > {ArchiveListBudgetForFifteenRows}");
+    }
+
+    [PostgresFact]
+    public async Task StrikeOffRemindersList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = factory.ClientWithToken(token);
+        var oldDate = ApiTestClock.Today.AddMonths(-7)
+            .ToString("d/M/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        foreach (var id in await CreateFifteenDocumentsAsync(factory, token, "تذكير"))
+        {
+            var action = await client.PostAsJsonAsync($"/api/documents/{id}/actions", new
+            {
+                type = "action",
+                text = "إجراء قديم",
+                actionDate = oldDate,
+                reminderDuration = (string?)null,
+                reminderColor = (string?)null,
+            });
+            Assert.Equal(HttpStatusCode.OK, action.StatusCode);
+        }
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+        var response = await client.GetAsync("/api/documents/strike-off-reminders/list?perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= RemindersListBudgetForFifteenRows,
+            $"تجاوزت تذكيرات الشطب ميزانية الاستعلامات: {counter.Count} > {RemindersListBudgetForFifteenRows}");
     }
 }
