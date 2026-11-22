@@ -739,6 +739,11 @@
   - `scripts/slo-check.mjs` يحكم على مخرجات `P3-01/P3-02` بسقوف `p95` لـ`10k/50k`،
     ويفشل عند التجاوز أو غياب استعلام متوقع (تحقق سلبي موثّق).
   - `docs/runbooks/load-testing.md`: خطوات القياس، التحقق من زمن البذر/الحمل، A/B العادل.
+  - **`P3-07a` (2026-11-22):** A/B لصفحة 100 داخل نفس التشغيل: إزاحة عميقة
+    (`documents-list-page100-projected`) مقابل مؤشر keyset
+    (`documents-list-page100-cursor`)، مع حفظ مؤشر حدود الصفحة 99 في
+    `SeedManifest` وحدّي SLO جديدين. التفاصيل:
+    `docs/audit/107-p3-07a-cursor-pagination-benchmark-20261122.md`.
   - **متبقٍ:** تشغيل الحمل على staging/بيانات قريبة من الواقع وتسجيل `RTO/SLO` التشغيلي.
   - التفاصيل: `docs/audit/100-p3-07-slo-gate-20261122.md`.
 - **العمل:** k6/NBomber على staging؛ سيناريوهات القراءة/الكتابة/البوابة؛ SLO `p95` و`error budget`.

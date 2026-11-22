@@ -102,8 +102,18 @@ public static class DeterministicSeeder
             .ToList();
 
         progress?.Report($"البذر: {scale:N0} مستندًا…");
-        var documentSeed = await SeedDocumentsAsync(
+        var portalDocumentId = await SeedDocumentsAsync(
             db, scale, circuits, lawyers, entries, random, progress, ct);
+
+        // مؤشر حدود الصفحة 999 من **نفس استعلام القائمة الرئيسية** (بالفلاتر الافتراضية)
+        // لا من فهرس البذر: القائمة تخفي المنفذ/المشطوب/المحال، فحدود الإزاحة تختلف.
+        var cursorRepository = new DocumentRepository(db);
+        var (_, cursorPage, _) = await cursorRepository.SearchListAsync(
+            query: null, status: null, applicant: null, court: null, lawyer: null,
+            branch: null, administrativeBranch: null, executedEntity: null,
+            publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+            page: 999, perPage: 20, ct: ct);
+        var cursorRow = cursorPage[^1];
 
         progress?.Report("البذر: تنبيهات الرؤساء…");
         var head = heads[0];
@@ -112,13 +122,13 @@ public static class DeterministicSeeder
         return new SeedManifest(
             BranchIds: branches.Select(b => b.Id).ToList(),
             PortalEntryIds: portalEntryIds,
-            PortalDocumentId: documentSeed.PortalDocumentId,
+            PortalDocumentId: portalDocumentId,
             HeadAlertUserId: head.Id,
             HeadAlertBranchId: head.BranchId!.Value,
             TextSearchTerm: TextSearchTerm,
             DocumentCount: scale,
-            CursorCreatedAt: documentSeed.CursorCreatedAt,
-            CursorId: documentSeed.CursorId);
+            CursorCreatedAt: cursorRow.CreatedAt,
+            CursorId: cursorRow.Id);
     }
 
     private static List<Branch> CreateBranches()
@@ -303,7 +313,7 @@ public static class DeterministicSeeder
         return entries;
     }
 
-    private static async Task<DocumentSeedResult> SeedDocumentsAsync(
+    private static async Task<int> SeedDocumentsAsync(
         DocGeneratorPostgresDbContext db,
         int scale,
         List<ExecutionCircuit> circuits,
@@ -314,11 +324,7 @@ public static class DeterministicSeeder
         CancellationToken ct)
     {
         const int batchSize = 500;
-        // آخر صف في الصفحة 99 (20 صفًا/صفحة) — مؤشر بداية الصفحة 100 للقياس keyset.
-        var cursorIndex = Math.Max(0, scale - 1980);
         var portalDocumentId = 0;
-        var cursorCreatedAt = default(DateTime);
-        var cursorId = 0;
 
         for (var start = 0; start < scale; start += batchSize)
         {
@@ -341,23 +347,11 @@ public static class DeterministicSeeder
                 portalDocumentId = documents[0].Id;
             }
 
-            if (cursorId == 0 && start <= cursorIndex && cursorIndex < end)
-            {
-                var cursorDocument = documents[cursorIndex - start];
-                cursorCreatedAt = cursorDocument.CreatedAt;
-                cursorId = cursorDocument.Id;
-            }
-
             progress?.Report($"البذر: {end:N0}/{scale:N0}");
         }
 
-        return new DocumentSeedResult(portalDocumentId, cursorCreatedAt, cursorId);
+        return portalDocumentId;
     }
-
-    private sealed record DocumentSeedResult(
-        int PortalDocumentId,
-        DateTime CursorCreatedAt,
-        int CursorId);
 
     private static Document BuildDocument(
         int index,

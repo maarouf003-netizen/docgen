@@ -51,8 +51,8 @@ public static class HotQueryCatalog
             }),
 
         new HotQuery(
-            "documents-list-page100-projected",
-            "قائمة المستندات صفحة 100 بإسقاط صف القائمة (إزاحة عميقة)",
+            "documents-list-page1000-projected",
+            "قائمة المستندات صفحة 1000 بإسقاط صف القائمة (إزاحة عميقة)",
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
@@ -60,13 +60,13 @@ public static class HotQueryCatalog
                     query: null, status: null, applicant: null, court: null, lawyer: null,
                     branch: null, administrativeBranch: null, executedEntity: null,
                     publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
-                    page: 100, perPage: 20, ct: ct);
+                    page: 1000, perPage: 20, ct: ct);
                 return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
             }),
 
         new HotQuery(
-            "documents-list-page100-cursor",
-            "قائمة المستندات صفحة 100 بمؤشر keyset (P3-05/P3-07) — بلا إزاحة",
+            "documents-list-page1000-cursor",
+            "قائمة المستندات صفحة 1000 بمؤشر keyset (P3-05/P3-07) — بلا إزاحة",
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
