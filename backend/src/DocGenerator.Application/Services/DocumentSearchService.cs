@@ -2,6 +2,8 @@ using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -123,6 +125,135 @@ public sealed class DocumentSearchService : IDocumentSearchService
         };
         await EnrichAppealFlagsAsync(result.Items, ct);
         return result;
+    }
+
+    /// <summary>
+    /// قائمة الملفات بإسقاط صف القائمة (P3-04b): نفس الفلاتر/الترتيب، لكن بلا
+    /// `WithStandardIncludes`. يُعاد استخدام `DocumentResponse.FromEntity` على كيان
+    /// مُجمَّع في الذاكرة، فتبقى الحقول المشتقة (الحالة/الرقم الفعّال/التدوير/آخر نشاط)
+    /// مطابقة لقائمة التفاصيل حرفيًا.
+    /// </summary>
+    public async Task<PagedResult<DocumentListItemDto>> SearchListAsync(
+        string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage,
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage <= 0 ? 20 : perPage, 1, 100);
+
+        var (total, rows) = await _documents.SearchListAsync(
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        var result = new PagedResult<DocumentListItemDto>
+        {
+            Items = rows.Select(row => ToListItem(row, currentYear)).ToList(),
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
+        };
+        await EnrichAppealFlagsAsync(result.Items, ct);
+        return result;
+    }
+
+    private static DocumentListItemDto ToListItem(DocumentListRow row, int currentYear)
+    {
+        // كيان مُجمَّع في الذاكرة (غير متتبَّع) من الحقول المسقطة + العناصر الدفعية،
+        // ثم المُحوِّل الوحيد `FromEntity` — لا نسخة ثانية من قواعد العرض.
+        var stub = new Document
+        {
+            Id = row.Id,
+            CreatedAt = row.CreatedAt,
+            UpdatedAt = row.UpdatedAt,
+            DocumentType = row.DocumentType,
+            IsDraft = row.IsDraft,
+            BorrowerName = row.BorrowerName,
+            BorrowerFather = row.BorrowerFather,
+            BorrowerFamily = row.BorrowerFamily,
+            Applicant = row.Applicant,
+            Lawyer = row.Lawyer,
+            Court = row.Court,
+            ExecutionCircuitId = row.ExecutionCircuitId,
+            GeneralEntitySide = row.GeneralEntitySide ?? GeneralEntitySideCatalog.Applicant,
+            ExecStatus = row.ExecStatus,
+            ExecSubStatus = row.ExecSubStatus,
+            ExecutedStatus = row.ExecutedStatus,
+            FileNumber = row.FileNumber,
+            FileType = row.FileType,
+            FileYear = row.FileYear,
+            BranchName = row.BranchName,
+            SourceDelegationId = row.SourceDelegationId,
+            Branch = row.AdministrativeBranchName is null
+                ? null
+                : new Branch { Name = row.AdministrativeBranchName },
+            RegistrationDate = row.RegistrationDate is null
+                ? null
+                : new DocumentRegistrationDate { DateParsed = row.RegistrationDate },
+            SourceDelegation = row.DelegationReturnDate is null
+                ? null
+                : new DocumentDelegation { ReturnDate = row.DelegationReturnDate },
+        };
+        stub.BaseNumbers = row.BaseNumbers;
+        stub.ExecutionActions = row.ExecutionActions;
+        stub.ExecutedNaturalPersons = row.ExecutedNaturalPersons;
+        stub.ExecutedPublicEntities = row.ExecutedPublicEntities;
+        stub.ExecutionApplicants = row.ExecutionApplicants;
+        stub.ApplicantPublicEntities = row.ApplicantPublicEntities;
+
+        var full = DocumentResponse.FromEntity(stub, currentYear);
+        return new DocumentListItemDto
+        {
+            Id = full.Id,
+            CreatedAt = full.CreatedAt,
+            UpdatedAt = full.UpdatedAt,
+            DocumentType = full.DocumentType,
+            IsDraft = full.IsDraft,
+            BorrowerName = full.BorrowerName,
+            BorrowerFather = full.BorrowerFather,
+            BorrowerFamily = full.BorrowerFamily,
+            Applicant = full.Applicant,
+            GeneralEntitySide = full.GeneralEntitySide,
+            FileNumber = full.FileNumber,
+            DisplayFileNumber = full.DisplayFileNumber,
+            DisplayFileYear = full.DisplayFileYear,
+            FileType = full.FileType,
+            FileYear = full.FileYear,
+            Court = full.Court,
+            Lawyer = full.Lawyer,
+            BranchName = full.BranchName,
+            AdministrativeBranchName = full.AdministrativeBranchName,
+            ExecStatus = full.ExecStatus,
+            ExecSubStatus = full.ExecSubStatus,
+            ExecutedStatus = full.ExecutedStatus,
+            DisplayStatus = full.DisplayStatus,
+            NeedsRotation = full.NeedsRotation,
+            SourceDelegationId = full.SourceDelegationId,
+            DelegationReturnDate = full.DelegationReturnDate,
+            LastActivityDate = full.LastActivityDate,
+            LastActivitySource = full.LastActivitySource,
+            ExecutionActions = full.ExecutionActions,
+            ExecutedNaturalPersons = full.ExecutedNaturalPersons,
+            ExecutedPublicEntities = full.ExecutedPublicEntities,
+            ExecutionApplicants = full.ExecutionApplicants,
+            ApplicantPublicEntities = full.ApplicantPublicEntities,
+        };
+    }
+
+    private async Task EnrichAppealFlagsAsync(List<DocumentListItemDto> items, CancellationToken ct)
+    {
+        if (items.Count == 0)
+            return;
+        var ids = items.Select(i => i.Id).ToList();
+        var map = await _appeals.MapFirstAppealIdByDocumentIdsAsync(ids, ct);
+        if (map.Count == 0)
+            return;
+        foreach (var item in items)
+        {
+            if (map.TryGetValue(item.Id, out var appealId))
+            {
+                item.HasAppeals = true;
+                item.MatchedAppealId = appealId;
+            }
+        }
     }
 
     /// <summary>

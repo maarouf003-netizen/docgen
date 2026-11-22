@@ -124,6 +124,126 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return (total, items);
     }
 
+    /// <summary>
+    /// قائمة الملفات بإسقاط صف القائمة (P3-04b): لا `WithStandardIncludes` ولا كيان
+    /// كامل. تُجمع العناصر الفرعية اللازمة لبطاقة القائمة دفعةً واحدة لمعرّفات الصفحة
+    /// ثم تُغذّي `DocumentResponse.FromEntity` على كيان مُجمَّع في الخدمة.
+    /// </summary>
+    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchListAsync(
+        string? query,
+        string? status,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        IQueryable<Document> q = ApplySearchFilters(
+            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(d => d.CreatedAt)
+            .ThenByDescending(d => d.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(d => new DocumentListRow
+            {
+                Id = d.Id,
+                CreatedAt = d.CreatedAt,
+                UpdatedAt = d.UpdatedAt,
+                DocumentType = d.DocumentType,
+                IsDraft = d.IsDraft,
+                BorrowerName = d.BorrowerName,
+                BorrowerFather = d.BorrowerFather,
+                BorrowerFamily = d.BorrowerFamily,
+                Applicant = d.Applicant,
+                Lawyer = d.Lawyer,
+                Court = d.Court,
+                ExecutionCircuitId = d.ExecutionCircuitId,
+                GeneralEntitySide = d.GeneralEntitySide,
+                ExecStatus = d.ExecStatus,
+                ExecSubStatus = d.ExecSubStatus,
+                ExecutedStatus = d.ExecutedStatus,
+                FileNumber = d.FileNumber,
+                FileType = d.FileType,
+                FileYear = d.FileYear,
+                BranchName = d.BranchName,
+                SourceDelegationId = d.SourceDelegationId,
+                AdministrativeBranchName = d.Branch != null ? d.Branch.Name : null,
+            })
+            .ToListAsync(ct);
+
+        if (items.Count == 0)
+            return (total, items);
+
+        var ids = items.Select(i => i.Id).ToList();
+
+        var baseNumbers = await Db.BaseNumbers.AsNoTracking()
+            .Where(b => ids.Contains(b.DocumentId))
+            .ToListAsync(ct);
+        var registrationDates = await Db.DocumentRegistrationDates.AsNoTracking()
+            .Where(r => ids.Contains(r.DocumentId))
+            .ToDictionaryAsync(r => r.DocumentId, r => r.DateParsed, ct);
+        var actions = await Db.ExecutionActions.AsNoTracking()
+            .Where(a => ids.Contains(a.DocumentId))
+            .Include(a => a.CreatedBy)
+            .ToListAsync(ct);
+        var executedNaturalPersons = await Db.ExecutedNaturalPersons.AsNoTracking()
+            .Where(p => ids.Contains(p.DocumentId))
+            .ToListAsync(ct);
+        var executedPublicEntities = await Db.ExecutedPublicEntities.AsNoTracking()
+            .Where(e => ids.Contains(e.DocumentId))
+            .ToListAsync(ct);
+        var executionApplicants = await Db.ExecutionApplicants.AsNoTracking()
+            .Where(a => ids.Contains(a.DocumentId))
+            .ToListAsync(ct);
+        var applicantPublicEntities = await Db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => ids.Contains(a.DocumentId))
+            .ToListAsync(ct);
+
+        var delegationIds = items
+            .Where(i => i.SourceDelegationId.HasValue)
+            .Select(i => i.SourceDelegationId!.Value)
+            .Distinct()
+            .ToList();
+        var delegationReturnDates = delegationIds.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await Db.DocumentDelegations.AsNoTracking()
+                .Where(x => delegationIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.ReturnDate, ct);
+
+        var baseLookup = baseNumbers.ToLookup(b => b.DocumentId);
+        var actionLookup = actions.ToLookup(a => a.DocumentId);
+        var executedNaturalLookup = executedNaturalPersons.ToLookup(p => p.DocumentId);
+        var executedPublicLookup = executedPublicEntities.ToLookup(e => e.DocumentId);
+        var applicantLookup = executionApplicants.ToLookup(a => a.DocumentId);
+        var applicantPublicLookup = applicantPublicEntities.ToLookup(a => a.DocumentId);
+
+        foreach (var item in items)
+        {
+            item.BaseNumbers = baseLookup[item.Id].OrderBy(b => b.Year).ThenBy(b => b.Id).ToList();
+            item.ExecutionActions = actionLookup[item.Id].ToList();
+            item.ExecutedNaturalPersons = executedNaturalLookup[item.Id].ToList();
+            item.ExecutedPublicEntities = executedPublicLookup[item.Id].ToList();
+            item.ExecutionApplicants = applicantLookup[item.Id].ToList();
+            item.ApplicantPublicEntities = applicantPublicLookup[item.Id].ToList();
+            item.RegistrationDate = registrationDates.GetValueOrDefault(item.Id);
+            item.DelegationReturnDate = item.SourceDelegationId.HasValue
+                ? delegationReturnDates.GetValueOrDefault(item.SourceDelegationId.Value)
+                : null;
+        }
+
+        return (total, items);
+    }
+
     public async Task<List<DocumentExportRow>> ExportRowsAsync(
         string? query,
         string? status,

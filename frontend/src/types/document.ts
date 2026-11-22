@@ -341,6 +341,34 @@ export type DocumentUpsertRequest = Omit<
   initialActions?: InitialActionRequest[];
 };
 
+/**
+ * عنصر قائمة الملفات (P3-04b): حقول البطاقة + ملخصات الأطراف + آخر إجراء.
+ * نوعه مولَّد من OpenAPI، مع إبقاء القوائم اختيارية و`generalEntitySide` اتحادًا
+ * مغلقًا؛ و`DocumentResponse` يبقى متوافقًا بنيويًا (يُمرَّر للتفاصيل).
+ */
+export type DocumentListItemDto = Omit<
+  components['schemas']['DocumentListItemDto'],
+  | 'generalEntitySide'
+  | 'isDraft'
+  | 'hasAppeals'
+  | 'needsRotation'
+  | 'executionActions'
+  | 'executedNaturalPersons'
+  | 'executedPublicEntities'
+  | 'executionApplicants'
+  | 'applicantPublicEntities'
+> & {
+  generalEntitySide?: GeneralEntitySide | null;
+  isDraft?: boolean;
+  hasAppeals?: boolean;
+  needsRotation?: boolean;
+  executionActions?: ExecutionActionDto[];
+  executedNaturalPersons?: ExecutedNaturalPersonDto[];
+  executedPublicEntities?: ExecutedPublicEntityDto[];
+  executionApplicants?: ExecutionApplicantDto[];
+  applicantPublicEntities?: ApplicantPublicEntityDto[];
+};
+
 export interface DocumentFilterOptionsDto {
   applicants: string[];
   courts: string[];

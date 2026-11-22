@@ -152,6 +152,32 @@ public class DocumentsController : ControllerBase
         return OkSanitized(result);
     }
 
+    /// <summary>
+    /// قائمة الملفات بإسقاط قراءة (P3-04b): نفس فلاتر/صلاحيات `Search`، لكن عناصر
+    /// `DocumentListItemDto` المصغّرة بدل `DocumentResponse` الكامل — مسار إضافي
+    /// لا يغيّر العقد القائم.
+    /// </summary>
+    [HttpGet("list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> List(
+        [FromQuery] string? q, [FromQuery] string? status,
+        [FromQuery] string? applicant, [FromQuery] string? court,
+        [FromQuery] string? lawyer, [FromQuery] string? branch,
+        [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
+        [FromQuery] string? publicEntityBranch,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(lawyer)
+            && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
+            return Forbid();
+
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
+
+        var result = await _search.SearchListAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        return Ok(result);
+    }
+
     [HttpGet("filter-options")]
     public async Task<IActionResult> GetFilterOptions(
         [FromQuery] string? status, [FromQuery] string? applicant,

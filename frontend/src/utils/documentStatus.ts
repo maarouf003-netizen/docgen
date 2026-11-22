@@ -1,4 +1,4 @@
-import type { DocumentResponse } from '../types';
+import type { DocumentListItemDto } from '../types';
 import { isExecutedLike } from './documentDisplay';
 
 /** قيم حقول حالة التنفيذ (execStatus/execSubStatus) الصادرة من الخلفية — الأصل الوحيد للحرفيات في الواجهة. */
@@ -54,7 +54,7 @@ export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }
 };
 
 export type StatusSource = Pick<
-  DocumentResponse,
+  DocumentListItemDto,
   'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide' | 'executedStatus'
 >;
 

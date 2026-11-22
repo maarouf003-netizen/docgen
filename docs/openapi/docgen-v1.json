@@ -1454,6 +1454,211 @@
         ],
         "type": "object"
       },
+      "DocumentListItemDto": {
+        "additionalProperties": false,
+        "properties": {
+          "administrativeBranchName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "applicant": {
+            "nullable": true,
+            "type": "string"
+          },
+          "applicantPublicEntities": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicantPublicEntityDto"
+            },
+            "type": "array"
+          },
+          "borrowerFamily": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerFather": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "branchName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "court": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delegationReturnDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayFileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayFileYear": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "documentType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execSubStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedNaturalPersons": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutedNaturalPersonDto"
+            },
+            "type": "array"
+          },
+          "executedPublicEntities": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutedPublicEntityDto"
+            },
+            "type": "array"
+          },
+          "executedStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executionActions": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionActionDto"
+            },
+            "type": "array"
+          },
+          "executionApplicants": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionApplicantDto"
+            },
+            "type": "array"
+          },
+          "fileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileYear": {
+            "nullable": true,
+            "type": "string"
+          },
+          "generalEntitySide": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasAppeals": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "isDraft": {
+            "type": "boolean"
+          },
+          "lastActivityDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastActivitySource": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lawyer": {
+            "nullable": true,
+            "type": "string"
+          },
+          "matchedAppealId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "needsRotation": {
+            "type": "boolean"
+          },
+          "sourceDelegationId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicantPublicEntities",
+          "createdAt",
+          "executedNaturalPersons",
+          "executedPublicEntities",
+          "executionActions",
+          "executionApplicants",
+          "hasAppeals",
+          "id",
+          "isDraft",
+          "needsRotation",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "DocumentListItemDtoPagedResult": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItemDto"
+            },
+            "type": "array"
+          },
+          "page": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "perPage": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "totalPages": {
+            "format": "int32",
+            "readOnly": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "perPage",
+          "totalCount",
+          "totalPages"
+        ],
+        "type": "object"
+      },
       "DocumentOccurrenceDto": {
         "additionalProperties": false,
         "properties": {
@@ -8328,6 +8533,124 @@
         ],
         "responses": {
           "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/documents/list": {
+      "get": {
+        "operationId": "Documents_List",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "applicant",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "court",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lawyer",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "administrativeBranch",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "executedEntity",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "publicEntityBranch",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
