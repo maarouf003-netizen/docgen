@@ -314,10 +314,13 @@ public sealed class PortalService : IPortalService
         // نطاقها كاملًا لعرضه مختصرًا في البطاقة — قرار يخصّ العرض لا التصدير.)
         var scopedForRows = NarrowScope(scope, entryIds);
 
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
         var rows = docs
-            .Select(d =>
+            .Select(row =>
             {
-                var response = DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone));
+                // الكيان المؤقت من صف القائمة المُسقَط (`P3-04d`) ثم `FromEntity` نفسه —
+                // لا نسخة ثانية لقواعد العرض، ولا شجرة تحميل كاملة في التصدير.
+                var response = DocumentResponse.FromEntity(row.ToDocumentStub(), currentYear);
                 // طبقتان لا واحدة: التحكم الأساسي في التصدير هو **قائمة الأعمدة
                 // المغلقة** (`ExcelExportService.PortalColumns` + `BuildPortalValues`)،
                 // فحقل داخلي لا يظهر أصلًا وإن لم تحجبْه التنقية؛ والتنقية هنا طبقة
@@ -325,7 +328,11 @@ public sealed class PortalService : IPortalService
                 // وهي اليوم ما يجعل عمود «الإجراءات والملاحظات» علنيًّا خالصًا:
                 // أول `ExecutionActions` بعدها هو أحدث إجراء من النوع `action` حتمًا.
                 ScrubForPortal(response);
-                return new PortalWorkbookRow(response, BuildMatchedEntries(d, scopedForRows));
+                var matched = BuildMatchedEntries(
+                    row.ApplicantPublicEntities.Select(a => a.RegistryId),
+                    row.ExecutedPublicEntities.Select(e => e.RegistryId),
+                    scopedForRows);
+                return new PortalWorkbookRow(response, matched);
             })
             .ToList();
 
@@ -619,12 +626,6 @@ public sealed class PortalService : IPortalService
     /// (2) لا يخرج عن نطاق المندوب أبدًا، فالبوابة عاجزة بنيويًا عن عرض فرع جهة
     /// أخرى (فرع إداري أو فرع طرف ثالث) مهما بلغ عدد أطراف الملف.
     /// </summary>
-    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(Document d, PortalScopeResolution? scope)
-        => BuildMatchedEntries(
-            d.ApplicantPublicEntities.Select(a => a.RegistryId),
-            d.ExecutedPublicEntities.Select(e => e.RegistryId),
-            scope);
-
     private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(PortalListRow d, PortalScopeResolution? scope)
         => BuildMatchedEntries(
             d.ApplicantEntities.Select(a => a.RegistryId),

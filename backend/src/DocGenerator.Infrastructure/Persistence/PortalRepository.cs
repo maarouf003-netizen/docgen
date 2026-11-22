@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -150,27 +151,20 @@ public class PortalRepository : IPortalRepository
         return (total, items);
     }
 
-    public Task<List<Document>> ExportScopedAsync(
+    public async Task<List<DocumentListRow>> ExportScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status, CancellationToken ct = default)
-        => ScopedQuery(entryIds, query, status)
+    {
+        // إسقاط صف القائمة نفسه (P3-04d) بدل تحميل الشجرة الكاملة: السقف يحكم عدد
+        // الصفوف، لكن الذاكرة لكل صف تنخفض من عشرات الكيلوبايتات إلى حقول البطاقة،
+        // وتُستكمل الأطراف/الإجراءات بقراءات دفعية مفهرسة.
+        var rows = await ScopedQuery(entryIds, query, status)
             .OrderByDescending(d => d.CreatedAt)
-            .Include(d => d.Guarantors)
-            .Include(d => d.Assets).ThenInclude(a => a.Owners)
-            .Include(d => d.Heirs)
-            .Include(d => d.ExecutionActions)
-            .Include(d => d.RegistrationDate)
-            .Include(d => d.CreatedBy)
-            .Include(d => d.Branch)
-            .Include(d => d.BaseNumbers)
-            .Include(d => d.ExecutionApplicants)
-            .Include(d => d.ExecutedPublicEntities)
-            .Include(d => d.ExecutedNaturalPersons)
-            .Include(d => d.ExecutedHeirs)
-            .Include(d => d.Occurrences)
-            .Include(d => d.Assignments)
-            .Include(d => d.ApplicantPublicEntities)
-            .AsSplitQuery()
+            .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
+
+        await DocumentListRowProjection.LoadChildrenAsync(_db, rows, ct);
+        return rows;
+    }
 
     public Task<int> CountScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status, CancellationToken ct = default)

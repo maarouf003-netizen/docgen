@@ -261,6 +261,17 @@ public static class HotQueryCatalog
             }),
 
         new HotQuery(
+            "portal-export",
+            "تصدير بوابة الجهة: صفوف القائمة المُسقَطة (P3-04d) بلا شجرة تحميل كاملة",
+            async (db, ct) =>
+            {
+                var repository = new PortalRepository(db);
+                var rows = await repository.ExportScopedAsync(
+                    manifest.PortalEntryIds, query: null, status: null, ct: ct);
+                return new QueryOutcome(rows.Count, $"rows={rows.Count};first={rows.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
             "stats-dashboard",
             "إحصاءات اللوحة: عدادات الحالات + المبالغ + عدد المقترضين",
             async (db, ct) =>

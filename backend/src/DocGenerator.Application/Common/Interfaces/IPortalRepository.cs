@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Common.Interfaces;
@@ -119,8 +120,11 @@ public interface IPortalRepository
         IReadOnlyCollection<int> entryIds, string? query, string? status,
         int page, int perPage, CancellationToken ct = default);
 
-    /// <summary>ملفات النطاق للتصدير بلا صفحات (السقف تتحقق منه الخدمة قبل الجلب).</summary>
-    Task<List<Document>> ExportScopedAsync(
+    /// <summary>
+    /// ملفات النطاق للتصدير بلا صفحات (السقف تتحقق منه الخدمة قبل الجلب) — صفوف
+    /// القائمة المُسقَطة نفسها (`P3-04d`) بلا `Include` للشجرة الكاملة.
+    /// </summary>
+    Task<List<DocumentListRow>> ExportScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status, CancellationToken ct = default);
 
     /// <summary>عدد ملفات النطاق المطابقة (للتحقق من سقف التصدير قبل الجلب).</summary>
