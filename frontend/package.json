@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "guard": "node scripts/csp-guard.mjs",
+    "budget": "node scripts/bundle-budget.mjs",
     "test": "vitest run",
     "test:ci": "vitest run --maxWorkers=4 --pool=forks",
     "generate:api": "openapi-typescript ../docs/openapi/docgen-v1.json -o src/api/generated.ts",
