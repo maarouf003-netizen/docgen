@@ -16,6 +16,9 @@ public interface IDocumentSearchService
 
     Task<PagedResult<DocumentResponse>> SearchAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
 
+    /// <summary>قائمة الملفات بإسقاط صف القائمة (P3-04b) — بلا شجرة تحميل كاملة.</summary>
+    Task<PagedResult<DocumentListItemDto>> SearchListAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
+
     /// <summary>
     /// بحث ترحّلي عن ملفات وضع «منفذ عليه» المشطوبة فقط — صفحة «الملفات المشطوبة».
     /// بنفس صلاحيات المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل).

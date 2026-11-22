@@ -437,7 +437,7 @@ describe('DocumentsList', () => {
 
   it('يعقم حالة الجلسة غير المعتمدة («محال الى البداية») ويعاملها كأنه لا فلتر، ويقرّ المعتمدة', async () => {
     const mainListCall = () =>
-      (vi.mocked(api.get).mock.calls.map((c) => c[0] as string).find((u) => u.startsWith('/documents?')) ?? '');
+      (vi.mocked(api.get).mock.calls.map((c) => c[0] as string).find((u) => u.startsWith('/documents/list?')) ?? '');
 
     // قيمة لم تعد خيارًا في الفلتر بعد نقل «محال الى البداية» لصفحتها: لا تُرسل للخلفية.
     sessionStorage.setItem(
@@ -1279,7 +1279,7 @@ describe('DocumentsList', () => {
     await screen.findByText('لا توجد نتائج');
 
     const called = vi.mocked(api.get).mock.calls.some(([url]) =>
-      String(url).includes('/documents?') && String(url).includes('q=') && String(url).includes('page=2'));
+      String(url).includes('/documents/list?') && String(url).includes('q=') && String(url).includes('page=2'));
     expect(called).toBe(true);
     expect(screen.getByPlaceholderText(/بحث بالاسم/)).toHaveValue('محمود');
   });
@@ -1549,7 +1549,7 @@ describe('DocumentsList', () => {
 describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق اللوحة)', () => {
   function lastListUrl() {
     const calls = vi.mocked(api.get).mock.calls.map((c) => c[0] as string);
-    return calls.filter((u) => u.startsWith('/documents?')).at(-1) ?? '';
+    return calls.filter((u) => u.startsWith('/documents/list?')).at(-1) ?? '';
   }
 
   function lastListStatus() {

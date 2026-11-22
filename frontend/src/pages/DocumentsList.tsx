@@ -15,10 +15,10 @@ import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus, isStatusOption } from
 import { applicantName, displayFileNumber, fullName, identityName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
 import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListPosition, saveLastViewedDocumentId } from '../utils/listSession';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
-import type { DocumentResponse, PagedResult } from '../types';
+import type { DocumentListItemDto, DocumentResponse, PagedResult } from '../types';
 
 /** شارة «استئناف»: للملفات التي عليها استئناف منظور — تفتح تفاصيل الاستئناف. */
-export function AppealBadge({ d }: { d: DocumentResponse }) {
+export function AppealBadge({ d }: { d: DocumentListItemDto }) {
   if (!d.hasAppeals || !d.matchedAppealId) return null;
   return (
     <Link
@@ -31,7 +31,7 @@ export function AppealBadge({ d }: { d: DocumentResponse }) {
   );
 }
 
-export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: string }) {
+export function FileNumber({ d, fallback }: { d: DocumentListItemDto; fallback?: string }) {
   const text = displayFileNumber(d);
   const hasAppealBadge = Boolean(d.hasAppeals && d.matchedAppealId);
   // الفراغ الأصلي يُحفظ لملفات «تحت الرفع» بلا شارة؛ والبديل (؟) للبطاقات الجوالة فقط.
@@ -47,7 +47,7 @@ export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: st
   );
 }
 
-function StatusBadge({ d }: { d: DocumentResponse }) {
+function StatusBadge({ d }: { d: DocumentListItemDto }) {
   const { text, cls } = STATUS_BADGES[getDocumentStatus(d)];
   return <span className={`text-xs px-2 py-1 rounded-full ${cls}`}>{text}</span>;
 }
@@ -311,7 +311,7 @@ function ActionsCell({
   onClick,
   compact = false,
 }: {
-  d: DocumentResponse;
+  d: DocumentListItemDto;
   onClick: () => void;
   /** بطاقة الجوال: تصغير خط آخر إجراء/ملاحظة ليطابق «المحكمة الناظرة» في بطاقات الاستئناف. */
   compact?: boolean;
@@ -419,7 +419,7 @@ export default function DocumentsList() {
     query || status || applicant || court || lawyer || administrativeBranch || executedEntity || publicEntityBranch,
   );
 
-  const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>((signal) => {
+  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>((signal) => {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     if (status) params.set('status', status);
@@ -431,7 +431,7 @@ export default function DocumentsList() {
     if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
     params.set('page', String(page));
     params.set('perPage', '20');
-    return api.get(`/documents?${params.toString()}`, { signal }).then((r) => r.data);
+    return api.get(`/documents/list?${params.toString()}`, { signal }).then((r) => r.data);
   }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
 
   const data = listQuery.data;

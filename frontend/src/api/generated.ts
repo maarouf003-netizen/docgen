@@ -1060,6 +1060,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_List"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/my-pending-registrations": {
         parameters: {
             query?: never;
@@ -3612,6 +3628,60 @@ export interface components {
             subject?: string | null;
             /** Format: int64 */
             version?: number | null;
+        };
+        DocumentListItemDto: {
+            administrativeBranchName?: string | null;
+            applicant?: string | null;
+            applicantPublicEntities: components["schemas"]["ApplicantPublicEntityDto"][];
+            borrowerFamily?: string | null;
+            borrowerFather?: string | null;
+            borrowerName?: string | null;
+            branchName?: string | null;
+            court?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            delegationReturnDate?: string | null;
+            displayFileNumber?: string | null;
+            displayFileYear?: string | null;
+            displayStatus?: string | null;
+            documentType?: string | null;
+            execStatus?: string | null;
+            execSubStatus?: string | null;
+            executedNaturalPersons: components["schemas"]["ExecutedNaturalPersonDto"][];
+            executedPublicEntities: components["schemas"]["ExecutedPublicEntityDto"][];
+            executedStatus?: string | null;
+            executionActions: components["schemas"]["ExecutionActionDto"][];
+            executionApplicants: components["schemas"]["ExecutionApplicantDto"][];
+            fileNumber?: string | null;
+            fileType?: string | null;
+            fileYear?: string | null;
+            generalEntitySide?: string | null;
+            hasAppeals: boolean;
+            /** Format: int32 */
+            id: number;
+            isDraft: boolean;
+            /** Format: date-time */
+            lastActivityDate?: string | null;
+            lastActivitySource?: string | null;
+            lawyer?: string | null;
+            /** Format: int32 */
+            matchedAppealId?: number | null;
+            needsRotation: boolean;
+            /** Format: int32 */
+            sourceDelegationId?: number | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DocumentListItemDtoPagedResult: {
+            items: components["schemas"]["DocumentListItemDto"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            perPage: number;
+            /** Format: int32 */
+            totalCount: number;
+            /** Format: int32 */
+            readonly totalPages: number;
         };
         DocumentOccurrenceDto: {
             createdByName?: string | null;
@@ -6481,6 +6551,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    Documents_List: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: string;
+                applicant?: string;
+                court?: string;
+                lawyer?: string;
+                branch?: string;
+                administrativeBranch?: string;
+                executedEntity?: string;
+                publicEntityBranch?: string;
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
+                };
             };
         };
     };

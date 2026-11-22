@@ -322,6 +322,31 @@ public class DocumentServiceTests : PostgresDbTest
     }
 
     [PostgresFact]
+    public async Task SearchList_ProjectsCardFieldsAndReusesDerivedRules()
+    {
+        var request = Sample();
+        request.InitialActions = new List<AddExecutionActionRequest>
+        {
+            new() { Type = "action", Text = "إجراء قائمة", ActionDate = "1/8/2026" },
+        };
+        await _service.CreateAsync(request, 1, "lawyer1", 1);
+
+        var result = await _search.SearchListAsync(
+            null, null, null, null, null, null, null, null, null, 1, 20);
+
+        Assert.Equal(1, result.TotalCount);
+        var item = Assert.Single(result.Items);
+        Assert.Equal("أحمد", item.BorrowerName);
+        Assert.False(item.IsDraft);
+        Assert.Equal("متداول", item.DisplayStatus);
+        Assert.Equal(request.FileNumber, item.DisplayFileNumber);
+        Assert.Equal("دمشق", item.AdministrativeBranchName);
+        Assert.False(item.NeedsRotation);
+        Assert.Equal("إجراء قائمة", Assert.Single(item.ExecutionActions).Text);
+        Assert.Empty(item.ExecutedNaturalPersons);
+    }
+
+    [PostgresFact]
     public async Task Search_ByBorrowerHeirName_FiltersResults()
     {
         var req = Sample();

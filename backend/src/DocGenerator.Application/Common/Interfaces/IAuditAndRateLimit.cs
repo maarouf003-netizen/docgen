@@ -48,6 +48,24 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default,
         int? ownerSectionId = null);
 
+    /// <summary>قائمة الملفات بإسقاط صف القائمة (P3-04b) — بلا شجرة تحميل كاملة.</summary>
+    Task<(int TotalCount, List<DocumentListRow> Items)> SearchListAsync(
+        string? query,
+        string? status,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
     /// <summary>
     /// صفوف التصدير بالإسقاط العمودي: كل المستندات المطابقة لفلاتر البحث (دون
     /// ترقيم) لكن بأعمدة الورقة فقط (بلا `Include` للشجرة الكاملة) — يخفض ذاكرة

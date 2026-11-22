@@ -529,6 +529,28 @@ public class DocumentsIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task ListEndpoint_ReturnsProjectedCardShape()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var response = await client.GetAsync("/api/documents/list?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .Single(i => i.GetProperty("id").GetInt32() == id);
+
+        Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("displayStatus").GetString()));
+        Assert.True(item.TryGetProperty("executionActions", out _));
+        Assert.True(item.TryGetProperty("executedPublicEntities", out _));
+        // الشكل المُسقَط لا يحمل شجرة المستند الكاملة.
+        Assert.False(item.TryGetProperty("guarantors", out _));
+        Assert.False(item.TryGetProperty("assets", out _));
+    }
+
+    [PostgresFact]
     public async Task ReferredToStartPage_ShowsReferred_AndExcludesOthers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

@@ -1,4 +1,4 @@
-import type { DocumentResponse } from '../types';
+import type { DocumentListItemDto } from '../types';
 
 /** الاسم الثلاثي من مكوناته، متجاهلًا أي مكوّن فارغ. */
 export function tripleName(name?: string | null, father?: string | null, family?: string | null): string {
@@ -6,7 +6,7 @@ export function tripleName(name?: string | null, father?: string | null, family?
 }
 
 /** رقم الملف بضم نوعه إن وُجد. */
-export function fileNumberLabel(number: string | undefined, type: string | undefined): string {
+export function fileNumberLabel(number: string | null | undefined, type: string | null | undefined): string {
   const num = number ?? '';
   return type ? `${num} ${type}`.trim() : num;
 }
@@ -15,7 +15,7 @@ export function fileNumberLabel(number: string | undefined, type: string | undef
  * اسم أول منفذٍ عليه في وضع «منفذ عليه»: الشخص الطبيعي الأول (اسم ثلاثي)،
  * ثم أول جهة عامة، ثم طالب التنفيذ — ويُستخدم لعرض عمود «المنفذ عليه».
  */
-export function executedFullName(d: DocumentResponse): string {
+export function executedFullName(d: DocumentListItemDto): string {
   const person = d.executedNaturalPersons?.[0];
   const personName = person ? tripleName(person.name, person.father, person.family) : '';
   const entity = d.executedPublicEntities?.[0]?.entityName ?? '';
@@ -24,7 +24,7 @@ export function executedFullName(d: DocumentResponse): string {
 }
 
 /** هل الملف من عائلة وضع «منفذ عليه» (executed أو deposit)؟ */
-export function isExecutedLike(side?: string): boolean {
+export function isExecutedLike(side?: string | null): boolean {
   return side === 'executed' || side === 'deposit';
 }
 
@@ -32,13 +32,13 @@ export function isExecutedLike(side?: string): boolean {
  * اسم منفذٍ عليه المعروض: في عائلة وضع «منفذ عليه» اسم أول منفذٍ عليه (شخصًا أو جهة)،
  * وإلا اسم المقترض الثلاثي.
  */
-export function fullName(d: DocumentResponse) {
+export function fullName(d: DocumentListItemDto) {
   if (isExecutedLike(d.generalEntitySide)) return executedFullName(d);
   return tripleName(d.borrowerName, d.borrowerFather, d.borrowerFamily);
 }
 
 /** اسم طالب التنفيذ/العرض: في عائلة وضع «منفذ عليه» يُؤخذ من أول «طالب تنفيذ/عرض» (اسم ثلاثي)، وإلا من الحقل المباشر. */
-export function applicantName(d: DocumentResponse): string {
+export function applicantName(d: DocumentListItemDto): string {
   if (isExecutedLike(d.generalEntitySide)) {
     const a = d.executionApplicants?.[0];
     const name = a ? tripleName(a.name, a.father, a.family) : '';
@@ -51,7 +51,7 @@ export function applicantName(d: DocumentResponse): string {
  * فرع الجهة العامة المعروض في قائمة الملفات التنفيذية: في عائلة وضع «منفذ عليه» فرع أول
  * جهة عامة منفذ عليها (public)، وإلا فرع أول جهة عامة طالبة للتنفيذ. يُرجع فارغًا إن غاب.
  */
-export function publicEntityBranch(d: DocumentResponse): string {
+export function publicEntityBranch(d: DocumentListItemDto): string {
   if (isExecutedLike(d.generalEntitySide)) {
     return d.executedPublicEntities?.find((e) => e.nature === 'public')?.entityBranch ?? '';
   }
@@ -59,13 +59,13 @@ export function publicEntityBranch(d: DocumentResponse): string {
 }
 
 /** رقم الملف المعروض: المسودة بلا رقم، والنوع يُضمّن إلى الرقم عند وجوده. */
-export function displayFileNumber(d: DocumentResponse) {
+export function displayFileNumber(d: DocumentListItemDto) {
   if (d.isDraft) return '';
   return fileNumberLabel(d.displayFileNumber ?? d.fileNumber, d.fileType);
 }
 
 /** اسم تعريف الملف: الطرف المقابل للجهة العامة أولًا، ثم الطرف الآخر — فلا يضيع أي اسم متاح. */
-export function identityName(d: DocumentResponse): string {
+export function identityName(d: DocumentListItemDto): string {
   if (isExecutedLike(d.generalEntitySide)) return applicantName(d) || fullName(d);
   return fullName(d) || applicantName(d);
 }

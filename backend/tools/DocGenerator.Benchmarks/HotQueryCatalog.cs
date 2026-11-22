@@ -65,6 +65,34 @@ public static class HotQueryCatalog
             }),
 
         new HotQuery(
+            "documents-list-page1-projected",
+            "قائمة المستندات بإسقاط صف القائمة (P3-04b) — بلا شجرة تحميل كاملة",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchListAsync(
+                    query: null, status: null, applicant: null, court: null, lawyer: null,
+                    branch: null, administrativeBranch: null, executedEntity: null,
+                    publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-list-text-projected",
+            "قائمة المستندات بحثًا نصيًا بإسقاط صف القائمة (P3-04b)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchListAsync(
+                    query: manifest.TextSearchTerm, status: null, applicant: null, court: null,
+                    lawyer: null, branch: null, administrativeBranch: null, executedEntity: null,
+                    publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
             "portal-list-page1",
             "بحث بوابة الجهة العامة (صفحة 1) مع مسند الرؤية الموحد",
             async (db, ct) =>

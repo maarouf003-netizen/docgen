@@ -684,16 +684,20 @@
 
 #### `P3-04` — Read models وإسقاطات
 
-- **الحالة (2026-11-22):** **جزئيًا — قائمة البوابة مُسقَطة، وقوائم المحامين متبقية.**
+- **الحالة (2026-11-22):** **جزئيًا — قائمة البوابة والقائمة الرئيسية مُسقَطتان، وبقية قوائم المحامين متبقية.**
   - `PortalRepository.SearchScopedAsync` صار يُسقط `PortalListRow` (بلا `Include` كيان
     كامل)، مع ثلاث قراءات دفعية مفهرسة لمعرّفات الصفحة (أرقام أساس/أطراف).
-  - **قياس A/B على `50k` ونفس البصمة/البيئة:** `portal-list-page1` `325.7→125.9ms`
-    (−61.3%)، `portal-list-text` `733.3→303.9ms` (−58.5%)، والاستعلامات غير الممسوسة
-    مستقرة ±8% (معظمها ±3%). الخطط 6→5.
-  - **لا تغيير عقد** (`PortalFileListItemDto` كما هو) ولا `frontend`/`OpenAPI`.
-  - **متبقٍ:** `DocumentListItemDto` لقوائم المحامين (تغيير عقد + `contract-audit`)،
+  - `P3-04b`: مسار `GET /documents/list` + `DocumentListItemDto` للقائمة الرئيسية،
+    بإسقاط صف وبلا `WithStandardIncludes`، مع إعادة استخدام `FromEntity` على كيان
+    مُجمَّع. **A/B في نفس التشغيل:** `documents-list-page1` 145.9→81.6ms (−44.1%)،
+    `documents-list-text` 1408.1→329.4ms (−76.6%)، الخطط 18→9.
+  - **قياس بوابة `50k`:** `portal-list-page1` `325.7→125.9ms` (−61.3%)،
+    `portal-list-text` `733.3→303.9ms` (−58.5%).
+  - **لا تغيير عقد قائم** (المسار القديم باقٍ؛ الجديد إضافي) ولا هجرة.
+  - **متبقٍ:** بقية قوائم المحامين الخمس (`P3-04c` بنفس النمط)،
     و`DocumentDetailDto`/`PortalFileDetailDto`، وإسقاط التصدير.
-  - التفاصيل: `docs/audit/94-p3-04-portal-read-model-20261122.md`.
+  - التفاصيل: `docs/audit/94-p3-04-portal-read-model-20261122.md` و
+    `docs/audit/102-p3-04b-document-list-dto-20261122.md`.
 - **العمل:** `DocumentListItemDto`، `DocumentDetailDto`، `PortalFileDetailDto`؛ إزالة `WithStandardIncludes` من القوائم؛ `AsNoTracking` و`Select` فقط.
 - **`DoD`:** 20 `Include` تصبح ≤5، وزمن القائمة يتحسن — **متحقّق لقائمة البوابة** (0 `Include`)،
   وقوائم المحامين تبقى لبقية البند.
