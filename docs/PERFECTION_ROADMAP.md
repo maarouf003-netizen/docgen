@@ -817,10 +817,11 @@
   خمسة ملفات بأقصى 465 سطرًا؛ `CorrespondenceService`: 1049 → ستة ملفات بأقصى
   302 سطرًا؛ `DocumentContextBuilder`: 912 → خمسة ملفات بأقصى 356 سطرًا؛
   `DocumentNumberRegistry`: 742 → أربعة ملفات بأقصى 325 سطرًا؛
-  `PublicEntityService.Branches`: 738 → ملفان بأقصى 375 سطرًا، بلا تغيير سلوكي.
+  `PublicEntityService.Branches`: 738 → ملفان بأقصى 375 سطرًا؛
+  `ReviewLetterService`: 726 → خمسة ملفات بأقصى 243 سطرًا، بلا تغيير سلوكي.
   **متبقٍ لبلوغ `DoD`:** ملفات >600 داخل `Application`
   (`PublicEntityService` 674 و`PublicEntityService.Registry` 629،
-  `ReviewLetterService` 726، `UserManagementService` 710، `PortalService` 665).
+  `UserManagementService` 710، `PortalService` 665).
   التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
   `docs/audit/111-p4-02b-document-status-split-20261122.md` و
   `docs/audit/112-p4-02c-document-delegation-split-20261122.md` و
