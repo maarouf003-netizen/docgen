@@ -14,6 +14,7 @@
 | تراكم/توقف صندوق الصادر | [`outbox-stuck.md`](outbox-stuck.md) |
 | تدوير الأسرار | [`secret-rotation.md`](secret-rotation.md) |
 | اختبار الحمل وSLO قبل الإصدار | [`load-testing.md`](load-testing.md) |
+| بعد حادثة (تحليل بلا لوم) | [`postmortem-template.md`](postmortem-template.md) |
 
 **فحوص سريعة موحّدة:**
 
