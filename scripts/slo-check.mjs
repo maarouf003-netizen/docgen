@@ -15,6 +15,8 @@ const THRESHOLDS = {
   10000: {
     'documents-list-page1': 250,
     'documents-list-page100': 300,
+    'documents-list-page100-projected': 300,
+    'documents-list-page100-cursor': 150,
     'documents-list-text': 600,
     'portal-list-page1': 250,
     'portal-list-text': 400,
@@ -27,6 +29,8 @@ const THRESHOLDS = {
   50000: {
     'documents-list-page1': 500,
     'documents-list-page100': 600,
+    'documents-list-page100-projected': 600,
+    'documents-list-page100-cursor': 300,
     'documents-list-text': 1600,
     'portal-list-page1': 500,
     'portal-list-text': 1000,

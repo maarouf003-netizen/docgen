@@ -51,6 +51,36 @@ public static class HotQueryCatalog
             }),
 
         new HotQuery(
+            "documents-list-page100-projected",
+            "قائمة المستندات صفحة 100 بإسقاط صف القائمة (إزاحة عميقة)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items, _) = await repository.SearchListAsync(
+                    query: null, status: null, applicant: null, court: null, lawyer: null,
+                    branch: null, administrativeBranch: null, executedEntity: null,
+                    publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 100, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-list-page100-cursor",
+            "قائمة المستندات صفحة 100 بمؤشر keyset (P3-05/P3-07) — بلا إزاحة",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items, _) = await repository.SearchListAsync(
+                    query: null, status: null, applicant: null, court: null, lawyer: null,
+                    branch: null, administrativeBranch: null, executedEntity: null,
+                    publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct,
+                    cursor: new KeysetCursor(
+                        DocumentListCursorKinds.CreatedAt, manifest.CursorCreatedAt, manifest.CursorId));
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
             "documents-list-text",
             "قائمة المستندات بحثًا نصيًا باسم طرف (كتلة DocumentPartySearch)",
             async (db, ct) =>

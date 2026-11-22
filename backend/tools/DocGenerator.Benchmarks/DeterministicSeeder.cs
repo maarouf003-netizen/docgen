@@ -102,7 +102,7 @@ public static class DeterministicSeeder
             .ToList();
 
         progress?.Report($"البذر: {scale:N0} مستندًا…");
-        var portalDocumentId = await SeedDocumentsAsync(
+        var documentSeed = await SeedDocumentsAsync(
             db, scale, circuits, lawyers, entries, random, progress, ct);
 
         progress?.Report("البذر: تنبيهات الرؤساء…");
@@ -112,11 +112,13 @@ public static class DeterministicSeeder
         return new SeedManifest(
             BranchIds: branches.Select(b => b.Id).ToList(),
             PortalEntryIds: portalEntryIds,
-            PortalDocumentId: portalDocumentId,
+            PortalDocumentId: documentSeed.PortalDocumentId,
             HeadAlertUserId: head.Id,
             HeadAlertBranchId: head.BranchId!.Value,
             TextSearchTerm: TextSearchTerm,
-            DocumentCount: scale);
+            DocumentCount: scale,
+            CursorCreatedAt: documentSeed.CursorCreatedAt,
+            CursorId: documentSeed.CursorId);
     }
 
     private static List<Branch> CreateBranches()
@@ -301,7 +303,7 @@ public static class DeterministicSeeder
         return entries;
     }
 
-    private static async Task<int> SeedDocumentsAsync(
+    private static async Task<DocumentSeedResult> SeedDocumentsAsync(
         DocGeneratorPostgresDbContext db,
         int scale,
         List<ExecutionCircuit> circuits,
@@ -312,7 +314,11 @@ public static class DeterministicSeeder
         CancellationToken ct)
     {
         const int batchSize = 500;
+        // آخر صف في الصفحة 99 (20 صفًا/صفحة) — مؤشر بداية الصفحة 100 للقياس keyset.
+        var cursorIndex = Math.Max(0, scale - 1980);
         var portalDocumentId = 0;
+        var cursorCreatedAt = default(DateTime);
+        var cursorId = 0;
 
         for (var start = 0; start < scale; start += batchSize)
         {
@@ -335,11 +341,23 @@ public static class DeterministicSeeder
                 portalDocumentId = documents[0].Id;
             }
 
+            if (cursorId == 0 && start <= cursorIndex && cursorIndex < end)
+            {
+                var cursorDocument = documents[cursorIndex - start];
+                cursorCreatedAt = cursorDocument.CreatedAt;
+                cursorId = cursorDocument.Id;
+            }
+
             progress?.Report($"البذر: {end:N0}/{scale:N0}");
         }
 
-        return portalDocumentId;
+        return new DocumentSeedResult(portalDocumentId, cursorCreatedAt, cursorId);
     }
+
+    private sealed record DocumentSeedResult(
+        int PortalDocumentId,
+        DateTime CursorCreatedAt,
+        int CursorId);
 
     private static Document BuildDocument(
         int index,
@@ -719,4 +737,6 @@ public sealed record SeedManifest(
     int HeadAlertUserId,
     int HeadAlertBranchId,
     string TextSearchTerm,
-    int DocumentCount);
+    int DocumentCount,
+    DateTime CursorCreatedAt,
+    int CursorId);
