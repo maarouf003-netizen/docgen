@@ -808,19 +808,22 @@
 
 #### `P4-02` — تفكيك الخدمات الضخمة
 
-- **الحالة (2026-11-22):** **نطاق الخمس المعلن مكتمل — `DoD` العام ما زال مفتوحًا.**
+- **الحالة (2026-11-22):** **النطاق المعلن مكتمل + توسيع النطاق جارٍ — `DoD` العام ما زال مفتوحًا.**
   `DocumentRepository`: 1564 → خمسة ملفات بأقصى 534 سطرًا؛ `DocumentStatusService`:
   1312 → خمسة ملفات بأقصى 382 سطرًا؛ `DocumentDelegationService`: 3167 (1904 + 1263)
   → اثنا عشر ملفًا بأقصى 510 أسطر؛ `DocumentAppealService`: 1600 → أحد عشر ملفًا
-  بأقصى 334 سطرًا؛ `ExecutionCircuitService`: 1296 → سبعة ملفات بأقصى 317 سطرًا،
-  بلا تغيير سلوكي. **متبقٍ لبلوغ `DoD`:** ملفات >600 خارج النطاق المعلن
-  (`HeadAlertService` 1137، `DocumentService` 1110، `CorrespondenceService` 1049،
-  وغيرها) — تحتاج قرار توسيع نطاق.
+  بأقصى 334 سطرًا؛ `ExecutionCircuitService`: 1296 → سبعة ملفات بأقصى 317 سطرًا؛
+  `HeadAlertService`: 1137 → خمسة ملفات بأقصى 413 سطرًا، بلا تغيير سلوكي.
+  **متبقٍ لبلوغ `DoD`:** ملفات >600 داخل `Application`
+  (`DocumentService` 1110، `CorrespondenceService` 1049، `DocumentContextBuilder` 912،
+  `DocumentNumberRegistry` 742، `PublicEntityService.*`، `ReviewLetterService` 726،
+  `UserManagementService` 710، `PortalService` 665).
   التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
   `docs/audit/111-p4-02b-document-status-split-20261122.md` و
   `docs/audit/112-p4-02c-document-delegation-split-20261122.md` و
   `docs/audit/113-p4-02d-document-appeal-split-20261122.md` و
-  `docs/audit/114-p4-02e-execution-circuit-split-20261122.md`.
+  `docs/audit/114-p4-02e-execution-circuit-split-20261122.md` و
+  `docs/audit/115-p4-02f-head-alert-split-20261122.md`.
 - **العمل:** `DocumentDelegationService` (1904)، `DocumentAppealService` (1598)، `DocumentStatusService` (1312)، `ExecutionCircuitService` (1264)، `DocumentRepository` (1232) إلى وحدات use-case ≤500 سطر.
 - **DoD:** لا ملف >600 سطر في Application/Infrastructure (باستثناء الهجرات/الـsnapshots).
 - **الاعتمادية:** `P1-03`/`P1-06` (اختبارات حدود) و`P4-01` (pipeline) لتفادي تفكيك بلا شبكة أمان.
