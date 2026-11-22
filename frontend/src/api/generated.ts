@@ -3534,6 +3534,52 @@ export interface components {
             /** Format: int32 */
             sequence: number;
         };
+        DocumentAssignmentDto: {
+            /** Format: date-time */
+            assignedAt?: string | null;
+            assignedByName?: string | null;
+            /** Format: int32 */
+            id: number;
+            kind: string;
+            lawyerName?: string | null;
+        };
+        DocumentInterventionDto: {
+            acceptanceDate?: string | null;
+            address?: string | null;
+            addressType?: string | null;
+            birth?: string | null;
+            displayName: string;
+            entityBranch?: string | null;
+            entityName?: string | null;
+            family?: string | null;
+            father?: string | null;
+            governorate?: string | null;
+            heirs: components["schemas"]["HeirDto"][];
+            /** Format: int32 */
+            id: number;
+            mother?: string | null;
+            name?: string | null;
+            nationalId?: string | null;
+            nature: string;
+            natureLabel: string;
+            notes?: string | null;
+            receiptDate?: string | null;
+            receiptNumber?: string | null;
+            register?: string | null;
+            registrationNumber?: string | null;
+            /** Format: int32 */
+            registryId?: number | null;
+            representativeAddress?: string | null;
+            representativeAddressType?: string | null;
+            representativeCapacity?: string | null;
+            representativeFamily?: string | null;
+            representativeFather?: string | null;
+            representativeName?: string | null;
+            representedBy?: string | null;
+            subject?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
         DocumentInterventionUpsertRequest: {
             acceptanceDate?: string | null;
             address?: string | null;
@@ -3566,6 +3612,236 @@ export interface components {
             subject?: string | null;
             /** Format: int64 */
             version?: number | null;
+        };
+        DocumentOccurrenceDto: {
+            createdByName?: string | null;
+            details?: {
+                [key: string]: string;
+            } | null;
+            detailsText?: string | null;
+            /** Format: date-time */
+            eventDate?: string | null;
+            fileNumber?: string | null;
+            fileType?: string | null;
+            fromCircuitName?: string | null;
+            /** Format: int32 */
+            id: number;
+            /** Format: int32 */
+            interventionId?: number | null;
+            occurrenceType: string;
+            occurrenceTypeLabel: string;
+            /** Format: date-time */
+            receiptDate?: string | null;
+            receiptNumber?: string | null;
+            source?: string | null;
+            toCircuitName?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+        };
+        DocumentResponse: {
+            administrativeBranchName?: string | null;
+            /** Format: double */
+            amount2Numeric: number;
+            amount2Words?: string | null;
+            /** Format: double */
+            amount3Numeric: number;
+            amount3Words?: string | null;
+            /** Format: double */
+            amountNumeric: number;
+            amountWords?: string | null;
+            annexDate?: string | null;
+            annexNumber?: string | null;
+            annexType?: string | null;
+            annexes: components["schemas"]["DocumentAnnexDto"][];
+            applicant?: string | null;
+            applicantPublicEntities: components["schemas"]["ApplicantPublicEntityDto"][];
+            /** Format: int32 */
+            applicantRegistryId?: number | null;
+            assets: components["schemas"]["AssetDto"][];
+            assignments: components["schemas"]["DocumentAssignmentDto"][];
+            baraetDate?: string | null;
+            baraetNumber?: string | null;
+            baraetRegDate?: string | null;
+            baraetRegNumber?: string | null;
+            borrowerAddress?: string | null;
+            borrowerAddressType?: string | null;
+            borrowerBirth?: string | null;
+            borrowerFamily?: string | null;
+            borrowerFather?: string | null;
+            borrowerHeirs: components["schemas"]["HeirDto"][];
+            borrowerMother?: string | null;
+            borrowerName?: string | null;
+            borrowerNationalId?: string | null;
+            borrowerNature: string;
+            borrowerRegister?: string | null;
+            borrowerRegistrationNumber?: string | null;
+            borrowerRepresentativeAddress?: string | null;
+            borrowerRepresentativeAddressType?: string | null;
+            borrowerRepresentativeCapacity?: string | null;
+            borrowerRepresentativeFamily?: string | null;
+            borrowerRepresentativeFather?: string | null;
+            borrowerRepresentativeName?: string | null;
+            borrowerRepresentedBy?: string | null;
+            /** Format: int32 */
+            branchId?: number | null;
+            branchName?: string | null;
+            /** Format: double */
+            collectedAmount?: number | null;
+            /** Format: double */
+            collectedAmount2?: number | null;
+            /** Format: double */
+            collectedAmount3?: number | null;
+            collectedCurrency?: string | null;
+            collectedCurrency2?: string | null;
+            collectedCurrency3?: string | null;
+            contractDate?: string | null;
+            contractNumber?: string | null;
+            contractType?: string | null;
+            contractTypeSelector?: string | null;
+            court?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            createdById: number;
+            createdByName?: string | null;
+            currency?: string | null;
+            currency2?: string | null;
+            currency3?: string | null;
+            delegationReturnDate?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            displayFileNumber?: string | null;
+            displayFileYear?: string | null;
+            displayStatus: string;
+            documentType?: string | null;
+            execStatus?: string | null;
+            execSubStatus?: string | null;
+            /** Format: date-time */
+            executedDepositDate?: string | null;
+            executedDescription?: string | null;
+            /** Format: date-time */
+            executedExecutionDate?: string | null;
+            executedNaturalPersons: components["schemas"]["ExecutedNaturalPersonDto"][];
+            /** Format: double */
+            executedPaidAmount?: number | null;
+            /** Format: double */
+            executedPaidAmount2?: number | null;
+            /** Format: double */
+            executedPaidAmount3?: number | null;
+            executedPaidCurrency?: string | null;
+            executedPaidCurrency2?: string | null;
+            executedPaidCurrency3?: string | null;
+            executedPublicEntities: components["schemas"]["ExecutedPublicEntityDto"][];
+            /** Format: double */
+            executedRequiredAmount?: number | null;
+            /** Format: double */
+            executedRequiredAmount2?: number | null;
+            /** Format: double */
+            executedRequiredAmount3?: number | null;
+            executedRequiredCurrency?: string | null;
+            executedRequiredCurrency2?: string | null;
+            executedRequiredCurrency3?: string | null;
+            executedStatus?: string | null;
+            executionActions: components["schemas"]["ExecutionActionDto"][];
+            executionApplicants: components["schemas"]["ExecutionApplicantDto"][];
+            /** Format: int32 */
+            executionCircuitId?: number | null;
+            fileArrivalDate?: string | null;
+            fileArrivalNumber?: string | null;
+            fileIncoming?: string | null;
+            fileIncomingDate?: string | null;
+            fileNumber?: string | null;
+            /** Format: date-time */
+            fileReceiptDate?: string | null;
+            fileReceiptNumber?: string | null;
+            fileRegistrationDate?: string | null;
+            fileType?: string | null;
+            fileYear?: string | null;
+            forcedExecutionDate?: string | null;
+            forcibleTransferDate?: string | null;
+            forcibleTransferNoticeNumber?: string | null;
+            generalEntitySide?: string | null;
+            generalEntitySideLabel?: string | null;
+            guarantors: components["schemas"]["GuarantorDto"][];
+            hasAppeals: boolean;
+            /** Format: int32 */
+            id: number;
+            immediateActions?: string | null;
+            /** Format: double */
+            inclusionAmount2Numeric: number;
+            inclusionAmount2Words?: string | null;
+            /** Format: double */
+            inclusionAmount3Numeric: number;
+            inclusionAmount3Words?: string | null;
+            /** Format: double */
+            inclusionAmountNumeric: number;
+            inclusionAmountWords?: string | null;
+            inclusionCurrency?: string | null;
+            inclusionCurrency2?: string | null;
+            inclusionCurrency3?: string | null;
+            inclusionNotes?: string | null;
+            inclusionText?: string | null;
+            interventions: components["schemas"]["DocumentInterventionDto"][];
+            isDraft: boolean;
+            /** Format: date-time */
+            lastActivityDate?: string | null;
+            lastActivitySource?: string | null;
+            lawyer?: string | null;
+            /** Format: int32 */
+            matchedAppealId?: number | null;
+            needsRegistration: boolean;
+            needsRotation: boolean;
+            noFundsDemandDate?: string | null;
+            noFundsDemandNumber?: string | null;
+            notes?: string | null;
+            occurrences: components["schemas"]["DocumentOccurrenceDto"][];
+            /** Format: int32 */
+            printCount: number;
+            /** Format: date-time */
+            referredAt?: string | null;
+            referredFromLawyer?: string | null;
+            /** Format: date-time */
+            renewalDate?: string | null;
+            renewalFileNumber?: string | null;
+            /** Format: date-time */
+            renewalFileReceiptDate?: string | null;
+            renewalFileReceiptNumber?: string | null;
+            renewalFileType?: string | null;
+            sayerDate?: string | null;
+            sayerNumber?: string | null;
+            sayerRegDate?: string | null;
+            sayerRegNumber?: string | null;
+            /** Format: int32 */
+            sectionId?: number | null;
+            sectionName?: string | null;
+            seizureDate?: string | null;
+            soldAssetIds: number[];
+            /** Format: int32 */
+            sourceDelegationId?: number | null;
+            startReferralDate?: string | null;
+            startReferralNumber?: string | null;
+            /** Format: date-time */
+            struckOffDate?: string | null;
+            tarithDate?: string | null;
+            tarithNumber?: string | null;
+            tarithRegDate?: string | null;
+            tarithRegNumber?: string | null;
+            underFilingNumber?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        DocumentResponsePagedResult: {
+            items: components["schemas"]["DocumentResponse"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            perPage: number;
+            /** Format: int32 */
+            totalCount: number;
+            /** Format: int32 */
+            readonly totalPages: number;
         };
         DocumentUpsertRequest: {
             /** Format: double */
@@ -3756,6 +4032,20 @@ export interface components {
             /** Format: int64 */
             version?: number | null;
             warningToken?: string | null;
+        };
+        ExecutionActionDto: {
+            actionDate?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            createdByName?: string | null;
+            /** Format: int32 */
+            id: number;
+            reminderColor?: string | null;
+            reminderDuration?: string | null;
+            text: string;
+            type: string;
+            /** Format: int64 */
+            version: number;
         };
         ExecutionApplicantDto: {
             address?: string | null;
@@ -6011,7 +6301,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };
@@ -6081,7 +6375,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };
@@ -6123,7 +6421,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };
@@ -6240,7 +6542,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };
@@ -6306,7 +6612,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };
@@ -6346,7 +6656,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/json": components["schemas"]["DocumentResponsePagedResult"];
+                    "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
             };
         };
     };

@@ -1153,6 +1153,178 @@
         ],
         "type": "object"
       },
+      "DocumentAssignmentDto": {
+        "additionalProperties": false,
+        "properties": {
+          "assignedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "assignedByName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lawyerName": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "DocumentInterventionDto": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "addressType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "birth": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "entityBranch": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entityName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "family": {
+            "nullable": true,
+            "type": "string"
+          },
+          "father": {
+            "nullable": true,
+            "type": "string"
+          },
+          "governorate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "heirs": {
+            "items": {
+              "$ref": "#/components/schemas/HeirDto"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "mother": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "nationalId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "nature": {
+            "type": "string"
+          },
+          "natureLabel": {
+            "type": "string"
+          },
+          "notes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "receiptDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "receiptNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "register": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registrationNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registryId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "representativeAddress": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representativeAddressType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representativeCapacity": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representativeFamily": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representativeFather": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representativeName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "representedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "subject": {
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "displayName",
+          "heirs",
+          "id",
+          "nature",
+          "natureLabel",
+          "version"
+        ],
+        "type": "object"
+      },
       "DocumentInterventionUpsertRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1279,6 +1451,830 @@
         },
         "required": [
           "heirs"
+        ],
+        "type": "object"
+      },
+      "DocumentOccurrenceDto": {
+        "additionalProperties": false,
+        "properties": {
+          "createdByName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "object"
+          },
+          "detailsText": {
+            "nullable": true,
+            "type": "string"
+          },
+          "eventDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "fileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fromCircuitName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "interventionId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "occurrenceType": {
+            "type": "string"
+          },
+          "occurrenceTypeLabel": {
+            "type": "string"
+          },
+          "receiptDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "receiptNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "source": {
+            "nullable": true,
+            "type": "string"
+          },
+          "toCircuitName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "year": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "occurrenceType",
+          "occurrenceTypeLabel"
+        ],
+        "type": "object"
+      },
+      "DocumentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "administrativeBranchName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "amount2Numeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "amount2Words": {
+            "nullable": true,
+            "type": "string"
+          },
+          "amount3Numeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "amount3Words": {
+            "nullable": true,
+            "type": "string"
+          },
+          "amountNumeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "amountWords": {
+            "nullable": true,
+            "type": "string"
+          },
+          "annexDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "annexNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "annexType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "annexes": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentAnnexDto"
+            },
+            "type": "array"
+          },
+          "applicant": {
+            "nullable": true,
+            "type": "string"
+          },
+          "applicantPublicEntities": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicantPublicEntityDto"
+            },
+            "type": "array"
+          },
+          "applicantRegistryId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/AssetDto"
+            },
+            "type": "array"
+          },
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentAssignmentDto"
+            },
+            "type": "array"
+          },
+          "baraetDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "baraetNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "baraetRegDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "baraetRegNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerAddress": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerAddressType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerBirth": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerFamily": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerFather": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerHeirs": {
+            "items": {
+              "$ref": "#/components/schemas/HeirDto"
+            },
+            "type": "array"
+          },
+          "borrowerMother": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerNationalId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerNature": {
+            "type": "string"
+          },
+          "borrowerRegister": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRegistrationNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeAddress": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeAddressType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeCapacity": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeFamily": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeFather": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentativeName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "borrowerRepresentedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "branchId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "branchName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "collectedAmount": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "collectedAmount2": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "collectedAmount3": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "collectedCurrency": {
+            "nullable": true,
+            "type": "string"
+          },
+          "collectedCurrency2": {
+            "nullable": true,
+            "type": "string"
+          },
+          "collectedCurrency3": {
+            "nullable": true,
+            "type": "string"
+          },
+          "contractDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "contractNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "contractType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "contractTypeSelector": {
+            "nullable": true,
+            "type": "string"
+          },
+          "court": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdById": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "createdByName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "currency": {
+            "nullable": true,
+            "type": "string"
+          },
+          "currency2": {
+            "nullable": true,
+            "type": "string"
+          },
+          "currency3": {
+            "nullable": true,
+            "type": "string"
+          },
+          "delegationReturnDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "deletedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "displayFileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayFileYear": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayStatus": {
+            "type": "string"
+          },
+          "documentType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execSubStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedDepositDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "executedDescription": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedExecutionDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "executedNaturalPersons": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutedNaturalPersonDto"
+            },
+            "type": "array"
+          },
+          "executedPaidAmount": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedPaidAmount2": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedPaidAmount3": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedPaidCurrency": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedPaidCurrency2": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedPaidCurrency3": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedPublicEntities": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutedPublicEntityDto"
+            },
+            "type": "array"
+          },
+          "executedRequiredAmount": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedRequiredAmount2": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedRequiredAmount3": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "executedRequiredCurrency": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedRequiredCurrency2": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedRequiredCurrency3": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executionActions": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionActionDto"
+            },
+            "type": "array"
+          },
+          "executionApplicants": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionApplicantDto"
+            },
+            "type": "array"
+          },
+          "executionCircuitId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "fileArrivalDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileArrivalNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileIncoming": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileIncomingDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileReceiptDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "fileReceiptNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileRegistrationDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileYear": {
+            "nullable": true,
+            "type": "string"
+          },
+          "forcedExecutionDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "forcibleTransferDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "forcibleTransferNoticeNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "generalEntitySide": {
+            "nullable": true,
+            "type": "string"
+          },
+          "generalEntitySideLabel": {
+            "nullable": true,
+            "type": "string"
+          },
+          "guarantors": {
+            "items": {
+              "$ref": "#/components/schemas/GuarantorDto"
+            },
+            "type": "array"
+          },
+          "hasAppeals": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "immediateActions": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionAmount2Numeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "inclusionAmount2Words": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionAmount3Numeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "inclusionAmount3Words": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionAmountNumeric": {
+            "format": "double",
+            "type": "number"
+          },
+          "inclusionAmountWords": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionCurrency": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionCurrency2": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionCurrency3": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionNotes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inclusionText": {
+            "nullable": true,
+            "type": "string"
+          },
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentInterventionDto"
+            },
+            "type": "array"
+          },
+          "isDraft": {
+            "type": "boolean"
+          },
+          "lastActivityDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastActivitySource": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lawyer": {
+            "nullable": true,
+            "type": "string"
+          },
+          "matchedAppealId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "needsRegistration": {
+            "type": "boolean"
+          },
+          "needsRotation": {
+            "type": "boolean"
+          },
+          "noFundsDemandDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "noFundsDemandNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "notes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentOccurrenceDto"
+            },
+            "type": "array"
+          },
+          "printCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "referredAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "referredFromLawyer": {
+            "nullable": true,
+            "type": "string"
+          },
+          "renewalDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "renewalFileNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "renewalFileReceiptDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "renewalFileReceiptNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "renewalFileType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sayerDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sayerNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sayerRegDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sayerRegNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sectionId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "sectionName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "seizureDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "soldAssetIds": {
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "sourceDelegationId": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "startReferralDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "startReferralNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "struckOffDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tarithDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tarithNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tarithRegDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tarithRegNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "underFilingNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount2Numeric",
+          "amount3Numeric",
+          "amountNumeric",
+          "annexes",
+          "applicantPublicEntities",
+          "assets",
+          "assignments",
+          "borrowerHeirs",
+          "borrowerNature",
+          "createdAt",
+          "createdById",
+          "displayStatus",
+          "executedNaturalPersons",
+          "executedPublicEntities",
+          "executionActions",
+          "executionApplicants",
+          "guarantors",
+          "hasAppeals",
+          "id",
+          "inclusionAmount2Numeric",
+          "inclusionAmount3Numeric",
+          "inclusionAmountNumeric",
+          "interventions",
+          "isDraft",
+          "needsRegistration",
+          "needsRotation",
+          "occurrences",
+          "printCount",
+          "soldAssetIds",
+          "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "DocumentResponsePagedResult": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentResponse"
+            },
+            "type": "array"
+          },
+          "page": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "perPage": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "totalPages": {
+            "format": "int32",
+            "readOnly": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "perPage",
+          "totalCount",
+          "totalPages"
         ],
         "type": "object"
       },
@@ -1991,6 +2987,53 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "ExecutionActionDto": {
+        "additionalProperties": false,
+        "properties": {
+          "actionDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdByName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reminderColor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reminderDuration": {
+            "nullable": true,
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "text",
+          "type",
+          "version"
         ],
         "type": "object"
       },
@@ -6884,6 +7927,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7001,6 +8061,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7075,6 +8152,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7336,6 +8430,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7447,6 +8558,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -7510,6 +8638,23 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
             "description": "OK"
           }
         },

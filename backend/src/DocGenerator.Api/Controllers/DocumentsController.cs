@@ -96,7 +96,7 @@ public class DocumentsController : ControllerBase
         return doc;
     }
 
-    private IActionResult OkSanitized(PagedResult<DocumentResponse> result)
+    private ActionResult<PagedResult<DocumentResponse>> OkSanitized(PagedResult<DocumentResponse> result)
     {
         if (!CanViewPrintCounter)
             result.Items = result.Items.Select(Sanitize).ToList();
@@ -131,7 +131,7 @@ public class DocumentsController : ControllerBase
             : Forbid();
 
     [HttpGet]
-    public async Task<IActionResult> Search(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> Search(
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
         [FromQuery] string? lawyer, [FromQuery] string? branch,
@@ -211,7 +211,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("deleted")]
-    public async Task<IActionResult> GetDeleted(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> GetDeleted(
         [FromQuery] string? q,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
@@ -227,7 +227,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("struck-off")]
-    public async Task<IActionResult> GetStruckOff(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> GetStruckOff(
         [FromQuery] string? q,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
@@ -244,7 +244,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("executed")]
-    public async Task<IActionResult> GetExecuted(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> GetExecuted(
         [FromQuery] string? q,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
@@ -258,7 +258,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("referred-to-start")]
-    public async Task<IActionResult> GetReferredToStart(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> GetReferredToStart(
         [FromQuery] string? q,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
@@ -276,7 +276,7 @@ public class DocumentsController : ControllerBase
     /// المحامي فقط ولملفاته (النطاق من الرمز). القراءة محسوبة عند الطلب بلا كتابة.
     /// </summary>
     [HttpGet("strike-off-reminders")]
-    public async Task<IActionResult> GetStrikeOffReminders(
+    public async Task<ActionResult<PagedResult<DocumentResponse>>> GetStrikeOffReminders(
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
