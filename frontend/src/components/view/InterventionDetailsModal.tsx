@@ -140,7 +140,7 @@ export function InterventionDetailsModal({
 }
 
 /** نص طويل متعدد الأسطر (الموضوع/الملاحظات) — يحافظ على فواصل الأسطر ولا يتجاوز الحاوية. */
-function TextRow({ label, value }: { label: string; value?: string }) {
+function TextRow({ label, value }: { label: string; value?: string | null }) {
   const text = (value ?? '').trim();
   if (!text) return null;
   return (

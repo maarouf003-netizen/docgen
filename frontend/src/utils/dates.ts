@@ -8,14 +8,14 @@ function parseDate(value: string): Date | null {
  * تاريخ بالعربية (سوري): الفراغ يعيد emptyFallback، والقيمة غير الصالحة تُعيد النص كما هو
  * (كي لا تضيع بيانات أدخلها المستخدم يدويًا)، والصالح يُعرض كتاريخ محلي.
  */
-export function formatDate(value?: string, emptyFallback = ''): string {
+export function formatDate(value?: string | null, emptyFallback = ''): string {
   if (!value) return emptyFallback;
   const date = parseDate(value);
   return date ? date.toLocaleDateString('ar-SY') : value;
 }
 
 /** تاريخ ووقت بالعربية (سوري) بنفس قواعد formatDate. */
-export function formatDateTime(value?: string, emptyFallback = ''): string {
+export function formatDateTime(value?: string | null, emptyFallback = ''): string {
   if (!value) return emptyFallback;
   const date = parseDate(value);
   return date ? date.toLocaleString('ar-SY') : value;
@@ -26,7 +26,7 @@ export function formatDateTime(value?: string, emptyFallback = ''): string {
  * بالدقائق، وتحت اليوم بالساعات، وتحت الأسبوع بالأيام، وفوق ذلك التاريخ
  * الكامل عبر `formatDate` — والقيمة غير الصالحة تُعاد كما هي.
  */
-export function formatRelativeTime(value?: string, nowMs = Date.now()): string {
+export function formatRelativeTime(value?: string | null, nowMs = Date.now()): string {
   if (!value) return '';
   const date = parseDate(value);
   if (!date) return value;
