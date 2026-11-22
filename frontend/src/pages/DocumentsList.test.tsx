@@ -582,8 +582,8 @@ describe('DocumentsList', () => {
         items: [
           makeDocument({
             executionActions: [
-              { id: 2, type: 'action', text: 'الإجراء الأحدث', actionDate: '2/8/2026', createdByName: 'محامي', createdAt: '2026-08-02' },
-              { id: 1, type: 'action', text: 'إجراء أقدم', actionDate: '1/8/2026', createdByName: 'محامي', createdAt: '2026-08-01' },
+              { id: 2, type: 'action', text: 'الإجراء الأحدث', actionDate: '2/8/2026', createdByName: 'محامي', createdAt: '2026-08-02', version: 0 },
+              { id: 1, type: 'action', text: 'إجراء أقدم', actionDate: '1/8/2026', createdByName: 'محامي', createdAt: '2026-08-01', version: 0 },
             ],
           }),
         ],

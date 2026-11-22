@@ -23,18 +23,8 @@ export type HeirDto = components['schemas']['HeirDto'];
  */
 export type AssetDto = components['schemas']['AssetDto'];
 
-export interface ExecutionActionDto {
-  id: number;
-  type: string;
-  text: string;
-  actionDate?: string;
-  reminderDuration?: string;
-  reminderColor?: string;
-  createdByName?: string;
-  createdAt: string;
-  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل وإدارة التذكير. */
-  version?: number;
-}
+/** إجراء تنفيذي/ملاحظة — نوعه مولَّد من OpenAPI (P6-06). */
+export type ExecutionActionDto = components['schemas']['ExecutionActionDto'];
 
 /** صفة الملف الثابتة (تُثبَّت عند الإنشاء ولا تتغير أثناء التعديل). */
 export type GeneralEntitySide = 'applicant' | 'executed' | 'deposit';
@@ -73,51 +63,17 @@ export type InterventionNature = 'natural' | 'legal' | 'public';
 
 /**
  * متدخل في الملف (شخص طبيعي/اعتباري/جهة عامة) مع بيانات طلب التدخل.
- * قادم من الخادم في استجابة الملف — والفصل بين الصفات كما في عقود الأطراف القائمة.
+ * نوعه مولَّد من OpenAPI (P6-06) مع تضييق `nature` إلى الاتحاد المعروف وإبقاء
+ * `heirs`/`version` اختياريين للتوافق مع الحمولات القائمة.
  */
-export interface DocumentInterventionDto {
-  id: number;
+export type DocumentInterventionDto = Omit<
+  components['schemas']['DocumentInterventionDto'],
+  'nature' | 'heirs' | 'version'
+> & {
   nature: InterventionNature;
-  /** التسمية العربية للصفة (شخص طبيعي/شخص اعتباري/جهة عامة) — من الخادم. */
-  natureLabel: string;
-  /** اسم العرض الجاهز: الاسم الثلاثي أو اسم الكيان/الجهة وفرعها. */
-  displayName: string;
-  receiptNumber?: string;
-  /** تاريخ ورود طلب التدخل (yyyy-MM-dd). */
-  receiptDate?: string;
-  /** تاريخ قبول طلب التدخل (yyyy-MM-dd) — اختياري. */
-  acceptanceDate?: string;
-  subject?: string;
-  notes?: string;
-
-  name?: string;
-  father?: string;
-  family?: string;
-  mother?: string;
-  birth?: string;
-  register?: string;
-  nationalId?: string;
-  addressType?: string;
-  address?: string;
-
-  representativeName?: string;
-  representativeFather?: string;
-  representativeFamily?: string;
-  representativeCapacity?: string;
-  representativeAddressType?: string;
-  representativeAddress?: string;
-
-  entityName?: string;
-  entityBranch?: string;
-  registrationNumber?: string;
-  representedBy?: string;
-  governorate?: string;
-  /** معرّف قيد الجهة في السجل المرجعي (للجهة العامة). */
-  registryId?: number | null;
   heirs?: HeirDto[];
-  /** عدّاد التزامن المتفائل (P0-06) — يُرسَل في التعديل. */
   version?: number;
-}
+};
 
 /**
  * طلب إضافة/تعديل متدخل — حقوله مولَّدة من OpenAPI (P6-06)، مع تضييق `nature` إلى
@@ -132,13 +88,13 @@ export type DocumentInterventionUpsertRequest = Omit<
   heirs?: HeirDto[];
 };
 
-/** سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer). */
-export interface DocumentAssignmentDto {  id: number;
+/** سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer) — مولَّد مع تضييق `kind` (P6-06). */
+export type DocumentAssignmentDto = Omit<
+  components['schemas']['DocumentAssignmentDto'],
+  'kind'
+> & {
   kind: 'create' | 'transfer';
-  lawyerName?: string;
-  assignedByName?: string;
-  assignedAt?: string;
-}
+};
 
 /** الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). نوعه مولَّد من OpenAPI (P6-06). */
 export type ExecutedNaturalPersonDto = components['schemas']['ExecutedNaturalPersonDto'];
@@ -415,11 +371,8 @@ export interface RotationDocumentDto {
 /** مدخل رقم أساس في طلب الحفظ — نوعه مولَّد من OpenAPI (P6-06). */
 export type BaseNumberEntry = components['schemas']['BaseNumberEntry'];
 
-export interface SaveBaseNumbersRequest {
-  entries: BaseNumberEntry[];
-  /** رمز تحذير إعادة الاستخدام الصادر مع 409. */
-  warningToken?: string | null;
-}
+/** طلب حفظ أرقام الأساس — نوعه مولَّد من OpenAPI (P6-06). */
+export type SaveBaseNumbersRequest = components['schemas']['SaveBaseNumbersRequest'];
 
 /** سجل رقم أساس واحد: السنة والرقم والدائرة والمصدر وحالة الإلغاء والفعّالية. */
 export interface BaseNumberHistoryDto {
@@ -434,12 +387,13 @@ export interface BaseNumberHistoryDto {
   isEffective?: boolean;
 }
 
-/** طلب تصحيح رقم أساس سنة محددة (rowId اختياري = الصف الفعّال). */
-export interface CorrectBaseNumberRequest {
+/** طلب تصحيح رقم أساس سنة محددة (rowId اختياري = الصف الفعّال) — مولَّد مع تضييق `baseNumber` (P6-06). */
+export type CorrectBaseNumberRequest = Omit<
+  components['schemas']['CorrectBaseNumberRequest'],
+  'baseNumber'
+> & {
   baseNumber: string;
-  rowId?: number | null;
-  warningToken?: string | null;
-}
+};
 
 /**
  * نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»)
@@ -448,38 +402,17 @@ export interface CorrectBaseNumberRequest {
 export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start' | 'intervention' | 'circuit-referred' | 'circuit-reregistered' | 'circuit-renamed' | 'source-file-moved' | 'mirror-file-moved';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
-export interface DocumentOccurrenceDto {
-  id: number;
+/**
+ * وقعة واحدة من «وقوعات الملف» — نوعها مولَّد من OpenAPI (P6-06) مع تضييق
+ * `occurrenceType` إلى الاتحاد المعروف و`source` إلى `system|manual`.
+ */
+export type DocumentOccurrenceDto = Omit<
+  components['schemas']['DocumentOccurrenceDto'],
+  'occurrenceType' | 'source'
+> & {
   occurrenceType: OccurrenceType;
-  /** التسمية العربية للوقعة (شطب / تجديد / تريث / منفذ بالتسوية / منفذ جبريا / تراجع / تغيير جهة). */
-  occurrenceTypeLabel: string;
-  /** تاريخ الوقعة: تاريخ الشطب أو التجديد أو الإجراء. */
-  eventDate?: string;
-  /** الرقم المعني بالوقعة: الرقم القديم المُشطوب أو الرقم الجديد للتجديد. */
-  fileNumber?: string;
-  /** نوع الملف الجديد عند التجديد. */
-  fileType?: string;
-  /** سنة الوقعة: سنة الشطب أو سنة الإعادة للتجديد. */
-  year?: number;
-  /** رقم ورود اخطار التجديد عند التجديد. */
-  receiptNumber?: string;
-  /** تاريخ ورود اخطار التجديد عند التجديد. */
-  receiptDate?: string;
-  /** حقول إجراءات تغيير الحالة (مفاتيح الخدمة: tarith*، baraet*، sayer*، collectedAmount*، execSubStatus، soldAssetIds). */
-  details?: Record<string, string>;
-  /** السرد النصي الحر للوقعة الآلية (نوع «تغيير جهة»): نص الحدث مع مرجعه — يُعرض بدل القاموس. */
-  detailsText?: string | null;
-/** اسم من أدخل الوقعة. */
-  createdByName?: string;
-  /** مصدر الوقعة: "system" (سجّلها النظام آليًا — لا تُعدَّل/تُحذف من الواجهة) أو "manual" (إدخال يدوي). */
-  source?: 'system' | 'manual';
-  /** اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة). */
-  fromCircuitName?: string | null;
-  /** اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة). */
-  toCircuitName?: string | null;
-  /** معرّف المتدخل المرتبط بوقعة «طلب تدخل» — يُفتح منه نافذة تفاصيله. */
-  interventionId?: number | null;
-}
+  source?: 'system' | 'manual' | null;
+};
 
 /* ── سجل تعديلات الملف على مستوى الحقول ───────────────────────────────── */
 

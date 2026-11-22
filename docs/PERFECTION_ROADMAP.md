@@ -1014,10 +1014,15 @@
     (`components['schemas']['DocumentResponse']`)، لكن الإحلال نفسه مؤجّل: يحمل
     `displayFileNumber`/`needsRotation`/`hasAppeals` المشتقة وتواريخ `DateTime`
     في الاستجابة، فيحتاج قرارًا حول `undefined`/`null` في الواجهة.
+  - **الجزء العاشر (2026-11-22):** إحالة `ExecutionActionDto` و`DocumentAssignmentDto`
+    و`DocumentInterventionDto` و`DocumentOccurrenceDto` و`SaveBaseNumbersRequest`
+    و`CorrectBaseNumberRequest` إلى المولَّد مع تضييق الاتحادات؛ أُصلحت 5 أخطاء
+    `tsc` من الجذر (تواريخ `formatDate`/`formatDateTime` تقبل `null`، `TextRow`،
+    `version` في حمولة اختبار)؛ `vitest` 1808/1808. التفاصيل:
+    `docs/audit/98-p6-06-generated-response-types-20261122.md`.
   - **متبقٍ:** `DocumentResponse` (**مخططه صار متاحًا**، والإحلال يحتاج قرار nullability)،
-    و`DocumentInterventionDto` (مخططه صار متاحًا)، وأنواع بلا مخططات
-    (`DocumentFilterOptionsDto`, `RotationDocumentDto`, `BaseNumberHistoryDto`,
-    `CorrectBaseNumberRequest`) تبقى يدوية موثّقة. ومراجعة أي نوع يستخدم `undefined`
+    وأنواع بلا مخططات (`DocumentFilterOptionsDto`, `RotationDocumentDto`,
+    `BaseNumberHistoryDto`) تبقى يدوية موثّقة. ومراجعة أي نوع يستخدم `undefined`
     مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
 - **العمل:** استبدال `types/document.ts` (797 سطرًا) بأنواع مولّدة؛ `openapi-typescript`؛ CI يفشل عند الانحراف.
