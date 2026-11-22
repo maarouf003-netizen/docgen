@@ -808,11 +808,12 @@
 
 #### `P4-02` — تفكيك الخدمات الضخمة
 
-- **الحالة (2026-11-22):** **جزئيًا — `DocumentRepository` فُكِّك.** 1564 سطرًا →
-  خمسة ملفات `partial` بأقصى **534** سطرًا (Search/Owner/Circuits/Archive/Core)،
-  بلا تغيير سلوكي. **متبقٍ:** الخدمات الثلاث الكبرى
-  (`DocumentDelegationService`/`DocumentAppealService`/`DocumentStatusService`).
-  التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md`.
+- **الحالة (2026-11-22):** **جزئيًا — `DocumentRepository` و`DocumentStatusService` فُكِّكا.**
+  `DocumentRepository`: 1564 → خمسة ملفات بأقصى 534 سطرًا؛ `DocumentStatusService`:
+  1312 → خمسة ملفات بأقصى 382 سطرًا، بلا تغيير سلوكي. **متبقٍ:**
+  `DocumentDelegationService`/`DocumentAppealService`/`ExecutionCircuitService`.
+  التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
+  `docs/audit/111-p4-02b-document-status-split-20261122.md`.
 - **العمل:** `DocumentDelegationService` (1904)، `DocumentAppealService` (1598)، `DocumentStatusService` (1312)، `ExecutionCircuitService` (1264)، `DocumentRepository` (1232) إلى وحدات use-case ≤500 سطر.
 - **DoD:** لا ملف >600 سطر في Application/Infrastructure (باستثناء الهجرات/الـsnapshots).
 - **الاعتمادية:** `P1-03`/`P1-06` (اختبارات حدود) و`P4-01` (pipeline) لتفادي تفكيك بلا شبكة أمان.
