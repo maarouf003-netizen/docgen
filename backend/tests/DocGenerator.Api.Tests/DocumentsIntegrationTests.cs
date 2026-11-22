@@ -551,6 +551,61 @@ public class DocumentsIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task ListEndpoint_CursorPaginatesWithoutDuplicatesOrGaps()
+    {
+        // P3-05 (المرحلة الإضافية): المؤشر يُكمل الصفحة التالية بلا إزاحة، مع إبقاء
+        // `page`/`perPage` كما هي. الفاصل `(CreatedAt, Id)` يمنع التكرار/الفقدان.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        for (var i = 0; i < 3; i++)
+            await CreateCirculatingDocumentAsync(token);
+
+        var first = await client.GetAsync("/api/documents/list?perPage=2");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using var firstBody = await first.Content.ReadFromJsonAsync<JsonDocument>();
+        var firstIds = firstBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()).ToList();
+        Assert.Equal(2, firstIds.Count);
+        Assert.Equal(3, firstBody.RootElement.GetProperty("totalCount").GetInt32());
+        var cursor = firstBody.RootElement.GetProperty("nextCursor").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(cursor));
+
+        var second = await client.GetAsync(
+            "/api/documents/list?perPage=2&cursor=" + Uri.EscapeDataString(cursor!));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using var secondBody = await second.Content.ReadFromJsonAsync<JsonDocument>();
+        var secondIds = secondBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()).ToList();
+        Assert.Single(secondIds);
+        Assert.Null(secondBody.RootElement.GetProperty("nextCursor").GetString());
+        Assert.Empty(firstIds.Intersect(secondIds));
+        Assert.Equal(3, firstIds.Concat(secondIds).Distinct().Count());
+    }
+
+    [PostgresFact]
+    public async Task ListEndpoint_RejectsInvalidOrMismatchedCursor()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        await CreateCirculatingDocumentAsync(token);
+        await CreateCirculatingDocumentAsync(token);
+
+        var invalid = await client.GetAsync("/api/documents/list?cursor=not-a-cursor");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var first = await client.GetAsync("/api/documents/list?perPage=1");
+        using var firstBody = await first.Content.ReadFromJsonAsync<JsonDocument>();
+        var cursor = firstBody!.RootElement.GetProperty("nextCursor").GetString();
+        // مؤشر قائمة رئيسية في قائمة محذوفات: النوع لا يطابق → 400 قبل أي استعلام.
+        if (cursor is not null)
+        {
+            var mismatched = await client.GetAsync(
+                "/api/documents/deleted/list?cursor=" + Uri.EscapeDataString(cursor));
+            Assert.Equal(HttpStatusCode.BadRequest, mismatched.StatusCode);
+        }
+    }
+
+    [PostgresFact]
     public async Task ArchiveListEndpoints_ShareLegacyAuthorization()
     {
         // مسارات /list إضافية، فتكافؤ الصلاحيات يجب أن يبقى صريحًا: المحامي/رئيس

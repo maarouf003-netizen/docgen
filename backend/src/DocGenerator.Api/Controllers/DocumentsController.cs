@@ -164,7 +164,8 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? lawyer, [FromQuery] string? branch,
         [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
         [FromQuery] string? publicEntityBranch,
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         if (!string.IsNullOrWhiteSpace(lawyer)
             && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
@@ -174,7 +175,7 @@ public class DocumentsController : ControllerBase
         if (scope is null) return Forbid();
 
         var result = await _search.SearchListAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
         return Ok(result);
     }
 
@@ -259,7 +260,8 @@ public class DocumentsController : ControllerBase
     [HttpGet("deleted/list")]
     public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetDeletedList(
         [FromQuery] string? q,
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
             return Forbid();
@@ -267,7 +269,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchDeletedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _search.SearchDeletedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
         return Ok(result);
     }
 
@@ -292,7 +294,8 @@ public class DocumentsController : ControllerBase
     [HttpGet("struck-off/list")]
     public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetStruckOffList(
         [FromQuery] string? q,
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
             return Forbid();
@@ -300,7 +303,7 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchStruckOffListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _search.SearchStruckOffListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
         return Ok(result);
     }
 
@@ -322,12 +325,13 @@ public class DocumentsController : ControllerBase
     [HttpGet("executed/list")]
     public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetExecutedList(
         [FromQuery] string? q,
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchExecutedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _search.SearchExecutedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
         return Ok(result);
     }
 
@@ -349,12 +353,13 @@ public class DocumentsController : ControllerBase
     [HttpGet("referred-to-start/list")]
     public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetReferredToStartList(
         [FromQuery] string? q,
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchReferredToStartListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _search.SearchReferredToStartListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
         return Ok(result);
     }
 
@@ -380,13 +385,14 @@ public class DocumentsController : ControllerBase
     /// </summary>
     [HttpGet("strike-off-reminders/list")]
     public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetStrikeOffRemindersList(
-        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
         var result = await _strikeOffReminders.GetListAsync(
-            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct, cursor: cursor);
         return Ok(result);
     }
 

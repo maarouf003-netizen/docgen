@@ -73,6 +73,7 @@ const pagedKeys = [
   'perPage',
   'totalCount',
   'totalPages',
+  'nextCursor',
 ] as const satisfies readonly (keyof PagedResult<unknown>)[];
 
 const createKeys = [

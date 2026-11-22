@@ -73,7 +73,11 @@ public static class DocumentServiceFactory
             audit,
             Microsoft.Extensions.Options.Options.Create(exportOptionsValue),
             clockValue,
-            timeZoneValue);
+            timeZoneValue,
+            new DocGenerator.Infrastructure.Security.KeysetCursorCodec(new JwtOptions
+            {
+                Secret = "test-keyset-secret-0123456789abcdef",
+            }));
 
         var delegationsValue = delegations ?? new DelegationRepository(db);
         var registrationDatesValue = registrationDates ?? new Repository<DocumentRegistrationDate>(db);

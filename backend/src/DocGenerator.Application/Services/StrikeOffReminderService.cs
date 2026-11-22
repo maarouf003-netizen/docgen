@@ -17,6 +17,7 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IKeysetCursorCodec _cursorCodec;
 
     public StrikeOffReminderService(
         IDocumentRepository documents,
@@ -24,7 +25,8 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
         ITransactionRunner tx,
         IAuditLogger audit,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IKeysetCursorCodec cursorCodec)
     {
         _documents = documents;
         _uow = uow;
@@ -32,6 +34,7 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
         _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
+        _cursorCodec = cursorCodec;
     }
 
     public async Task<PagedResult<DocumentResponse>> GetAsync(
@@ -41,7 +44,7 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
         var (safePage, safePerPage) = NormalizePaging(page, perPage);
         var cutoff = StrikeOffReminderCalculator.CutoffUtc(ServerClock.Now(_clock, _timeZone), _timeZone);
 
-        var (total, rows) = await _documents.SearchStrikeOffReminderIdsAsync(
+        var (total, rows, _) = await _documents.SearchStrikeOffReminderIdsAsync(
             cutoff, visibleBranchId, visibleUserId, safePage, safePerPage, ct, ownerSectionId);
 
         var items = new List<DocumentResponse>(rows.Count);
@@ -75,13 +78,14 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
     /// </summary>
     public async Task<PagedResult<DocumentListItemDto>> GetListAsync(
         int page, int perPage, int? visibleBranchId, int? visibleUserId, int? ownerSectionId,
-        CancellationToken ct = default)
+        CancellationToken ct = default, string? cursor = null)
     {
         var (safePage, safePerPage) = NormalizePaging(page, perPage);
         var cutoff = StrikeOffReminderCalculator.CutoffUtc(ServerClock.Now(_clock, _timeZone), _timeZone);
 
-        var (total, rows) = await _documents.SearchStrikeOffReminderIdsAsync(
-            cutoff, visibleBranchId, visibleUserId, safePage, safePerPage, ct, ownerSectionId);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.ReminderLastActivity);
+        var (total, rows, hasMore) = await _documents.SearchStrikeOffReminderIdsAsync(
+            cutoff, visibleBranchId, visibleUserId, safePage, safePerPage, ct, ownerSectionId, keyset);
 
         var items = new List<DocumentListItemDto>(rows.Count);
         if (rows.Count > 0)
@@ -99,12 +103,21 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
             }
         }
 
+        string? nextCursor = null;
+        if (hasMore && rows.Count > 0)
+        {
+            var last = rows[^1];
+            nextCursor = _cursorCodec.Encode(
+                DocumentListCursorKinds.ReminderLastActivity, last.LastActivityUtc, last.Id);
+        }
+
         return new PagedResult<DocumentListItemDto>
         {
             Items = items,
-            Page = safePage,
+            Page = cursor is null ? safePage : 1,
             PerPage = safePerPage,
             TotalCount = total,
+            NextCursor = nextCursor,
         };
     }
 
@@ -112,7 +125,7 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
         int? visibleBranchId, int? visibleUserId, int? ownerSectionId, CancellationToken ct = default)
     {
         var cutoff = StrikeOffReminderCalculator.CutoffUtc(ServerClock.Now(_clock, _timeZone), _timeZone);
-        var (total, _) = await _documents.SearchStrikeOffReminderIdsAsync(
+        var (total, _, _) = await _documents.SearchStrikeOffReminderIdsAsync(
             cutoff, visibleBranchId, visibleUserId, 1, 1, ct, ownerSectionId);
         return total;
     }

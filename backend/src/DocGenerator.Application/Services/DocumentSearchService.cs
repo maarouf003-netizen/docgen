@@ -21,6 +21,7 @@ public sealed class DocumentSearchService : IDocumentSearchService
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IKeysetCursorCodec _cursorCodec;
 
     public DocumentSearchService(
         IDocumentRepository documents,
@@ -28,7 +29,8 @@ public sealed class DocumentSearchService : IDocumentSearchService
         IAuditLogger audit,
         Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IKeysetCursorCodec cursorCodec)
     {
         _documents = documents;
         _appeals = appeals;
@@ -36,6 +38,7 @@ public sealed class DocumentSearchService : IDocumentSearchService
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
+        _cursorCodec = cursorCodec;
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchDeletedAsync(
@@ -57,13 +60,15 @@ public sealed class DocumentSearchService : IDocumentSearchService
 
     /// <summary>قائمة المحذوفات بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
     public async Task<PagedResult<DocumentListItemDto>> SearchDeletedListAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null, string? cursor = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, rows) = await _documents.SearchDeletedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
-        return BuildListResult(rows, total, page, perPage);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.DeletedAt);
+        var (total, rows, hasMore) = await _documents.SearchDeletedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId, keyset);
+        return BuildListResult(rows, total, cursor is null ? page : 1, perPage,
+            NextCursor(DocumentListCursorKinds.DeletedAt, rows, hasMore));
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(
@@ -85,13 +90,15 @@ public sealed class DocumentSearchService : IDocumentSearchService
 
     /// <summary>قائمة المشطوبة بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
     public async Task<PagedResult<DocumentListItemDto>> SearchStruckOffListAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null, string? cursor = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, rows) = await _documents.SearchStruckOffListAsync(query, null, null, null, null, null, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
-        return BuildListResult(rows, total, page, perPage);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.StruckOffDate);
+        var (total, rows, hasMore) = await _documents.SearchStruckOffListAsync(query, null, null, null, null, null, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId, keyset);
+        return BuildListResult(rows, total, cursor is null ? page : 1, perPage,
+            NextCursor(DocumentListCursorKinds.StruckOffDate, rows, hasMore));
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchExecutedAsync(
@@ -113,13 +120,15 @@ public sealed class DocumentSearchService : IDocumentSearchService
 
     /// <summary>قائمة المنفذة بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
     public async Task<PagedResult<DocumentListItemDto>> SearchExecutedListAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null, string? cursor = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, rows) = await _documents.SearchExecutedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
-        return BuildListResult(rows, total, page, perPage);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.UpdatedAt);
+        var (total, rows, hasMore) = await _documents.SearchExecutedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId, keyset);
+        return BuildListResult(rows, total, cursor is null ? page : 1, perPage,
+            NextCursor(DocumentListCursorKinds.UpdatedAt, rows, hasMore));
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(
@@ -141,13 +150,15 @@ public sealed class DocumentSearchService : IDocumentSearchService
 
     /// <summary>قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
     public async Task<PagedResult<DocumentListItemDto>> SearchReferredToStartListAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null, string? cursor = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, rows) = await _documents.SearchReferredToStartListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
-        return BuildListResult(rows, total, page, perPage);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.StartReferralDate);
+        var (total, rows, hasMore) = await _documents.SearchReferredToStartListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId, keyset);
+        return BuildListResult(rows, total, cursor is null ? page : 1, perPage,
+            NextCursor(DocumentListCursorKinds.StartReferralDate, rows, hasMore));
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchAsync(
@@ -179,15 +190,17 @@ public sealed class DocumentSearchService : IDocumentSearchService
     /// </summary>
     public async Task<PagedResult<DocumentListItemDto>> SearchListAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage,
-        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null, string? cursor = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage <= 0 ? 20 : perPage, 1, 100);
 
-        var (total, rows) = await _documents.SearchListAsync(
-            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+        var keyset = _cursorCodec.DecodeOptional(cursor, DocumentListCursorKinds.CreatedAt);
+        var (total, rows, hasMore) = await _documents.SearchListAsync(
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId, keyset);
 
-        var result = BuildListResult(rows, total, page, perPage);
+        var result = BuildListResult(rows, total, cursor is null ? page : 1, perPage,
+            NextCursor(DocumentListCursorKinds.CreatedAt, rows, hasMore));
         await EnrichAppealFlagsAsync(result.Items, ct);
         return result;
     }
@@ -197,7 +210,7 @@ public sealed class DocumentSearchService : IDocumentSearchService
     /// (P3-04b والقوائم الخمس في P3-04c) فلا يتباعد شكل استجابة قائمة عن أخرى.
     /// </summary>
     private PagedResult<DocumentListItemDto> BuildListResult(
-        List<DocumentListRow> rows, int total, int page, int perPage)
+        List<DocumentListRow> rows, int total, int page, int perPage, string? nextCursor = null)
     {
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
         return new PagedResult<DocumentListItemDto>
@@ -206,7 +219,30 @@ public sealed class DocumentSearchService : IDocumentSearchService
             Page = page,
             PerPage = perPage,
             TotalCount = total,
+            NextCursor = nextCursor,
         };
+    }
+
+    /// <summary>
+    /// يبني مؤشر الصفحة التالية من آخر صف معروض وقيمة مفتاح ترتيب القائمة — بلا
+    /// قراءة إضافية؛ غياب صف تالٍ (`hasMore = false`) يعني آخر صفحة.
+    /// </summary>
+    private string? NextCursor(string kind, List<DocumentListRow> rows, bool hasMore)
+    {
+        if (!hasMore || rows.Count == 0)
+            return null;
+
+        var last = rows[^1];
+        DateTime? sortValue = kind switch
+        {
+            DocumentListCursorKinds.CreatedAt => last.CreatedAt,
+            DocumentListCursorKinds.DeletedAt => last.DeletedAt,
+            DocumentListCursorKinds.StruckOffDate => last.StruckOffDate,
+            DocumentListCursorKinds.UpdatedAt => last.UpdatedAt,
+            DocumentListCursorKinds.StartReferralDate => last.StartReferralDate,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "نوع مؤشر غير معروف"),
+        };
+        return _cursorCodec.Encode(kind, sortValue, last.Id);
     }
 
     private async Task EnrichAppealFlagsAsync(List<DocumentListItemDto> items, CancellationToken ct)

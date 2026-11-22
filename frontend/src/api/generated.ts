@@ -3425,6 +3425,7 @@ export interface components {
         };
         AuditLogDtoPagedResult: {
             items: components["schemas"]["AuditLogDto"][];
+            nextCursor?: string | null;
             /** Format: int32 */
             page: number;
             /** Format: int32 */
@@ -3767,6 +3768,7 @@ export interface components {
         };
         DocumentListItemDtoPagedResult: {
             items: components["schemas"]["DocumentListItemDto"][];
+            nextCursor?: string | null;
             /** Format: int32 */
             page: number;
             /** Format: int32 */
@@ -3997,6 +3999,7 @@ export interface components {
         };
         DocumentResponsePagedResult: {
             items: components["schemas"]["DocumentResponse"][];
+            nextCursor?: string | null;
             /** Format: int32 */
             page: number;
             /** Format: int32 */
@@ -6552,6 +6555,7 @@ export interface operations {
                 q?: string;
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6624,6 +6628,7 @@ export interface operations {
                 q?: string;
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6713,6 +6718,7 @@ export interface operations {
                 publicEntityBranch?: string;
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6805,6 +6811,7 @@ export interface operations {
                 q?: string;
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6918,6 +6925,7 @@ export interface operations {
             query?: {
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6970,6 +6978,7 @@ export interface operations {
                 q?: string;
                 page?: number;
                 perPage?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;

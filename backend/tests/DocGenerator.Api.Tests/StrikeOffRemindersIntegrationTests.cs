@@ -66,6 +66,34 @@ public class StrikeOffRemindersIntegrationTests
     }
 
     [PostgresFact]
+    public async Task ProjectedList_CursorPaginatesOldestIdleFirst_WithoutDuplicates()
+    {
+        var (client, token) = await LawyerAsync();
+        var oldest = await _factory.CreateDocumentAsync(token, "الأقدم للمؤشر", registered: true);
+        var middle = await _factory.CreateDocumentAsync(token, "الأوسط للمؤشر", registered: true);
+        var newest = await _factory.CreateDocumentAsync(token, "الأحدث للمؤشر", registered: true);
+        await AddActionAsync(client, oldest, MonthsAgo(9));
+        await AddActionAsync(client, middle, MonthsAgo(8));
+        await AddActionAsync(client, newest, MonthsAgo(7));
+
+        var first = await ProjectedListAsync(client, perPage: 2);
+        Assert.Equal(2, first.Items.Count);
+        Assert.False(string.IsNullOrWhiteSpace(first.NextCursor));
+
+        var secondPage = await (await client.GetAsync(
+                "/api/documents/strike-off-reminders/list?perPage=2&cursor=" +
+                Uri.EscapeDataString(first.NextCursor!)))
+            .Content.ReadFromJsonAsync<PagedResult<DocumentListItemDto>>();
+        Assert.NotNull(secondPage);
+        Assert.Single(secondPage!.Items);
+        Assert.Null(secondPage.NextCursor);
+
+        var all = first.Items.Select(d => d.Id).Concat(secondPage.Items.Select(d => d.Id)).ToList();
+        Assert.Equal(3, all.Distinct().Count());
+        Assert.Equal([oldest, middle, newest], all);
+    }
+
+    [PostgresFact]
     public async Task ProjectedListEndpoint_MatchesLegacySelection_AndCarriesCardFields()
     {
         var (client, token) = await LawyerAsync();

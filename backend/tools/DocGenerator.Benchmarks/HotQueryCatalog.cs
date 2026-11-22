@@ -70,7 +70,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchListAsync(
+                var (total, items, _) = await repository.SearchListAsync(
                     query: null, status: null, applicant: null, court: null, lawyer: null,
                     branch: null, administrativeBranch: null, executedEntity: null,
                     publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
@@ -84,7 +84,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchListAsync(
+                var (total, items, _) = await repository.SearchListAsync(
                     query: manifest.TextSearchTerm, status: null, applicant: null, court: null,
                     lawyer: null, branch: null, administrativeBranch: null, executedEntity: null,
                     publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
@@ -111,7 +111,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchDeletedListAsync(
+                var (total, items, _) = await repository.SearchDeletedListAsync(
                     query: null, visibleBranchId: null, visibleUserId: null,
                     page: 1, perPage: 20, ct: ct);
                 return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
@@ -136,7 +136,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchStruckOffListAsync(
+                var (total, items, _) = await repository.SearchStruckOffListAsync(
                     query: null, applicant: null, court: null, lawyer: null, branch: null,
                     administrativeBranch: null, visibleBranchId: null, visibleUserId: null,
                     page: 1, perPage: 20, ct: ct);
@@ -161,7 +161,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchExecutedListAsync(
+                var (total, items, _) = await repository.SearchExecutedListAsync(
                     query: null, visibleBranchId: null, visibleUserId: null,
                     page: 1, perPage: 20, ct: ct);
                 return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
@@ -185,7 +185,7 @@ public static class HotQueryCatalog
             async (db, ct) =>
             {
                 var repository = new DocumentRepository(db);
-                var (total, items) = await repository.SearchReferredToStartListAsync(
+                var (total, items, _) = await repository.SearchReferredToStartListAsync(
                     query: null, visibleBranchId: null, visibleUserId: null,
                     page: 1, perPage: 20, ct: ct);
                 return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
@@ -198,7 +198,7 @@ public static class HotQueryCatalog
             {
                 var repository = new DocumentRepository(db);
                 var cutoff = DateTime.UtcNow.AddMonths(-5);
-                var (total, rows) = await repository.SearchStrikeOffReminderIdsAsync(
+                var (total, rows, _) = await repository.SearchStrikeOffReminderIdsAsync(
                     cutoff, visibleBranchId: null, visibleUserId: null, page: 1, perPage: 20, ct: ct);
                 var docs = await repository.GetByIdsWithStandardIncludesAsync(
                     rows.Select(r => r.Id).ToList(), ct);
@@ -212,7 +212,7 @@ public static class HotQueryCatalog
             {
                 var repository = new DocumentRepository(db);
                 var cutoff = DateTime.UtcNow.AddMonths(-5);
-                var (total, rows) = await repository.SearchStrikeOffReminderIdsAsync(
+                var (total, rows, _) = await repository.SearchStrikeOffReminderIdsAsync(
                     cutoff, visibleBranchId: null, visibleUserId: null, page: 1, perPage: 20, ct: ct);
                 var items = await repository.GetListRowsByIdsAsync(
                     rows.Select(r => r.Id).ToList(), ct);
