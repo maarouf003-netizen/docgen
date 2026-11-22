@@ -49,8 +49,13 @@
 | البوابة | النتيجة |
 |---|---|
 | `dotnet build -warnaserror` | 0/0 |
-| `QueryBudgetTests` | **سيُحدَّث بعد التشغيل** |
-| بقية `Api` | بلا تغيير |
+| `dotnet format --verify-no-changes` | نظيف |
+| `QueryBudgetTests` (15) | **15/15** · 2m27s — كل المسارات ضمن السقوف |
+| `Api` غير تسلسلي | **1562/1563**؛ الفشل الوحيد `PostgresTestDbDisposeTests.Dispose_CompletesWithoutPumpingSynchronizationContext` (50s) وأُعيد منفردًا **1/1** — تقلّب تحت الحمل لا علاقة له بالميزانيات |
+| `Api` تسلسلي | **5/5** |
+
+السقوف المثبتة (20/18/20) تُركت بهامش فوق القياس الفعلي لأن الهدف كشف N+1
+(يزيد ≥15 استعلامًا)، لا تجميد العدد بدقة بايت.
 
 ## 5. الهجرات
 
