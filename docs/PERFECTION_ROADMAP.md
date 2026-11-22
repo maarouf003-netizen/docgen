@@ -929,8 +929,14 @@
 
 #### `P5-07` — Runbooks/Postmortems
 
+- **الحالة (2026-11-22):** **مغلق** — runbooks التشغيل موجودة ومفهرسة
+  (`deploy`, `rollback`, `migrations`, `database-down`, `auth-outage`, `outbox-stuck`,
+  `secret-rotation`, `load-testing`)، وكلها تتبع: الأعراض → التشخيص → الإجراء →
+  التحقق → التصعيد. أُضيف قالب postmortem بلا لوم
+  (`docs/runbooks/postmortem-template.md`) مع الإجراءات التصحيحية والمالك والتاريخ.
+  التفاصيل: `docs/audit/101-p5-07-runbooks-postmortem-20261122.md`.
 - **العمل:** deploy/rollback، migration، outbox stuck، DB down، auth outage، secret rotation؛ postmortem بلا لوم.
-- **DoD:** كل حادثة محتملة لها runbook.
+- **`DoD`:** كل حادثة محتملة لها runbook — **متحقق** (8 runbooks + قالب postmortem).
 
 ---
 
