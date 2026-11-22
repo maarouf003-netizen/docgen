@@ -9,6 +9,8 @@ export interface DocumentsListPosition {
   executedEntity: string;
   publicEntityBranch: string;
   page: number;
+  /** سلسلة مؤشرات صفحات «تحميل المزيد» (P3-05b) — تُعاد عند العودة لاستعادة الموضع. */
+  cursors?: string[];
 }
 
 const POSITION_KEY = 'documentsListPosition';
@@ -39,6 +41,9 @@ export function loadDocumentsListPosition(): DocumentsListPosition | null {
       executedEntity: typeof parsed.executedEntity === 'string' ? parsed.executedEntity : '',
       publicEntityBranch: typeof parsed.publicEntityBranch === 'string' ? parsed.publicEntityBranch : '',
       page: typeof parsed.page === 'number' && parsed.page > 0 ? parsed.page : 1,
+      ...(Array.isArray(parsed.cursors)
+        ? { cursors: parsed.cursors.filter((c): c is string => typeof c === 'string' && c.length > 0) }
+        : {}),
     };
   } catch {
     return null;

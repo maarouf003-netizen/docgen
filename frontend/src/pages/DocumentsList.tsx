@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
-import { api, getDownloadErrorMessage } from '../api/client';
+import { api, getApiErrorMessage, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { isHeadOrSubHeadRole } from '../auth/roles';
 import SpinnerIcon from '../components/SpinnerIcon';
@@ -369,7 +369,7 @@ export default function DocumentsList() {
       if (valid) {
         setStatus(valid);
         setStatusTouched(false);
-        setPage(1);
+        resetPaging();
       }
     }
   }, [urlStatusParam]);
@@ -379,12 +379,21 @@ export default function DocumentsList() {
   const [administrativeBranch, setAdministrativeBranch] = useState(saved?.administrativeBranch ?? '');
   const [executedEntity, setExecutedEntity] = useState(saved?.executedEntity ?? '');
   const [publicEntityBranch, setPublicEntityBranch] = useState(saved?.publicEntityBranch ?? '');
-  const [page, setPage] = useState(() => {
-    // رابط التعمّق يبدأ دومًا من الصفحة الأولى لا صفحة الجلسة المحفوظة.
-    const fromUrl = searchParams.get('status');
-    if (fromUrl && isStatusOption(fromUrl)) return 1;
-    return saved?.page ?? 1;
-  });
+  const [extraItems, setExtraItems] = useState<DocumentListItemDto[]>([]);
+  const [extraCursors, setExtraCursors] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState('');
+  const [restoreAttempted, setRestoreAttempted] = useState(false);
+
+  // إعادة ضبط الصفحات المضافة عند تغيير أي فلتر أو رابط تعمّق (P3-05b).
+  const resetPaging = () => {
+    setExtraItems([]);
+    setExtraCursors([]);
+    setNextCursor(null);
+    setLoadMoreError('');
+    setRestoreAttempted(false);
+  };
   const [focusId, setFocusId] = useState<number | null>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
   // «آخر ملف فُتح» يُقرأ بعد تحميل هوية المستخدم (AuthContext بلا هوية أصلًا ثم يملؤها من /auth/me)،
@@ -419,7 +428,7 @@ export default function DocumentsList() {
     query || status || applicant || court || lawyer || administrativeBranch || executedEntity || publicEntityBranch,
   );
 
-  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>((signal) => {
+  const buildListParams = useCallback((cursor?: string) => {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     if (status) params.set('status', status);
@@ -429,34 +438,108 @@ export default function DocumentsList() {
     if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
     if (executedEntity) params.set('executedEntity', executedEntity);
     if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
-    params.set('page', String(page));
     params.set('perPage', '20');
-    return api.get(`/documents/list?${params.toString()}`, { signal }).then((r) => r.data);
-  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+    if (cursor) params.set('cursor', cursor);
+    else params.set('page', '1');
+    return params;
+  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
+
+  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
+    (signal) => api.get(`/documents/list?${buildListParams().toString()}`, { signal }).then((r) => r.data),
+    [buildListParams],
+  );
 
   const data = listQuery.data;
   const loading = listQuery.isLoading;
+  // الصفحة الأولى من الشبكة + الصفحات المضافة بمؤشر «تحميل المزيد» (P3-05b).
+  const items = data ? [...data.items, ...extraItems] : [];
+  const effectiveNextCursor = extraCursors.length === 0 ? (data?.nextCursor ?? null) : nextCursor;
 
-  // يُحفظ الموضع الحالي في كل تغيير للفلاتر أو الصفحة كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
+  // يُحفظ الموضع الحالي (والفلاتر وسلسلة المؤشرات) كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
   // (الحالة القادمة من `URL` لا تُحفَظ حتى تُلمَس — انظر `persistedStatus`.)
   useEffect(() => {
-    saveDocumentsListPosition({ query, status: persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
-  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+    saveDocumentsListPosition({
+      query, status: persistedStatus, applicant, court, lawyer, administrativeBranch,
+      executedEntity, publicEntityBranch, page: 1,
+      ...(extraCursors.length > 0 ? { cursors: extraCursors } : {}),
+    });
+  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, extraCursors]);
 
-  // موضع مستعاد يتجاوز عدد الصفحات بعد تغيّر البيانات أثناء الغياب: العودة لآخر صفحة صالحة.
+  // استعادة الصفحات المضافة عند العودة: يُعاد تشغيل سلسلة المؤشرات المحفوظة (بحد أقصى
+  // طول السلسلة نفسها) ما دامت الفلاتر مطابقة؛ وأي فشل يُبقي الصفحة الأولى سليمة.
   useEffect(() => {
-    if (data && data.items.length === 0 && page > 1 && data.totalPages >= 1 && data.totalPages < page) {
-      setPage(data.totalPages);
+    if (restoreAttempted || !data || !saved?.cursors?.length || listQuery.isLoading)
+      return;
+
+    const savedStatus = saved.status && isStatusOption(saved.status) ? saved.status : '';
+    const matchesSavedFilters =
+      query === saved.query && persistedStatus === savedStatus && applicant === saved.applicant
+      && court === saved.court && lawyer === saved.lawyer
+      && administrativeBranch === saved.administrativeBranch && executedEntity === saved.executedEntity
+      && publicEntityBranch === saved.publicEntityBranch;
+
+    setRestoreAttempted(true);
+    if (!matchesSavedFilters)
+      return;
+
+    let cancelled = false;
+    const restore = async () => {
+      let cursor = data.nextCursor ?? null;
+      const restored: DocumentListItemDto[] = [];
+      const used: string[] = [];
+      for (const savedCursor of (saved.cursors ?? []).slice(0, 20)) {
+        if (cancelled || !cursor || cursor !== savedCursor)
+          break;
+        const response = await api.get<PagedResult<DocumentListItemDto>>(
+          `/documents/list?${buildListParams(savedCursor).toString()}`);
+        restored.push(...response.data.items);
+        used.push(savedCursor);
+        cursor = response.data.nextCursor ?? null;
+      }
+      if (!cancelled) {
+        setExtraItems(restored);
+        setExtraCursors(used);
+        setNextCursor(cursor);
+      }
+    };
+    void restore().catch(() => {
+      // فشل استعادة الموضع لا يمسّ الصفحة الأولى المعروضة.
+    });
+    return () => { cancelled = true; };
+  }, [data, restoreAttempted, saved, listQuery.isLoading, buildListParams,
+    query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
+
+  // «تحميل المزيد»: يجلب الصفحة التالية بالمؤشر ويُلحقها بلا إزاحة (P3-05b).
+  const loadMore = async () => {
+    const cursor = effectiveNextCursor;
+    if (!cursor || loadingMore)
+      return;
+    setLoadingMore(true);
+    setLoadMoreError('');
+    try {
+      const response = await api.get<PagedResult<DocumentListItemDto>>(
+        `/documents/list?${buildListParams(cursor).toString()}`);
+      setExtraItems((previous) => [...previous, ...response.data.items]);
+      setExtraCursors((previous) => [...previous, cursor]);
+      setNextCursor(response.data.nextCursor ?? null);
+    } catch (err) {
+      setLoadMoreError(getApiErrorMessage(err));
+    } finally {
+      setLoadingMore(false);
     }
-  }, [data, page]);
+  };
 
   // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
   const openDocument = (id: number) => {
-    saveDocumentsListPosition({ query, status: persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
+    saveDocumentsListPosition({
+      query, status: persistedStatus, applicant, court, lawyer, administrativeBranch,
+      executedEntity, publicEntityBranch, page: 1,
+      ...(extraCursors.length > 0 ? { cursors: extraCursors } : {}),
+    });
     saveLastViewedDocumentId(id, user?.id ?? null);
   };
 
-  const focusVisible = focusId != null && data != null && data.items.some((x) => x.id === focusId);
+  const focusVisible = focusId != null && items.some((x) => x.id === focusId);
   const scrolledToFocus = useRef(false);
   useEffect(() => {
     // ينتظر اكتمال جلب القائمة: يُمرَّر إلى الملف إذا كان ظاهرًا، ولا يُجلب اسمه (للشريط الاحتياطي)
@@ -613,7 +696,7 @@ export default function DocumentsList() {
       <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-col sm:flex-row flex-wrap gap-3">
         <input
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          onChange={(e) => { setQuery(e.target.value); resetPaging(); }}
           placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ..."
           className="flex-1 min-w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
         />
@@ -621,7 +704,7 @@ export default function DocumentsList() {
           <>
             <FilterSelect
               value={status}
-              onChange={(v) => { setStatus(v); setStatusTouched(true); setPage(1); }}
+              onChange={(v) => { setStatus(v); setStatusTouched(true); resetPaging(); }}
               ariaLabel="فلترة الحالة"
               allLabel="كل الحالات"
               options={STATUS_OPTIONS}
@@ -630,7 +713,7 @@ export default function DocumentsList() {
             {applicants.length > 0 && (
               <FilterSelect
                 value={applicant}
-                onChange={(v) => { setApplicant(v); setPage(1); }}
+                onChange={(v) => { setApplicant(v); resetPaging(); }}
                 ariaLabel="فلترة طالب التنفيذ"
                 allLabel="كل طالبي التنفيذ"
                 options={applicants}
@@ -640,7 +723,7 @@ export default function DocumentsList() {
             {courts.length > 0 && (
               <FilterSelect
                 value={court}
-                onChange={(v) => { setCourt(v); setPage(1); }}
+                onChange={(v) => { setCourt(v); resetPaging(); }}
                 ariaLabel="فلترة دائرة التنفيذ"
                 allLabel="كل دوائر التنفيذ"
                 options={courts}
@@ -650,7 +733,7 @@ export default function DocumentsList() {
             {canSearchByLawyer && lawyers.length > 0 && (
               <FilterSelect
                 value={lawyer}
-                onChange={(v) => { setLawyer(v); setPage(1); }}
+                onChange={(v) => { setLawyer(v); resetPaging(); }}
                 ariaLabel="فلترة المحامي المختص"
                 allLabel="كل المحامين"
                 options={lawyers}
@@ -660,7 +743,7 @@ export default function DocumentsList() {
             {canSeeAdministrativeBranch && administrativeBranches.length > 0 && (
               <FilterSelect
                 value={administrativeBranch}
-                onChange={(v) => { setAdministrativeBranch(v); setPage(1); }}
+                onChange={(v) => { setAdministrativeBranch(v); resetPaging(); }}
                 ariaLabel="فلترة فرع الإدارة"
                 allLabel="كل فروع الإدارة"
                 options={administrativeBranches}
@@ -670,7 +753,7 @@ export default function DocumentsList() {
             {executedEntities.length > 0 && (
               <FilterSelect
                 value={executedEntity}
-                onChange={(v) => { setExecutedEntity(v); setPage(1); }}
+                onChange={(v) => { setExecutedEntity(v); resetPaging(); }}
                 ariaLabel="فلترة الجهة العامة المنفذ عليها"
                 allLabel="كل الجهات العامة المنفذ عليها"
                 options={executedEntities}
@@ -680,7 +763,7 @@ export default function DocumentsList() {
             {publicEntityBranches.length > 0 && (
               <FilterSelect
                 value={publicEntityBranch}
-                onChange={(v) => { setPublicEntityBranch(v); setPage(1); }}
+                onChange={(v) => { setPublicEntityBranch(v); resetPaging(); }}
                 ariaLabel="فلترة فرع الجهة العامة"
                 allLabel="كل فروع الجهات العامة"
                 options={publicEntityBranches}
@@ -738,7 +821,7 @@ export default function DocumentsList() {
         <>
           {isMobile ? (
             <div className="flex flex-col gap-4">
-              {data.items.map((d) => (
+              {items.map((d) => (
                 <article
                   key={d.id}
                   id={`doc-row-${d.id}`}
@@ -787,7 +870,7 @@ export default function DocumentsList() {
                   </div>
                 </article>
               ))}
-              {data.items.length === 0 && (
+              {items.length === 0 && (
                 <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
                   لا توجد نتائج
                 </div>
@@ -804,7 +887,7 @@ export default function DocumentsList() {
                           label="فرع الإدارة"
                           ariaLabel="فلترة فرع الإدارة"
                           value={administrativeBranch}
-                          onChange={(v) => { setAdministrativeBranch(v); setPage(1); }}
+                          onChange={(v) => { setAdministrativeBranch(v); resetPaging(); }}
                           allLabel="كل فروع الإدارة"
                           options={administrativeBranches}
                         />
@@ -815,7 +898,7 @@ export default function DocumentsList() {
                         label="الحالة"
                         ariaLabel="فلترة الحالة"
                         value={status}
-                        onChange={(v) => { setStatus(v); setStatusTouched(true); setPage(1); }}
+                        onChange={(v) => { setStatus(v); setStatusTouched(true); resetPaging(); }}
                         allLabel="كل الحالات"
                         options={STATUS_OPTIONS}
                       />
@@ -825,7 +908,7 @@ export default function DocumentsList() {
                         label="طالب التنفيذ"
                         ariaLabel="فلترة طالب التنفيذ"
                         value={applicant}
-                        onChange={(v) => { setApplicant(v); setPage(1); }}
+                        onChange={(v) => { setApplicant(v); resetPaging(); }}
                         allLabel="كل طالبي التنفيذ"
                         options={applicants}
                       />
@@ -835,7 +918,7 @@ export default function DocumentsList() {
                         label="فرع الجهة العامة"
                         ariaLabel="فلترة فرع الجهة العامة"
                         value={publicEntityBranch}
-                        onChange={(v) => { setPublicEntityBranch(v); setPage(1); }}
+                        onChange={(v) => { setPublicEntityBranch(v); resetPaging(); }}
                         allLabel="كل فروع الجهات العامة"
                         options={publicEntityBranches}
                       />
@@ -845,7 +928,7 @@ export default function DocumentsList() {
                         label="المنفذ عليه"
                         ariaLabel="فلترة الجهة العامة المنفذ عليها"
                         value={executedEntity}
-                        onChange={(v) => { setExecutedEntity(v); setPage(1); }}
+                        onChange={(v) => { setExecutedEntity(v); resetPaging(); }}
                         allLabel="كل الجهات العامة المنفذ عليها"
                         options={executedEntities}
                       />
@@ -855,7 +938,7 @@ export default function DocumentsList() {
                         label="دائرة التنفيذ"
                         ariaLabel="فلترة دائرة التنفيذ"
                         value={court}
-                        onChange={(v) => { setCourt(v); setPage(1); }}
+                        onChange={(v) => { setCourt(v); resetPaging(); }}
                         allLabel="كل دوائر التنفيذ"
                         options={courts}
                       />
@@ -867,7 +950,7 @@ export default function DocumentsList() {
                           label="المحامي المختص"
                           ariaLabel="فلترة المحامي المختص"
                           value={lawyer}
-                          onChange={(v) => { setLawyer(v); setPage(1); }}
+                          onChange={(v) => { setLawyer(v); resetPaging(); }}
                           allLabel="كل المحامين"
                           options={canSearchByLawyer ? lawyers : []}
                         />
@@ -877,7 +960,7 @@ export default function DocumentsList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {data.items.map((d) => (
+                  {items.map((d) => (
                     <tr
                       key={d.id}
                       id={`doc-row-${d.id}`}
@@ -917,7 +1000,7 @@ export default function DocumentsList() {
                       </td>
                     </tr>
                   ))}
-                  {data.items.length === 0 && (
+                  {items.length === 0 && (
                     <tr>
                       <td colSpan={colSpan} className="px-4 py-8 text-center text-gray-400">
                         لا توجد نتائج
@@ -930,24 +1013,23 @@ export default function DocumentsList() {
           )}
 
           <div className="flex items-center justify-between mt-4 text-sm text-gray-600 flex-wrap gap-2">
-            <span>
-              صفحة {data.page} من {data.totalPages || 1} ({data.totalCount} نتيجة)
+            <span className="tabular-nums">
+              عرض {items.length} من {data.totalCount} نتيجة
             </span>
-            <div className="flex gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 min-h-11"
-              >
-                السابق
-              </button>
-              <button
-                disabled={page >= data.totalPages}
-                onClick={() => setPage(page + 1)}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 min-h-11"
-              >
-                التالي
-              </button>
+            <div className="flex flex-col items-end gap-2">
+              {loadMoreError && <span role="alert" className="text-red-600">{loadMoreError}</span>}
+              {effectiveNextCursor ? (
+                <button
+                  type="button"
+                  onClick={() => void loadMore()}
+                  disabled={loadingMore}
+                  className="px-4 py-2 border border-emerald-700 text-emerald-800 rounded-lg hover:bg-emerald-50 disabled:opacity-40 min-h-11"
+                >
+                  {loadingMore ? 'جارِ التحميل…' : 'تحميل المزيد'}
+                </button>
+              ) : (
+                <span className="text-gray-400">نهاية النتائج</span>
+              )}
             </div>
           </div>
         </>
