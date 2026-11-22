@@ -13,6 +13,7 @@
 | تعطّل الدخول/المصادقة | [`auth-outage.md`](auth-outage.md) |
 | تراكم/توقف صندوق الصادر | [`outbox-stuck.md`](outbox-stuck.md) |
 | تدوير الأسرار | [`secret-rotation.md`](secret-rotation.md) |
+| اختبار الحمل وSLO قبل الإصدار | [`load-testing.md`](load-testing.md) |
 
 **فحوص سريعة موحّدة:**
 
