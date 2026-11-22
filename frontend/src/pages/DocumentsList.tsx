@@ -458,12 +458,15 @@ export default function DocumentsList() {
   // يُحفظ الموضع الحالي (والفلاتر وسلسلة المؤشرات) كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
   // (الحالة القادمة من `URL` لا تُحفَظ حتى تُلمَس — انظر `persistedStatus`.)
   useEffect(() => {
+    // لا تُكتب سلسلة فارغة فوق موضع محفوظ قبل اكتمال محاولة استعادته (P3-05b).
+    if (!restoreAttempted && saved?.cursors?.length)
+      return;
     saveDocumentsListPosition({
       query, status: persistedStatus, applicant, court, lawyer, administrativeBranch,
       executedEntity, publicEntityBranch, page: 1,
       ...(extraCursors.length > 0 ? { cursors: extraCursors } : {}),
     });
-  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, extraCursors]);
+  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, extraCursors, restoreAttempted, saved]);
 
   // استعادة الصفحات المضافة عند العودة: يُعاد تشغيل سلسلة المؤشرات المحفوظة (بحد أقصى
   // طول السلسلة نفسها) ما دامت الفلاتر مطابقة؛ وأي فشل يُبقي الصفحة الأولى سليمة.
