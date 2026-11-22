@@ -105,6 +105,16 @@ public static class DeterministicSeeder
         var portalDocumentId = await SeedDocumentsAsync(
             db, scale, circuits, lawyers, entries, random, progress, ct);
 
+        // مؤشر حدود الصفحة 999 من **نفس استعلام القائمة الرئيسية** (بالفلاتر الافتراضية)
+        // لا من فهرس البذر: القائمة تخفي المنفذ/المشطوب/المحال، فحدود الإزاحة تختلف.
+        var cursorRepository = new DocumentRepository(db);
+        var (_, cursorPage, _) = await cursorRepository.SearchListAsync(
+            query: null, status: null, applicant: null, court: null, lawyer: null,
+            branch: null, administrativeBranch: null, executedEntity: null,
+            publicEntityBranch: null, visibleBranchId: null, visibleUserId: null,
+            page: 999, perPage: 20, ct: ct);
+        var cursorRow = cursorPage[^1];
+
         progress?.Report("البذر: تنبيهات الرؤساء…");
         var head = heads[0];
         await SeedHeadAlertsAsync(db, Math.Max(200, scale / 10), head, lawyers, random, ct);
@@ -116,7 +126,9 @@ public static class DeterministicSeeder
             HeadAlertUserId: head.Id,
             HeadAlertBranchId: head.BranchId!.Value,
             TextSearchTerm: TextSearchTerm,
-            DocumentCount: scale);
+            DocumentCount: scale,
+            CursorCreatedAt: cursorRow.CreatedAt,
+            CursorId: cursorRow.Id);
     }
 
     private static List<Branch> CreateBranches()
@@ -719,4 +731,6 @@ public sealed record SeedManifest(
     int HeadAlertUserId,
     int HeadAlertBranchId,
     string TextSearchTerm,
-    int DocumentCount);
+    int DocumentCount,
+    DateTime CursorCreatedAt,
+    int CursorId);
