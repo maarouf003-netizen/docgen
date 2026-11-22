@@ -15,6 +15,14 @@ public interface IStrikeOffReminderService
         int page, int perPage, int? visibleBranchId, int? visibleUserId, int? ownerSectionId,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// صفحة من الملفات المستحقة بإسقاط صف القائمة (P3-04c): نفس الاختيار/الترتيب في SQL،
+    /// ثم تحميل البطاقات بإسقاط خفيف بلا شجرة تحميل كاملة.
+    /// </summary>
+    Task<PagedResult<DocumentListItemDto>> GetListAsync(
+        int page, int perPage, int? visibleBranchId, int? visibleUserId, int? ownerSectionId,
+        CancellationToken ct = default);
+
     /// <summary>عدد الملفات المستحقة (لشارة اللوحة).</summary>
     Task<int> GetCountAsync(
         int? visibleBranchId, int? visibleUserId, int? ownerSectionId, CancellationToken ct = default);

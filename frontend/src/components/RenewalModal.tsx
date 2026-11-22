@@ -6,12 +6,12 @@ import { useCurrentYear } from '../hooks/useCurrentYear';
 import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from './form/documentFormConstants';
 import { displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
 import { trimNull } from '../utils/serialization';
-import type { DocumentResponse } from '../types';
+import type { DocumentListItemDto } from '../types';
 import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
 
 interface RenewalModalProps {
   /** الملف المشطوب المُعاد إلى المتداول. */
-  doc: DocumentResponse;
+  doc: DocumentListItemDto;
   /** اسم الملف المعروض (المنفذ عليه أو المقترض بحسب الصفة). */
   name: string;
   /** نقطة إعادة الملف (مثل /documents/7/restore-struck-off). */

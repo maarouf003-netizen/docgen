@@ -252,6 +252,25 @@ public class DocumentsController : ControllerBase
         return OkSanitized(result);
     }
 
+    /// <summary>
+    /// قائمة المحذوفات بإسقاط قراءة (P3-04c): نفس الصلاحية/النطاق/الفلترة والترتيب
+    /// والترقيم، لكن عناصر `DocumentListItemDto` — مسار إضافي لا يغيّر العقد القائم.
+    /// </summary>
+    [HttpGet("deleted/list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetDeletedList(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
+            return Forbid();
+
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
+
+        var result = await _search.SearchDeletedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        return Ok(result);
+    }
+
     [HttpGet("struck-off")]
     public async Task<ActionResult<PagedResult<DocumentResponse>>> GetStruckOff(
         [FromQuery] string? q,
@@ -269,6 +288,22 @@ public class DocumentsController : ControllerBase
         return OkSanitized(result);
     }
 
+    /// <summary>قائمة المشطوبة بإسقاط قراءة (P3-04c) — نفس الصلاحية/النطاق/الترتيب حرفيًا.</summary>
+    [HttpGet("struck-off/list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetStruckOffList(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        if (!_authorization.Has(User, UserCapability.CanViewDeletedDocuments))
+            return Forbid();
+
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
+
+        var result = await _search.SearchStruckOffListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        return Ok(result);
+    }
+
     [HttpGet("executed")]
     public async Task<ActionResult<PagedResult<DocumentResponse>>> GetExecuted(
         [FromQuery] string? q,
@@ -281,6 +316,19 @@ public class DocumentsController : ControllerBase
 
         var result = await _search.SearchExecutedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
         return OkSanitized(result);
+    }
+
+    /// <summary>قائمة المنفذة بإسقاط قراءة (P3-04c) — نفس الصلاحية/النطاق/الترتيب حرفيًا.</summary>
+    [HttpGet("executed/list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetExecutedList(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
+
+        var result = await _search.SearchExecutedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        return Ok(result);
     }
 
     [HttpGet("referred-to-start")]
@@ -297,6 +345,19 @@ public class DocumentsController : ControllerBase
         return OkSanitized(result);
     }
 
+    /// <summary>قائمة «محال الى البداية» بإسقاط قراءة (P3-04c) — نفس الصلاحية/النطاق/الترتيب حرفيًا.</summary>
+    [HttpGet("referred-to-start/list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetReferredToStartList(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        var scope = _authorization.ResolveListScope(User);
+        if (scope is null) return Forbid();
+
+        var result = await _search.SearchReferredToStartListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        return Ok(result);
+    }
+
     /// <summary>
     /// بطاقة «تذكيرات الشطب»: ملفات «طالبة تنفيذ» النشطة التي مضى على آخر إجراء فيها 5 أشهر —
     /// المحامي فقط ولملفاته (النطاق من الرمز). القراءة محسوبة عند الطلب بلا كتابة.
@@ -311,6 +372,22 @@ public class DocumentsController : ControllerBase
         var result = await _strikeOffReminders.GetAsync(
             page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
         return OkSanitized(result);
+    }
+
+    /// <summary>
+    /// قائمة «تذكيرات الشطب» بإسقاط قراءة (P3-04c): نفس الصلاحية/النطاق/الترتيب
+    /// والترقيم (الأقدم ركودًا أولًا) لكن بلا `WithStandardIncludes`.
+    /// </summary>
+    [HttpGet("strike-off-reminders/list")]
+    public async Task<ActionResult<PagedResult<DocumentListItemDto>>> GetStrikeOffRemindersList(
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
+            return Forbid();
+
+        var result = await _strikeOffReminders.GetListAsync(
+            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+        return Ok(result);
     }
 
     /// <summary>عدد ملفات «تذكيرات الشطب» — لشارة بطاقة لوحة المحامي.</summary>

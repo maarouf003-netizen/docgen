@@ -37,7 +37,7 @@ function baseConfig(overrides: Partial<ArchivedDocumentsListConfig> = {}): Archi
     searchPlaceholder: 'بحث...',
     emptyText: 'لا توجد ملفات',
     showBackLink: false,
-    fetchEndpoint: '/documents/deleted',
+    fetchEndpoint: '/documents/deleted/list',
     restoreEndpoint: (id) => `/documents/${id}/restore`,
     restoreButtonLabel: 'استعادة',
     confirmRestoreLabel: 'تأكيد',
@@ -102,7 +102,7 @@ describe('ArchivedDocumentsList', () => {
     mockPage([makeDocument({ id: 3, borrowerName: 'أحمد' })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
     const cfg = baseConfig({
-      fetchEndpoint: '/documents/struck-off',
+      fetchEndpoint: '/documents/struck-off/list',
       restoreEndpoint: (id) => `/documents/${id}/restore-struck-off`,
       restoreButtonLabel: 'إعادة الملف',
       confirmRestoreLabel: 'تأكيد الإعادة',
@@ -113,7 +113,7 @@ describe('ArchivedDocumentsList', () => {
     render(<ArchivedDocumentsList config={cfg} />);
     const table = await screen.findByRole('table');
     expect(api.get).toHaveBeenCalledWith(
-      expect.stringContaining('/documents/struck-off'),
+      expect.stringContaining('/documents/struck-off/list'),
       expect.any(Object),
     );
 

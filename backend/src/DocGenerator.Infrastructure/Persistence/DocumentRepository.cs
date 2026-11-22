@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -125,6 +126,122 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     }
 
     /// <summary>
+    /// إسقاط صف القائمة المشترك لكل قوائم الملفات (P3-04b/P3-04c): الحقول السطحية
+    /// التي تحتاجها بطاقة القائمة + تواريخ العرض الخاصة بقوائم الأرشيف — بلا
+    /// `Include` للشجرة الكاملة. مصدر واحد يمنع تباعد أشكال القوائم.
+    /// </summary>
+    private static readonly Expression<Func<Document, DocumentListRow>> ListRowSelector =
+        d => new DocumentListRow
+        {
+            Id = d.Id,
+            Version = d.Version,
+            CreatedAt = d.CreatedAt,
+            UpdatedAt = d.UpdatedAt,
+            DocumentType = d.DocumentType,
+            IsDraft = d.IsDraft,
+            BorrowerName = d.BorrowerName,
+            BorrowerFather = d.BorrowerFather,
+            BorrowerFamily = d.BorrowerFamily,
+            Applicant = d.Applicant,
+            Lawyer = d.Lawyer,
+            Court = d.Court,
+            ExecutionCircuitId = d.ExecutionCircuitId,
+            GeneralEntitySide = d.GeneralEntitySide,
+            ExecStatus = d.ExecStatus,
+            ExecSubStatus = d.ExecSubStatus,
+            ExecutedStatus = d.ExecutedStatus,
+            FileNumber = d.FileNumber,
+            FileType = d.FileType,
+            FileYear = d.FileYear,
+            BranchName = d.BranchName,
+            SourceDelegationId = d.SourceDelegationId,
+            AdministrativeBranchName = d.Branch != null ? d.Branch.Name : null,
+            DeletedAt = d.DeletedAt,
+            StruckOffDate = d.StruckOffDate,
+            ExecutedExecutionDate = d.ExecutedExecutionDate,
+            ExecutedDepositDate = d.ExecutedDepositDate,
+            ForcedExecutionDate = d.ForcedExecutionDate,
+            BaraetDate = d.BaraetDate,
+            StartReferralDate = d.StartReferralDate,
+        };
+
+    /// <summary>
+    /// استكمال صفوف القائمة بعناصرها الفرعية دفعةً واحدة لمعرّفات الصفحة: أرقام الأساس،
+    /// تاريخ القيد، الإجراءات، ملخصات الأطراف، وتاريخ إعادة الإنابة — ثم تُغذّي
+    /// `DocumentResponse.FromEntity` على كيان مُجمَّع في الخدمة بلا نسخة ثانية من القواعد.
+    /// </summary>
+    private async Task LoadListRowChildrenAsync(
+        List<DocumentListRow> items, CancellationToken ct, bool includeDeletedChildren = false)
+    {
+        if (items.Count == 0)
+            return;
+
+        var ids = items.Select(i => i.Id).ToList();
+
+        // قائمة المحذوفات تقرأ مستندات متجاوزةً فلتر `!IsDeleted`؛ ولأن كل جداول الأبناء
+        // تحمل فلترًا يستثني أبناء المحذوف، يجب تجاوزه هنا أيضًا وإلا فقدت البطاقة
+        // أطرافها وأرقام أساسها وآخر نشاطها بخلاف المسار القديم (`IgnoreQueryFilters`
+        // على الاستعلام الكامل). القوائم الأخرى تُبقي الفلاتر كما هي.
+        IQueryable<T> Scoped<T>(IQueryable<T> q) where T : class
+            => includeDeletedChildren ? q.IgnoreQueryFilters() : q;
+
+        var baseNumbers = await Scoped(Db.BaseNumbers.AsNoTracking())
+            .Where(b => ids.Contains(b.DocumentId))
+            .ToListAsync(ct);
+        var registrationDates = await Scoped(Db.DocumentRegistrationDates.AsNoTracking())
+            .Where(r => ids.Contains(r.DocumentId))
+            .ToDictionaryAsync(r => r.DocumentId, r => r.DateParsed, ct);
+        var actions = await Scoped(Db.ExecutionActions.AsNoTracking())
+            .Where(a => ids.Contains(a.DocumentId))
+            .Include(a => a.CreatedBy)
+            .ToListAsync(ct);
+        var executedNaturalPersons = await Scoped(Db.ExecutedNaturalPersons.AsNoTracking())
+            .Where(p => ids.Contains(p.DocumentId))
+            .ToListAsync(ct);
+        var executedPublicEntities = await Scoped(Db.ExecutedPublicEntities.AsNoTracking())
+            .Where(e => ids.Contains(e.DocumentId))
+            .ToListAsync(ct);
+        var executionApplicants = await Scoped(Db.ExecutionApplicants.AsNoTracking())
+            .Where(a => ids.Contains(a.DocumentId))
+            .ToListAsync(ct);
+        var applicantPublicEntities = await Scoped(Db.ApplicantPublicEntities.AsNoTracking())
+            .Where(a => ids.Contains(a.DocumentId))
+            .ToListAsync(ct);
+
+        var delegationIds = items
+            .Where(i => i.SourceDelegationId.HasValue)
+            .Select(i => i.SourceDelegationId!.Value)
+            .Distinct()
+            .ToList();
+        var delegationReturnDates = delegationIds.Count == 0
+            ? new Dictionary<int, DateTime?>()
+            : await Scoped(Db.DocumentDelegations.AsNoTracking())
+                .Where(x => delegationIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.ReturnDate, ct);
+
+        var baseLookup = baseNumbers.ToLookup(b => b.DocumentId);
+        var actionLookup = actions.ToLookup(a => a.DocumentId);
+        var executedNaturalLookup = executedNaturalPersons.ToLookup(p => p.DocumentId);
+        var executedPublicLookup = executedPublicEntities.ToLookup(e => e.DocumentId);
+        var applicantLookup = executionApplicants.ToLookup(a => a.DocumentId);
+        var applicantPublicLookup = applicantPublicEntities.ToLookup(a => a.DocumentId);
+
+        foreach (var item in items)
+        {
+            item.BaseNumbers = baseLookup[item.Id].OrderBy(b => b.Year).ThenBy(b => b.Id).ToList();
+            item.ExecutionActions = actionLookup[item.Id].ToList();
+            item.ExecutedNaturalPersons = executedNaturalLookup[item.Id].ToList();
+            item.ExecutedPublicEntities = executedPublicLookup[item.Id].ToList();
+            item.ExecutionApplicants = applicantLookup[item.Id].ToList();
+            item.ApplicantPublicEntities = applicantPublicLookup[item.Id].ToList();
+            item.RegistrationDate = registrationDates.GetValueOrDefault(item.Id);
+            item.DelegationReturnDate = item.SourceDelegationId.HasValue
+                ? delegationReturnDates.GetValueOrDefault(item.SourceDelegationId.Value)
+                : null;
+        }
+    }
+
+    /// <summary>
     /// قائمة الملفات بإسقاط صف القائمة (P3-04b): لا `WithStandardIncludes` ولا كيان
     /// كامل. تُجمع العناصر الفرعية اللازمة لبطاقة القائمة دفعةً واحدة لمعرّفات الصفحة
     /// ثم تُغذّي `DocumentResponse.FromEntity` على كيان مُجمَّع في الخدمة.
@@ -154,94 +271,30 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ThenByDescending(d => d.Id)
             .Skip((page - 1) * perPage)
             .Take(perPage)
-            .Select(d => new DocumentListRow
-            {
-                Id = d.Id,
-                CreatedAt = d.CreatedAt,
-                UpdatedAt = d.UpdatedAt,
-                DocumentType = d.DocumentType,
-                IsDraft = d.IsDraft,
-                BorrowerName = d.BorrowerName,
-                BorrowerFather = d.BorrowerFather,
-                BorrowerFamily = d.BorrowerFamily,
-                Applicant = d.Applicant,
-                Lawyer = d.Lawyer,
-                Court = d.Court,
-                ExecutionCircuitId = d.ExecutionCircuitId,
-                GeneralEntitySide = d.GeneralEntitySide,
-                ExecStatus = d.ExecStatus,
-                ExecSubStatus = d.ExecSubStatus,
-                ExecutedStatus = d.ExecutedStatus,
-                FileNumber = d.FileNumber,
-                FileType = d.FileType,
-                FileYear = d.FileYear,
-                BranchName = d.BranchName,
-                SourceDelegationId = d.SourceDelegationId,
-                AdministrativeBranchName = d.Branch != null ? d.Branch.Name : null,
-            })
+            .Select(ListRowSelector)
             .ToListAsync(ct);
 
-        if (items.Count == 0)
-            return (total, items);
-
-        var ids = items.Select(i => i.Id).ToList();
-
-        var baseNumbers = await Db.BaseNumbers.AsNoTracking()
-            .Where(b => ids.Contains(b.DocumentId))
-            .ToListAsync(ct);
-        var registrationDates = await Db.DocumentRegistrationDates.AsNoTracking()
-            .Where(r => ids.Contains(r.DocumentId))
-            .ToDictionaryAsync(r => r.DocumentId, r => r.DateParsed, ct);
-        var actions = await Db.ExecutionActions.AsNoTracking()
-            .Where(a => ids.Contains(a.DocumentId))
-            .Include(a => a.CreatedBy)
-            .ToListAsync(ct);
-        var executedNaturalPersons = await Db.ExecutedNaturalPersons.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId))
-            .ToListAsync(ct);
-        var executedPublicEntities = await Db.ExecutedPublicEntities.AsNoTracking()
-            .Where(e => ids.Contains(e.DocumentId))
-            .ToListAsync(ct);
-        var executionApplicants = await Db.ExecutionApplicants.AsNoTracking()
-            .Where(a => ids.Contains(a.DocumentId))
-            .ToListAsync(ct);
-        var applicantPublicEntities = await Db.ApplicantPublicEntities.AsNoTracking()
-            .Where(a => ids.Contains(a.DocumentId))
-            .ToListAsync(ct);
-
-        var delegationIds = items
-            .Where(i => i.SourceDelegationId.HasValue)
-            .Select(i => i.SourceDelegationId!.Value)
-            .Distinct()
-            .ToList();
-        var delegationReturnDates = delegationIds.Count == 0
-            ? new Dictionary<int, DateTime?>()
-            : await Db.DocumentDelegations.AsNoTracking()
-                .Where(x => delegationIds.Contains(x.Id))
-                .ToDictionaryAsync(x => x.Id, x => x.ReturnDate, ct);
-
-        var baseLookup = baseNumbers.ToLookup(b => b.DocumentId);
-        var actionLookup = actions.ToLookup(a => a.DocumentId);
-        var executedNaturalLookup = executedNaturalPersons.ToLookup(p => p.DocumentId);
-        var executedPublicLookup = executedPublicEntities.ToLookup(e => e.DocumentId);
-        var applicantLookup = executionApplicants.ToLookup(a => a.DocumentId);
-        var applicantPublicLookup = applicantPublicEntities.ToLookup(a => a.DocumentId);
-
-        foreach (var item in items)
-        {
-            item.BaseNumbers = baseLookup[item.Id].OrderBy(b => b.Year).ThenBy(b => b.Id).ToList();
-            item.ExecutionActions = actionLookup[item.Id].ToList();
-            item.ExecutedNaturalPersons = executedNaturalLookup[item.Id].ToList();
-            item.ExecutedPublicEntities = executedPublicLookup[item.Id].ToList();
-            item.ExecutionApplicants = applicantLookup[item.Id].ToList();
-            item.ApplicantPublicEntities = applicantPublicLookup[item.Id].ToList();
-            item.RegistrationDate = registrationDates.GetValueOrDefault(item.Id);
-            item.DelegationReturnDate = item.SourceDelegationId.HasValue
-                ? delegationReturnDates.GetValueOrDefault(item.SourceDelegationId.Value)
-                : null;
-        }
-
+        await LoadListRowChildrenAsync(items, ct);
         return (total, items);
+    }
+
+    /// <summary>
+    /// الصفوف المُسقَطة لمجموعة معرّفات محمَّلة سلفًا (P3-04c): يُستخدم في «تذكيرات الشطب»
+    /// حيث تُختار المعرّفات والترتيب في SQL ثم تُحمَّل بطاقاتها بإسقاط خفيف — مطابقًا
+    /// لدلالات `GetByIdsWithStandardIncludesAsync` لكن بلا شجرة تحميل كاملة.
+    /// </summary>
+    public async Task<List<DocumentListRow>> GetListRowsByIdsAsync(List<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return new List<DocumentListRow>();
+
+        var items = await Db.Documents.AsNoTracking()
+            .Where(d => ids.Contains(d.Id))
+            .Select(ListRowSelector)
+            .ToListAsync(ct);
+
+        await LoadListRowChildrenAsync(items, ct);
+        return items;
     }
 
     public async Task<List<DocumentExportRow>> ExportRowsAsync(
@@ -675,6 +728,58 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
+        var q = BuildDeletedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+
+        // فاصل حتمي كما في `SearchAsync`: حذف جماعي في اللحظة نفسها يجعل `DeletedAt` متساويًا.
+        var items = await WithStandardIncludes(
+            q.OrderByDescending(d => d.DeletedAt)
+                .ThenByDescending(d => d.Id)
+                .Skip((page - 1) * perPage)
+                .Take(perPage))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
+
+    /// <summary>
+    /// قائمة المحذوفات بإسقاط صف القائمة (P3-04c): نفس باني الاستعلام والترتيب والترقيم
+    /// حرفيًا، لكن بلا `WithStandardIncludes`.
+    /// </summary>
+    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchDeletedListAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        var q = BuildDeletedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(d => d.DeletedAt)
+            .ThenByDescending(d => d.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(ListRowSelector)
+            .ToListAsync(ct);
+
+        await LoadListRowChildrenAsync(items, ct, includeDeletedChildren: true);
+        return (total, items);
+    }
+
+    /// <summary>
+    /// باني استعلام المحذوفات المشترك بين القراءة الكاملة والمُسقَطة: يتجاوز Query Filter،
+    /// ويقصر على المحذوف منطقيًا، ويطبّق نطاق المالك والبحث النصي الموحد.
+    /// </summary>
+    private IQueryable<Document> BuildDeletedQuery(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int? ownerSectionId)
+    {
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(d => d.IsDeleted);
@@ -688,17 +793,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             q = ApplyPersonNameSearch(q, query.Trim());
         }
 
-        var total = await q.CountAsync(ct);
-
-        // فاصل حتمي كما في `SearchAsync`: حذف جماعي في اللحظة نفسها يجعل `DeletedAt` متساويًا.
-        var items = await WithStandardIncludes(
-            q.OrderByDescending(d => d.DeletedAt)
-                .ThenByDescending(d => d.Id)
-                .Skip((page - 1) * perPage)
-                .Take(perPage))
-            .ToListAsync(ct);
-
-        return (total, items);
+        return q;
     }
 
     /// <summary>
@@ -1159,10 +1254,71 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
-        // ملفات «منفذ عليها»/«عرض وايداع» المشطوبة وملفات «طالبة تنفيذ» المشطوبة فقط،
-        // غير المحذوفة (Query Filter مطبق تلقائيًا): مكتملة الاستبعاد من البحث العام والتصدير،
-        // ويُعرض سجلها في صفحة «الملفات المشطوبة». البحث النصي عبر الكتلة الموحدة
-        // (ApplyPersonNameSearch) نفسها المستخدمة في القائمة الرئيسية فتتكافأ التغطية.
+        var q = BuildStruckOffQuery(query, applicant, court, lawyer, branch, administrativeBranch,
+            visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+
+        var items = await WithStandardIncludes(
+            q.OrderByDescending(d => d.StruckOffDate)
+                .ThenByDescending(d => d.Id)
+                .Skip((page - 1) * perPage)
+                .Take(perPage))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
+
+    /// <summary>
+    /// قائمة المشطوبة بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب والترقيم حرفيًا،
+    /// بلا `WithStandardIncludes`.
+    /// </summary>
+    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchStruckOffListAsync(
+        string? query,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        var q = BuildStruckOffQuery(query, applicant, court, lawyer, branch, administrativeBranch,
+            visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(d => d.StruckOffDate)
+            .ThenByDescending(d => d.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(ListRowSelector)
+            .ToListAsync(ct);
+
+        await LoadListRowChildrenAsync(items, ct);
+        return (total, items);
+    }
+
+    /// <summary>
+    /// باني استعلام المشطوبة المشترك: ملفات «منفذ عليها»/«عرض وايداع» المشطوبة وملفات
+    /// «طالبة تنفيذ» المشطوبة فقط، غير المحذوفة (Query Filter مطبق تلقائيًا)، بنفس
+    /// النطاق والفلاتر النصية للصفحة. البحث النصي عبر الكتلة الموحدة نفسها المستخدمة
+    /// في القائمة الرئيسية فتتكافأ التغطية.
+    /// </summary>
+    private IQueryable<Document> BuildStruckOffQuery(
+        string? query,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int? ownerSectionId)
+    {
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .Where(d => (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
@@ -1209,16 +1365,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             q = ApplyPersonNameSearch(q, query.Trim());
         }
 
-        var total = await q.CountAsync(ct);
-
-        var items = await WithStandardIncludes(
-            q.OrderByDescending(d => d.StruckOffDate)
-                .ThenByDescending(d => d.Id)
-                .Skip((page - 1) * perPage)
-                .Take(perPage))
-            .ToListAsync(ct);
-
-        return (total, items);
+        return q;
     }
 
     public async Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items)> SearchStrikeOffReminderIdsAsync(
@@ -1288,12 +1435,59 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
-        // ملفات «منفذ عليها»/«عرض وايداع» بحالة «منفذ» فقط، وملفات «طالبة تنفيذ» المنفذة
-        // (بالتسوية أو الجبري الكامل) — تُخفى من البحث العام إلا عند البحث النصي عنها،
-        // فيُعرض سجلها في صفحة «الملفات المنفذة». غير المحذوفة (Query Filter مطبق تلقائيًا)
-        // وتُستبعد المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «منفذ» (فهي في صفحة
-        // «الملفات المشطوبة»). البحث النصي عبر الكتلة الموحدة (ApplyPersonNameSearch)
-        // نفسها المستخدمة في القائمة الرئيسية فتتكافأ التغطية.
+        var q = BuildExecutedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+
+        var items = await WithStandardIncludes(
+            q.OrderByDescending(d => d.UpdatedAt)
+                .ThenByDescending(d => d.Id)
+                .Skip((page - 1) * perPage)
+                .Take(perPage))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
+
+    /// <summary>
+    /// قائمة المنفذة بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب والترقيم حرفيًا،
+    /// بلا `WithStandardIncludes`.
+    /// </summary>
+    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchExecutedListAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        var q = BuildExecutedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(d => d.UpdatedAt)
+            .ThenByDescending(d => d.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(ListRowSelector)
+            .ToListAsync(ct);
+
+        await LoadListRowChildrenAsync(items, ct);
+        return (total, items);
+    }
+
+    /// <summary>
+    /// باني استعلام «الملفات المنفذة» المشترك: ملفات «منفذ عليها»/«عرض وايداع» بحالة
+    /// «منفذ» فقط، وملفات «طالبة تنفيذ» المنفذة (بالتسوية أو الجبري الكامل). غير المحذوفة
+    /// (Query Filter مطبق تلقائيًا) وتُستبعد المشطوبة لأن حالتها «مشطوب» تُبقيها خارج
+    /// شرط «منفذ». البحث النصي عبر الكتلة الموحدة نفسها المستخدمة في القائمة الرئيسية.
+    /// </summary>
+    private IQueryable<Document> BuildExecutedQuery(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int? ownerSectionId)
+    {
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .Where(d =>
                 ((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
@@ -1314,16 +1508,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             q = ApplyPersonNameSearch(q, query.Trim());
         }
 
-        var total = await q.CountAsync(ct);
-
-        var items = await WithStandardIncludes(
-            q.OrderByDescending(d => d.UpdatedAt)
-                .ThenByDescending(d => d.Id)
-                .Skip((page - 1) * perPage)
-                .Take(perPage))
-            .ToListAsync(ct);
-
-        return (total, items);
+        return q;
     }
 
     public async Task<(int TotalCount, List<Document> Items)> SearchReferredToStartAsync(
@@ -1335,25 +1520,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
-        // ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط — ومنها القادم من «منفذ جبريا»
-        // المحال بجزئيته (يُحمل ExecStatus=ReferredToStart ويبقي ExecSubStatus خاصته فيضمّه
-        // هذا الشرط حرفيًا بلا استثناء). قيد الصفة صريح دفاعًا عن العقد رغم أن مسار تغيير
-        // الحالة يمنع أصلًا إحالة غير «طالبة تنفيذ». البحث النصي عبر الكتلة المخصصة
-        // لهذه الصفحة (ApplyReferredPersonNameSearch: نسخة الكتلة الموحدة بلا فروع
-        // عائلة «منفذ عليه» — تضييق دلالي لأن الصفحة «طالبة تنفيذ» حصرًا) فتتكافأ
-        // التغطية (الكفيل/الوريث/لقطات الاستئناف). غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد
-        // المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «محال» (فهي في صفحة
-        // «الملفات المشطوبة»).
-        IQueryable<Document> q = Db.Documents.AsNoTracking()
-            .Where(d => d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
-                && d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
-
-        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
-
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            q = ApplyReferredPersonNameSearch(q, query.Trim());
-        }
+        var q = BuildReferredToStartQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
 
@@ -1369,5 +1536,58 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
 
         return (total, items);
+    }
+
+    /// <summary>
+    /// قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب
+    /// والترقيم حرفيًا، بلا `WithStandardIncludes`.
+    /// </summary>
+    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchReferredToStartListAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
+    {
+        var q = BuildReferredToStartQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(d => d.StartReferralDate.HasValue)
+            .ThenByDescending(d => d.StartReferralDate)
+            .ThenByDescending(d => d.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Select(ListRowSelector)
+            .ToListAsync(ct);
+
+        await LoadListRowChildrenAsync(items, ct);
+        return (total, items);
+    }
+
+    /// <summary>
+    /// باني استعلام «محال الى البداية» المشترك: ملفات «طالبة تنفيذ» بحالة «محال الى البداية»
+    /// فقط — ومنها القادم من «منفذ جبريا» المحال بجزئيته. البحث النصي عبر الكتلة المخصصة
+    /// لهذه الصفحة (ApplyReferredPersonNameSearch: بلا فروع عائلة «منفذ عليه»).
+    /// </summary>
+    private IQueryable<Document> BuildReferredToStartQuery(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int? ownerSectionId)
+    {
+        IQueryable<Document> q = Db.Documents.AsNoTracking()
+            .Where(d => d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
+                && d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
+
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            q = ApplyReferredPersonNameSearch(q, query.Trim());
+        }
+
+        return q;
     }
 }

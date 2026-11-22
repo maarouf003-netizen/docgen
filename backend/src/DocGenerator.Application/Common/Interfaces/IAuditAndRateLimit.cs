@@ -67,6 +67,12 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>
+    /// الصفوف المُسقَطة لمجموعة معرّفات محمَّلة سلفًا (P3-04c) — تُستخدم في «تذكيرات
+    /// الشطب» حيث تُختار المعرّفات والترتيب في SQL ثم تُحمَّل بطاقاتها بإسقاط خفيف.
+    /// </summary>
+    Task<List<DocumentListRow>> GetListRowsByIdsAsync(List<int> ids, CancellationToken ct = default);
+
+    /// <summary>
     /// صفوف التصدير بالإسقاط العمودي: كل المستندات المطابقة لفلاتر البحث (دون
     /// ترقيم) لكن بأعمدة الورقة فقط (بلا `Include` للشجرة الكاملة) — يخفض ذاكرة
     /// التصدير الكبير جذريًا. نفس الفلاتر والترتيب، والاختلاف في الأعمدة فقط.
@@ -156,6 +162,19 @@ public interface IDocumentRepository : IRepository<Document>
     /// ليُعرض سجل المحذوفات قبل الاستعادة.
     /// </summary>
     Task<(int TotalCount, List<Document> Items)> SearchDeletedAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
+    /// <summary>
+    /// قائمة المحذوفات بإسقاط صف القائمة (P3-04c) — نفس النطاق/الفلترة/الترتيب
+    /// حرفيًا بلا `WithStandardIncludes`.
+    /// </summary>
+    Task<(int TotalCount, List<DocumentListRow> Items)> SearchDeletedListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
@@ -327,6 +346,21 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default,
         int? ownerSectionId = null);
 
+    /// <summary>قائمة المشطوبة بإسقاط صف القائمة (P3-04c).</summary>
+    Task<(int TotalCount, List<DocumentListRow> Items)> SearchStruckOffListAsync(
+        string? query,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
     /// <summary>
     /// معرّفات ملفات «تذكيرات الشطب» المستحقة (نشطة، «طالبة تنفيذ»، مضى على آخر إجراء فيها
     /// ≥ عتبة الأشهر، وغير مُلغاة التذكير) مع تاريخ آخر نشاط UTC محسوبًا في SQL — مرتبةً
@@ -355,12 +389,32 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default,
         int? ownerSectionId = null);
 
+    /// <summary>قائمة المنفذة بإسقاط صف القائمة (P3-04c).</summary>
+    Task<(int TotalCount, List<DocumentListRow> Items)> SearchExecutedListAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
     /// <summary>
     /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
     /// «منفذ جبريا» المحال بجزئيته) — يُعرض سجلها في صفحة «محال الى البداية». غير المحذوفة
     /// (Query Filter مطبق تلقائيًا) وتُستبعد المشطوبة (حالتها خارج شرط «محال»).
     /// </summary>
     Task<(int TotalCount, List<Document> Items)> SearchReferredToStartAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
+
+    /// <summary>قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c).</summary>
+    Task<(int TotalCount, List<DocumentListRow> Items)> SearchReferredToStartListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,

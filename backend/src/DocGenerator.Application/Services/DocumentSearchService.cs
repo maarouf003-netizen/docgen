@@ -55,6 +55,17 @@ public sealed class DocumentSearchService : IDocumentSearchService
         };
     }
 
+    /// <summary>قائمة المحذوفات بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
+    public async Task<PagedResult<DocumentListItemDto>> SearchDeletedListAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, rows) = await _documents.SearchDeletedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+        return BuildListResult(rows, total, page, perPage);
+    }
+
     public async Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(
         string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
@@ -70,6 +81,17 @@ public sealed class DocumentSearchService : IDocumentSearchService
             PerPage = perPage,
             TotalCount = total,
         };
+    }
+
+    /// <summary>قائمة المشطوبة بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
+    public async Task<PagedResult<DocumentListItemDto>> SearchStruckOffListAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, rows) = await _documents.SearchStruckOffListAsync(query, null, null, null, null, null, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+        return BuildListResult(rows, total, page, perPage);
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchExecutedAsync(
@@ -89,6 +111,17 @@ public sealed class DocumentSearchService : IDocumentSearchService
         };
     }
 
+    /// <summary>قائمة المنفذة بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
+    public async Task<PagedResult<DocumentListItemDto>> SearchExecutedListAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, rows) = await _documents.SearchExecutedListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+        return BuildListResult(rows, total, page, perPage);
+    }
+
     public async Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(
         string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
@@ -104,6 +137,17 @@ public sealed class DocumentSearchService : IDocumentSearchService
             PerPage = perPage,
             TotalCount = total,
         };
+    }
+
+    /// <summary>قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c) — نفس الترقيم حرفيًا.</summary>
+    public async Task<PagedResult<DocumentListItemDto>> SearchReferredToStartListAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, rows) = await _documents.SearchReferredToStartListAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
+        return BuildListResult(rows, total, page, perPage);
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchAsync(
@@ -143,98 +187,25 @@ public sealed class DocumentSearchService : IDocumentSearchService
         var (total, rows) = await _documents.SearchListAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
-        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        var result = new PagedResult<DocumentListItemDto>
-        {
-            Items = rows.Select(row => ToListItem(row, currentYear)).ToList(),
-            Page = page,
-            PerPage = perPage,
-            TotalCount = total,
-        };
+        var result = BuildListResult(rows, total, page, perPage);
         await EnrichAppealFlagsAsync(result.Items, ct);
         return result;
     }
 
-    private static DocumentListItemDto ToListItem(DocumentListRow row, int currentYear)
+    /// <summary>
+    /// بناء صفحة عناصر القائمة من صفوف مُسقَطة — مصدر واحد لكل قوائم الملفات
+    /// (P3-04b والقوائم الخمس في P3-04c) فلا يتباعد شكل استجابة قائمة عن أخرى.
+    /// </summary>
+    private PagedResult<DocumentListItemDto> BuildListResult(
+        List<DocumentListRow> rows, int total, int page, int perPage)
     {
-        // كيان مُجمَّع في الذاكرة (غير متتبَّع) من الحقول المسقطة + العناصر الدفعية،
-        // ثم المُحوِّل الوحيد `FromEntity` — لا نسخة ثانية من قواعد العرض.
-        var stub = new Document
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        return new PagedResult<DocumentListItemDto>
         {
-            Id = row.Id,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt,
-            DocumentType = row.DocumentType,
-            IsDraft = row.IsDraft,
-            BorrowerName = row.BorrowerName,
-            BorrowerFather = row.BorrowerFather,
-            BorrowerFamily = row.BorrowerFamily,
-            Applicant = row.Applicant,
-            Lawyer = row.Lawyer,
-            Court = row.Court,
-            ExecutionCircuitId = row.ExecutionCircuitId,
-            GeneralEntitySide = row.GeneralEntitySide ?? GeneralEntitySideCatalog.Applicant,
-            ExecStatus = row.ExecStatus,
-            ExecSubStatus = row.ExecSubStatus,
-            ExecutedStatus = row.ExecutedStatus,
-            FileNumber = row.FileNumber,
-            FileType = row.FileType,
-            FileYear = row.FileYear,
-            BranchName = row.BranchName,
-            SourceDelegationId = row.SourceDelegationId,
-            Branch = row.AdministrativeBranchName is null
-                ? null
-                : new Branch { Name = row.AdministrativeBranchName },
-            RegistrationDate = row.RegistrationDate is null
-                ? null
-                : new DocumentRegistrationDate { DateParsed = row.RegistrationDate },
-            SourceDelegation = row.DelegationReturnDate is null
-                ? null
-                : new DocumentDelegation { ReturnDate = row.DelegationReturnDate },
-        };
-        stub.BaseNumbers = row.BaseNumbers;
-        stub.ExecutionActions = row.ExecutionActions;
-        stub.ExecutedNaturalPersons = row.ExecutedNaturalPersons;
-        stub.ExecutedPublicEntities = row.ExecutedPublicEntities;
-        stub.ExecutionApplicants = row.ExecutionApplicants;
-        stub.ApplicantPublicEntities = row.ApplicantPublicEntities;
-
-        var full = DocumentResponse.FromEntity(stub, currentYear);
-        return new DocumentListItemDto
-        {
-            Id = full.Id,
-            CreatedAt = full.CreatedAt,
-            UpdatedAt = full.UpdatedAt,
-            DocumentType = full.DocumentType,
-            IsDraft = full.IsDraft,
-            BorrowerName = full.BorrowerName,
-            BorrowerFather = full.BorrowerFather,
-            BorrowerFamily = full.BorrowerFamily,
-            Applicant = full.Applicant,
-            GeneralEntitySide = full.GeneralEntitySide,
-            FileNumber = full.FileNumber,
-            DisplayFileNumber = full.DisplayFileNumber,
-            DisplayFileYear = full.DisplayFileYear,
-            FileType = full.FileType,
-            FileYear = full.FileYear,
-            Court = full.Court,
-            Lawyer = full.Lawyer,
-            BranchName = full.BranchName,
-            AdministrativeBranchName = full.AdministrativeBranchName,
-            ExecStatus = full.ExecStatus,
-            ExecSubStatus = full.ExecSubStatus,
-            ExecutedStatus = full.ExecutedStatus,
-            DisplayStatus = full.DisplayStatus,
-            NeedsRotation = full.NeedsRotation,
-            SourceDelegationId = full.SourceDelegationId,
-            DelegationReturnDate = full.DelegationReturnDate,
-            LastActivityDate = full.LastActivityDate,
-            LastActivitySource = full.LastActivitySource,
-            ExecutionActions = full.ExecutionActions,
-            ExecutedNaturalPersons = full.ExecutedNaturalPersons,
-            ExecutedPublicEntities = full.ExecutedPublicEntities,
-            ExecutionApplicants = full.ExecutionApplicants,
-            ApplicantPublicEntities = full.ApplicantPublicEntities,
+            Items = rows.Select(row => DocumentListItemDto.FromRow(row, currentYear)).ToList(),
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
         };
     }
 

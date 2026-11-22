@@ -6,10 +6,10 @@ import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { formatDate } from '../utils/dates';
 import { applicantName, fullName } from '../utils/documentDisplay';
-import type { DocumentResponse, LastActivitySource, PagedResult } from '../types';
+import type { DocumentListItemDto, LastActivitySource, PagedResult } from '../types';
 
 /** مصدر تاريخ «آخر إجراء» المعروض — يُعلن بصدق حين لا يكون إجراءً مسجّلًا. */
-function sourceLabel(source?: LastActivitySource): string | null {
+function sourceLabel(source?: LastActivitySource | string | null): string | null {
   if (source === 'registration') return 'تاريخ القيد';
   if (source === 'created') return 'تاريخ الإدخال';
   return null;
@@ -29,17 +29,17 @@ export default function StrikeOffRemindersPage() {
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
 
-  const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>(
+  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
     (signal) => {
       const params = new URLSearchParams({ page: String(page), perPage: '20' });
-      return api.get(`/documents/strike-off-reminders?${params.toString()}`, { signal }).then((r) => r.data);
+      return api.get(`/documents/strike-off-reminders/list?${params.toString()}`, { signal }).then((r) => r.data);
     },
     [page],
   );
 
   const data = listQuery.data;
 
-  const dismiss = async (d: DocumentResponse) => {
+  const dismiss = async (d: DocumentListItemDto) => {
     setDismissingId(d.id);
     setActionError('');
     setMessage('');
@@ -57,7 +57,7 @@ export default function StrikeOffRemindersPage() {
     }
   };
 
-  const dismissButton = (d: DocumentResponse) =>
+  const dismissButton = (d: DocumentListItemDto) =>
     confirmId === d.id ? (
       <div className="flex flex-wrap gap-2">
         <button
@@ -87,7 +87,7 @@ export default function StrikeOffRemindersPage() {
       </button>
     );
 
-  const actionsButton = (d: DocumentResponse) => (
+  const actionsButton = (d: DocumentListItemDto) => (
     <button
       type="button"
       onClick={() => setActionsDocId(d.id)}
@@ -97,7 +97,7 @@ export default function StrikeOffRemindersPage() {
     </button>
   );
 
-  const lastActivity = (d: DocumentResponse) => {
+  const lastActivity = (d: DocumentListItemDto) => {
     const source = sourceLabel(d.lastActivitySource);
     return (
       <span className="inline-flex flex-col">

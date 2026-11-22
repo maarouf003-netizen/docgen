@@ -14,7 +14,7 @@ export default function StruckOffDocuments() {
     searchPlaceholder: 'بحث في الملفات المشطوبة...',
     emptyText: 'لا توجد ملفات مشطوبة',
     showBackLink: true,
-    fetchEndpoint: '/documents/struck-off',
+    fetchEndpoint: '/documents/struck-off/list',
     restoreEndpoint: (id) => `/documents/${id}/restore-struck-off`,
     restoreButtonLabel: 'إعادة الملف',
     confirmRestoreLabel: 'تأكيد الإعادة',

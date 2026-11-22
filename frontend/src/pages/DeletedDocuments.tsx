@@ -13,7 +13,7 @@ export default function DeletedDocuments() {
     searchPlaceholder: 'بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ...',
     emptyText: 'لا توجد ملفات محذوفة',
     showBackLink: false,
-    fetchEndpoint: '/documents/deleted',
+    fetchEndpoint: '/documents/deleted/list',
     restoreEndpoint: (id) => `/documents/${id}/restore`,
     restoreButtonLabel: 'استعادة',
     confirmRestoreLabel: 'تأكيد الاستعادة',
