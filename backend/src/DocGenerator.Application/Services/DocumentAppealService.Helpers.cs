@@ -1,0 +1,69 @@
+using System.Globalization;
+using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Security;
+using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
+
+namespace DocGenerator.Application.Services;
+
+public sealed partial class DocumentAppealService : IDocumentAppealService
+{
+    // ── أدوات التحقق ──────────────────────────────────────────────────────
+
+    /// <summary>شروط الاستئناف على الملف: مقيد (ليس تحت الرفع). الشطب لا يمنع الاستئناف.</summary>
+    private static void ValidateSourceForAppeal(Document source)
+    {
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن تسطير استئناف على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
+        if (source.IsDraft)
+            throw new ArgumentException("لا يمكن الاستئناف على ملف تحت الرفع");
+    }
+
+    private static void EnsurePendingByCreator(DocumentAppeal appeal, int userId)
+    {
+        // P2-02f: الصلاحية أولًا (403)، ثم حالة الاستئناف (400) — لا كشف لحالة استئناف الغير.
+        if (appeal.CreatedById != userId)
+            throw new UnauthorizedAccessException("لا يمكنك تعديل أو حذف استئناف لم تسطّره");
+        if (appeal.AssignedLawyerId is not null || appeal.Status != AppealStatusCatalog.Pending)
+            throw new ArgumentException("لا يمكن تعديل أو حذف استئناف بعد إسناده");
+    }
+
+    private static void EnsureAssignedFollower(DocumentAppeal appeal, int userId)
+    {
+        if (appeal.AssignedLawyerId != userId)
+            throw new UnauthorizedAccessException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");
+    }
+
+    // ── أدوات مساعدة ──────────────────────────────────────────────────────
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>تطبيع نص اختياري مع رفض تجاوز الحد الأقصى برسالة عربية واضحة
+    /// (بدل استثناء قاعدة البيانات الخام عند Postgres).</summary>
+    private static string? Bounded(string? value, int maxLength, string fieldName)
+    {
+        var normalized = Normalize(value);
+        if (normalized is not null && normalized.Length > maxLength)
+            throw new ArgumentException($"طول {fieldName} يتجاوز الحد الأقصى ({maxLength} حرفًا)");
+        return normalized;
+    }
+
+    private static string RequireText(string? value, string fieldName, int maxLength = 2000)
+    {
+        var normalized = Bounded(value, maxLength, fieldName)
+            ?? throw new ArgumentException($"{fieldName} مطلوب");
+        return normalized;
+    }
+
+    private static string Single(string? name) => string.IsNullOrWhiteSpace(name) ? "—" : name!.Trim();
+
+    private static string TripleOr(string? first, string? second, string? third, string? fallback)
+    {
+        var parts = new[] { first, second, third }.Where(v => !string.IsNullOrWhiteSpace(v));
+        var triple = string.Join(' ', parts);
+        return !string.IsNullOrWhiteSpace(triple) ? triple : (string.IsNullOrWhiteSpace(fallback) ? "—" : fallback!.Trim());
+    }
+}
