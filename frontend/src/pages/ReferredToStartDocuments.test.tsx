@@ -124,7 +124,7 @@ describe('ReferredToStartDocuments', () => {
     await user.type(screen.getByPlaceholderText(/بحث في الملفات المحالة الى البداية/), 'مقترض');
 
     const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
-    expect(url).toContain('/documents/referred-to-start');
+    expect(url).toContain('/documents/referred-to-start/list');
     expect(url).toContain('q=' + encodeURIComponent('مقترض'));
     expect(url).toContain('page=1');
   });

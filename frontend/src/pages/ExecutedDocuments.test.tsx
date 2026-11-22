@@ -167,7 +167,7 @@ describe('ExecutedDocuments', () => {
     await user.type(screen.getByPlaceholderText(/بحث في الملفات المنفذة/), 'محمود');
 
     const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
-    expect(url).toContain('/documents/executed');
+    expect(url).toContain('/documents/executed/list');
     expect(url).toContain('q=' + encodeURIComponent('محمود'));
     expect(url).toContain('page=1');
   });

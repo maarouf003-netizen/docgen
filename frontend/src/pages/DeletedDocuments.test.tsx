@@ -107,7 +107,7 @@ describe('DeletedDocuments', () => {
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore');
     expect(await screen.findByText(/تمت استعادة الملف/)).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
-      expect.stringContaining('/documents/deleted'),
+      expect.stringContaining('/documents/deleted/list'),
       expect.any(Object),
     );
   });

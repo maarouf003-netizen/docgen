@@ -92,6 +92,133 @@ public static class HotQueryCatalog
                 return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
             }),
 
+        // P3-04c — قوائم الأرشيف الخمس: قديم = شجرة التحميل القياسية، جديد = إسقاط صف القائمة.
+        new HotQuery(
+            "documents-deleted-page1",
+            "الملفات المحذوفة (صفحة 1) مع شجرة التحميل القياسية",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchDeletedAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-deleted-page1-projected",
+            "الملفات المحذوفة بإسقاط صف القائمة (P3-04c)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchDeletedListAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-struck-off-page1",
+            "الملفات المشطوبة (صفحة 1) مع شجرة التحميل القياسية",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchStruckOffAsync(
+                    query: null, applicant: null, court: null, lawyer: null, branch: null,
+                    administrativeBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-struck-off-page1-projected",
+            "الملفات المشطوبة بإسقاط صف القائمة (P3-04c)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchStruckOffListAsync(
+                    query: null, applicant: null, court: null, lawyer: null, branch: null,
+                    administrativeBranch: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-executed-page1",
+            "الملفات المنفذة (صفحة 1) مع شجرة التحميل القياسية",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchExecutedAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-executed-page1-projected",
+            "الملفات المنفذة بإسقاط صف القائمة (P3-04c)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchExecutedListAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-referred-to-start-page1",
+            "الملفات المحالة الى البداية (صفحة 1) مع شجرة التحميل القياسية",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchReferredToStartAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "documents-referred-to-start-page1-projected",
+            "الملفات المحالة الى البداية بإسقاط صف القائمة (P3-04c)",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var (total, items) = await repository.SearchReferredToStartListAsync(
+                    query: null, visibleBranchId: null, visibleUserId: null,
+                    page: 1, perPage: 20, ct: ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "strike-off-reminders-page1",
+            "تذكيرات الشطب (صفحة 1): اختيار المعرّفات ثم تحميلها بالشجرة القياسية",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var cutoff = DateTime.UtcNow.AddMonths(-5);
+                var (total, rows) = await repository.SearchStrikeOffReminderIdsAsync(
+                    cutoff, visibleBranchId: null, visibleUserId: null, page: 1, perPage: 20, ct: ct);
+                var docs = await repository.GetByIdsWithStandardIncludesAsync(
+                    rows.Select(r => r.Id).ToList(), ct);
+                return new QueryOutcome(docs.Count, $"total={total};first={docs.FirstOrDefault()?.Id}");
+            }),
+
+        new HotQuery(
+            "strike-off-reminders-page1-projected",
+            "تذكيرات الشطب بإسقاط صف القائمة (P3-04c): نفس الاختيار ثم تحميل خفيف",
+            async (db, ct) =>
+            {
+                var repository = new DocumentRepository(db);
+                var cutoff = DateTime.UtcNow.AddMonths(-5);
+                var (total, rows) = await repository.SearchStrikeOffReminderIdsAsync(
+                    cutoff, visibleBranchId: null, visibleUserId: null, page: 1, perPage: 20, ct: ct);
+                var items = await repository.GetListRowsByIdsAsync(
+                    rows.Select(r => r.Id).ToList(), ct);
+                return new QueryOutcome(items.Count, $"total={total};first={items.FirstOrDefault()?.Id}");
+            }),
+
         new HotQuery(
             "portal-list-page1",
             "بحث بوابة الجهة العامة (صفحة 1) مع مسند الرؤية الموحد",

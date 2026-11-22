@@ -347,6 +347,83 @@ public class DocumentServiceTests : PostgresDbTest
     }
 
     [PostgresFact]
+    public async Task SearchDeletedList_ProjectsDeletedCardFields()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.DeleteAsync(doc.Id, "head1");
+
+        var legacy = await _search.SearchDeletedAsync(null, 1, 20);
+        var projected = await _search.SearchDeletedListAsync(null, 1, 20);
+
+        var oldItem = Assert.Single(legacy.Items);
+        var item = Assert.Single(projected.Items);
+        Assert.Equal(doc.Id, item.Id);
+        Assert.NotNull(item.DeletedAt);
+        Assert.False(item.IsDraft);
+        // الأبناء (الأطراف/أرقام الأساس/آخر نشاط) تبقى ظاهرة للمحذوف كما في المسار القديم
+        // رغم أن لكل جدول ابن فلترًا يستثني أبناء المحذوف.
+        Assert.Equal(oldItem.DisplayFileNumber, item.DisplayFileNumber);
+        Assert.Equal(oldItem.LastActivitySource, item.LastActivitySource);
+        Assert.Equal(oldItem.LastActivityDate, item.LastActivityDate);
+        Assert.Equal(
+            oldItem.ExecutedNaturalPersons.Select(p => p.Name),
+            item.ExecutedNaturalPersons.Select(p => p.Name));
+        Assert.Equal(
+            oldItem.ExecutionApplicants.Select(p => p.Name),
+            item.ExecutionApplicants.Select(p => p.Name));
+    }
+
+    [PostgresFact]
+    public async Task SearchStruckOffList_ProjectsStruckOffCardFields()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var result = await _search.SearchStruckOffListAsync(null, 1, 20);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(doc.Id, item.Id);
+        Assert.Equal("مشطوب", item.DisplayStatus);
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, item.ExecutedStatus);
+        Assert.NotNull(item.StruckOffDate);
+        Assert.Equal(doc.FileNumber, item.DisplayFileNumber);
+    }
+
+    [PostgresFact]
+    public async Task SearchExecutedList_ProjectsExecutedCardFields()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1");
+
+        var result = await _search.SearchExecutedListAsync(null, 1, 20);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(doc.Id, item.Id);
+        Assert.Equal("منفذ", item.DisplayStatus);
+        Assert.Equal(ExecutedStatusCatalog.Executed, item.ExecutedStatus);
+        Assert.Equal(doc.FileNumber, item.DisplayFileNumber);
+        // ملخصات الأطراف تصل من القراءات الدفعية كما في الشجرة الكاملة.
+        Assert.Single(item.ExecutedNaturalPersons);
+        Assert.Single(item.ExecutedPublicEntities);
+    }
+
+    [PostgresFact]
+    public async Task SearchReferredToStartList_ProjectsReferralCardFields()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var result = await _search.SearchReferredToStartListAsync(null, 1, 20);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(doc.Id, item.Id);
+        Assert.Equal("محال الى البداية", item.DisplayStatus);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, item.ExecStatus);
+        Assert.Equal("2026-05-02", item.StartReferralDate);
+        Assert.Equal(doc.FileNumber, item.DisplayFileNumber);
+    }
+
+    [PostgresFact]
     public async Task Search_ByBorrowerHeirName_FiltersResults()
     {
         var req = Sample();

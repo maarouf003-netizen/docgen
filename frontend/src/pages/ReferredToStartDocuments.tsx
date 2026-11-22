@@ -2,10 +2,10 @@ import ArchivedDocumentsList, { type ArchivedDocumentsListConfig } from '../comp
 import { getDocumentBadge } from '../utils/documentStatus';
 import { fullName } from '../utils/documentDisplay';
 import { formatDate } from '../utils/dates';
-import type { DocumentResponse } from '../types';
+import type { DocumentListItemDto } from '../types';
 
 /** تاريخ إحالة الملف إلى قسم البداية. */
-function referredDateOf(d: DocumentResponse): string {
+function referredDateOf(d: DocumentListItemDto): string {
   return formatDate(d.startReferralDate, '—');
 }
 
@@ -17,7 +17,7 @@ export default function ReferredToStartDocuments() {
     searchPlaceholder: 'بحث في الملفات المحالة الى البداية...',
     emptyText: 'لا توجد ملفات محالة الى البداية',
     showBackLink: true,
-    fetchEndpoint: '/documents/referred-to-start',
+    fetchEndpoint: '/documents/referred-to-start/list',
     dateColumnHeader: 'تاريخ الإحالة',
     dateCell: referredDateOf,
     cardTopRight: (d) => {

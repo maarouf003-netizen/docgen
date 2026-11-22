@@ -551,6 +551,68 @@ public class DocumentsIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task ArchiveListEndpoints_ReturnProjectedCardShape_WithListSpecificFields()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+
+        // مشطوبة («طالبة تنفيذ»): تاريخ الشطب وحالة العرض.
+        var struckId = await CreateCirculatingDocumentAsync(token);
+        var strike = await client.PostAsJsonAsync($"/api/documents/{struckId}/status",
+            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
+
+        // منفذة («منفذ عليه»): تاريخ التنفيذ وحالة المنفذ.
+        var executedId = await CreateExecutedDocumentAsync(token);
+        var run = await client.PostAsJsonAsync($"/api/documents/{executedId}/executed-status", new
+        {
+            status = "منفذ",
+            executedExecutionDate = "2026-06-01",
+            executedPaidAmount = 1000,
+        });
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        // محالة للبداية: تاريخ الإحالة.
+        var referredId = await CreateCirculatingDocumentAsync(token);
+        var referred = await client.PostAsJsonAsync($"/api/documents/{referredId}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        // محذوفة: تاريخ الحذف.
+        var deletedId = await CreateCirculatingDocumentAsync(token);
+        var delete = await client.DeleteAsync($"/api/documents/{deletedId}");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+
+        async Task<JsonElement> ItemAsync(string path, int id)
+        {
+            var response = await client.GetAsync($"{path}?perPage=50");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+            return body!.RootElement.GetProperty("items").EnumerateArray()
+                .Single(i => i.GetProperty("id").GetInt32() == id).Clone();
+        }
+
+        var struck = await ItemAsync("/api/documents/struck-off/list", struckId);
+        Assert.Equal("مشطوب", struck.GetProperty("displayStatus").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(struck.GetProperty("struckOffDate").GetString()));
+        Assert.False(struck.TryGetProperty("guarantors", out _));
+
+        var executed = await ItemAsync("/api/documents/executed/list", executedId);
+        Assert.Equal("منفذ", executed.GetProperty("displayStatus").GetString());
+        Assert.Equal("منفذ", executed.GetProperty("executedStatus").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(executed.GetProperty("executedExecutionDate").GetString()));
+        Assert.False(executed.TryGetProperty("assets", out _));
+
+        var referredRow = await ItemAsync("/api/documents/referred-to-start/list", referredId);
+        Assert.Equal("محال الى البداية", referredRow.GetProperty("displayStatus").GetString());
+        Assert.Equal("2024-01-02", referredRow.GetProperty("startReferralDate").GetString());
+
+        var deletedRow = await ItemAsync("/api/documents/deleted/list", deletedId);
+        Assert.False(string.IsNullOrWhiteSpace(deletedRow.GetProperty("deletedAt").GetString()));
+        Assert.Equal("مقترض", deletedRow.GetProperty("borrowerName").GetString());
+    }
+
+    [PostgresFact]
     public async Task ReferredToStartPage_ShowsReferred_AndExcludesOthers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

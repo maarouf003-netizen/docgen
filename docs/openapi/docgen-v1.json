@@ -1471,6 +1471,10 @@
             },
             "type": "array"
           },
+          "baraetDate": {
+            "nullable": true,
+            "type": "string"
+          },
           "borrowerFamily": {
             "nullable": true,
             "type": "string"
@@ -1499,6 +1503,11 @@
             "nullable": true,
             "type": "string"
           },
+          "deletedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
           "displayFileNumber": {
             "nullable": true,
             "type": "string"
@@ -1520,6 +1529,16 @@
             "type": "string"
           },
           "execSubStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "executedDepositDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "executedExecutionDate": {
+            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -1563,6 +1582,10 @@
             "nullable": true,
             "type": "string"
           },
+          "forcedExecutionDate": {
+            "nullable": true,
+            "type": "string"
+          },
           "generalEntitySide": {
             "nullable": true,
             "type": "string"
@@ -1603,9 +1626,22 @@
             "nullable": true,
             "type": "integer"
           },
+          "startReferralDate": {
+            "nullable": true,
+            "type": "string"
+          },
+          "struckOffDate": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -1619,7 +1655,8 @@
           "id",
           "isDraft",
           "needsRotation",
-          "updatedAt"
+          "updatedAt",
+          "version"
         ],
         "type": "object"
       },
@@ -8296,6 +8333,68 @@
         ]
       }
     },
+    "/api/documents/deleted/list": {
+      "get": {
+        "operationId": "Documents_GetDeletedList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
     "/api/documents/deleted/{id}/base-numbers": {
       "get": {
         "operationId": "Documents_GetDeletedBaseNumberHistory",
@@ -8371,6 +8470,68 @@
               "text/plain": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/documents/executed/list": {
+      "get": {
+        "operationId": "Documents_GetExecutedList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
                 }
               }
             },
@@ -8783,6 +8944,68 @@
         ]
       }
     },
+    "/api/documents/referred-to-start/list": {
+      "get": {
+        "operationId": "Documents_GetReferredToStartList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
     "/api/documents/rotate": {
       "get": {
         "operationId": "Documents_GetRotationList",
@@ -8929,6 +9152,61 @@
         ]
       }
     },
+    "/api/documents/strike-off-reminders/list": {
+      "get": {
+        "operationId": "Documents_GetStrikeOffRemindersList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
     "/api/documents/struck-off": {
       "get": {
         "operationId": "Documents_GetStruckOff",
@@ -8975,6 +9253,68 @@
               "text/plain": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentResponsePagedResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/documents/struck-off/list": {
+      "get": {
+        "operationId": "Documents_GetStruckOffList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "default": 20,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListItemDtoPagedResult"
                 }
               }
             },

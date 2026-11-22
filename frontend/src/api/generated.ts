@@ -996,6 +996,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/deleted/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_GetDeletedList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/deleted/{id}/base-numbers": {
         parameters: {
             query?: never;
@@ -1020,6 +1036,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["Documents_GetExecuted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/executed/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_GetExecutedList"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1124,6 +1156,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/referred-to-start/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_GetReferredToStartList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/rotate": {
         parameters: {
             query?: never;
@@ -1172,6 +1220,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/strike-off-reminders/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_GetStrikeOffRemindersList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/struck-off": {
         parameters: {
             query?: never;
@@ -1180,6 +1244,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["Documents_GetStruckOff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/struck-off/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Documents_GetStruckOffList"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3633,6 +3713,7 @@ export interface components {
             administrativeBranchName?: string | null;
             applicant?: string | null;
             applicantPublicEntities: components["schemas"]["ApplicantPublicEntityDto"][];
+            baraetDate?: string | null;
             borrowerFamily?: string | null;
             borrowerFather?: string | null;
             borrowerName?: string | null;
@@ -3641,12 +3722,18 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             delegationReturnDate?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
             displayFileNumber?: string | null;
             displayFileYear?: string | null;
             displayStatus?: string | null;
             documentType?: string | null;
             execStatus?: string | null;
             execSubStatus?: string | null;
+            /** Format: date-time */
+            executedDepositDate?: string | null;
+            /** Format: date-time */
+            executedExecutionDate?: string | null;
             executedNaturalPersons: components["schemas"]["ExecutedNaturalPersonDto"][];
             executedPublicEntities: components["schemas"]["ExecutedPublicEntityDto"][];
             executedStatus?: string | null;
@@ -3655,6 +3742,7 @@ export interface components {
             fileNumber?: string | null;
             fileType?: string | null;
             fileYear?: string | null;
+            forcedExecutionDate?: string | null;
             generalEntitySide?: string | null;
             hasAppeals: boolean;
             /** Format: int32 */
@@ -3669,8 +3757,13 @@ export interface components {
             needsRotation: boolean;
             /** Format: int32 */
             sourceDelegationId?: number | null;
+            startReferralDate?: string | null;
+            /** Format: date-time */
+            struckOffDate?: string | null;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: int64 */
+            version: number;
         };
         DocumentListItemDtoPagedResult: {
             items: components["schemas"]["DocumentListItemDto"][];
@@ -6453,6 +6546,32 @@ export interface operations {
             };
         };
     };
+    Documents_GetDeletedList: {
+        parameters: {
+            query?: {
+                q?: string;
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
+                };
+            };
+        };
+    };
     Documents_GetDeletedBaseNumberHistory: {
         parameters: {
             query?: never;
@@ -6495,6 +6614,32 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentResponsePagedResult"];
                     "text/json": components["schemas"]["DocumentResponsePagedResult"];
                     "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
+            };
+        };
+    };
+    Documents_GetExecutedList: {
+        parameters: {
+            query?: {
+                q?: string;
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
                 };
             };
         };
@@ -6654,6 +6799,32 @@ export interface operations {
             };
         };
     };
+    Documents_GetReferredToStartList: {
+        parameters: {
+            query?: {
+                q?: string;
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
+                };
+            };
+        };
+    };
     Documents_GetRotationList: {
         parameters: {
             query?: {
@@ -6742,6 +6913,31 @@ export interface operations {
             };
         };
     };
+    Documents_GetStrikeOffRemindersList: {
+        parameters: {
+            query?: {
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
+                };
+            };
+        };
+    };
     Documents_GetStruckOff: {
         parameters: {
             query?: {
@@ -6764,6 +6960,32 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentResponsePagedResult"];
                     "text/json": components["schemas"]["DocumentResponsePagedResult"];
                     "text/plain": components["schemas"]["DocumentResponsePagedResult"];
+                };
+            };
+        };
+    };
+    Documents_GetStruckOffList: {
+        parameters: {
+            query?: {
+                q?: string;
+                page?: number;
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/json": components["schemas"]["DocumentListItemDtoPagedResult"];
+                    "text/plain": components["schemas"]["DocumentListItemDtoPagedResult"];
                 };
             };
         };

@@ -7,10 +7,10 @@ import {
 } from '../utils/documentStatus';
 import { fullName } from '../utils/documentDisplay';
 import { formatDate } from '../utils/dates';
-import type { DocumentResponse } from '../types';
+import type { DocumentListItemDto } from '../types';
 
 /** تاريخ تنفيذ الملف بحسب شقيته: حقلا حالة «منفذ عليها»/«عرض وايداع» (تاريخا التنفيذ/الإيداع)، وحقل حالة «طالبة تنفيذ» (براءة الذمة أو الإحالة القطعية). */
-function executedDateOf(d: DocumentResponse): string {
+function executedDateOf(d: DocumentListItemDto): string {
   // الملف المناب المنفذ: تاريخ التنفيذ المعروض هو تاريخ إعادته للدائرة المنيبة
   // (المدخل في نافذة «إتمام الإنابة»)، لا تاريخ قرار الإحالة القطعية.
   if (d.sourceDelegationId != null && d.execStatus === EXEC_STATUS_DELEGATION_EXECUTED) {
@@ -29,7 +29,7 @@ export default function ExecutedDocuments() {
     searchPlaceholder: 'بحث في الملفات المنفذة...',
     emptyText: 'لا توجد ملفات منفذة',
     showBackLink: true,
-    fetchEndpoint: '/documents/executed',
+    fetchEndpoint: '/documents/executed/list',
     dateColumnHeader: 'تاريخ التنفيذ',
     dateCell: executedDateOf,
     cardTopRight: (d) => {

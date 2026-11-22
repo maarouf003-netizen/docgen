@@ -143,7 +143,7 @@ describe('StruckOffDocuments', () => {
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', expect.objectContaining({ renewalFileNumber: '100' }));
     expect(await screen.findByText(/أعيد الملف "محمود علي حسن" إلى المتداول/)).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
-      expect.stringContaining('/documents/struck-off'),
+      expect.stringContaining('/documents/struck-off/list'),
       expect.any(Object),
     );
   });

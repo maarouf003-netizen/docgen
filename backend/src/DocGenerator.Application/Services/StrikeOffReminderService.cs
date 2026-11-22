@@ -69,6 +69,45 @@ public sealed class StrikeOffReminderService : IStrikeOffReminderService
         };
     }
 
+    /// <summary>
+    /// قائمة «تذكيرات الشطب» بإسقاط صف القائمة (P3-04c): نفس تصفية/ترقيم المعرّفات في SQL،
+    /// ثم تحميل بطاقاتها بإسقاط خفيف — بلا `WithStandardIncludes` وبلا كيان كامل.
+    /// </summary>
+    public async Task<PagedResult<DocumentListItemDto>> GetListAsync(
+        int page, int perPage, int? visibleBranchId, int? visibleUserId, int? ownerSectionId,
+        CancellationToken ct = default)
+    {
+        var (safePage, safePerPage) = NormalizePaging(page, perPage);
+        var cutoff = StrikeOffReminderCalculator.CutoffUtc(ServerClock.Now(_clock, _timeZone), _timeZone);
+
+        var (total, rows) = await _documents.SearchStrikeOffReminderIdsAsync(
+            cutoff, visibleBranchId, visibleUserId, safePage, safePerPage, ct, ownerSectionId);
+
+        var items = new List<DocumentListItemDto>(rows.Count);
+        if (rows.Count > 0)
+        {
+            // الترتيب من SQL (الأقدم ركودًا) يُعاد صريحًا بعد التحميل — التحميل لا يضمن الترتيب.
+            var ids = rows.Select(r => r.Id).ToList();
+            var byId = (await _documents.GetListRowsByIdsAsync(ids, ct))
+                .ToDictionary(d => d.Id);
+            var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+
+            foreach (var row in rows)
+            {
+                if (byId.TryGetValue(row.Id, out var listRow))
+                    items.Add(DocumentListItemDto.FromRow(listRow, currentYear));
+            }
+        }
+
+        return new PagedResult<DocumentListItemDto>
+        {
+            Items = items,
+            Page = safePage,
+            PerPage = safePerPage,
+            TotalCount = total,
+        };
+    }
+
     public async Task<int> GetCountAsync(
         int? visibleBranchId, int? visibleUserId, int? ownerSectionId, CancellationToken ct = default)
     {

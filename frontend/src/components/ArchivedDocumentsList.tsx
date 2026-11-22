@@ -4,7 +4,7 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { applicantName, displayFileNumber } from '../utils/documentDisplay';
-import type { DocumentResponse, PagedResult } from '../types';
+import type { DocumentListItemDto, PagedResult } from '../types';
 import RenewalModal from './RenewalModal';
 
 /** إعدادات قوائم الصفحات الأرشيفية (محذوفة/مشطوبة/منفذة/محالة الى البداية)؛ كل اختلاف بين الصفحات يمر عبر هذه الخيارات. */
@@ -32,19 +32,19 @@ export interface ArchivedDocumentsListConfig {
   /** تسمية عمود التاريخ في الجدول. */
   dateColumnHeader: string;
   /** قيمة خلية التاريخ المنسّقة. */
-  dateCell: (d: DocumentResponse) => string;
+  dateCell: (d: DocumentListItemDto) => string;
   /** عنصر أعلى يمين بطاقة الجوال (تاريخ الحذف أو شارة الحالة). */
-  cardTopRight: (d: DocumentResponse) => ReactNode;
+  cardTopRight: (d: DocumentListItemDto) => ReactNode;
   /** عنصر إضافي أسفل بطاقة الجوال (مثل سطر تاريخ الشطب). */
-  cardBottomExtra?: (d: DocumentResponse) => ReactNode;
+  cardBottomExtra?: (d: DocumentListItemDto) => ReactNode;
   /** دالة اسم «المنفذ عليه» (fullName أو executedFullName). */
-  displayName: (d: DocumentResponse) => string;
+  displayName: (d: DocumentListItemDto) => string;
   /** هل يربط اسم الملف بصفحة الملف؟ */
   linkToDocument: boolean;
   /** هل يستطيع المستخدم الحالي الإعادة (المحامي صاحب الملف فقط)؟ */
   canRestore: boolean;
   /** قيد الصفوف: هل يُعرض زر الإعادة لهذا الصف؟ مُجرَّد من صفحة المشطوبة لمناب (sourceDelegationId بلا). */
-  canRestoreRow?: (d: DocumentResponse) => boolean;
+  canRestoreRow?: (d: DocumentListItemDto) => boolean;
   /** هل تستلزم الإعادة إدخال بيان تجديد (رقم ملف جديد)؟ (الملفات المشطوبة فقط). */
   requiresRenewal?: boolean;
 }
@@ -56,20 +56,20 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const [message, setMessage] = useState('');
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [restoringId, setRestoringId] = useState<number | null>(null);
-  const [renewalDoc, setRenewalDoc] = useState<DocumentResponse | null>(null);
+  const [renewalDoc, setRenewalDoc] = useState<DocumentListItemDto | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const beginRestore = (d: DocumentResponse) => {
+  const beginRestore = (d: DocumentListItemDto) => {
     setActionError('');
     setConfirmId(d.id);
   };
 
-  const beginRenew = (d: DocumentResponse) => {
+  const beginRenew = (d: DocumentListItemDto) => {
     setActionError('');
     setRenewalDoc(d);
   };
 
-  const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>(
+  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
     (signal) => {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
@@ -83,7 +83,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const data = listQuery.data;
   const loading = listQuery.isLoading;
 
-  const handleRestore = async (d: DocumentResponse) => {
+  const handleRestore = async (d: DocumentListItemDto) => {
     if (!config.canRestore || !config.restoreEndpoint) return;
     setRestoringId(d.id);
     setActionError('');
@@ -99,12 +99,12 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
     }
   };
 
-  const handleRenewed = (d: DocumentResponse) => {
+  const handleRenewed = (d: DocumentListItemDto) => {
     setMessage(config.successMessage?.(config.displayName(d) || String(d.id)) ?? '');
     listQuery.refetch();
   };
 
-  const restoreButton = (d: DocumentResponse) =>
+  const restoreButton = (d: DocumentListItemDto) =>
     config.requiresRenewal ? (
       <button
         type="button"
@@ -142,7 +142,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       </button>
     );
 
-  const nameOnCard = (d: DocumentResponse) =>
+  const nameOnCard = (d: DocumentListItemDto) =>
     config.linkToDocument ? (
       <Link
         to={`/documents/${d.id}`}
@@ -154,7 +154,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       <div className="text-emerald-800 font-bold text-lg">{config.displayName(d) || displayFileNumber(d) || `مستند ${d.id}`}</div>
     );
 
-  const nameOnTable = (d: DocumentResponse) =>
+  const nameOnTable = (d: DocumentListItemDto) =>
     config.linkToDocument ? (
       <Link
         to={`/documents/${d.id}`}

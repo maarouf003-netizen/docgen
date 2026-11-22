@@ -57,6 +57,36 @@ public class StrikeOffRemindersIntegrationTests
         return page!;
     }
 
+    private static async Task<PagedResult<DocumentListItemDto>> ProjectedListAsync(HttpClient client, int perPage = 100)
+    {
+        var page = await (await client.GetAsync($"/api/documents/strike-off-reminders/list?page=1&perPage={perPage}"))
+            .Content.ReadFromJsonAsync<PagedResult<DocumentListItemDto>>();
+        Assert.NotNull(page);
+        return page!;
+    }
+
+    [PostgresFact]
+    public async Task ProjectedListEndpoint_MatchesLegacySelection_AndCarriesCardFields()
+    {
+        var (client, token) = await LawyerAsync();
+        var id = await _factory.CreateDocumentAsync(token, "تذكير مُسقط", registered: true);
+        await AddActionAsync(client, id, MonthsAgo(7));
+
+        var legacy = await ListAsync(client);
+        var projected = await ProjectedListAsync(client);
+
+        Assert.Equal(legacy.TotalCount, projected.TotalCount);
+        Assert.Equal(
+            legacy.Items.Select(d => d.Id).ToList(),
+            projected.Items.Select(d => d.Id).ToList());
+
+        var row = Assert.Single(projected.Items, d => d.Id == id);
+        Assert.Equal("action", row.LastActivitySource);
+        Assert.NotNull(row.LastActivityDate);
+        Assert.Equal("متداول", row.DisplayStatus);
+        Assert.False(string.IsNullOrWhiteSpace(row.DisplayFileNumber));
+    }
+
     [PostgresFact]
     public async Task OldAction_MakesFileDue_AndNewActionRemovesIt()
     {
