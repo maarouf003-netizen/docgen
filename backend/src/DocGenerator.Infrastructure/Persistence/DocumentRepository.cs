@@ -129,7 +129,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// كامل. تُجمع العناصر الفرعية اللازمة لبطاقة القائمة دفعةً واحدة لمعرّفات الصفحة
     /// ثم تُغذّي `DocumentResponse.FromEntity` على كيان مُجمَّع في الخدمة.
     /// </summary>
-    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchListAsync(
+    public async Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchListAsync(
         string? query,
         string? status,
         string? applicant,
@@ -144,21 +144,34 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         IQueryable<Document> q = ApplySearchFilters(
             Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
+
+        if (cursor is not null)
+        {
+            var value = cursor.SortValue
+                ?? throw new ArgumentException("مؤشر الصفحة غير صالح — أعد تحميل القائمة");
+            q = q.Where(d => d.CreatedAt < value || (d.CreatedAt == value && d.Id < cursor.Id));
+        }
+
         var items = await q.OrderByDescending(d => d.CreatedAt)
             .ThenByDescending(d => d.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
 
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
         await DocumentListRowProjection.LoadChildrenAsync(Db, items, ct);
-        return (total, items);
+        return (total, items, hasMore);
     }
 
     /// <summary>
@@ -630,27 +643,44 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// قائمة المحذوفات بإسقاط صف القائمة (P3-04c): نفس باني الاستعلام والترتيب والترقيم
     /// حرفيًا، لكن بلا `WithStandardIncludes`.
     /// </summary>
-    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchDeletedListAsync(
+    public async Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchDeletedListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         var q = BuildDeletedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
+
+        if (cursor is not null)
+        {
+            // ترتيب `DeletedAt DESC` في PostgreSQL يضع NULL أولًا؛ فمؤشر بقيمة غير
+            // فارغة يعني أن صفوف NULL سابقة وقد مُرَّت، ومؤشر NULL يعني أننا داخل
+            // مجموعة NULL نفسها فالفاصل `Id` وحده.
+            if (cursor.SortValue is { } value)
+                q = q.Where(d => d.DeletedAt < value || (d.DeletedAt == value && d.Id < cursor.Id));
+            else
+                q = q.Where(d => d.DeletedAt == null && d.Id < cursor.Id);
+        }
+
         var items = await q.OrderByDescending(d => d.DeletedAt)
             .ThenByDescending(d => d.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
 
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
         await DocumentListRowProjection.LoadChildrenAsync(Db, items, ct, includeDeletedChildren: true);
-        return (total, items);
+        return (total, items, hasMore);
     }
 
     /// <summary>
@@ -1156,7 +1186,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// قائمة المشطوبة بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب والترقيم حرفيًا،
     /// بلا `WithStandardIncludes`.
     /// </summary>
-    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchStruckOffListAsync(
+    public async Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchStruckOffListAsync(
         string? query,
         string? applicant,
         string? court,
@@ -1168,21 +1198,35 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         var q = BuildStruckOffQuery(query, applicant, court, lawyer, branch, administrativeBranch,
             visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
+
+        if (cursor is not null)
+        {
+            if (cursor.SortValue is { } value)
+                q = q.Where(d => d.StruckOffDate < value || (d.StruckOffDate == value && d.Id < cursor.Id));
+            else
+                q = q.Where(d => d.StruckOffDate == null && d.Id < cursor.Id);
+        }
+
         var items = await q.OrderByDescending(d => d.StruckOffDate)
             .ThenByDescending(d => d.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
 
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
         await DocumentListRowProjection.LoadChildrenAsync(Db, items, ct);
-        return (total, items);
+        return (total, items, hasMore);
     }
 
     /// <summary>
@@ -1251,14 +1295,15 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return q;
     }
 
-    public async Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items)> SearchStrikeOffReminderIdsAsync(
+    public async Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items, bool HasMore)> SearchStrikeOffReminderIdsAsync(
         DateTime cutoffUtc,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         // ملفات «طالبة تنفيذ» النشطة فقط: المسودات والمشطوبة والمنفذة (بالتسوية/الإنابة/المسترد/
         // الجبري الكامل) و«محال الى البداية» خارج التذكير — والجزئي/المتريث داخلان (متداولان).
@@ -1298,15 +1343,27 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         var total = await due.CountAsync(ct);
 
+        if (cursor is not null)
+        {
+            var value = cursor.SortValue
+                ?? throw new ArgumentException("مؤشر الصفحة غير صالح — أعد تحميل القائمة");
+            // ترتيب تصاعدي (الأقدم ركودًا أولًا): ما بعد المؤشر أكبر، والفاصل `Id` تصاعدي.
+            due = due.Where(x => x.LastActivity > value || (x.LastActivity == value && x.Id > cursor.Id));
+        }
+
         var items = await due
             .OrderBy(x => x.LastActivity)
             .ThenBy(x => x.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(x => new { x.Id, x.LastActivity })
             .ToListAsync(ct);
 
-        return (total, items.Select(x => (x.Id, x.LastActivity)).ToList());
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
+        return (total, items.Select(x => (x.Id, x.LastActivity)).ToList(), hasMore);
     }
 
     public async Task<(int TotalCount, List<Document> Items)> SearchExecutedAsync(
@@ -1336,27 +1393,40 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// قائمة المنفذة بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب والترقيم حرفيًا،
     /// بلا `WithStandardIncludes`.
     /// </summary>
-    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchExecutedListAsync(
+    public async Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchExecutedListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         var q = BuildExecutedQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
+
+        if (cursor is not null)
+        {
+            var value = cursor.SortValue
+                ?? throw new ArgumentException("مؤشر الصفحة غير صالح — أعد تحميل القائمة");
+            q = q.Where(d => d.UpdatedAt < value || (d.UpdatedAt == value && d.Id < cursor.Id));
+        }
+
         var items = await q.OrderByDescending(d => d.UpdatedAt)
             .ThenByDescending(d => d.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
 
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
         await DocumentListRowProjection.LoadChildrenAsync(Db, items, ct);
-        return (total, items);
+        return (total, items, hasMore);
     }
 
     /// <summary>
@@ -1425,28 +1495,46 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c): نفس الباني والترتيب
     /// والترقيم حرفيًا، بلا `WithStandardIncludes`.
     /// </summary>
-    public async Task<(int TotalCount, List<DocumentListRow> Items)> SearchReferredToStartListAsync(
+    public async Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchReferredToStartListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null)
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null)
     {
         var q = BuildReferredToStartQuery(query, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
+
+        if (cursor is not null)
+        {
+            // الترتيب: ذوو التاريخ أولًا تنازليًا ثم NULL؛ فمؤشر NULL يعني مجموعة
+            // التاريخ الغائب نفسها، ومؤشر بقيمة يعني ما بعدها بما فيها NULL.
+            if (cursor.SortValue is { } value)
+                q = q.Where(d => d.StartReferralDate == null
+                    || d.StartReferralDate < value
+                    || (d.StartReferralDate == value && d.Id < cursor.Id));
+            else
+                q = q.Where(d => d.StartReferralDate == null && d.Id < cursor.Id);
+        }
+
         var items = await q.OrderByDescending(d => d.StartReferralDate.HasValue)
             .ThenByDescending(d => d.StartReferralDate)
             .ThenByDescending(d => d.Id)
-            .Skip((page - 1) * perPage)
-            .Take(perPage)
+            .Skip(cursor is null ? (page - 1) * perPage : 0)
+            .Take(perPage + 1)
             .Select(DocumentListRowProjection.Selector)
             .ToListAsync(ct);
 
+        var hasMore = items.Count > perPage;
+        if (hasMore)
+            items.RemoveAt(items.Count - 1);
+
         await DocumentListRowProjection.LoadChildrenAsync(Db, items, ct);
-        return (total, items);
+        return (total, items, hasMore);
     }
 
     /// <summary>

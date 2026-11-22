@@ -31,4 +31,6 @@ export interface PagedResult<T> {
   perPage: number;
   totalCount: number;
   totalPages: number;
+  /** مؤشر الصفحة التالية للقوائم الداعمة (P3-05) — `null` في آخر صفحة أو للقوائم الإدارية. */
+  nextCursor?: string | null;
 }

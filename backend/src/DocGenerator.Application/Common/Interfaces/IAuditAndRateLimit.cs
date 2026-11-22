@@ -49,7 +49,7 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>قائمة الملفات بإسقاط صف القائمة (P3-04b) — بلا شجرة تحميل كاملة.</summary>
-    Task<(int TotalCount, List<DocumentListRow> Items)> SearchListAsync(
+    Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchListAsync(
         string? query,
         string? status,
         string? applicant,
@@ -64,7 +64,8 @@ public interface IDocumentRepository : IRepository<Document>
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// الصفوف المُسقَطة لمجموعة معرّفات محمَّلة سلفًا (P3-04c) — تُستخدم في «تذكيرات
@@ -174,14 +175,15 @@ public interface IDocumentRepository : IRepository<Document>
     /// قائمة المحذوفات بإسقاط صف القائمة (P3-04c) — نفس النطاق/الفلترة/الترتيب
     /// حرفيًا بلا `WithStandardIncludes`.
     /// </summary>
-    Task<(int TotalCount, List<DocumentListRow> Items)> SearchDeletedListAsync(
+    Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchDeletedListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// نقل ذرّي آمن للتفاؤلية: يحدّث المحامي المختص للملف بشرط أن يكون المحامي المختص
@@ -347,7 +349,7 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>قائمة المشطوبة بإسقاط صف القائمة (P3-04c).</summary>
-    Task<(int TotalCount, List<DocumentListRow> Items)> SearchStruckOffListAsync(
+    Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchStruckOffListAsync(
         string? query,
         string? applicant,
         string? court,
@@ -359,21 +361,23 @@ public interface IDocumentRepository : IRepository<Document>
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// معرّفات ملفات «تذكيرات الشطب» المستحقة (نشطة، «طالبة تنفيذ»، مضى على آخر إجراء فيها
     /// ≥ عتبة الأشهر، وغير مُلغاة التذكير) مع تاريخ آخر نشاط UTC محسوبًا في SQL — مرتبةً
     /// بالأقدم ركودًا. تُستكمل بتحميل الكتبة بـ`WithStandardIncludes` في الخدمة (خطوتان).
     /// </summary>
-    Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items)> SearchStrikeOffReminderIdsAsync(
+    Task<(int TotalCount, List<(int Id, DateTime LastActivityUtc)> Items, bool HasMore)> SearchStrikeOffReminderIdsAsync(
         DateTime cutoffUtc,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// بحث ترحّلي عن الملفات المنفذة: ملفات وضع «منفذ عليه»/«عرض وايداع» بحالة «منفذ» فقط،
@@ -390,14 +394,15 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>قائمة المنفذة بإسقاط صف القائمة (P3-04c).</summary>
-    Task<(int TotalCount, List<DocumentListRow> Items)> SearchExecutedListAsync(
+    Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchExecutedListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
@@ -414,14 +419,15 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>قائمة «محال الى البداية» بإسقاط صف القائمة (P3-04c).</summary>
-    Task<(int TotalCount, List<DocumentListRow> Items)> SearchReferredToStartListAsync(
+    Task<(int TotalCount, List<DocumentListRow> Items, bool HasMore)> SearchReferredToStartListAsync(
         string? query,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? ownerSectionId = null);
+        int? ownerSectionId = null,
+        KeysetCursor? cursor = null);
 
     /// <summary>
     /// تحميل مجموعة معرّفات بشجرة التحميل المعتمدة (`WithStandardIncludes`) لعرض

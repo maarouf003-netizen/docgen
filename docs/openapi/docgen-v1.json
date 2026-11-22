@@ -447,6 +447,10 @@
             },
             "type": "array"
           },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          },
           "page": {
             "format": "int32",
             "type": "integer"
@@ -1669,6 +1673,10 @@
             },
             "type": "array"
           },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          },
           "page": {
             "format": "int32",
             "type": "integer"
@@ -2492,6 +2500,10 @@
               "$ref": "#/components/schemas/DocumentResponse"
             },
             "type": "array"
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
           },
           "page": {
             "format": "int32",
@@ -8361,6 +8373,13 @@
               "format": "int32",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8513,6 +8532,13 @@
               "default": 20,
               "format": "int32",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -8791,6 +8817,13 @@
               "format": "int32",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8971,6 +9004,13 @@
               "default": 20,
               "format": "int32",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -9173,6 +9213,13 @@
               "format": "int32",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9296,6 +9343,13 @@
               "default": 20,
               "format": "int32",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
             }
           }
         ],

@@ -69,7 +69,8 @@
     "page",
     "perPage",
     "totalCount",
-    "totalPages"
+    "totalPages",
+    "nextCursor"
   ],
   "forbidden": {
     "headAlertSummary": [
