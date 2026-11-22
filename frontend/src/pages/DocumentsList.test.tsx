@@ -1258,7 +1258,7 @@ describe('DocumentsList', () => {
     expect(fileNumber.className).not.toContain('text-red-600');
   });
 
-  it('يستعيد موضع القائمة المحفوظ (بحث وصفحة) عند العودة من صفحة ملف', async () => {
+  it('يستعيد موضع القائمة المحفوظ (بحث وسلسلة مؤشرات) عند العودة من صفحة ملف', async () => {
     sessionStorage.setItem(
       'documentsListPosition',
       JSON.stringify({
@@ -1270,17 +1270,37 @@ describe('DocumentsList', () => {
         administrativeBranch: '',
         executedEntity: '',
         publicEntityBranch: '',
-        page: 2,
+        page: 1,
+        cursors: ['cursor-p2'],
       }),
     );
-    mockPage([]);
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      if (String(url).includes('cursor=cursor-p2')) {
+        return Promise.resolve({
+          data: {
+            page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: null,
+            items: [makeDocument({ id: 2 })],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: 'cursor-p2',
+          items: [makeDocument({ id: 1 })],
+        },
+      });
+    });
 
     renderList();
-    await screen.findByText('لا توجد نتائج');
-
-    const called = vi.mocked(api.get).mock.calls.some(([url]) =>
-      String(url).includes('/documents/list?') && String(url).includes('q=') && String(url).includes('page=2'));
-    expect(called).toBe(true);
+    await waitFor(() => expect(
+      get.mock.calls.some(([url]) => String(url).includes('cursor=cursor-p2')),
+    ).toBe(true));
     expect(screen.getByPlaceholderText(/بحث بالاسم/)).toHaveValue('محمود');
   });
 
@@ -1645,5 +1665,43 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
 
     const params = new URLSearchParams(lastListUrl().split('?')[1]);
     expect(params.get('page')).toBe('1');
+  });
+
+  it('يجلب الصفحة التالية بالمؤشر ويُلحقها عند «تحميل المزيد» (P3-05b)', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      if (url.includes('cursor=cursor-2')) {
+        return Promise.resolve({
+          data: {
+            page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: null,
+            items: [makeDocument({ id: 2, fileNumber: '100' })],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: 'cursor-2',
+          items: [makeDocument({ id: 1, fileNumber: '99' })],
+        },
+      });
+    });
+
+    renderList();
+    expect(await screen.findByText('99 حقوق')).toBeInTheDocument();
+    expect(screen.queryByText('100 حقوق')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
+
+    expect(await screen.findByText('100 حقوق')).toBeInTheDocument();
+    expect(screen.getByText('99 حقوق')).toBeInTheDocument();
+    expect(screen.getByText(/عرض 2 من 2 نتيجة/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
+    expect(screen.getByText('نهاية النتائج')).toBeInTheDocument();
   });
 });
