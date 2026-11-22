@@ -810,6 +810,13 @@
   **متبقٍ:** توليد `frontend/src/api/generated.ts` من اللقطة (`openapi-typescript`)،
   إحلاله تدريجيًا محل `types/document.ts`، وإصدار `API` (`/api/v1` أو
   `Accept-Version` + سياسة إهمال) — `P6-06`/`P4-05`.
+- **الجزء الثاني (2026-11-22):** إظهار عقد استجابة القوائم — ستة إجراءات
+  (`Search`/`Deleted`/`StruckOff`/`Executed`/`ReferredToStart`/`StrikeOffReminders`) صارت
+  `ActionResult<PagedResult<DocumentResponse>>`، فأُضيفت مخططات `DocumentResponse`
+  و`DocumentResponsePagedResult` و`ExecutionActionDto` و`DocumentAssignmentDto`
+  و`DocumentInterventionDto` و`DocumentOccurrenceDto` إلى اللقطة والعميل المولَّد —
+  **إضافة بلا حذف ولا تغيير سلوك**. التفاصيل:
+  `docs/audit/97-p4-04b-openapi-response-schemas-20261122.md`.
 - **العمل:** تفعيل OpenAPI في staging/prod محمي؛ `openapi-typescript`/NSwag لتوليد `frontend/src/api/generated.ts`؛ حذف `types/document.ts` اليدوي تدريجيًا؛ contract tests؛ **إصدار API** (`/api/v1` أو `Accept-Version` + سياسة إهمال).
 - **DoD:** تغيير API يكسر التوليد/الاختبارات، لا الواجهة بصمت؛ لا كسر بلا إصدار.
 - **الاعتمادية:** `P4-03` (شكل أخطاء/عقود) و`P6-06`.
@@ -1002,11 +1009,16 @@
     حُذف `applicantRegistryId` الوهمي (غير موجود خلفيًا ولا مستخدم)، وأُصلحت nullability
     (`trimNull`, `NamedInput`, القوائم المطلوبة)؛ `vitest` 1808/1808. التفاصيل:
     `docs/audit/91-p6-06-request-types-20261121.md`.
-  - **متبقٍ:** `DocumentResponse` (**لا مخطط مولَّد له**) و`DocumentInterventionDto`
-    (استجابة غير موثّقة بالمخطط)، وأنواع بلا مخططات (`DocumentFilterOptionsDto`,
-    `RotationDocumentDto`, `BaseNumberHistoryDto`, `CorrectBaseNumberRequest`) تبقى يدوية
-    موثّقة. ومراجعة أي نوع يستخدم `undefined` مقابل `null`، وتثبيت إصدار المولّد عند
-    ترقية كبرى.
+  - **الجزء التاسع (2026-11-22):** `P4-04b` أظهر `DocumentResponse` و
+    `DocumentInterventionDto` في مخطط `OpenAPI` المولَّد — صار إحلالهما نظريًا ممكنًا
+    (`components['schemas']['DocumentResponse']`)، لكن الإحلال نفسه مؤجّل: يحمل
+    `displayFileNumber`/`needsRotation`/`hasAppeals` المشتقة وتواريخ `DateTime`
+    في الاستجابة، فيحتاج قرارًا حول `undefined`/`null` في الواجهة.
+  - **متبقٍ:** `DocumentResponse` (**مخططه صار متاحًا**، والإحلال يحتاج قرار nullability)،
+    و`DocumentInterventionDto` (مخططه صار متاحًا)، وأنواع بلا مخططات
+    (`DocumentFilterOptionsDto`, `RotationDocumentDto`, `BaseNumberHistoryDto`,
+    `CorrectBaseNumberRequest`) تبقى يدوية موثّقة. ومراجعة أي نوع يستخدم `undefined`
+    مقابل `null`، وتثبيت إصدار المولّد عند ترقية كبرى.
   - التفاصيل: `docs/audit/61-p6-06-generated-types-20261118.md`.
 - **العمل:** استبدال `types/document.ts` (797 سطرًا) بأنواع مولّدة؛ `openapi-typescript`؛ CI يفشل عند الانحراف.
 - **DoD:** عقد واحد بين الخلفية والواجهة — **جزئي** (نوع واحد + الحارس؛ البقية لاحقًا).
