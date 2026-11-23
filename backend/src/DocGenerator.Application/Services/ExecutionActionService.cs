@@ -52,74 +52,6 @@ public sealed class ExecutionActionService : IExecutionActionService
             .ToList();
     }
 
-    public async Task<ExecutionActionDto> AddExecutionActionAsync(int documentId, AddExecutionActionRequest request, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            throw new KeyNotFoundException();
-
-        var (type, text, actionDate) = NormalizeAction(request.Type, request.Text, request.ActionDate);
-        var (reminderDuration, reminderColor) = NormalizeReminder(request.ReminderDuration, request.ReminderColor);
-
-        var action = new ExecutionAction
-        {
-            DocumentId = documentId,
-            Type = type,
-            Text = text,
-            ActionDate = actionDate,
-            // تاريخ الإجراء محلولًا للاستعلامات النطاقية (تذكيرات الشطب) — يُكتب هنا فقط.
-            ActionDateParsed = ActionDateParser.TryParse(actionDate),
-            ReminderDuration = reminderDuration,
-            ReminderColor = reminderColor,
-            // تاريخ أساس التذكير يُثبَّت مرة واحدة عند الإنشاء من تاريخ الإجراء المحلول —
-            // ولا يُشتق لاحقًا من نص الإجراء ولا يُكتب فيه أي مسار تذكير.
-            ReminderBaseDate = ActionReminderCalculator.BaseDateForNewReminder(reminderDuration, reminderColor, actionDate),
-            CreatedById = userId,
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _actions.AddAsync(action, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
-                DocumentText.AuditWithActor($"أضاف {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-        }, ct);
-        return ToDto(action, actorName);
-    }
-
-    public async Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default)
-    {
-        // تعديل الإجراء (نوع/نص/تاريخ) لا يكتب أي حقل تذكير: حالة التذكير تُدار من
-        // `SetReminderAsync` و«نقل التذكير» حصرًا، فلا يتغيّر `ReminderBaseDate` هنا أبدًا.
-        var (type, text, actionDate) = NormalizeAction(request.Type, request.Text, request.ActionDate);
-
-        var action = await _actions.GetByIdAsync(actionId, ct);
-        if (action is null || action.DocumentId != documentId)
-            throw new KeyNotFoundException();
-
-        OptimisticConcurrencyGuard.EnsureCurrent(action, request.Version, "الإجراء");
-
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            throw new KeyNotFoundException();
-
-        action.Type = type;
-        action.Text = text;
-        action.ActionDate = actionDate;
-        // التاريخ المحلول يتبع نص الإجراء المُدخل (لا يمسّه أي مسار تذكير).
-        action.ActionDateParsed = ActionDateParser.TryParse(actionDate);
-
-        await _tx.RunAsync(async token =>
-        {
-            _actions.Update(action);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor($"عدّل {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-        }, ct);
-        return ToDto(action, actorName);
-    }
-
     public async Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default)
     {
         var action = await _actions.GetByIdAsync(actionId, ct);
@@ -279,7 +211,7 @@ public sealed class ExecutionActionService : IExecutionActionService
             if (request is null || string.IsNullOrWhiteSpace(request.Text))
                 continue;
 
-            var (type, text, actionDate) = NormalizeAction(request.Type, request.Text, request.ActionDate);
+            var (type, text, actionDate) = NormalizeAction(request.Type, request.Text, request.ActionDate, _clock, _timeZone);
             var (reminderDuration, reminderColor) = NormalizeReminder(request.ReminderDuration, request.ReminderColor);
 
             if (!existing.Add($"{type}|{text}"))
@@ -306,7 +238,8 @@ public sealed class ExecutionActionService : IExecutionActionService
         }
     }
 
-    private (string Type, string Text, string? ActionDate) NormalizeAction(string type, string text, string? actionDate)
+    internal static (string Type, string Text, string? ActionDate) NormalizeAction(
+        string type, string text, string? actionDate, TimeProvider clock, TimeZoneInfo timeZone)
     {
         var sanitizedText = HtmlInputSanitizer.Sanitize(text);
         if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(sanitizedText)))
@@ -324,7 +257,7 @@ public sealed class ExecutionActionService : IExecutionActionService
         }
         else if (string.IsNullOrWhiteSpace(trimmedDate))
         {
-            trimmedDate = ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd");
+            trimmedDate = ServerClock.TodayString(clock, timeZone, "yyyy-MM-dd");
         }
 
         // رفض الكتابة الميتة: تاريخ غير فارغ لا يُحلَّل كان يُخزَّن نصًا ثم يسقط بصمت إلى
@@ -349,11 +282,11 @@ public sealed class ExecutionActionService : IExecutionActionService
     /// تحويل إجراء إلى DTO موحّد (اسم العرض: منشئ السجل للقراءة، والفاعل للعمليات الجارية) —
     /// نقطة واحدة فلا تنحرف الحقول بين المسارات الستة.
     /// </summary>
-    private static ExecutionActionDto ToDto(ExecutionAction action, string? createdByName)
+    internal static ExecutionActionDto ToDto(ExecutionAction action, string? createdByName)
         => new(action.Id, action.Type, action.Text, action.ActionDate,
             action.ReminderDuration, action.ReminderColor, createdByName, action.CreatedAt, action.Version);
 
-    private static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)
+    internal static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)
     {
         var trimmedDuration = duration?.Trim();
         var trimmedColor = color?.Trim();

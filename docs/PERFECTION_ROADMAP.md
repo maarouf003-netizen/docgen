@@ -829,6 +829,9 @@
   انتهاك الوحدانية إلى `DocumentConflictException`، والتسمية تسجّل `HeadSuccession`)،
   وأُزيلت الأربعة من عقد `ISectionService` الذي صار قراءةً فقط، مع `NormalizeName`/
   `NameExists`/`ToDto` مساعدين مشتركين.
+  **`P4-01v/w`:** `AddExecutionActionCommand` و`UpdateExecutionActionCommand` يملكان
+  المعاملة والتدقيق (`action`)، وأُزيلا من `IExecutionActionService` مع إتاحة
+  `NormalizeAction`/`NormalizeReminder`/`ToDto` مساعدات مشتركة (بلا تغيير سلوك التذكير).
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -839,7 +842,8 @@
   `docs/audit/134-p4-01kl-batched-occurrence-branch-commands-20261123.md` و
   `docs/audit/135-p4-01mn-batched-delete-commands-20261123.md` و
   `docs/audit/136-p4-01opq-branch-reminder-commands-20261123.md` و
-  `docs/audit/137-p4-01rstu-sections-commands-20261123.md`.
+  `docs/audit/137-p4-01rstu-sections-commands-20261123.md` و
+  `docs/audit/138-p4-01vw-execution-action-writes-20261123.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
