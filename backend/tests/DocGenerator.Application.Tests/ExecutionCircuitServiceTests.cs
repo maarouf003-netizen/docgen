@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -32,6 +33,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
     private readonly ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> _transferCircuit;
     private readonly ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> _referFiles;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transferDocument;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -125,6 +127,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
+        _transferDocument = docBundle.TransferDocument;
     }
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
@@ -888,7 +891,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await FlushAlertsAsync();
         Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
 
-        await _documents.TransferAsync(docId, _lawyer2Id, "head1");
+        await _transferDocument.TransferAsync(docId, _lawyer2Id, "head1");
         await _circuits.SyncPendingAlertsAfterTransferAsync(_lawyer1Id, _lawyer2Id, _branchId, _headId);
         await FlushAlertsAsync();
 
