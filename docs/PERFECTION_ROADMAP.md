@@ -823,8 +823,8 @@
   `PublicEntityService` (الرئيسي): 674 → أربعة ملفات بأقصى 372 سطرًا؛
   `PortalService`: 665 → أربعة ملفات بأقصى 328 سطرًا؛ `PublicEntityService.Registry`:
   629 → ثلاثة ملفات بأقصى 363 سطرًا، بلا تغيير سلوكي.
-  **`Application`: `DoD` متحقق — لا ملف >600 (أقصى 566).** يتبقى في `Infrastructure`
-  (خارج نطاق المراحل المنجزة): `StatisticsRepository` 902 و`HeadAlertRepository` 630.
+  **`Application`: `DoD` متحقق — لا ملف >600 (أقصى 566).** في `Infrastructure`:
+  `StatisticsRepository` 902 → خمسة ملفات بأقصى 259 سطرًا؛ يتبقى `HeadAlertRepository` 630.
   التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
   `docs/audit/111-p4-02b-document-status-split-20261122.md` و
   `docs/audit/112-p4-02c-document-delegation-split-20261122.md` و

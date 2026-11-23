@@ -55,7 +55,12 @@ public class KeysetCursorCodecTests
     {
         var codec = Codec();
         var encoded = codec.Encode(DocumentListCursorKinds.CreatedAt, DateTime.UtcNow, 1);
-        var tampered = encoded[..^1] + (encoded[^1] == 'A' ? 'B' : 'A');
+        // تلاعب في أول محرف من التوقيع (لا الأخير): محرف base64 الأخير يحمل بتات
+        // غير مستخدمة فقد يُفكّ إلى البايتات نفسها فيمر التلاعب بلا رفض (تقلّب سابق).
+        var signatureStart = encoded.LastIndexOf('.') + 1;
+        var tampered = encoded[..signatureStart]
+            + (encoded[signatureStart] == 'A' ? 'B' : 'A')
+            + encoded[(signatureStart + 1)..];
 
         Assert.Throws<ArgumentException>(() =>
             codec.DecodeOptional(tampered, DocumentListCursorKinds.CreatedAt));
