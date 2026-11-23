@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Users;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -13,6 +15,7 @@ namespace DocGenerator.Application.Tests;
 public class UserManagementServiceTests : PostgresDbTest
 {
     private readonly IUserManagementService _service;
+    private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
     private readonly FakeAuditLogger _audit = new();
     private readonly PasswordHasher _hasher = new();
 
@@ -43,6 +46,12 @@ public class UserManagementServiceTests : PostgresDbTest
                 new DbExceptionClassifier(),
                 tx),
             uow, _hasher, tx, _audit);
+        _setLawyerActive = new SetLawyerActiveCommandHandler(
+            users, uow, _audit,
+            new IPipelineBehavior<SetLawyerActiveCommand, bool>[]
+            {
+                new TransactionBehavior<SetLawyerActiveCommand, bool>(tx),
+            });
     }
 
 
@@ -99,7 +108,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var aleppoLawyer = await AddUserAsync("alep", "محامي حلب", UserRole.Lawyer, AleppoId);
 
-        var ok = await _service.SetLawyerActiveAsync(aleppoLawyer.Id, false, DamascusId, "head1");
+        var ok = await _setLawyerActive.HandleAsync(new SetLawyerActiveCommand(aleppoLawyer.Id, false, DamascusId, "head1"));
 
         Assert.False(ok);
     }
@@ -109,7 +118,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var lawyer = await AddUserAsync("off", "محامي إيقاف", UserRole.Lawyer, DamascusId);
 
-        var ok = await _service.SetLawyerActiveAsync(lawyer.Id, false, null, "head1");
+        var ok = await _setLawyerActive.HandleAsync(new SetLawyerActiveCommand(lawyer.Id, false, null, "head1"));
 
         Assert.True(ok);
         var reloaded = await _db.Users.FindAsync(lawyer.Id);
@@ -123,7 +132,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var head = await AddUserAsync("head_x", "رئيس قسم", UserRole.Head, DamascusId);
 
-        var ok = await _service.SetLawyerActiveAsync(head.Id, false, null, "head1");
+        var ok = await _setLawyerActive.HandleAsync(new SetLawyerActiveCommand(head.Id, false, null, "head1"));
 
         Assert.False(ok);
     }

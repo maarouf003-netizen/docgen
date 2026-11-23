@@ -154,32 +154,4 @@ public sealed partial class UserManagementService : IUserManagementService
             return ToLawyerDto(user);
         }, ct);
     }
-
-    public async Task<bool> SetLawyerActiveAsync(int userId, bool isActive, int? scopeBranchId, string? actorName, CancellationToken ct = default)
-    {
-        var user = await _users.GetByIdAsync(userId, ct);
-        if (user is null || user.Role != UserRole.Lawyer)
-            return false;
-
-        // رئيس القسم يستطيع التحكم بمحامي فرعه فقط.
-        if (scopeBranchId.HasValue && user.BranchId != scopeBranchId)
-            return false;
-
-        if (user.IsActive == isActive)
-            return true;
-
-        return await _tx.RunAsync(async token =>
-        {
-            user.IsActive = isActive;
-            user.UpdatedAt = DateTime.UtcNow;
-            // إبطال الرموز الصادرة سابقاً عند الإيقاف.
-            if (!isActive)
-                user.TokenVersion++;
-            _users.Update(user);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "update_user",
-                details: $"{(isActive ? "أعاد تفعيل" : "أوقف")} المحامي: {user.FullName} ({user.Username})", ct: token);
-            return true;
-        }, ct);
-    }
 }

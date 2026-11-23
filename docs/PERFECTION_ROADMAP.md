@@ -809,9 +809,12 @@
   المعاملة/التدقيق لا يعملان إلا للطلبات الموسومة (`ITransactionalRequest`/`IAuditedRequest`)
   لأن الخدمات الحالية تملكهما. **`P4-01b`:** أول use-case مكتمل الملكية —
   `DismissStrikeOffReminderCommand` يملك المعاملة (عبر الوسم) والتدقيق، وأُزيلت الكتابة
-  من `StrikeOffReminderService`. التفاصيل:
+  من `StrikeOffReminderService`. **`P4-01c/d`:** `MarkReviewRepliesSeenCommand` و
+  `SetLawyerActiveCommand` يملكان معاملتهما (والثاني تدقيقه أيضًا)، وأُزيلت الطريقتان
+  من عقدي خدمتيهما. التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
-  `docs/audit/129-p4-01b-dismiss-command-20261123.md`.
+  `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
+  `docs/audit/130-p4-01cd-batched-use-cases-20261123.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

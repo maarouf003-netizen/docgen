@@ -44,11 +44,6 @@ public interface IReviewLetterService
     Task<int> CountUnseenRepliesForLawyerAsync(int actorUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// تعليم ردود الكتاب كمطّلع عليها من محاميه — يُستدعى عند فتح الكتاب بعد الرد.
-    /// </summary>
-    Task<bool> MarkRepliesSeenAsync(int letterId, int actorUserId, CancellationToken ct = default);
-
-    /// <summary>
     /// كتب ملف محدد — لمالك الملف ومتابعيه (إحالة/إنابة/استئناف) والمدير/المشرف،
     /// ولرئيس نطاق الملف (قسمه لدوائر القسم وبلا دائرة، وشعبته لدوائر شعبته).
     /// </summary>
