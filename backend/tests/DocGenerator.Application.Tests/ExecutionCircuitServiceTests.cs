@@ -27,6 +27,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly IHeadAlertService _headAlerts;
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
+    private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -83,6 +84,13 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<SetExecutionCircuitActiveCommand, ExecutionCircuitDto>(_tx),
             });
+        _renameCircuit = new RenameExecutionCircuitCommandHandler(
+            circuitsRepo, branchesRepo, new Repository<Section>(_db), documents,
+            new DelegationRepository(_db), occurrences, outbox, uow, _audit, classifier,
+            new IPipelineBehavior<RenameExecutionCircuitCommand, ExecutionCircuitDto>[]
+            {
+                new TransactionBehavior<RenameExecutionCircuitCommand, ExecutionCircuitDto>(_tx),
+            });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
@@ -100,6 +108,12 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         bool isActive, long? version)
         => _setCircuitActive.HandleAsync(new SetExecutionCircuitActiveCommand(
             circuitId, branchId, ownerSectionId, actorName, isActive, version));
+
+    private Task<ExecutionCircuitDto> RenameAsync(
+        int circuitId, int branchId, int? ownerSectionId, string? actorName,
+        string name, long? version, int? actorUserId = null)
+        => _renameCircuit.HandleAsync(new RenameExecutionCircuitCommand(
+            circuitId, branchId, ownerSectionId, actorName, name, version, actorUserId));
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -378,10 +392,12 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var id = await CreateCircuitAsync("دائرة قديمة");
         var docId = await CreateDocAsync(id, _lawyer1Id, "600", "2026");
         var before = (await _db.Documents.FindAsync(docId))!.Version;
-        await _circuits.RenameAsync(id, _branchId, null, "head1", "دائرة جديدة", null);
+        await RenameAsync(id, _branchId, null, "head1", "دائرة جديدة", null);
         var doc = await _db.Documents.FindAsync(docId);
         Assert.Equal("دائرة جديدة", doc!.Court);
         Assert.True(doc.Version > before);
+        Assert.Contains(_audit.Details,
+            d => d == "أعاد تسمية دائرة التنفيذ من «دائرة قديمة» إلى «دائرة جديدة» مع تحديث 1 ملفًا و0 إنابة");
     }
 
     [PostgresFact]
@@ -551,7 +567,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Assert.Equal(0, mine.PendingCount);
 
         // ToDtoAsync نفس العقلية (مثال: Rename يعيد DTO المعيد بناءً).
-        var renamed = await _circuits.RenameAsync(a, _branchId, null, "head1", "دائرة العدّادين ٢", null, actorUserId: _headId);
+        var renamed = await RenameAsync(a, _branchId, null, "head1", "دائرة العدّادين ٢", null, actorUserId: _headId);
         Assert.Equal(3, renamed.DeletedFileCount);
         Assert.Equal(2, renamed.FileCount);
     }
@@ -566,7 +582,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
-        await _circuits.RenameAsync(target, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
+        await RenameAsync(target, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
         await FlushAlertsAsync();
 
         var occ = _db.DocumentOccurrences
@@ -878,7 +894,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await _circuits.RenameAsync(circuitA, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
+        await RenameAsync(circuitA, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
         await FlushAlertsAsync();
 
         var migrated = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id));
@@ -955,7 +971,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var circuit = await CreateCircuitAsync("دائرة قديمة");
         var docId = await CreateDocAsync(circuit, _lawyer1Id, "780", "2026");
 
-        await _circuits.RenameAsync(circuit, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
+        await RenameAsync(circuit, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
 
         var log = Assert.Single(_audit.ChangeLogs.Where(c => c.ActionType == "rename_circuit" && c.DocumentId == docId));
         Assert.NotEmpty(log.Changes);
@@ -1169,7 +1185,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var own = await CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.RenameAsync(own.Id, _branchId, sectionId, "sub_masyaf", "دائرة القسم", null, actorUserId: subId));
+            RenameAsync(own.Id, _branchId, sectionId, "sub_masyaf", "دائرة القسم", null, actorUserId: subId));
 
         Assert.Contains("ضمن دوائر القسم", ex.Message);
     }
@@ -1402,7 +1418,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
 
         Task Act() => op switch
         {
-            "rename" => _circuits.RenameAsync(circuitId, _branchId, null, "head1", "جديد", null),
+            "rename" => RenameAsync(circuitId, _branchId, null, "head1", "جديد", null),
             "active" => SetActiveAsync(circuitId, _branchId, null, "head1", false, null),
             "delete" => _circuits.DeleteAsync(circuitId, _branchId, null, "head1"),
             _ => throw new InvalidOperationException(),

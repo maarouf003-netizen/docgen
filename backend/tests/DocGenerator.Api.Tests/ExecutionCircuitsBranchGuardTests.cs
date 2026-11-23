@@ -37,7 +37,7 @@ public sealed class ExecutionCircuitsBranchGuardTests
     {
         var controller = new ExecutionCircuitsController(
             new FakeCircuitService(), null!, null!, ApiTestClock.Provider, TimeZoneInfo.Utc,
-            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!);
+            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

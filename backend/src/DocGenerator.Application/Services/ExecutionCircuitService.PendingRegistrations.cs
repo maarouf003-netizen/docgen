@@ -175,7 +175,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                 _cache?.Invalidate(ReferenceDataGroups.Circuits);
                 // تدقيق حقلي لكل ملف (S5) — داخل المعاملة بعد الحفظ الرئيسي.
                 foreach (var (doc, before, number, type, year) in completedAudit)
-                    await LogCircuitDocumentChangeAsync(doc, actorName, "complete_registrations",
+                    await ExecutionCircuitRules.LogDocumentChangeAsync(_audit, doc, actorName, "complete_registrations",
                         $"أعاد قيد الملف ({doc.Id}) برقم {number}/{type}/{year}", before, token);
                 await _audit.LogAsync(actorName, "complete_registrations", null, null,
                     $"أعاد قيد {saved} ملفًا بأرقام جديدة", token);

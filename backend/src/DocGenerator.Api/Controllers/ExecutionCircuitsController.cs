@@ -28,6 +28,7 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
+    private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
@@ -37,7 +38,8 @@ public class ExecutionCircuitsController : ControllerBase
         TimeZoneInfo timeZone,
         IUserCapabilities capabilities,
         ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> createCircuit,
-        ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive)
+        ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive,
+        ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> renameCircuit)
     {
         _circuits = circuits;
         _branches = branches;
@@ -47,6 +49,7 @@ public class ExecutionCircuitsController : ControllerBase
         _capabilities = capabilities;
         _createCircuit = createCircuit;
         _setCircuitActive = setCircuitActive;
+        _renameCircuit = renameCircuit;
     }
 
     private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
@@ -128,7 +131,10 @@ public class ExecutionCircuitsController : ControllerBase
         if (error is not null) return error;
         try
         {
-            return Ok(await _circuits.RenameAsync(id, branchId, ownerSectionId, ActorName, request.Name ?? string.Empty, request.Version, ct, User.GetUserId()));
+            return Ok(await _renameCircuit.HandleAsync(
+                new RenameExecutionCircuitCommand(
+                    id, branchId, ownerSectionId, ActorName, request.Name ?? string.Empty,
+                    request.Version, User.GetUserId()), ct));
         }
         catch (DocumentConflictException e)
         {
