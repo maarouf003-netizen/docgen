@@ -318,10 +318,14 @@ public class ForumServiceTests : PostgresDbTest
             () => DeleteMessageAsync(posted.Id, _lawyer2.Id));
         Assert.Equal("حذف الرسالة متاح لكاتبها أو للمشرف فقط", notAuthor.Message);
 
-        // المندوب مرفوض في فحص العضوية قبل فحص الملكية.
+        // المندوب مرفوض في فحص العضوية قبل فحص الملكية، والمدير يمر بالعضوية ويُرفض بالملكية.
+        var delegateUser = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => DeleteMessageAsync(posted.Id, _delegate.Id));
+        Assert.Equal("لا تملك صلاحية المنتدى", delegateUser.Message);
+
         var manager = await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => DeleteMessageAsync(posted.Id, _manager.Id));
-        Assert.Equal("لا تملك صلاحية المنتدى", manager.Message);
+        Assert.Equal("حذف الرسالة متاح لكاتبها أو للمشرف فقط", manager.Message);
     }
 
     [PostgresFact]
