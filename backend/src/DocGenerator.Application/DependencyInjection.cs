@@ -11,6 +11,7 @@ using DocGenerator.Application.UseCases.Forum;
 using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
+using DocGenerator.Application.UseCases.Sections;
 using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Application.UseCases.Users;
 using Microsoft.Extensions.Configuration;
@@ -94,6 +95,10 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdateBranchCommand, BranchDto?>, UpdateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto>, CreatePersonalReminderCommandHandler>();
         services.AddScoped<ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?>, UpdatePersonalReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateSectionCommand, SectionDto>, CreateSectionCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteSectionCommand, bool>, DeleteSectionCommandHandler>();
+        services.AddScoped<ICommandHandler<RenameSectionCommand, SectionDto?>, RenameSectionCommandHandler>();
+        services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
         return services;
     }
 }
