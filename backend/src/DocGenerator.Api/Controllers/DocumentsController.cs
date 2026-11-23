@@ -6,8 +6,10 @@ using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Options;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +46,8 @@ public class DocumentsController : ControllerBase
     private readonly IAuditLogService _auditLogs;
     private readonly IAuditLogger _audit;
     private readonly IDocumentAuthorization _authorization;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -61,6 +65,8 @@ public class DocumentsController : ControllerBase
         IAuditLogService auditLogs,
         IAuditLogger audit,
         IDocumentAuthorization authorization,
+        IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
+        ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -77,6 +83,8 @@ public class DocumentsController : ControllerBase
         _auditLogs = auditLogs;
         _audit = audit;
         _authorization = authorization;
+        _getDocument = getDocument;
+        _createDocument = createDocument;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -423,7 +431,7 @@ public class DocumentsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var doc = await _documents.GetAsync(id, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
         if (denied is not null) return denied;
@@ -515,8 +523,8 @@ public class DocumentsController : ControllerBase
         try
         {
             // RF-011: مفتاح عدم التكرار ترويسة اختيارية — التكرار يُردّ `200` بالجسم المخزن نفسه.
-            var doc = await _documents.CreateAsync(request, User.GetUserId(), ActorName, User.GetBranchId(), ct,
-                IdempotencyKeyHeader());
+            var doc = await _createDocument.HandleAsync(new CreateDocumentCommand(
+                request, User.GetUserId(), ActorName, User.GetBranchId(), IdempotencyKeyHeader()), ct);
             return CreatedAtAction(nameof(Get), new { id = doc.Id }, Sanitize(doc));
         }
         catch (IdempotentReplayException r)
