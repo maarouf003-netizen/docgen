@@ -19,17 +19,23 @@ public class SectionsController : ControllerBase
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreateSectionCommand, SectionDto> _createSection;
     private readonly ICommandHandler<DeleteSectionCommand, bool> _deleteSection;
+    private readonly ICommandHandler<RenameSectionCommand, SectionDto?> _renameSection;
+    private readonly ICommandHandler<SetSectionActiveCommand, SectionDto?> _setSectionActive;
 
     public SectionsController(
         ISectionService sections,
         IUserCapabilities capabilities,
         ICommandHandler<CreateSectionCommand, SectionDto> createSection,
-        ICommandHandler<DeleteSectionCommand, bool> deleteSection)
+        ICommandHandler<DeleteSectionCommand, bool> deleteSection,
+        ICommandHandler<RenameSectionCommand, SectionDto?> renameSection,
+        ICommandHandler<SetSectionActiveCommand, SectionDto?> setSectionActive)
     {
         _sections = sections;
         _capabilities = capabilities;
         _createSection = createSection;
         _deleteSection = deleteSection;
+        _renameSection = renameSection;
+        _setSectionActive = setSectionActive;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -86,7 +92,8 @@ public class SectionsController : ControllerBase
             return Forbid();
         try
         {
-            var section = await _sections.RenameSectionAsync(id, request.Name, ActorName, request.Version, ct);
+            var section = await _renameSection.HandleAsync(
+                new RenameSectionCommand(id, request.Name, ActorName, request.Version), ct);
             return section is null ? NotFound() : Ok(section);
         }
         catch (DocumentConflictException e)
@@ -105,7 +112,8 @@ public class SectionsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var section = await _sections.SetActiveAsync(id, request.IsActive, ActorName, request.Version, ct);
+        var section = await _setSectionActive.HandleAsync(
+            new SetSectionActiveCommand(id, request.IsActive, ActorName, request.Version), ct);
         return section is null ? NotFound() : Ok(section);
     }
 

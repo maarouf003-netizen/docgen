@@ -97,6 +97,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?>, UpdatePersonalReminderCommandHandler>();
         services.AddScoped<ICommandHandler<CreateSectionCommand, SectionDto>, CreateSectionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteSectionCommand, bool>, DeleteSectionCommandHandler>();
+        services.AddScoped<ICommandHandler<RenameSectionCommand, SectionDto?>, RenameSectionCommandHandler>();
+        services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
         return services;
     }
 }

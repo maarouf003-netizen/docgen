@@ -10,13 +10,11 @@ public interface ISectionService
 {
     Task<List<SectionDto>> ListSectionsAsync(int branchId, CancellationToken ct = default);
     Task<SectionDto?> GetSectionAsync(int sectionId, CancellationToken ct = default);
-    Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, long? version = null, CancellationToken ct = default);
-    Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, long? version = null, CancellationToken ct = default);
 }
 
 /// <summary>
-/// إدارة الشعب (تسمية/تفعيل/قراءة؛ الإنشاء والحذف في Commands `P4-01`) — مشرف/مدير (قرار §2.15).
-/// التحقق من الصلاحية في المتحكم، والتحقق المنطقي والكتابة هنا ضمن معاملة مع سجل التدقيق.
+/// قراءة الشعب والإسقاط المشترك (`SectionService.ToDto`) — الإنشاء/التسمية/التفعيل/الحذف
+/// في Commands `P4-01` — مشرف/مدير (قرار §2.15).
 /// القواعد (قرار §2 + §8.2): الاسم فريد × الفرع؛ الحذف والتعطيل ممنوعان مع وجود
 /// دوائر (تُنقل أولًا)؛ والحذف ممنوع مع بقاء حسابات؛ التعطيل إخفاء من القوائم
 /// فقط (مرآة فلسفة السجل) ولا يوقف عمل الرئيس — يُعلن ذلك في الرسائل.
@@ -27,11 +25,6 @@ public sealed class SectionService : ISectionService
     private readonly IRepository<Branch> _branches;
     private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IUserRepository _users;
-    private readonly IRepository<HeadSuccession> _successions;
-    private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
-    private readonly IDbExceptionClassifier _dbErrors;
     private readonly IReferenceDataCache? _cache;
 
     public SectionService(
@@ -39,22 +32,12 @@ public sealed class SectionService : ISectionService
         IRepository<Branch> branches,
         IRepository<ExecutionCircuit> circuits,
         IUserRepository users,
-        IRepository<HeadSuccession> successions,
-        IUnitOfWork uow,
-        ITransactionRunner tx,
-        IAuditLogger audit,
-        IDbExceptionClassifier dbErrors,
         IReferenceDataCache? cache = null)
     {
         _sections = sections;
         _branches = branches;
         _circuits = circuits;
         _users = users;
-        _successions = successions;
-        _uow = uow;
-        _tx = tx;
-        _audit = audit;
-        _dbErrors = dbErrors;
         _cache = cache;
     }
 
@@ -108,94 +91,6 @@ public sealed class SectionService : ISectionService
         return section is null ? null : await ToDtoAsync(section, ct);
     }
 
-    public async Task<SectionDto?> RenameSectionAsync(int sectionId, string? name, string? actorName, long? version = null, CancellationToken ct = default)
-    {
-        var section = await _sections.GetByIdAsync(sectionId, ct);
-        if (section is null)
-            return null;
-        OptimisticConcurrencyGuard.EnsureCurrent(section, version, "الشعبة");
-        var trimmed = NormalizeName(name);
-        if (section.Name == trimmed)
-            return await ToDtoAsync(section, ct);
-        var norm = ArabicNameNormalizer.Normalize(trimmed);
-        if (string.IsNullOrEmpty(norm))
-            throw new ArgumentException("اسم الشعبة مطلوب");
-        if (await NameExistsAsync(section.BranchId, norm, section.Id, ct))
-            throw new ArgumentException($"الشعبة «{trimmed}» موجودة مسبقًا في فرعك");
-
-        SectionDto result;
-        try
-        {
-            result = await _tx.RunAsync(async token =>
-            {
-                var oldName = section.Name;
-                section.Name = trimmed;
-                section.NameNorm = norm;
-                section.UpdatedAt = DateTime.UtcNow;
-                _sections.Update(section);
-                await _uow.SaveChangesAsync(token);
-                _cache?.Invalidate(ReferenceDataGroups.Sections);
-                await _audit.LogAsync(actorName, "rename_section", null, null,
-                    $"أعاد تسمية الشعبة من «{oldName}» إلى «{trimmed}»", token);
-                // سجل التعاقب عند وجود رئيس شاغل (§9.5 — تعديل اسم)؛ بلا رئيس
-                // يُكتفى بالتدقيق (لا صف بلا موضوع).
-                var head = (await _users.ListUsersBySectionAsync(section.Id, token))
-                    .Where(u => u.IsActive && u.Role == UserRole.SubHead)
-                    .OrderBy(u => u.Id)
-                    .FirstOrDefault();
-                if (head is not null)
-                {
-                    await _successions.AddAsync(new HeadSuccession
-                    {
-                        BranchId = section.BranchId,
-                        SectionId = section.Id,
-                        UserId = head.Id,
-                        Role = UserRole.SubHead,
-                        Event = HeadSuccessionEventCatalog.Renamed,
-                        At = DateTime.UtcNow,
-                        ActorName = actorName,
-                        Reason = $"أُعيدت تسمية الشعبة من «{oldName}» إلى «{trimmed}»",
-                    }, token);
-                    await _uow.SaveChangesAsync(token);
-                    _cache?.Invalidate(ReferenceDataGroups.Sections);
-                }
-                return await ToDtoAsync(section, token);
-            }, ct);
-        }
-        catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
-        {
-            throw new DocumentConflictException($"الشعبة «{trimmed}» موجودة مسبقًا في فرعك", ex);
-        }
-        return result;
-    }
-
-    public async Task<SectionDto?> SetActiveAsync(int sectionId, bool isActive, string? actorName, long? version = null, CancellationToken ct = default)
-    {
-        var section = await _sections.GetByIdAsync(sectionId, ct);
-        if (section is null)
-            return null;
-        OptimisticConcurrencyGuard.EnsureCurrent(section, version, "الشعبة");
-        if (!isActive)
-        {
-            var circuitCount = (await ListCircuitsAsync(ct)).Count(c => c.SectionId == section.Id);
-            if (circuitCount > 0)
-                throw new ArgumentException($"لا يمكن تعطيل الشعبة — انقل دوائرها أولًا (بها {circuitCount} دائرة)");
-        }
-
-        return await _tx.RunAsync(async token =>
-        {
-            section.IsActive = isActive;
-            section.UpdatedAt = DateTime.UtcNow;
-            _sections.Update(section);
-            await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Sections);
-            await _audit.LogAsync(actorName, isActive ? "activate_section" : "deactivate_section",
-                null, null,
-                $"{(isActive ? "فعّل" : "عطّل")} الشعبة «{section.Name}» — التعطيل إخفاء من القوائم فقط ولا يوقف عمل رئيسها", token);
-            return await ToDtoAsync(section, token);
-        }, ct);
-    }
-
     internal static string NormalizeName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -222,15 +117,31 @@ public sealed class SectionService : ISectionService
     private async Task<SectionDto> ToDtoAsync(Section section, CancellationToken ct)
     {
         var branch = await _branches.GetByIdAsync(section.BranchId, ct);
-        var circuits = await ListCircuitsAsync(ct);
-        var head = (await _users.ListUsersBySectionAsync(section.Id, ct))
+        return ToDto(
+            section,
+            branch?.Name,
+            await ListCircuitsAsync(ct),
+            await _users.ListUsersBySectionAsync(section.Id, ct));
+    }
+
+    /// <summary>
+    /// إسقاط الشعبة الموحّد (عدّاد الدوائر + رئيسها الشاغل) — نقطة واحدة للقراءة
+    /// ولمعالجات التسمية/التفعيل فلا تنحرف الحقول بين المسارات.
+    /// </summary>
+    internal static SectionDto ToDto(
+        Section section,
+        string? branchName,
+        IReadOnlyList<ExecutionCircuit> circuits,
+        IReadOnlyList<User> users)
+    {
+        var head = users
             .Where(u => u.IsActive && u.Role == UserRole.SubHead)
             .OrderBy(u => u.Id)
             .FirstOrDefault();
         return new SectionDto(
             section.Id,
             section.BranchId,
-            branch?.Name,
+            branchName,
             section.Name,
             section.IsActive,
             circuits.Count(c => c.SectionId == section.Id),
