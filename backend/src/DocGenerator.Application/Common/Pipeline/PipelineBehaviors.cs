@@ -56,7 +56,7 @@ public sealed class AuditBehavior<TRequest, TResponse> : IPipelineBehavior<TRequ
         var response = await next();
         if (request is IAuditedRequest audited)
         {
-            await _audit.LogAsync(null, audited.AuditAction, audited.AuditDocumentId,
+            await _audit.LogAsync(audited.AuditActorName, audited.AuditAction, audited.AuditDocumentId,
                 audited.AuditDocumentType, audited.AuditDetails, ct);
         }
 

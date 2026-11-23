@@ -15,6 +15,7 @@ public class PipelineBehaviorTests
 
     private sealed record FullCommand(List<string> Trace) : ICommand<string>, ITransactionalRequest, IAuditedRequest
     {
+        public string? AuditActorName => "actor";
         public string AuditAction => "test_action";
         public int? AuditDocumentId => 7;
         public string? AuditDocumentType => "test";

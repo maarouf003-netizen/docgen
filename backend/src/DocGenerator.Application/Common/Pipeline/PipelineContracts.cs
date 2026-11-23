@@ -39,6 +39,7 @@ public interface ITransactionalRequest;
 /// <summary>وسم طلب يحتاج تدقيقًا بعد نجاحه — يستهلكه `AuditBehavior`.</summary>
 public interface IAuditedRequest
 {
+    string? AuditActorName { get; }
     string AuditAction { get; }
     int? AuditDocumentId { get; }
     string? AuditDocumentType { get; }
