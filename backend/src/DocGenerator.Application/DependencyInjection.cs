@@ -6,7 +6,9 @@ using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Application.UseCases.Forum;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Application.UseCases.Suggestions;
@@ -87,6 +89,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteForumMessageCommand, bool>, DeleteForumMessageCommandHandler>();
         services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteExecutionActionCommand, bool>, DeleteExecutionActionCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteDocumentInterventionCommand, bool>, DeleteDocumentInterventionCommandHandler>();
         return services;
     }
 }

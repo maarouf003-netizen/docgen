@@ -7,7 +7,8 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// تنفيذ خدمة «المتدخلين». كل عملية ذرّية ضمن معاملة واحدة: تحفظ المتدخل/تعدّله/تحذفه،
+/// تنفيذ خدمة «المتدخلين» (الإضافة/التعديل؛ الحذف في
+/// `DeleteDocumentInterventionCommand`). كل عملية ذرّية ضمن معاملة واحدة: تحفظ المتدخل/تعدّله،
 /// وتزامن وقعة «طلب تدخل» المرتبطة به، وتعيد بناء `SearchText`، وتكتب سجل التدقيق.
 /// لا تمسّ `Document.Version` (كالإجراءات): حقول النموذج العامة لا تتغير، فلا تُسبب
 /// 409 لنموذج ملف مفتوح، ولا يمكن لـ`PUT` العام أن يمحو المتدخلين (جدول مستقل).
@@ -123,42 +124,11 @@ public sealed class DocumentInterventionService : IDocumentInterventionService
         }, ct);
     }
 
-    public async Task<bool> DeleteAsync(
-        int documentId,
-        int interventionId,
-        string? actorName,
-        CancellationToken ct = default)
-    {
-        var doc = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new KeyNotFoundException();
-        EnsureSupportedSide(doc);
-
-        var intervention = doc.Interventions.FirstOrDefault(i => i.Id == interventionId);
-        if (intervention is null)
-            return false;
-
-        return await _tx.RunAsync(async token =>
-        {
-            // حذف صريح للوقعة (لا الاعتماد على حذف القاعدة) لتوحيد السلوك بين المزوّدين.
-            var occurrence = doc.Occurrences.FirstOrDefault(o => o.DocumentInterventionId == intervention.Id);
-            if (occurrence is not null)
-                doc.Occurrences.Remove(occurrence);
-            doc.Interventions.Remove(intervention);
-            doc.SearchText = DocumentSearchTextBuilder.Build(doc);
-            doc.UpdatedAt = DateTime.UtcNow;
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "intervention", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor(
-                    $"حذف متدخلًا: {DocumentInterventionText.DisplayName(intervention)}", doc), token);
-            return true;
-        }, ct);
-    }
-
     /// <summary>
     /// صفتا الملف المدعومتان هما «طالبة التنفيذ» و«منفذ عليها»؛ «عرض وايداع» مستثناة
-    /// بقرار المالك (الجهة فيها عارضة للمبلغ لا خصمًا في التدخل).
+    /// بقرار المالك (الجهة فيها عارضة للمبلغ لا خصمًا في التدخل) — مشتركة مع معالج الحذف.
     /// </summary>
-    private static void EnsureSupportedSide(Document doc)
+    internal static void EnsureSupportedSide(Document doc)
     {
         if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
             throw new ArgumentException("لا يمكن إضافة متدخل في ملف صفة «عرض وايداع»");

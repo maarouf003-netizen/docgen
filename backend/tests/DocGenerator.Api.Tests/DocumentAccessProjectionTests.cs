@@ -4,8 +4,10 @@ using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Options;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -83,25 +85,27 @@ public sealed class DocumentAccessProjectionTests
     {
         var documents = new StubDocumentService();
         var interventions = new StubInterventionService();
+        var deleteIntervention = new StubDeleteInterventionHandler();
         var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId, 3, null, null),
         };
-        var controller = CreateController(documents, interventions, authorization);
+        var controller = CreateController(documents, interventions, authorization, deleteIntervention);
 
         await controller.UpdateIntervention(
             10, 5, new DocumentInterventionUpsertRequest(), CancellationToken.None);
         await controller.DeleteIntervention(10, 5, CancellationToken.None);
 
         Assert.True(interventions.UpdateCalled);
-        Assert.True(interventions.DeleteCalled);
+        Assert.True(deleteIntervention.Called);
         Assert.False(documents.GetAsyncCalled);
     }
 
     private static DocumentsController CreateController(
         StubDocumentService documents,
         StubInterventionService interventions,
-        StubDocumentAuthorization authorization)
+        StubDocumentAuthorization authorization,
+        ICommandHandler<DeleteDocumentInterventionCommand, bool>? deleteIntervention = null)
     {
         var identity = new ClaimsIdentity(
         [
@@ -127,6 +131,8 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
+            null!,
+            deleteIntervention!,
             ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {
@@ -191,7 +197,6 @@ public sealed class DocumentAccessProjectionTests
     {
         public bool AddCalled { get; private set; }
         public bool UpdateCalled { get; private set; }
-        public bool DeleteCalled { get; private set; }
 
         public Task<DocumentInterventionDto> AddAsync(
             int documentId, DocumentInterventionUpsertRequest request, int userId,
@@ -208,12 +213,21 @@ public sealed class DocumentAccessProjectionTests
             UpdateCalled = true;
             return Task.FromResult<DocumentInterventionDto?>(null);
         }
+    }
 
-        public Task<bool> DeleteAsync(
-            int documentId, int interventionId, string? actorName,
-            CancellationToken ct = default)
+    /// <summary>
+    /// بديل معالج الحذف: يثبت أن المتحكم يفوّض الحذف إلى الأمر (P4-01n) بعد فحص الوصول،
+    /// وأن الحالات 404/403/204 محفوظة.
+    /// </summary>
+    private sealed class StubDeleteInterventionHandler
+        : ICommandHandler<DeleteDocumentInterventionCommand, bool>
+    {
+        public bool Called { get; private set; }
+
+        public Task<bool> HandleAsync(
+            DeleteDocumentInterventionCommand command, CancellationToken ct = default)
         {
-            DeleteCalled = true;
+            Called = true;
             return Task.FromResult(false);
         }
     }
