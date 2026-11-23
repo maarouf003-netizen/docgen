@@ -1,4 +1,6 @@
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -10,6 +12,7 @@ namespace DocGenerator.Application.Tests;
 public class AppSuggestionServiceTests : PostgresDbTest
 {
     private readonly IAppSuggestionService _service;
+    private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
     private readonly int _damascusId;
@@ -37,6 +40,14 @@ public class AppSuggestionServiceTests : PostgresDbTest
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit);
+        _markRead = new MarkAppSuggestionReadCommandHandler(
+            new AppSuggestionRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<MarkAppSuggestionReadCommand, bool>[]
+            {
+                new TransactionBehavior<MarkAppSuggestionReadCommand, bool>(new TransactionRunner(_db)),
+            });
     }
 
 
@@ -84,11 +95,11 @@ public class AppSuggestionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRead_IdempotentAndNotFound()
     {
-        Assert.False(await _service.MarkReadAsync(999));
+        Assert.False(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(999, null)));
         var dto = await _service.CreateAsync("اقتراح", _lawyer.Id, "lawyer");
 
-        Assert.True(await _service.MarkReadAsync(dto.Id));
-        Assert.True(await _service.MarkReadAsync(dto.Id));
+        Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
+        Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
 
         var admin = await _service.ListForAdminAsync(1, 20);
         Assert.Contains(admin.Items, s => s.Id == dto.Id && s.IsRead && s.SenderName == "محامي مقترح");
@@ -103,10 +114,10 @@ public class AppSuggestionServiceTests : PostgresDbTest
         await _service.CreateAsync("ثانٍ اقتراح", _lawyer.Id, "lawyer");
         Assert.Equal(2, await _service.CountUnreadAsync());
 
-        Assert.True(await _service.MarkReadAsync(first.Id));
+        Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(first.Id, null)));
         Assert.Equal(1, await _service.CountUnreadAsync());
         // التعليم المتكرر لا ينقص العدّاد مرتين.
-        Assert.True(await _service.MarkReadAsync(first.Id));
+        Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(first.Id, null)));
         Assert.Equal(1, await _service.CountUnreadAsync());
     }
 

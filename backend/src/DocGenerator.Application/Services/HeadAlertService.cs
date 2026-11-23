@@ -101,11 +101,6 @@ public interface IHeadAlertService
         CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default);
 
     /// <summary>
-    /// تعليم تنبيه كمقروء لصاحب صفّ الاستلام وحده — <c>false</c> لغير المستلم (يُترجم 404)،
-    /// و<see cref="UnauthorizedAccessException"/> لدور لا يملك استلامًا أصلًا (403).
-    /// </summary>
-    Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default);
-    /// <summary>
     /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
     /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
     /// </summary>

@@ -13,7 +13,6 @@ public interface IAppSuggestionService
     Task<PagedResult<AppSuggestionDto>> ListForAdminAsync(int page, int perPage, CancellationToken ct = default);
     /// <summary>عدد الاقتراحات غير المقروءة في صندوق المشرف/المدير.</summary>
     Task<int> CountUnreadAsync(CancellationToken ct = default);
-    Task<bool> MarkReadAsync(int id, CancellationToken ct = default, string? actorName = null);
 }
 
 /// <summary>
@@ -113,26 +112,6 @@ public sealed class AppSuggestionService : IAppSuggestionService
 
     public Task<int> CountUnreadAsync(CancellationToken ct = default)
         => _suggestions.CountUnreadAsync(ct);
-
-    public async Task<bool> MarkReadAsync(int id, CancellationToken ct = default, string? actorName = null)
-    {
-        var suggestion = await _suggestions.GetByIdAsync(id, ct);
-        if (suggestion is null)
-            return false;
-        if (suggestion.IsRead)
-            return true;
-
-        await _tx.RunAsync(async token =>
-        {
-            suggestion.IsRead = true;
-            _suggestions.Update(suggestion);
-            await _uow.SaveChangesAsync(token);
-            // RF-017 (SEC-015): تعليم المقروء إخفاء أثر إداري — يُوثَّق بالفاعل داخل نفس المعاملة.
-            await _audit.LogAsync(actorName, "app-suggestion.read",
-                details: $"علّم اقتراح التطوير (رقم {suggestion.Id}) مقروءًا", ct: token);
-        }, ct);
-        return true;
-    }
 
     private static AppSuggestionDto ToDto(AppSuggestion s, bool includeSender) => new(
         s.Id,

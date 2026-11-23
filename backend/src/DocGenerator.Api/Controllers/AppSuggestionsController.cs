@@ -1,7 +1,9 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Suggestions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,11 +17,16 @@ public class AppSuggestionsController : ControllerBase
 {
     private readonly IAppSuggestionService _suggestions;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
 
-    public AppSuggestionsController(IAppSuggestionService suggestions, IUserCapabilities capabilities)
+    public AppSuggestionsController(
+        IAppSuggestionService suggestions,
+        IUserCapabilities capabilities,
+        ICommandHandler<MarkAppSuggestionReadCommand, bool> markRead)
     {
         _suggestions = suggestions;
         _capabilities = capabilities;
+        _markRead = markRead;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -78,7 +85,7 @@ public class AppSuggestionsController : ControllerBase
     {
         if (!IsAdmin)
             return Forbid();
-        var ok = await _suggestions.MarkReadAsync(id, ct, ActorName);
+        var ok = await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(id, ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 }

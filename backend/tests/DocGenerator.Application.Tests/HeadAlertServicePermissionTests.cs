@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -18,6 +20,7 @@ namespace DocGenerator.Application.Tests;
 public class HeadAlertServicePermissionTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
+    private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly int _branchA;
     private readonly int _branchB;
     private readonly User _headA;
@@ -80,6 +83,8 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             new FakeAuditLogger());
+        _markRead = new MarkHeadAlertReadCommandHandler(
+            new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
     }
 
 
@@ -353,14 +358,14 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_manager.Id, role, null);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.MarkReadAsync(_alertA.Id, actor));
+            _markRead.HandleAsync(new MarkHeadAlertReadCommand(_alertA.Id, actor)));
     }
 
     [PostgresFact]
     public async Task MarkRead_NonRecipientInRecipientRole_ReturnsFalse()
     {
         // دور يملك استلامًا لكنه ليس مستلم هذا الصف ⇒ false (يُترجم 404)، لا استثناء.
-        Assert.False(await _service.MarkReadAsync(_alertOther.Id, ActorFor(_lawyerA)));
+        Assert.False(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(_alertOther.Id, ActorFor(_lawyerA))));
     }
 
     [PostgresTheory]
@@ -413,7 +418,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
             ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Single(before.Items);
 
-        Assert.True(await _service.MarkReadAsync(_alertHead.Id, ActorFor(_headA)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(_alertHead.Id, ActorFor(_headA))));
 
         var after = await _service.ListForActorAsync(
             ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
@@ -430,7 +435,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
 
         Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
 
-        Assert.True(await _service.MarkReadAsync(collective.Id, ActorFor(_headA)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(collective.Id, ActorFor(_headA))));
 
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
