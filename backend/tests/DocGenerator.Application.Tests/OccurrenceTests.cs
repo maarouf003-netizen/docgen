@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,6 +22,7 @@ namespace DocGenerator.Application.Tests;
 public class OccurrenceTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly IDocumentStatusService _status;
     private readonly FakeAuditLogger _audit = new();
 
@@ -45,6 +48,7 @@ public class OccurrenceTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
         _status = bundle.Status;
     }
 
@@ -240,7 +244,7 @@ public class OccurrenceTests : PostgresDbTest
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         req.StruckOffDate = "10/6/2026";
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
 
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
@@ -261,7 +265,7 @@ public class OccurrenceTests : PostgresDbTest
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         req.StruckOffDate = "10/7/2026";
-        await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
 
         var loaded = await _service.GetAsync(doc.Id);
         Assert.Equal(3, loaded!.Occurrences.Count);
@@ -360,7 +364,7 @@ public class OccurrenceTests : PostgresDbTest
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, req, "lawyer1", 1));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _update.UpdateAsync(doc.Id, req, "lawyer1", 1));
         Assert.Contains("لا يمكن نقل ملف مشطوب إلى «منفذ» مباشرة", ex.Message);
 
         // الحالة لم تتغير في قاعدة البيانات.
@@ -376,7 +380,7 @@ public class OccurrenceTests : PostgresDbTest
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
         Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
     }
 
@@ -392,7 +396,7 @@ public class OccurrenceTests : PostgresDbTest
         edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         edit.StruckOffDate = "10/8/2026";
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _update.UpdateAsync(doc.Id, edit, "lawyer1", 1));
         Assert.Contains("الجهة العامة منفذ عليها» نهائي", ex.Message);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -412,7 +416,7 @@ public class OccurrenceTests : PostgresDbTest
         edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         edit.StruckOffDate = "10/8/2026";
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _update.UpdateAsync(doc.Id, edit, "lawyer1", 1));
         Assert.Contains("لا يمكن شطب «عرض وايداع» من وضع «منفذ»", ex.Message);
     }
 
@@ -427,7 +431,7 @@ public class OccurrenceTests : PostgresDbTest
         var edit = DepositSample();
         edit.ExecutedStatus = null;
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _update.UpdateAsync(doc.Id, edit, "lawyer1", 1));
         Assert.Contains("كتاب السير بالملف", ex.Message);
     }
 }

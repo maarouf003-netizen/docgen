@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -18,6 +20,7 @@ namespace DocGenerator.Application.Tests;
 public class ApplicantAndAssignmentTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
 
     public ApplicantAndAssignmentTests()
@@ -48,7 +51,9 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
     }
 
 
@@ -173,7 +178,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
 
         var update = ApplicantSample();
         update.BorrowerName = "اسم محدث";
-        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(created.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal(new DateTime(2026, 1, 1), updated!.StruckOffDate);

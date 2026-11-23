@@ -16,7 +16,6 @@ public interface IDocumentService
     Task<DocumentAccessInfo?> GetAccessInfoAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null);
-    Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default);
     Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default);
     Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null);
     /// <summary>عدد ملفات المحامي غير المحذوفة (للمعاينة قبل النقل الجماعي).</summary>

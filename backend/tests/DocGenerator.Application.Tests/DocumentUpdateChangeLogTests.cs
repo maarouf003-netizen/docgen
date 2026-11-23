@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -17,6 +19,7 @@ namespace DocGenerator.Application.Tests;
 public class DocumentUpdateChangeLogTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
 
@@ -38,7 +41,9 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
 
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users).Documents;
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users);
+        _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
     }
 
 
@@ -62,7 +67,7 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
         var editRequest = Sample();
         editRequest.BorrowerName = "أحمد سعيد";
         editRequest.AmountNumeric = 3000.75m;
-        await _service.UpdateAsync(created.Id, editRequest, "المحامي الأول", _lawyer.Id);
+        await _update.UpdateAsync(created.Id, editRequest, "المحامي الأول", _lawyer.Id);
 
         var entry = Assert.Single(_audit.ChangeLogs);
         Assert.Equal("update", entry.ActionType);
@@ -84,10 +89,15 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
         var created = await _service.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
             branchId: _lawyer.BranchId!.Value);
 
-        await _service.UpdateAsync(created.Id, Sample(), "المحامي الأول", _lawyer.Id);
+        await _update.UpdateAsync(created.Id, Sample(), "المحامي الأول", _lawyer.Id);
 
         // لا صفوف تغييرات: التعديل المطابق للأصل يمر كسجل تدقيق نصي فقط
         Assert.Empty(_audit.ChangeLogs);
         Assert.Contains("update", _audit.Actions);
+        // تثبيت نص التدقيق حرفيًا (اسم الملف + المنفذ عليه كما يركّبه DocumentText).
+        var idx = _audit.Actions.LastIndexOf("update");
+        Assert.Equal(
+            $"عدّل المستند (رقم {created.Id}) — المنفذ عليه: أحمد محمد العلي",
+            _audit.Details[idx]);
     }
 }

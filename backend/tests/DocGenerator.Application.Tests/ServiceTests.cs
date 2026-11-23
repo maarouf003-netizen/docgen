@@ -17,6 +17,7 @@ namespace DocGenerator.Application.Tests;
 public class DocumentServiceTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
@@ -50,6 +51,7 @@ public class DocumentServiceTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
@@ -246,7 +248,7 @@ public class DocumentServiceTests : PostgresDbTest
         var update = Sample(created.FileNumber);
         update.AmountNumeric = 5000m;
 
-        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(created.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         var words = updated!.AmountWords;
@@ -268,7 +270,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         var update = Sample(created.FileNumber);
         update.AmountNumeric = 0;
-        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(created.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal("خمسة ملايين ليرة سورية فقط لا غير", updated!.AmountWords);
@@ -283,7 +285,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         var update = Sample(created.FileNumber);
         update.AmountNumeric = 0;
-        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(created.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Null(updated!.AmountWords);
@@ -339,7 +341,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         var update = Sample();
         update.DocumentType = draft.DocumentType;
-        var doc = await _service.UpdateAsync(draft.Id, update, actorName: "lawyer1");
+        var doc = await _update.UpdateAsync(draft.Id, update, actorName: "lawyer1");
 
         Assert.False(doc!.IsDraft);
         Assert.StartsWith("متداول", doc.DocumentType!);
@@ -391,7 +393,7 @@ public class DocumentServiceTests : PostgresDbTest
         var update = Sample();
         update.FileRegistrationDate = null;
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(draft.Id, update, "lawyer1"));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _update.UpdateAsync(draft.Id, update, "lawyer1"));
         Assert.Contains("تاريخ قيد الملف مطلوب", ex.Message);
     }
 
@@ -700,7 +702,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         var req = Sample();
         req.Notes = "تعديل لاحق على بيانات الملف";
-        var updated = await _service.UpdateAsync(created.Id, req, "lawyer1");
+        var updated = await _update.UpdateAsync(created.Id, req, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal("محامي", updated!.Lawyer);
@@ -1048,7 +1050,7 @@ public class DocumentServiceTests : PostgresDbTest
         var req = Sample();
         req.BorrowerName = "محمود";
 
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal("محمود", updated!.BorrowerName);
@@ -1119,7 +1121,7 @@ public class DocumentServiceTests : PostgresDbTest
             new(null, "الممثل", null, null, "أصالة", "غريب", "وكيل فريد"),
         };
 
-        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal(2, updated!.BorrowerHeirs.Count);
@@ -1175,7 +1177,7 @@ public class DocumentServiceTests : PostgresDbTest
             Owners = new List<string> { "المالك الجديد", "المالك المشارك" },
         };
 
-        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         var estate = Assert.Single(updated!.Assets);
@@ -1708,7 +1710,7 @@ public class DocumentServiceTests : PostgresDbTest
         var update = Sample();
         update.FileRegistrationDate = "2/8/2026";
 
-        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal("2/8/2026", updated!.FileRegistrationDate);
@@ -1727,7 +1729,7 @@ public class DocumentServiceTests : PostgresDbTest
         update.FileYear = "";
         update.FileRegistrationDate = "";
 
-        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, update, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Null(updated!.FileRegistrationDate);
@@ -3264,7 +3266,7 @@ public class DocumentServiceTests : PostgresDbTest
             new AddExecutionActionRequest { Type = "action", Text = "إشعار أول", ActionDate = "2/8/2026" },
             new AddExecutionActionRequest { Type = "note", Text = "متابعة لاحقة" },
         };
-        await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
+        await _update.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
 
         // لا يتضاعف الإجراء المطابق، وتُضاف الملاحظة الجديدة فقط.
         var list = await _actions.GetExecutionActionsAsync(doc.Id);
@@ -3286,7 +3288,7 @@ public class DocumentServiceTests : PostgresDbTest
         {
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة جديدة" },
         };
-        await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
+        await _update.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
 
         var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Equal(2, list.Count);
@@ -4086,7 +4088,7 @@ public class DocumentServiceTests : PostgresDbTest
                 null, null, null, null, null, null, null, null, new()),
         };
 
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1");
         Assert.NotNull(updated);
 
         var storedHeirs = await _db.ExecutedHeirs
@@ -4117,7 +4119,7 @@ public class DocumentServiceTests : PostgresDbTest
                 null, null, null, null, null, null, null, null, null, new()),
         };
 
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1");
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1");
         Assert.NotNull(updated);
 
         var storedHeirs = await _db.ExecutedHeirs
@@ -4413,7 +4415,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         var req = Sample();
         req.GeneralEntitySide = GeneralEntitySideCatalog.Applicant;
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
 
         // صفة الملف تُثبَّت عند الإنشاء ولا تتغير عند التعديل.
         Assert.Equal(GeneralEntitySideCatalog.Executed, updated!.GeneralEntitySide);
@@ -4567,7 +4569,7 @@ public class DocumentServiceTests : PostgresDbTest
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         req.StruckOffDate = "";
-        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
 
         Assert.Equal(ExecutedStatusCatalog.StruckOff, updated!.ExecutedStatus);
         Assert.NotNull(updated.StruckOffDate);
@@ -5561,6 +5563,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
 {
     private static int s_considerSeq;
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
@@ -5583,6 +5586,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
             _audit);
         var considerBundle = DocumentServiceFactory.Create(_db, _audit, alertService: _alerts, tx: _tx);
         _service = considerBundle.Documents;
+        _update = considerBundle.UpdateDocument;
         _status = considerBundle.Status;
     }
 
@@ -5802,7 +5806,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
                     null, null),
             },
         };
-        await _service.UpdateAsync(doc.Id, req, actorName: "lawyer1", userId: 1);
+        await _update.UpdateAsync(doc.Id, req, actorName: "lawyer1", userId: 1);
 
         var pendingSnapshot = await _db.DelegationAssets
             .SingleAsync(a => a.DelegationId == pendingDelegationId);

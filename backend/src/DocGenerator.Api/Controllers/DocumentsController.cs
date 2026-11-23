@@ -49,6 +49,7 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentAuthorization _authorization;
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _updateDocument;
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
@@ -78,6 +79,7 @@ public class DocumentsController : ControllerBase
         IDocumentAuthorization authorization,
         IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
+        ICommandHandler<UpdateDocumentCommand, DocumentResponse?> updateDocument,
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
@@ -106,6 +108,7 @@ public class DocumentsController : ControllerBase
         _authorization = authorization;
         _getDocument = getDocument;
         _createDocument = createDocument;
+        _updateDocument = updateDocument;
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
@@ -573,7 +576,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
         if (denied is not null) return denied;
 
-        var updated = await _documents.UpdateAsync(id, request, ActorName, User.GetUserId(), ct);
+        var updated = await _updateDocument.HandleAsync(
+            new UpdateDocumentCommand(id, request, ActorName, User.GetUserId()), ct);
         return updated is null ? NotFound() : Ok(Sanitize(updated));
     }
 

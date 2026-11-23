@@ -9,7 +9,7 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService : IDocumentService
 {
-    private static void ApplyRequest(Document doc, DocumentUpsertRequest r)
+    internal static void ApplyRequest(Document doc, DocumentUpsertRequest r)
     {
         // صفة الملف تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل (الموافقة المعتمدة):
         // على التعديل يبقى جانب الملف كما هو مهما أُرسل في الطلب.
@@ -443,13 +443,22 @@ public sealed partial class DocumentService : IDocumentService
     }
 
     private void ApplyRegistrationDate(Document doc, string? value)
+        => ApplyRegistrationDate(doc, value, _registrationDates);
+
+    /// <summary>
+    /// تطبيق تاريخ التسجيل الحر (نص) على كيان `DocumentRegistrationDate` — مشترك بين
+    /// الإنشاء (الخدمة) والتعديل (المعالج) بالمنطق نفسه: الفارغ يُزيل الصف، وغيره يُنشئه
+    /// أو يحدّثه ويحلّل `DateParsed` عبر `ActionDateParser`.
+    /// </summary>
+    internal static void ApplyRegistrationDate(
+        Document doc, string? value, IRepository<DocumentRegistrationDate> registrationDates)
     {
         var date = value?.Trim();
         if (string.IsNullOrWhiteSpace(date))
         {
             if (doc.RegistrationDate is not null)
             {
-                _registrationDates.Remove(doc.RegistrationDate);
+                registrationDates.Remove(doc.RegistrationDate);
                 doc.RegistrationDate = null;
             }
             return;

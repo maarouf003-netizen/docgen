@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -16,6 +18,7 @@ namespace DocGenerator.Application.Tests;
 public class InclusionNotesTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
 
     public InclusionNotesTests()
@@ -38,7 +41,9 @@ public class InclusionNotesTests : PostgresDbTest
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
     }
 
 
@@ -106,7 +111,7 @@ public class InclusionNotesTests : PostgresDbTest
         edit.FileYear = "2024";
         edit.InclusionText = "خلاصة القرار الأول";
         edit.InclusionNotes = "";
-        var updated = await _service.UpdateAsync(created.Id, edit, "lawyer1", 1);
+        var updated = await _update.UpdateAsync(created.Id, edit, "lawyer1", 1);
 
         Assert.Equal("", updated!.InclusionNotes);
     }
