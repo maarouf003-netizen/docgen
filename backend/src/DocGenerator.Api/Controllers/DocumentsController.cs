@@ -48,6 +48,7 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentAuthorization _authorization;
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
+    private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -67,6 +68,7 @@ public class DocumentsController : ControllerBase
         IDocumentAuthorization authorization,
         IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
+        ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -85,6 +87,7 @@ public class DocumentsController : ControllerBase
         _authorization = authorization;
         _getDocument = getDocument;
         _createDocument = createDocument;
+        _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -423,7 +426,8 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
-        return await _strikeOffReminders.DismissAsync(id, User.GetUserId(), ActorName, ct)
+        return await _dismissStrikeOffReminder.HandleAsync(
+                new DismissStrikeOffReminderCommand(id, User.GetUserId(), ActorName), ct)
             ? NoContent()
             : NotFound();
     }

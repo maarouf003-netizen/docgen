@@ -69,6 +69,7 @@ public static class DependencyInjection
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(AuditBehavior<,>));
         services.AddScoped<IQueryHandler<GetDocumentQuery, DocumentResponse?>, GetDocumentQueryHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentCommand, DocumentResponse>, CreateDocumentCommandHandler>();
+        services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         return services;
     }
 }
