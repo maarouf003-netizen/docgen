@@ -7,6 +7,7 @@ using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionActions;
+using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Application.UseCases.Forum;
 using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Application.UseCases.Reminders;
@@ -110,6 +111,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SetActionReminderCommand, ExecutionActionDto>, SetActionReminderCommandHandler>();
         services.AddScoped<ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto>, RescheduleActionReminderCommandHandler>();
         services.AddScoped<ICommandHandler<RestoreDocumentCommand, bool>, RestoreDocumentCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto>, CreateExecutionCircuitCommandHandler>();
+        services.AddScoped<ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto>, SetExecutionCircuitActiveCommandHandler>();
         return services;
     }
 }

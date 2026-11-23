@@ -126,14 +126,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         return rows;
     }
 
-    private async Task<ExecutionCircuitDto> ToDtoAsync(ExecutionCircuit c, CancellationToken token)
-    {
-        var counts = await _documents.CountByCircuitsAsync(new List<int> { c.Id }, token);
-        counts.TryGetValue(c.Id, out var v);
-        string? sectionName = null;
-        if (c.SectionId.HasValue)
-            sectionName = (await _sections.GetByIdAsync(c.SectionId.Value, token))?.Name;
-        return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version,
-            c.SectionId, sectionName, v.DeletedCount);
-    }
+    private Task<ExecutionCircuitDto> ToDtoAsync(ExecutionCircuit c, CancellationToken token)
+        => ExecutionCircuitRules.BuildDtoAsync(c, _documents, _sections, token);
 }

@@ -3,8 +3,10 @@ using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +26,8 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
+    private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
@@ -31,7 +35,9 @@ public class ExecutionCircuitsController : ControllerBase
         IExcelExportService excel,
         TimeProvider clock,
         TimeZoneInfo timeZone,
-        IUserCapabilities capabilities)
+        IUserCapabilities capabilities,
+        ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> createCircuit,
+        ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive)
     {
         _circuits = circuits;
         _branches = branches;
@@ -39,6 +45,8 @@ public class ExecutionCircuitsController : ControllerBase
         _clock = clock;
         _timeZone = timeZone;
         _capabilities = capabilities;
+        _createCircuit = createCircuit;
+        _setCircuitActive = setCircuitActive;
     }
 
     private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
@@ -97,7 +105,9 @@ public class ExecutionCircuitsController : ControllerBase
         if (error is not null) return error;
         try
         {
-            var created = await _circuits.CreateAsync(branchId, User.GetUserId(), ActorName, request.Name ?? string.Empty, ct);
+            var created = await _createCircuit.HandleAsync(
+                new CreateExecutionCircuitCommand(
+                    branchId, User.GetUserId(), ActorName, request.Name ?? string.Empty), ct);
             return CreatedAtAction(nameof(Mine), new { }, created);
         }
         catch (DocumentConflictException e)
@@ -138,7 +148,9 @@ public class ExecutionCircuitsController : ControllerBase
         if (error is not null) return error;
         try
         {
-            return Ok(await _circuits.SetActiveAsync(id, branchId, ownerSectionId, ActorName, request.IsActive, request.Version, ct));
+            return Ok(await _setCircuitActive.HandleAsync(
+                new SetExecutionCircuitActiveCommand(
+                    id, branchId, ownerSectionId, ActorName, request.IsActive, request.Version), ct));
         }
         catch (DocumentConflictException e)
         {
