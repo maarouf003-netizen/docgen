@@ -819,9 +819,10 @@
   `DocumentNumberRegistry`: 742 → أربعة ملفات بأقصى 325 سطرًا؛
   `PublicEntityService.Branches`: 738 → ملفان بأقصى 375 سطرًا؛
   `ReviewLetterService`: 726 → خمسة ملفات بأقصى 243 سطرًا؛
-  `UserManagementService`: 710 → خمسة ملفات بأقصى 220 سطرًا، بلا تغيير سلوكي.
+  `UserManagementService`: 710 → خمسة ملفات بأقصى 220 سطرًا؛
+  `PublicEntityService` (الرئيسي): 674 → أربعة ملفات بأقصى 372 سطرًا، بلا تغيير سلوكي.
   **متبقٍ لبلوغ `DoD`:** ملفات >600 داخل `Application`
-  (`PublicEntityService` 674 و`PublicEntityService.Registry` 629، `PortalService` 665).
+  (`PublicEntityService.Registry` 629، `PortalService` 665).
   التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
   `docs/audit/111-p4-02b-document-status-split-20261122.md` و
   `docs/audit/112-p4-02c-document-delegation-split-20261122.md` و
