@@ -824,7 +824,8 @@
   `PortalService`: 665 → أربعة ملفات بأقصى 328 سطرًا؛ `PublicEntityService.Registry`:
   629 → ثلاثة ملفات بأقصى 363 سطرًا، بلا تغيير سلوكي.
   **`Application`: `DoD` متحقق — لا ملف >600 (أقصى 566).** في `Infrastructure`:
-  `StatisticsRepository` 902 → خمسة ملفات بأقصى 259 سطرًا؛ يتبقى `HeadAlertRepository` 630.
+  `StatisticsRepository` 902 → خمسة ملفات بأقصى 259 سطرًا؛ `HeadAlertRepository`
+  630 → أربعة ملفات بأقصى 288 سطرًا. **`DoD` العام مغلق: لا ملف >600 في الطبقتين.**
   التفاصيل: `docs/audit/109-p4-02a-document-repository-split-20261122.md` و
   `docs/audit/111-p4-02b-document-status-split-20261122.md` و
   `docs/audit/112-p4-02c-document-delegation-split-20261122.md` و
