@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -17,6 +19,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
+    private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -44,8 +47,19 @@ public class DocumentServiceTests : PostgresDbTest
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
+        _deleteAction = new DeleteExecutionActionCommandHandler(
+            actions,
+            documents,
+            uow,
+            _audit,
+            new IPipelineBehavior<DeleteExecutionActionCommand, bool>[]
+            {
+                new TransactionBehavior<DeleteExecutionActionCommand, bool>(tx),
+            });
     }
 
+    private Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName)
+        => _deleteAction.HandleAsync(new DeleteExecutionActionCommand(documentId, actionId, actorName));
 
     private static int s_sampleSeq;
 
@@ -3019,11 +3033,13 @@ public class DocumentServiceTests : PostgresDbTest
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var deleted = await _actions.DeleteExecutionActionAsync(doc.Id, action.Id, "lawyer1");
+        var deleted = await DeleteExecutionActionAsync(doc.Id, action.Id, "lawyer1");
 
         Assert.True(deleted);
         Assert.Empty(await _actions.GetExecutionActionsAsync(doc.Id));
         Assert.Contains("action", _audit.Actions);
+        Assert.Contains(_audit.Details,
+            d => d == "حذف إجراء: إجراء — المنفذ عليه: أحمد خالد الخطيب");
     }
 
     [PostgresFact]
@@ -3034,7 +3050,7 @@ public class DocumentServiceTests : PostgresDbTest
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var deleted = await _actions.DeleteExecutionActionAsync(doc.Id + 9999, action.Id, "lawyer1");
+        var deleted = await DeleteExecutionActionAsync(doc.Id + 9999, action.Id, "lawyer1");
         Assert.False(deleted);
     }
 

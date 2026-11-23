@@ -17,8 +17,6 @@ public interface IExecutionActionService
 
     Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default);
 
-    Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-
     Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
 
     /// <summary>

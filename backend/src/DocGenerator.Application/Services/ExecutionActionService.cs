@@ -120,26 +120,6 @@ public sealed class ExecutionActionService : IExecutionActionService
         return ToDto(action, actorName);
     }
 
-    public async Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default)
-    {
-        var action = await _actions.GetByIdAsync(actionId, ct);
-        if (action is null || action.DocumentId != documentId)
-            return false;
-
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            return false;
-
-        return await _tx.RunAsync(async token =>
-        {
-            _actions.Remove(action);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor($"حذف {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-            return true;
-        }, ct);
-    }
-
     public async Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default)
     {
         var action = await _actions.GetByIdAsync(actionId, ct);

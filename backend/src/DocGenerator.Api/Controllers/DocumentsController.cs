@@ -10,6 +10,8 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.ExecutionActions;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -49,6 +51,8 @@ public class DocumentsController : ControllerBase
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
+    private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
+    private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -69,6 +73,8 @@ public class DocumentsController : ControllerBase
         IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
+        ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
+        ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -88,6 +94,8 @@ public class DocumentsController : ControllerBase
         _getDocument = getDocument;
         _createDocument = createDocument;
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
+        _deleteExecutionAction = deleteExecutionAction;
+        _deleteIntervention = deleteIntervention;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -588,7 +596,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
         if (denied is not null) return denied;
 
-        return await _interventions.DeleteAsync(id, interventionId, ActorName, ct)
+        return await _deleteIntervention.HandleAsync(
+            new DeleteDocumentInterventionCommand(id, interventionId, ActorName), ct)
             ? NoContent()
             : NotFound();
     }
@@ -919,7 +928,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        var deleted = await _executionActions.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
+        var deleted = await _deleteExecutionAction.HandleAsync(
+            new DeleteExecutionActionCommand(id, actionId, ActorName), ct);
         if (!deleted) return NotFound();
         return NoContent();
     }

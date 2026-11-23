@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.Tests.TestHelpers;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -17,6 +19,7 @@ namespace DocGenerator.Application.Tests;
 public class DocumentInterventionServiceTests : PostgresDbTest
 {
     private readonly DocumentInterventionService _service;
+    private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _delete;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
     private readonly Document _document;
@@ -57,8 +60,19 @@ public class DocumentInterventionServiceTests : PostgresDbTest
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit);
+        _delete = new DeleteDocumentInterventionCommandHandler(
+            new DocumentRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<DeleteDocumentInterventionCommand, bool>[]
+            {
+                new TransactionBehavior<DeleteDocumentInterventionCommand, bool>(
+                    new TransactionRunner(_db)),
+            });
     }
 
+    private Task<bool> DeleteAsync(int documentId, int interventionId, string? actorName)
+        => _delete.HandleAsync(new DeleteDocumentInterventionCommand(documentId, interventionId, actorName));
 
     private static DocumentInterventionUpsertRequest NaturalRequest() => new()
     {
@@ -418,7 +432,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.Heirs.Add(new HeirDto(null, "وليد", "سامر", "الحسن", "أصالة", "عنوان", "المزة"));
         var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
-        var deleted = await _service.DeleteAsync(_document.Id, dto.Id, "المحامي الأول");
+        var deleted = await DeleteAsync(_document.Id, dto.Id, "المحامي الأول");
 
         Assert.True(deleted);
         Assert.Empty(await _db.DocumentInterventions.ToListAsync());
@@ -427,6 +441,35 @@ public class DocumentInterventionServiceTests : PostgresDbTest
 
         var refreshed = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == _document.Id);
         Assert.DoesNotContain("سامر", refreshed.SearchText);
+        Assert.Contains(_audit.Actions, a => a == "intervention");
+        Assert.Contains(_audit.Details,
+            d => d == "حذف متدخلًا: سامر محمود الحسن — المنفذ عليه: أحمد");
+    }
+
+    [PostgresFact]
+    public async Task Delete_MissingDocument_Throws()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => DeleteAsync(_document.Id + 9999, 1, "المحامي الأول"));
+    }
+
+    [PostgresFact]
+    public async Task Delete_DepositSide_ThrowsWithOriginalMessage()
+    {
+        var dto = await _service.AddAsync(
+            _document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
+
+        // `AddAsync` يفرّغ المتتبَّع (`ClearChanges`) ثم يعيد تحميل المستند متتبَّعًا؛ الكتابة
+        // المباشرة تُنفَّذ في القاعدة، ويُفرَّغ المتتبَّع كي يقرأ المعالج القيمة الجديدة.
+        await _db.Documents
+            .Where(d => d.Id == _document.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(
+                d => d.GeneralEntitySide, GeneralEntitySideCatalog.Deposit));
+        _db.ChangeTracker.Clear();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => DeleteAsync(_document.Id, dto.Id, "المحامي الأول"));
+        Assert.Equal("لا يمكن إضافة متدخل في ملف صفة «عرض وايداع»", ex.Message);
     }
 
     [PostgresFact]
@@ -445,7 +488,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
 
         Assert.Null(await _service.UpdateAsync(
             other.Id, dto.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
-        Assert.False(await _service.DeleteAsync(other.Id, dto.Id, "المحامي الأول"));
+        Assert.False(await DeleteAsync(other.Id, dto.Id, "المحامي الأول"));
     }
 
     [PostgresFact]
