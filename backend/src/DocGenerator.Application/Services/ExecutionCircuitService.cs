@@ -18,9 +18,7 @@ public interface IExecutionCircuitService
     /// </summary>
     Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default);
 
-    Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default);
     Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null);
-    Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default);
     Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);

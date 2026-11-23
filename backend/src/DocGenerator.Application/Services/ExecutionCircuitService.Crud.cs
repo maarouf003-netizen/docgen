@@ -10,56 +10,6 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class ExecutionCircuitService : IExecutionCircuitService
 {
-    public async Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default)
-    {
-        await RequireBranchWithGovernorateAsync(branchId, ct);
-        var trimmed = NormalizeName(name);
-        var norm = ArabicNameNormalizer.Normalize(trimmed);
-        if (string.IsNullOrEmpty(norm))
-            throw new ArgumentException("اسم الدائرة مطلوب");
-
-        // ملكية المنشئ (§8.4): دائرة رئيس الشعبة تلحق بشعبته تلقائيًا، ودائرة
-        // رئيس القسم ملك القسم (`null`)؛ وغير الرؤساء مرفوض (الإدارة تنقل فقط).
-        var ownerSection = await ResolveOwnerSectionAsync(branchId, actorUserId, ct);
-
-        var circuit = new ExecutionCircuit
-        {
-            BranchId = branchId,
-            SectionId = ownerSection?.Id,
-            Name = trimmed,
-            NameNorm = norm,
-            IsActive = true,
-            CreatedById = actorUserId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        };
-        try
-        {
-            await _tx.RunAsync(async token =>
-            {
-                // فحص ودّي قبل الإدراج لبيان المالك في الرسالة؛ القيد الفريد في القاعدة
-                // يبقى الحارس النهائي ضد السباق (والالتقاط أدناه يغطي هذه الحالة النادرة).
-                var existing = await FindCircuitByNameAsync(branchId, norm, null, token);
-                if (existing is not null)
-                    throw new DocumentConflictException(
-                        await DuplicateCircuitMessageAsync(existing, ownerSection?.Id, token));
-                await _circuits.AddAsync(circuit, token);
-                await _uow.SaveChangesAsync(token);
-                _cache?.Invalidate(ReferenceDataGroups.Circuits);
-                await _audit.LogAsync(actorName, "create_circuit", null, null,
-                    $"أدخل دائرة تنفيذ «{trimmed}» في فرعه", token);
-            }, ct);
-        }
-        catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
-        {
-            // سباق حقيقي بين فحصين متزامنين: الرسالة العامة تحمل القيد الفرعي نفسه.
-            throw new DocumentConflictException(
-                $"الدائرة «{trimmed}» موجودة مسبقًا في فرعك — لا يمكن تكرار اسم الدائرة داخل الفرع", ex);
-        }
-        return new ExecutionCircuitDto(circuit.Id, circuit.BranchId, null, circuit.Name, circuit.IsActive, 0, 0, circuit.Version,
-            circuit.SectionId, ownerSection?.Name);
-    }
-
     public async Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
@@ -160,39 +110,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         return result;
     }
 
-    public async Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default)
-    {
-        await RequireBranchWithGovernorateAsync(branchId, ct);
-        ExecutionCircuitDto result = null!;
-        await _tx.RunAsync(async token =>
-        {
-            var tracked = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
-            if (version is not null && tracked.Version != version.Value)
-                throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
-            tracked.IsActive = isActive;
-            tracked.UpdatedAt = DateTime.UtcNow;
-            tracked.Version++;
-            _circuits.Update(tracked);
-            await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Circuits);
-            await _audit.LogAsync(actorName, isActive ? "activate_circuit" : "deactivate_circuit",
-                null, null, $"{(isActive ? "فعّل" : "عطّل")} دائرة التنفيذ «{tracked.Name}»", token);
-            result = await ToDtoAsync(tracked, token);
-        }, ct);
-        return result;
-    }
-
-    /// <summary>
-    /// حذف الدائرة نهائيًا (تعديل البند 41 — قرار المالك 2026-10-17): الترتيب
-    /// **الحارس ← الوارد المعلقة ← فصل الوارد ← التطهير ← إزالة الدائرة ← الحفظ ← التدقيق**.
-    /// العلة التقنية: فصل الوارد قبل التطهير يمنع تعارض أثر التتبّع مع صفوف الإنابة
-    /// المحذوفة تسلسليًا ضمن التطهير (الإنتاج محصّن أصلًا بحارس
-    /// DocumentService.DeleteAsync: يمنع حذف أي ملف له إنابة صادرة أو مناب أو استئناف —
-    /// فلا صف محذوف يحمل إنابة/مناب/استئنافًا، والمناب بالقيد Restrict غير قابل للتحقق إنتاجيًا).
-    /// الحارس يعدّ الأحياء فقط (محتسبين المعلقين منها)؛ سلة المحذوفات تُطهَّر نهائيًا
-    /// (CASCADE يزيل توابعها، SET NULL يفك مراجعها، وAuditLogs/DocumentFieldChanges
-    /// بلا FK فيبقيان تاريخًا كاملًا — إعلان صريح لا سهو).
-    /// </summary>
     public async Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);

@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -23,6 +25,8 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly IDocumentService _documents;
     private readonly IDocumentStatusService _documentStatus;
     private readonly IHeadAlertService _headAlerts;
+    private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
+    private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -65,12 +69,37 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             baseNumberRepository: new DocumentBaseNumberRepository(_db));
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
+        _createCircuit = new CreateExecutionCircuitCommandHandler(
+            circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, users,
+            uow, _audit, classifier,
+            new IPipelineBehavior<CreateExecutionCircuitCommand, ExecutionCircuitDto>[]
+            {
+                new TransactionBehavior<CreateExecutionCircuitCommand, ExecutionCircuitDto>(_tx),
+            });
+        _setCircuitActive = new SetExecutionCircuitActiveCommandHandler(
+            circuitsRepo, branchesRepo, new Repository<Section>(_db), documents,
+            uow, _audit,
+            new IPipelineBehavior<SetExecutionCircuitActiveCommand, ExecutionCircuitDto>[]
+            {
+                new TransactionBehavior<SetExecutionCircuitActiveCommand, ExecutionCircuitDto>(_tx),
+            });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
     }
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
+
+    private Task<ExecutionCircuitDto> CreateAsync(
+        int branchId, int actorUserId, string? actorName, string name)
+        => _createCircuit.HandleAsync(
+            new CreateExecutionCircuitCommand(branchId, actorUserId, actorName, name));
+
+    private Task<ExecutionCircuitDto> SetActiveAsync(
+        int circuitId, int branchId, int? ownerSectionId, string? actorName,
+        bool isActive, long? version)
+        => _setCircuitActive.HandleAsync(new SetExecutionCircuitActiveCommand(
+            circuitId, branchId, ownerSectionId, actorName, isActive, version));
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -86,7 +115,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     };
 
     private async Task<int> CreateCircuitAsync(string name = "دائرة دمشق الأولى")
-        => (await _circuits.CreateAsync(_branchId, _headId, "head1", name)).Id;
+        => (await CreateAsync(_branchId, _headId, "head1", name)).Id;
 
     private async Task<int> CreateDocAsync(int circuitId, int lawyerId, string? number = "100", string? year = "2026")
     {
@@ -97,13 +126,33 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     }
 
     [PostgresFact]
+    public async Task Create_Circuit_AuditsOwnerMessage()
+    {
+        var created = await CreateAsync(_branchId, _headId, "head1", "دائرة التدقيق");
+
+        Assert.True(created.Id > 0);
+        Assert.Contains(_audit.Details, d => d == "أدخل دائرة تنفيذ «دائرة التدقيق» في فرعه");
+    }
+
+    [PostgresFact]
+    public async Task Deactivate_Circuit_AuditsExactMessage()
+    {
+        var id = await CreateCircuitAsync("دائرة الإيقاف");
+
+        var deactivated = await SetActiveAsync(id, _branchId, null, "head1", false, null);
+
+        Assert.False(deactivated.IsActive);
+        Assert.Contains(_audit.Details, d => d == "عطّل دائرة التنفيذ «دائرة الإيقاف»");
+    }
+
+    [PostgresFact]
     public async Task Create_Circuit_RequiresGovernorateBranch()
     {
         var badBranch = new Branch { Name = "بلا محافظة", Code = "NOG" };
         _db.Branches.Add(badBranch);
         await _db.SaveChangesAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.CreateAsync(badBranch.Id, _headId, "head1", "دائرة"));
+            CreateAsync(badBranch.Id, _headId, "head1", "دائرة"));
     }
 
     [PostgresFact]
@@ -111,7 +160,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     {
         await CreateCircuitAsync("دائرة دمشق الأولى");
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة  دمشق الأولى"));
+            CreateAsync(_branchId, _headId, "head1", "دائرة  دمشق الأولى"));
     }
 
     [PostgresFact]
@@ -149,7 +198,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     public async Task Create_Document_RejectsDisabledCircuit()
     {
         var id = await CreateCircuitAsync();
-        await _circuits.SetActiveAsync(id, _branchId, null, "head1", false, null);
+        await SetActiveAsync(id, _branchId, null, "head1", false, null);
         var req = Sample();
         req.ExecutionCircuitId = id;
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -800,7 +849,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
 
         var source = await CreateCircuitAsync("دائرة المصدر");
         var circuitA = await CreateCircuitAsync("دائرة موحدة");
-        var circuitB = (await _circuits.CreateAsync(branch2.Id, head2.Id, "head2", "دائرة موحدة")).Id;
+        var circuitB = (await CreateAsync(branch2.Id, head2.Id, "head2", "دائرة موحدة")).Id;
         var docId = await CreateDocAsync(source, _lawyer1Id, "770", "2026");
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer1Id, TargetCircuitId = circuitA });
@@ -954,7 +1003,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     {
         // S6.f: التعطيل لا يحرّر الاسم داخل الفرع — إعادة الاستخدام 409 حتى بعد التعطيل.
         var id = await CreateCircuitAsync("دائرة محجوزة");
-        await _circuits.SetActiveAsync(id, _branchId, null, "head1", false, null);
+        await SetActiveAsync(id, _branchId, null, "head1", false, null);
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
             CreateCircuitAsync("دائرة محجوزة"));
@@ -1079,7 +1128,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف");
         var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
 
-        var circuit = await _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
+        var circuit = await CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
 
         Assert.Equal(sectionId, _db.ExecutionCircuits.Single(c => c.Id == circuit.Id).SectionId);
     }
@@ -1092,7 +1141,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة  القسم المشتركة"));
+            CreateAsync(_branchId, subId, "sub_masyaf", "دائرة  القسم المشتركة"));
 
         Assert.Contains("ضمن دوائر القسم", ex.Message);
         Assert.Contains("دائرة القسم المشتركة", ex.Message);
@@ -1103,10 +1152,10 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     {
         var sectionId = await AddSectionAsync("شعبة مصياف");
         var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
-        await _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
+        await CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة الشعبة"));
+            CreateAsync(_branchId, _headId, "head1", "دائرة الشعبة"));
 
         Assert.Contains("شعبة «شعبة مصياف»", ex.Message);
     }
@@ -1117,7 +1166,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await CreateCircuitAsync("دائرة القسم");
         var sectionId = await AddSectionAsync("شعبة مصياف");
         var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
-        var own = await _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
+        var own = await CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _circuits.RenameAsync(own.Id, _branchId, sectionId, "sub_masyaf", "دائرة القسم", null, actorUserId: subId));
@@ -1128,7 +1177,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_HeadCreator_OwnedByDivision()
     {
-        var circuit = await _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة القسم");
+        var circuit = await CreateAsync(_branchId, _headId, "head1", "دائرة القسم");
 
         Assert.Null(_db.ExecutionCircuits.Single(c => c.Id == circuit.Id).SectionId);
     }
@@ -1137,7 +1186,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     public async Task Create_NonHeadCreator_Throws()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _circuits.CreateAsync(_branchId, _lawyer1Id, "lawyer1", "دائرة"));
+            CreateAsync(_branchId, _lawyer1Id, "lawyer1", "دائرة"));
     }
 
     [PostgresFact]
@@ -1158,7 +1207,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _circuits.CreateAsync(_branchId, sub.Id, "sub_noscope", "دائرة"));
+            CreateAsync(_branchId, sub.Id, "sub_noscope", "دائرة"));
         Assert.Contains("بلا شعبة", ex.Message);
     }
 
@@ -1354,7 +1403,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Task Act() => op switch
         {
             "rename" => _circuits.RenameAsync(circuitId, _branchId, null, "head1", "جديد", null),
-            "active" => _circuits.SetActiveAsync(circuitId, _branchId, null, "head1", false, null),
+            "active" => SetActiveAsync(circuitId, _branchId, null, "head1", false, null),
             "delete" => _circuits.DeleteAsync(circuitId, _branchId, null, "head1"),
             _ => throw new InvalidOperationException(),
         };
@@ -1488,7 +1537,19 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var service = BuildServiceWithCache(cache);
 
         var before = await service.ListMineAsync(_branchId, null);
-        var created = await service.CreateAsync(_branchId, _headId, "head1", "دائرة الكاش");
+        var create = new CreateExecutionCircuitCommandHandler(
+            new Repository<ExecutionCircuit>(_db),
+            new Repository<Branch>(_db),
+            new Repository<Section>(_db),
+            new DocumentRepository(_db),
+            new UserRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateExecutionCircuitCommand, ExecutionCircuitDto>>(),
+            cache);
+        var created = await create.HandleAsync(new CreateExecutionCircuitCommand(
+            _branchId, _headId, "head1", "دائرة الكاش"));
         var after = await service.ListMineAsync(_branchId, null);
 
         Assert.Contains(after, c => c.Id == created.Id);
