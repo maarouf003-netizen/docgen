@@ -28,6 +28,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
+    private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -91,6 +92,13 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<RenameExecutionCircuitCommand, ExecutionCircuitDto>(_tx),
             });
+        _completeRegistrations = new CompletePendingRegistrationsCommandHandler(
+            documents, occurrences, users, alertsRepo, uow, _audit, classifier,
+            TestClock.Provider, TestClock.TimeZone,
+            new IPipelineBehavior<CompletePendingRegistrationsCommand, int>[]
+            {
+                new TransactionBehavior<CompletePendingRegistrationsCommand, int>(_tx),
+            });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
@@ -114,6 +122,11 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         string name, long? version, int? actorUserId = null)
         => _renameCircuit.HandleAsync(new RenameExecutionCircuitCommand(
             circuitId, branchId, ownerSectionId, actorName, name, version, actorUserId));
+
+    private Task<int> CompleteRegistrationsAsync(
+        int lawyerId, string? actorName, CompleteRegistrationsRequest request)
+        => _completeRegistrations.HandleAsync(
+            new CompletePendingRegistrationsCommand(lawyerId, actorName, request));
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -342,7 +355,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
-        var count = await _circuits.CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
+        var count = await CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
             new CompleteRegistrationsRequest
             {
                 Entries = new List<CompleteRegistrationEntry>
@@ -359,6 +372,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             .Where(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReregistered)
             .OrderByDescending(o => o.Id).First();
         Assert.Equal("123", occ.FileNumber);
+        Assert.Contains(_audit.Details, d => d == "أعاد قيد 1 ملفًا بأرقام جديدة");
     }
 
     [PostgresFact]
@@ -839,7 +853,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
+            CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
                 new CompleteRegistrationsRequest
                 {
                     Entries = new List<CompleteRegistrationEntry>
@@ -1001,7 +1015,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
-        await _circuits.CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
+        await CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
             new CompleteRegistrationsRequest
             {
                 Entries = new List<CompleteRegistrationEntry>

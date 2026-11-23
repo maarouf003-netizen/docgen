@@ -131,4 +131,41 @@ internal static class ExecutionCircuitRules
         await audit.LogDocumentChangeAsync(actorName, actionType, doc.Id, doc.DocumentType,
             $"{detail} — غيّر {changes.Count} حقلًا", changes, token);
     }
+
+    /// <summary>
+    /// خطاف التنظيف المسمّى DeleteByPendingRegistration (على نمط DeleteByDelegationAsync):
+    /// يُصفّى تنبيه المحامي تلقائيًا عند الصفر (لكل دائرة)، ويتبع المالك عند إعادة الإسناد.
+    /// مشترك بين الخدمة (نقل الملكية/الخطاف) ومعالج إعادة القيد.
+    /// </summary>
+    internal static async Task<bool> CleanupPendingAlertsAsync(
+        int lawyerId,
+        IDocumentRepository documents,
+        IUserRepository users,
+        IHeadAlertRepository alerts,
+        CancellationToken token)
+    {
+        var pending = await documents.ListPendingForLawyerAsync(lawyerId, null, token);
+        var lawyer = await users.GetByIdAsync(lawyerId, token);
+        var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in pending)
+        {
+            if (doc.ExecutionCircuitId is null)
+                continue;
+            var docBranchId = doc.BranchId ?? lawyer?.BranchId;
+            if (docBranchId is null)
+                continue;
+            activeKeys.Add(HeadAlertDedupe.Build(new HeadAlertDedupeScope
+            {
+                Kind = HeadAlertKindCatalog.CircuitPendingDocuments,
+                Audience = HeadAlertAudience.SingleLawyer,
+                BranchId = docBranchId.Value,
+                RecipientUserId = lawyerId,
+                ExecutionCircuitId = doc.ExecutionCircuitId,
+            }));
+        }
+
+        var archived = await alerts.ArchiveStalePendingByLawyerAsync(
+            lawyerId, activeKeys, DateTime.UtcNow, token);
+        return archived > 0;
+    }
 }

@@ -23,7 +23,6 @@ public interface IExecutionCircuitService
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);
     Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null);
     Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
-    Task<int> CompleteRegistrationsAsync(int lawyerId, string? actorName, CompleteRegistrationsRequest request, CancellationToken ct = default);
     Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default);
     /// <summary>
     /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قسم الفرع أو شعبة فيه —
