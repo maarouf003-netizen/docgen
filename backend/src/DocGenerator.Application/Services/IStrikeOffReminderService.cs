@@ -26,10 +26,4 @@ public interface IStrikeOffReminderService
     /// <summary>عدد الملفات المستحقة (لشارة اللوحة).</summary>
     Task<int> GetCountAsync(
         int? visibleBranchId, int? visibleUserId, int? ownerSectionId, CancellationToken ct = default);
-
-    /// <summary>
-    /// إلغاء تذكير ملف (مالكه فقط): يكتب لحظة الإلغاء UTC + تدقيق. يعيد `false` إن لم يوجد
-    /// الملف أو لم يكن للمستخدم. الإلغاء يُبطَل منطقيًا عند تسجيل إجراء أحدث منه.
-    /// </summary>
-    Task<bool> DismissAsync(int documentId, int ownerId, string? actorName, CancellationToken ct = default);
 }

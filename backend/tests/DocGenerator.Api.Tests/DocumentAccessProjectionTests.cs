@@ -126,6 +126,7 @@ public sealed class DocumentAccessProjectionTests
             authorization,
             null!,
             null!,
+            null!,
             ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {
