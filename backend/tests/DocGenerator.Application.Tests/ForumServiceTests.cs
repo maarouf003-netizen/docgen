@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Forum;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ public class ForumServiceTests : PostgresDbTest
 {
     private readonly FakeTimeProvider _clock;
     private readonly IForumService _service;
+    private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
     private readonly int _branchId;
     private readonly int _otherBranchId;
     private readonly int _sectionId;
@@ -62,7 +65,14 @@ public class ForumServiceTests : PostgresDbTest
         _db.SaveChanges();
 
         _service = BuildService();
+        _deleteMessage = new DeleteForumMessageCommandHandler(
+            new ForumRepository(_db),
+            new UserRepository(_db),
+            Array.Empty<IPipelineBehavior<DeleteForumMessageCommand, bool>>());
     }
+
+    private Task<bool> DeleteMessageAsync(int id, int actorUserId)
+        => _deleteMessage.HandleAsync(new DeleteForumMessageCommand(id, actorUserId));
 
 
     private ForumService BuildService(TimeProvider? clock = null)
@@ -189,7 +199,7 @@ public class ForumServiceTests : PostgresDbTest
         var original = await PostAsync(_lawyer1, "الأصل");
         var reply = await PostAsync(_lawyer2, "رد", original.Id);
 
-        await _service.DeleteAsync(original.Id, _lawyer1.Id);
+        await DeleteMessageAsync(original.Id, _lawyer1.Id);
 
         var reloaded = await _service.GetByIdAsync(reply.Id, _lawyer2.Id);
         Assert.NotNull(reloaded);
@@ -293,7 +303,7 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
         await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
 
-        await _service.DeleteAsync(posted.Id, _lawyer1.Id);
+        await DeleteMessageAsync(posted.Id, _lawyer1.Id);
 
         Assert.Null(await _service.GetByIdAsync(posted.Id, _lawyer1.Id));
         Assert.Empty(_db.ForumMessageReads.Where(r => r.MessageId == posted.Id));
@@ -305,9 +315,9 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.DeleteAsync(posted.Id, _lawyer2.Id));
+            () => DeleteMessageAsync(posted.Id, _lawyer2.Id));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.DeleteAsync(posted.Id, _manager.Id));
+            () => DeleteMessageAsync(posted.Id, _manager.Id));
     }
 
     [PostgresFact]
@@ -315,7 +325,7 @@ public class ForumServiceTests : PostgresDbTest
     {
         var posted = await PostAsync(_lawyer1);
 
-        await _service.DeleteAsync(posted.Id, _admin.Id);
+        await DeleteMessageAsync(posted.Id, _admin.Id);
 
         Assert.Null(await _service.GetByIdAsync(posted.Id, _admin.Id));
     }
@@ -323,7 +333,7 @@ public class ForumServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_MissingMessage_ThrowsNotFound()
     {
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.DeleteAsync(9999, _admin.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => DeleteMessageAsync(9999, _admin.Id));
     }
 
     // ---------- التثبيت ----------
@@ -561,7 +571,7 @@ public class ForumServiceTests : PostgresDbTest
     {
         var first = await PostAsync(_lawyer1, "1");
         var second = await PostAsync(_lawyer1, "2");
-        await _service.DeleteAsync(first.Id, _admin.Id);
+        await DeleteMessageAsync(first.Id, _admin.Id);
 
         var max = await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
 

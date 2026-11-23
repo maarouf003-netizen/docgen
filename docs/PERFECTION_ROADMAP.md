@@ -814,12 +814,15 @@
   من عقدي خدمتيهما. **`P4-01e/f`:** `MarkHeadAlertReadCommand` (تحديث ذرّي بلا معاملة)
   و`MarkAppSuggestionReadCommand` (معاملة + تدقيق) أُزيلا من عقدي خدمتيهما.
   **`P4-01g/h`:** `DeletePersonalReminderCommand` و`DeleteBranchCommand` يملكان
-  المعاملة والتدقيق (والثاني إبطال الكاش)، وأُزيلا من عقدي خدمتيهما. التفاصيل:
+  المعاملة والتدقيق (والثاني إبطال الكاش)، وأُزيلا من عقدي خدمتيهما.
+  **`P4-01i/j`:** `CreateAppSuggestionCommand` و`DeleteForumMessageCommand` يملكان
+  المعاملة والتدقيق (المنتدى بلا تدقيق كالأصل)، وأُزيلا من عقدي خدمتيهما. التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
   `docs/audit/130-p4-01cd-batched-use-cases-20261123.md` و
   `docs/audit/131-p4-01ef-batched-read-commands-20261123.md` و
-  `docs/audit/132-p4-01gh-batched-delete-commands-20261123.md`.
+  `docs/audit/132-p4-01gh-batched-delete-commands-20261123.md` و
+  `docs/audit/133-p4-01ij-batched-create-delete-commands-20261123.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

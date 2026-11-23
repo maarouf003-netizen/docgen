@@ -18,15 +18,18 @@ public class AppSuggestionsController : ControllerBase
     private readonly IAppSuggestionService _suggestions;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
+    private readonly ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> _createSuggestion;
 
     public AppSuggestionsController(
         IAppSuggestionService suggestions,
         IUserCapabilities capabilities,
-        ICommandHandler<MarkAppSuggestionReadCommand, bool> markRead)
+        ICommandHandler<MarkAppSuggestionReadCommand, bool> markRead,
+        ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> createSuggestion)
     {
         _suggestions = suggestions;
         _capabilities = capabilities;
         _markRead = markRead;
+        _createSuggestion = createSuggestion;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -66,7 +69,8 @@ public class AppSuggestionsController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanSuggestApp))
             return Forbid();
-        var suggestion = await _suggestions.CreateAsync(request.Message, User.GetUserId(), ActorName, ct);
+        var suggestion = await _createSuggestion.HandleAsync(
+            new CreateAppSuggestionCommand(request.Message, User.GetUserId(), ActorName), ct);
         return CreatedAtAction(nameof(Get), new { id = suggestion.Id }, suggestion);
     }
 

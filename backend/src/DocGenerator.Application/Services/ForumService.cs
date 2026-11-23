@@ -31,7 +31,6 @@ public interface IForumService
     Task<ForumMessageDto> UpdateAsync(int id, UpdateForumMessageRequest request, int actorUserId, CancellationToken ct = default);
 
     /// <summary>حذف صلب — الكاتب لرسالته والمشرف لأي رسالة (مع إيصالاتها).</summary>
-    Task DeleteAsync(int id, int actorUserId, CancellationToken ct = default);
 
     /// <summary>تبديل التثبيت — المشرف فقط (الجديد يُسقط السابق).</summary>
     Task<ForumMessageDto> TogglePinAsync(int id, int actorUserId, CancellationToken ct = default);
@@ -197,17 +196,6 @@ public sealed class ForumService : IForumService
         return ToDto(message, counts.GetValueOrDefault(message.Id));
     }
 
-    public async Task DeleteAsync(int id, int actorUserId, CancellationToken ct = default)
-    {
-        var message = await _forum.GetTrackedByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException("الرسالة غير موجودة");
-        var actor = await RequireForumMemberAsync(actorUserId, ct);
-        if (message.AuthorId != actorUserId && actor.Role != UserRole.Admin)
-            throw new UnauthorizedAccessException("حذف الرسالة متاح لكاتبها أو للمشرف فقط");
-
-        // حذف صريح مرتب (الإيصالات أولًا) — لا اعتماد على تتالي المزود.
-        await _tx.RunAsync(token => _forum.DeleteMessageAsync(id, token), ct);
-    }
 
     public async Task<ForumMessageDto> TogglePinAsync(int id, int actorUserId, CancellationToken ct = default)
     {

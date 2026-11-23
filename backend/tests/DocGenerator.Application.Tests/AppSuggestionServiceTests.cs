@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Domain.Entities;
@@ -12,6 +13,7 @@ namespace DocGenerator.Application.Tests;
 public class AppSuggestionServiceTests : PostgresDbTest
 {
     private readonly IAppSuggestionService _service;
+    private readonly ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> _createSuggestion;
     private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -48,13 +50,25 @@ public class AppSuggestionServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<MarkAppSuggestionReadCommand, bool>(new TransactionRunner(_db)),
             });
+        _createSuggestion = new CreateAppSuggestionCommandHandler(
+            new AppSuggestionRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<CreateAppSuggestionCommand, AppSuggestionDto>[]
+            {
+                new TransactionBehavior<CreateAppSuggestionCommand, AppSuggestionDto>(new TransactionRunner(_db)),
+            });
     }
+
+    private Task<AppSuggestionDto> CreateSuggestionAsync(
+        string message, int senderId, string? actorName = null)
+        => _createSuggestion.HandleAsync(new CreateAppSuggestionCommand(message, senderId, actorName));
 
 
     [PostgresFact]
     public async Task Create_Valid_ReturnsDtoAndAudits()
     {
-        var dto = await _service.CreateAsync("أضيفوا تصدير إكسل", _lawyer.Id, "lawyer");
+        var dto = await CreateSuggestionAsync("أضيفوا تصدير إكسل", _lawyer.Id, "lawyer");
 
         Assert.Equal("أضيفوا تصدير إكسل", dto.Message);
         Assert.False(dto.IsRead);
@@ -67,25 +81,25 @@ public class AppSuggestionServiceTests : PostgresDbTest
     [InlineData("   ")]
     public async Task Create_EmptyMessage_Throws(string message)
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(message, _lawyer.Id, "lawyer"));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateSuggestionAsync(message, _lawyer.Id, "lawyer"));
     }
 
     [PostgresFact]
     public async Task Create_TooLong_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(new string('ع', AppSuggestionService.MessageMaxLength + 1), _lawyer.Id, "lawyer"));
+            () => CreateSuggestionAsync(new string('ع', AppSuggestionService.MessageMaxLength + 1), _lawyer.Id, "lawyer"));
     }
 
     [PostgresFact]
     public async Task ListMine_OnlyOwnNewestFirst()
     {
-        await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");
-        await _service.CreateAsync("الثاني", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("الأول", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("الثاني", _lawyer.Id, "lawyer");
         var other = new User { Username = "sugg_other", FullName = "آخر", Role = UserRole.Lawyer, BranchId = _damascusId, PasswordHash = "x" };
         _db.Users.Add(other);
         await _db.SaveChangesAsync();
-        await _service.CreateAsync("للآخر", other.Id, "other");
+        await CreateSuggestionAsync("للآخر", other.Id, "other");
 
         var mine = await _service.ListMineAsync(_lawyer.Id);
         Assert.Equal(2, mine.Count);
@@ -96,7 +110,7 @@ public class AppSuggestionServiceTests : PostgresDbTest
     public async Task MarkRead_IdempotentAndNotFound()
     {
         Assert.False(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(999, null)));
-        var dto = await _service.CreateAsync("اقتراح", _lawyer.Id, "lawyer");
+        var dto = await CreateSuggestionAsync("اقتراح", _lawyer.Id, "lawyer");
 
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
@@ -110,8 +124,8 @@ public class AppSuggestionServiceTests : PostgresDbTest
     {
         Assert.Equal(0, await _service.CountUnreadAsync());
 
-        var first = await _service.CreateAsync("أول اقتراح", _lawyer.Id, "lawyer");
-        await _service.CreateAsync("ثانٍ اقتراح", _lawyer.Id, "lawyer");
+        var first = await CreateSuggestionAsync("أول اقتراح", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("ثانٍ اقتراح", _lawyer.Id, "lawyer");
         Assert.Equal(2, await _service.CountUnreadAsync());
 
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(first.Id, null)));
@@ -124,9 +138,9 @@ public class AppSuggestionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListForAdmin_PagesAndClamps()
     {
-        await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");
-        await _service.CreateAsync("الثاني", _lawyer.Id, "lawyer");
-        await _service.CreateAsync("الثالث", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("الأول", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("الثاني", _lawyer.Id, "lawyer");
+        await CreateSuggestionAsync("الثالث", _lawyer.Id, "lawyer");
 
         var first = await _service.ListForAdminAsync(1, 2);
         Assert.Equal(3, first.TotalCount);
@@ -158,7 +172,7 @@ public class AppSuggestionServiceTests : PostgresDbTest
         _db.Users.Add(other);
         await _db.SaveChangesAsync();
 
-        var dto = await _service.CreateAsync("اقتراح للقراءة", _lawyer.Id, "lawyer");
+        var dto = await CreateSuggestionAsync("اقتراح للقراءة", _lawyer.Id, "lawyer");
 
         var mine = await _service.GetByIdAsync(dto.Id, _lawyer.Id);
         Assert.NotNull(mine);
