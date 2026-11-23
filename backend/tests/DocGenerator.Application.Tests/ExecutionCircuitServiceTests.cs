@@ -30,6 +30,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
     private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
     private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
+    private readonly ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> _transferCircuit;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -66,8 +67,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _circuits = new ExecutionCircuitService(
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
-            new AppealRepository(_db),
-            occurrences, new Repository<HeadSuccession>(_db), alertsRepo, users,
+            occurrences, alertsRepo, users,
             uow, _tx, _audit, outbox, classifier, TestClock.Provider, TestClock.TimeZone);
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
@@ -107,6 +107,14 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
                 new TransactionBehavior<DeleteExecutionCircuitCommand, bool>(_tx),
             },
             baseNumberRepository: new DocumentBaseNumberRepository(_db));
+        _transferCircuit = new TransferExecutionCircuitCommandHandler(
+            circuitsRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
+            new AppealRepository(_db), new Repository<HeadSuccession>(_db), users, outbox, uow, _tx,
+            _audit, classifier,
+            new IPipelineBehavior<TransferExecutionCircuitCommand, ExecutionCircuitDto>[]
+            {
+                new TransactionBehavior<TransferExecutionCircuitCommand, ExecutionCircuitDto>(_tx),
+            });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
@@ -140,6 +148,12 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         int circuitId, int branchId, int? ownerSectionId, string? actorName)
         => await _deleteCircuit.HandleAsync(
             new DeleteExecutionCircuitCommand(circuitId, branchId, ownerSectionId, actorName));
+
+    private Task<ExecutionCircuitDto> TransferAsync(
+        int circuitId, int? targetSectionId, int actorUserId, string? actorName,
+        CancellationToken ct = default, long? version = null)
+        => _transferCircuit.HandleAsync(
+            new TransferExecutionCircuitCommand(circuitId, targetSectionId, actorUserId, actorName, version), ct);
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -1282,20 +1296,24 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var moved = await _circuits.TransferCircuitAsync(circuitId, sectionId, _headId, "admin");
+        var moved = await TransferAsync(circuitId, sectionId, _headId, "admin");
 
         Assert.Equal(circuitId, moved.Id);
         Assert.Equal(sectionId, _db.ExecutionCircuits.Single(c => c.Id == circuitId).SectionId);
         Assert.Contains("transfer_circuit", _audit.Actions);
+        Assert.Contains(
+            "نقل الدائرة «دائرة منقولة» من رئيس القسم إلى شعبة مصياف (الملفات المفتوحة والمغلقة تتبع المالك الجديد)",
+            _audit.Details);
         var succession = Assert.Single(_db.HeadSuccessions.ToList());
         Assert.Equal(HeadSuccessionEventCatalog.CircuitTransferred, succession.Event);
+        Assert.Equal("نُقلت الدائرة «دائرة منقولة» من رئيس القسم إلى شعبة مصياف", succession.Reason);
         Assert.Equal(subId, succession.UserId);
         Assert.Equal(sectionId, succession.SectionId);
         await FlushAlertsAsync();
         var alert = Assert.Single(_db.HeadAlerts.Include(a => a.Recipients).ToList());
-        Assert.Contains("نُقلت إليك", alert.Message);
-        Assert.Contains("1 إنابة معلقة", alert.Message);
-        Assert.Contains("1 استئنافًا", alert.Message);
+        Assert.Equal(
+            "نُقلت إليك دائرة «دائرة منقولة» — 1 ملفًا، 1 إنابة معلقة، 1 استئنافًا بانتظار الإسناد",
+            alert.Message);
         Assert.Equal(subId, Assert.Single(alert.Recipients).UserId);
     }
 
@@ -1307,7 +1325,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
         await SetCircuitSectionAsync(circuitId, sectionId);
 
-        var moved = await _circuits.TransferCircuitAsync(circuitId, null, _headId, "admin");
+        var moved = await TransferAsync(circuitId, null, _headId, "admin");
 
         Assert.Null(_db.ExecutionCircuits.Single(c => c.Id == circuitId).SectionId);
         var succession = Assert.Single(_db.HeadSuccessions.ToList());
@@ -1321,7 +1339,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var circuitId = await CreateCircuitAsync("دائرة القسم");
         var auditCount = _audit.Actions.Count;
 
-        var same = await _circuits.TransferCircuitAsync(circuitId, null, _headId, "admin");
+        var same = await TransferAsync(circuitId, null, _headId, "admin");
 
         Assert.NotNull(same);
         Assert.Equal(auditCount, _audit.Actions.Count);
@@ -1334,7 +1352,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة شاغرة");
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
 
-        var moved = await _circuits.TransferCircuitAsync(circuitId, sectionId, _headId, "admin");
+        var moved = await TransferAsync(circuitId, sectionId, _headId, "admin");
 
         // العقد يُعاد مملوءًا حتى بلا رئيس (انحدار `Ok(null)` → `204`).
         Assert.NotNull(moved);
@@ -1349,7 +1367,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     public async Task Transfer_UnknownCircuit_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.TransferCircuitAsync(999999, null, _headId, "admin"));
+            TransferAsync(999999, null, _headId, "admin"));
     }
 
     [PostgresFact]
@@ -1358,7 +1376,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var circuitId = await CreateCircuitAsync("دائرة منقولة");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.TransferCircuitAsync(circuitId, 999999, _headId, "admin"));
+            TransferAsync(circuitId, 999999, _headId, "admin"));
     }
 
     [PostgresFact]
@@ -1373,7 +1391,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.TransferCircuitAsync(circuitId, foreign.Id, _headId, "admin"));
+            TransferAsync(circuitId, foreign.Id, _headId, "admin"));
         Assert.Contains("داخل الفرع نفسه", ex.Message);
     }
 
@@ -1387,7 +1405,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _circuits.TransferCircuitAsync(circuitId, sectionId, _headId, "admin"));
+            TransferAsync(circuitId, sectionId, _headId, "admin"));
         Assert.Contains("معطلة", ex.Message);
     }
 
@@ -1398,9 +1416,9 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف");
         var version = (await _db.ExecutionCircuits.AsNoTracking().SingleAsync(c => c.Id == circuitId)).Version;
 
-        await _circuits.TransferCircuitAsync(circuitId, sectionId, _headId, "admin", version: version);
+        await TransferAsync(circuitId, sectionId, _headId, "admin", version: version);
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.TransferCircuitAsync(circuitId, null, _headId, "admin", version: version));
+            TransferAsync(circuitId, null, _headId, "admin", version: version));
     }
 
     [PostgresFact]
@@ -1543,9 +1561,8 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
             new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
-            new AppealRepository(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
+            new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             classifier, TestClock.Provider, TestClock.TimeZone,
             new IdempotencyStore(_db));
@@ -1562,9 +1579,8 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
             new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
-            new AppealRepository(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
+            new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             classifier, TestClock.Provider, TestClock.TimeZone,
             new IdempotencyStore(_db),

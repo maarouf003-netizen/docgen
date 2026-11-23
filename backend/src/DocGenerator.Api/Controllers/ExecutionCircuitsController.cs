@@ -30,6 +30,7 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
     private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
+    private readonly ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> _transferCircuit;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
@@ -41,7 +42,8 @@ public class ExecutionCircuitsController : ControllerBase
         ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> createCircuit,
         ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive,
         ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> renameCircuit,
-        ICommandHandler<DeleteExecutionCircuitCommand, bool> deleteCircuit)
+        ICommandHandler<DeleteExecutionCircuitCommand, bool> deleteCircuit,
+        ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> transferCircuit)
     {
         _circuits = circuits;
         _branches = branches;
@@ -53,6 +55,7 @@ public class ExecutionCircuitsController : ControllerBase
         _setCircuitActive = setCircuitActive;
         _renameCircuit = renameCircuit;
         _deleteCircuit = deleteCircuit;
+        _transferCircuit = transferCircuit;
     }
 
     private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
@@ -265,7 +268,9 @@ public class ExecutionCircuitsController : ControllerBase
     {
         try
         {
-            var result = await _circuits.TransferCircuitAsync(id, request?.TargetSectionId, User.GetUserId(), ActorName, ct, request?.Version);
+            var result = await _transferCircuit.HandleAsync(
+                new TransferExecutionCircuitCommand(
+                    id, request?.TargetSectionId, User.GetUserId(), ActorName, request?.Version), ct);
             return Ok(result);
         }
         catch (DocumentConflictException e)

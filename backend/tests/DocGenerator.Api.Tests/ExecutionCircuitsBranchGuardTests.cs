@@ -30,14 +30,13 @@ public sealed class ExecutionCircuitsBranchGuardTests
         public Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<bool> DeleteByPendingRegistrationAsync(int lawyerId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task SyncPendingAlertsAfterTransferAsync(int sourceOwnerId, int targetOwnerId, int branchId, int actorUserId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ExecutionCircuitDto> TransferCircuitAsync(int circuitId, int? targetSectionId, int actorUserId, string? actorName, CancellationToken ct = default, long? version = null) => throw new NotImplementedException();
     }
 
     private static ExecutionCircuitsController ControllerWith(string role)
     {
         var controller = new ExecutionCircuitsController(
             new FakeCircuitService(), null!, null!, ApiTestClock.Provider, TimeZoneInfo.Utc,
-            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!, null!);
+            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

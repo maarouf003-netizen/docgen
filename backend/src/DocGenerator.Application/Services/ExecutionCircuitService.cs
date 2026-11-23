@@ -23,14 +23,6 @@ public interface IExecutionCircuitService
     Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
     Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default);
     /// <summary>
-    /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قسم الفرع أو شعبة فيه —
-    /// قرار §2.5): المفتوح والمغلق يتبع الجديد، والإحالات المفتوحة تُعاد توجيه
-    /// تنبيهاتها للمالك الجديد (إنشاء بديلة لا تعديل القديمة — §6.6)، والتدقيق
-    /// ثابت بأسماء الفاعلين الأصليين. `ForwardState` لا يتغير (استثناء فرعي).
-    /// `version` للتفاؤلية كالتسمية والتفعيل.
-    /// </summary>
-    Task<ExecutionCircuitDto> TransferCircuitAsync(int circuitId, int? targetSectionId, int actorUserId, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
     /// خطاف التنظيف المسمّى DeleteByPendingRegistration (على نمط DeleteByDelegationAsync):
     /// يُصفّى تنبيه المحامي تلقائيًا عند الصفر.
     /// </summary>
@@ -58,9 +50,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
     private readonly IRepository<Section> _sections;
     private readonly IDocumentRepository _documents;
     private readonly IDelegationRepository _delegations;
-    private readonly IAppealRepository _appeals;
     private readonly IRepository<DocumentOccurrence> _occurrences;
-    private readonly IRepository<HeadSuccession> _successions;
     private readonly IHeadAlertRepository _alerts;
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
@@ -80,9 +70,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         IRepository<Section> sections,
         IDocumentRepository documents,
         IDelegationRepository delegations,
-        IAppealRepository appeals,
         IRepository<DocumentOccurrence> occurrences,
-        IRepository<HeadSuccession> successions,
         IHeadAlertRepository alerts,
         IUserRepository users,
         IUnitOfWork uow,
@@ -101,9 +89,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         _sections = sections;
         _documents = documents;
         _delegations = delegations;
-        _appeals = appeals;
         _occurrences = occurrences;
-        _successions = successions;
         _alerts = alerts;
         _users = users;
         _uow = uow;
