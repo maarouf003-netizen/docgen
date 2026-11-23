@@ -42,7 +42,6 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
             new DelegationRepository(db),
             new AppealRepository(db),
             new Repository<DocumentOccurrence>(db),
-            new Repository<DocumentBaseNumber>(db),
             new Repository<HeadSuccession>(db),
             new HeadAlertRepository(db),
             new UserRepository(db),

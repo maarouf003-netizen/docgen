@@ -29,6 +29,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
     private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
+    private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -66,9 +67,8 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         _circuits = new ExecutionCircuitService(
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
             new AppealRepository(_db),
-            occurrences, baseNumbers, new Repository<HeadSuccession>(_db), alertsRepo, users,
-            uow, _tx, _audit, outbox, classifier, TestClock.Provider, TestClock.TimeZone,
-            baseNumberRepository: new DocumentBaseNumberRepository(_db));
+            occurrences, new Repository<HeadSuccession>(_db), alertsRepo, users,
+            uow, _tx, _audit, outbox, classifier, TestClock.Provider, TestClock.TimeZone);
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         _createCircuit = new CreateExecutionCircuitCommandHandler(
@@ -99,6 +99,14 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<CompletePendingRegistrationsCommand, int>(_tx),
             });
+        _deleteCircuit = new DeleteExecutionCircuitCommandHandler(
+            circuitsRepo, branchesRepo, documents, new DelegationRepository(_db), alertsRepo,
+            baseNumbers, uow, _audit,
+            new IPipelineBehavior<DeleteExecutionCircuitCommand, bool>[]
+            {
+                new TransactionBehavior<DeleteExecutionCircuitCommand, bool>(_tx),
+            },
+            baseNumberRepository: new DocumentBaseNumberRepository(_db));
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
@@ -127,6 +135,11 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         int lawyerId, string? actorName, CompleteRegistrationsRequest request)
         => _completeRegistrations.HandleAsync(
             new CompletePendingRegistrationsCommand(lawyerId, actorName, request));
+
+    private async Task DeleteAsync(
+        int circuitId, int branchId, int? ownerSectionId, string? actorName)
+        => await _deleteCircuit.HandleAsync(
+            new DeleteExecutionCircuitCommand(circuitId, branchId, ownerSectionId, actorName));
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -266,7 +279,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var a = await CreateCircuitAsync("دائرة أ");
         await CreateDocAsync(a, _lawyer1Id);
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.DeleteAsync(a, _branchId, null, "head1"));
+            DeleteAsync(a, _branchId, null, "head1"));
         Assert.Contains("أفرغها أولًا", ex.Message);
         Assert.Contains("1 ملفًا", ex.Message);
 
@@ -279,7 +292,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         _db.ChangeTracker.Clear();
 
         var ex2 = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.DeleteAsync(a, _branchId, null, "head1"));
+            DeleteAsync(a, _branchId, null, "head1"));
         Assert.Contains("1 ملفًا", ex2.Message);
         Assert.DoesNotContain("2", ex2.Message.Replace("2026", "").Replace("811", ""));
     }
@@ -436,7 +449,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await _circuits.DeleteAsync(target, _branchId, null, "head1");
+        await DeleteAsync(target, _branchId, null, "head1");
 
         Assert.Null(await _db.ExecutionCircuits.FindAsync(target));
         var g = _db.DocumentDelegations.First(d => d.DelegatedCircuitId == null && d.SourceDocumentId == docId);
@@ -463,7 +476,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.DeleteAsync(target, _branchId, null, "head1"));
+            DeleteAsync(target, _branchId, null, "head1"));
         Assert.Contains("معلقة", ex.Message);
     }
 
@@ -479,7 +492,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+        await DeleteAsync(a, _branchId, null, "head1");
 
         Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
         // إثبات الحذف الفيزيائي: حتى بـ IgnoreQueryFilters لا صف بقي.
@@ -487,7 +500,9 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Assert.Equal(0, survivors);
         var idx = _audit.Actions.LastIndexOf("delete_circuit");
         Assert.True(idx >= 0);
-        Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", _audit.Details[idx]);
+        Assert.Equal(
+            "حذف دائرة التنفيذ «دائرة المطبّر» مع فك 0 إنابة مكتملة عن مرجعها (الاسم محفوظ)، وطُهِّر نهائيًا 1 ملفًا محذوفًا",
+            _audit.Details[idx]);
     }
 
     [PostgresFact]
@@ -512,7 +527,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.DeleteAsync(target, _branchId, null, "head1");
+        await DeleteAsync(target, _branchId, null, "head1");
 
         var archived = await _db.HeadAlerts.SingleAsync(a => a.Id == active.Id);
         Assert.True(archived.IsArchived);
@@ -546,7 +561,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+        await DeleteAsync(a, _branchId, null, "head1");
 
         Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
         Assert.Equal(0, _db.Documents.IgnoreQueryFilters().Count(d => d.ExecutionCircuitId == a));
@@ -942,7 +957,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.DeleteAsync(target, _branchId, null, "head1");
+        await DeleteAsync(target, _branchId, null, "head1");
 
         var g = _db.DocumentDelegations.IgnoreQueryFilters().First(d => d.SourceDocumentId == docId);
         Assert.Null(g.DelegatedCircuitId);
@@ -975,7 +990,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         _db.ChangeTracker.Clear();
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _circuits.DeleteAsync(target, _branchId, null, "head1"));
+            DeleteAsync(target, _branchId, null, "head1"));
     }
 
     [PostgresFact]
@@ -1434,7 +1449,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         {
             "rename" => RenameAsync(circuitId, _branchId, null, "head1", "جديد", null),
             "active" => SetActiveAsync(circuitId, _branchId, null, "head1", false, null),
-            "delete" => _circuits.DeleteAsync(circuitId, _branchId, null, "head1"),
+            "delete" => DeleteAsync(circuitId, _branchId, null, "head1"),
             _ => throw new InvalidOperationException(),
         };
         var ex = await Assert.ThrowsAsync<ArgumentException>(Act);
@@ -1529,12 +1544,11 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
             new AppealRepository(_db),
-            new Repository<DocumentOccurrence>(_db), new Repository<DocumentBaseNumber>(_db),
+            new Repository<DocumentOccurrence>(_db),
             new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             classifier, TestClock.Provider, TestClock.TimeZone,
-            new IdempotencyStore(_db),
-            baseNumberRepository: new DocumentBaseNumberRepository(_db));
+            new IdempotencyStore(_db));
     }
 
     private IExecutionCircuitService BuildServiceWithCache(IReferenceDataCache cache)
@@ -1549,12 +1563,11 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
             new AppealRepository(_db),
-            new Repository<DocumentOccurrence>(_db), new Repository<DocumentBaseNumber>(_db),
+            new Repository<DocumentOccurrence>(_db),
             new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             classifier, TestClock.Provider, TestClock.TimeZone,
             new IdempotencyStore(_db),
-            baseNumberRepository: new DocumentBaseNumberRepository(_db),
             cache: cache);
     }
 

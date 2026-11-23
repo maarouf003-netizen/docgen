@@ -56,7 +56,6 @@ public class SubHeadStatsTests : PostgresDbTest
             new DelegationRepository(_db),
             new AppealRepository(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<DocumentBaseNumber>(_db),
             new Repository<HeadSuccession>(_db),
             new HeadAlertRepository(_db),
             new UserRepository(_db),

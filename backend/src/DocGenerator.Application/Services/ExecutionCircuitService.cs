@@ -11,14 +11,12 @@ namespace DocGenerator.Application.Services;
 public interface IExecutionCircuitService
 {
     Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default);
-
     /// <summary>
     /// كل ملفات الدائرة (غير المحذوفة) أيًا كانت حالتها — لمعالج الإفراغ:
     /// المخفية عن فلتر البحث العام («منفذ إنابة» وغيرها) شاملة. نطاق المالك إلزامي.
     /// </summary>
     Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default);
 
-    Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);
     Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null);
@@ -62,7 +60,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
     private readonly IDelegationRepository _delegations;
     private readonly IAppealRepository _appeals;
     private readonly IRepository<DocumentOccurrence> _occurrences;
-    private readonly IRepository<DocumentBaseNumber> _baseNumbers;
     private readonly IRepository<HeadSuccession> _successions;
     private readonly IHeadAlertRepository _alerts;
     private readonly IUserRepository _users;
@@ -75,7 +72,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IDocumentNumberRegistry? _numberRegistry;
-    private readonly IDocumentBaseNumberRepository? _baseNumberRepository;
     private readonly IReferenceDataCache? _cache;
 
     public ExecutionCircuitService(
@@ -86,7 +82,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         IDelegationRepository delegations,
         IAppealRepository appeals,
         IRepository<DocumentOccurrence> occurrences,
-        IRepository<DocumentBaseNumber> baseNumbers,
         IRepository<HeadSuccession> successions,
         IHeadAlertRepository alerts,
         IUserRepository users,
@@ -99,7 +94,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         TimeZoneInfo timeZone,
         IIdempotencyStore? idempotency = null,
         IDocumentNumberRegistry? numberRegistry = null,
-        IDocumentBaseNumberRepository? baseNumberRepository = null,
         IReferenceDataCache? cache = null)
     {
         _circuits = circuits;
@@ -109,7 +103,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         _delegations = delegations;
         _appeals = appeals;
         _occurrences = occurrences;
-        _baseNumbers = baseNumbers;
         _successions = successions;
         _alerts = alerts;
         _users = users;
@@ -122,7 +115,6 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         _clock = clock;
         _timeZone = timeZone;
         _numberRegistry = numberRegistry;
-        _baseNumberRepository = baseNumberRepository;
         _cache = cache;
     }
 
