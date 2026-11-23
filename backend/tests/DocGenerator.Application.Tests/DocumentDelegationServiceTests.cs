@@ -23,6 +23,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _documentTransfer;
+    private readonly ICommandHandler<TransferAllDocumentsCommand, int> _documentTransferAll;
     private readonly IDocumentSearchService _documentSearch;
     private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
@@ -92,6 +93,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _documentUpdate = docBundle.UpdateDocument;
         _documentDelete = docBundle.DeleteDocument;
         _documentTransfer = docBundle.TransferDocument;
+        _documentTransferAll = docBundle.TransferAllDocuments;
         _documentSearch = docBundle.Search;
         _documentStatus = docBundle.Status;
     }
@@ -699,7 +701,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _db.ChangeTracker.Clear();
         await FlushAlertsAsync();
 
-        var moved = await _documentService.TransferAllAsync(
+        var moved = await _documentTransferAll.TransferAllAsync(
             _lawyer2.Id, _lawyer1.Id, _branch.Id, "head1", actorUserId: _head1.Id);
         Assert.Equal(2, moved);
 
