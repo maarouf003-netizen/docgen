@@ -37,17 +37,17 @@ public sealed class CreateBranchCommandHandler : CommandHandlerBase<CreateBranch
     {
         var request = command.Request;
         var name = BranchManagementService.NormalizeRequired(request.Name, "اسم الفرع مطلوب");
-        var code = BranchManagementService.NormalizeRequired(request.Code, "رمز الفرع مطلوب");
-        // المحافظة إلزامية: تُشتق الدوائر من محافظة الفرع، وفرعٌ بلا محافظة يُعطّل الإنابة.
+        var code = BranchManagementService.NormalizeRequired(request.Code, "كود الفرع مطلوب");
+        // المحافظة إجبارية لأنها تحدد نطاق رئيس القسم في سجل الجهات العامة (Branches.Governorate).
         var governorate = BranchManagementService.NormalizeRequired(
-            request.Governorate, "المحافظة مطلوبة — تُشتق دوائر الفرع من محافظتها");
+            request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
         if (!GovernorateCatalog.IsGovernorate(governorate))
-            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة من القائمة المعتمدة");
+            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
 
         if (await _branches.NameExistsAsync(name, null, ct))
-            throw new ArgumentException("اسم الفرع مستخدم مسبقًا");
+            throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
         if (await _branches.CodeExistsAsync(code, null, ct))
-            throw new ArgumentException("رمز الفرع مستخدم مسبقًا");
+            throw new ArgumentException("كود الفرع مستخدم مسبقاً");
 
         var branch = new Branch
         {
@@ -64,7 +64,7 @@ public sealed class CreateBranchCommandHandler : CommandHandlerBase<CreateBranch
         await _uow.SaveChangesAsync(ct);
         _cache?.Invalidate(ReferenceDataGroups.Branches);
         await _audit.LogAsync(command.ActorName, "create_branch",
-            details: $"أنشأ الفرع: {branch.Name} ({branch.Code})", ct: ct);
+            details: $"أنشأ فرعاً: {branch.Name} ({branch.Code})", ct: ct);
 
         return BranchManagementService.ToDto(branch, 0, 0);
     }

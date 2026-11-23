@@ -74,6 +74,7 @@ public class AppSuggestionServiceTests : PostgresDbTest
         Assert.False(dto.IsRead);
         Assert.Null(dto.SenderName);
         Assert.Contains("app-suggestion.create", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d is not null && d.StartsWith("أرسل اقتراح تطوير:", StringComparison.Ordinal));
     }
 
     [PostgresTheory]
@@ -87,8 +88,12 @@ public class AppSuggestionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_TooLong_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentException>(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => CreateSuggestionAsync(new string('ع', AppSuggestionService.MessageMaxLength + 1), _lawyer.Id, "lawyer"));
+
+        Assert.Equal(
+            $"نص الاقتراح يتجاوز الحد الأقصى ({AppSuggestionService.MessageMaxLength} حرفًا)",
+            ex.Message);
     }
 
     [PostgresFact]

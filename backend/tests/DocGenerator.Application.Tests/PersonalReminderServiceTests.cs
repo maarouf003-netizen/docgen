@@ -363,5 +363,6 @@ public class PersonalReminderServiceTests : PostgresDbTest
         Assert.True(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer1.Id, "lawyer1")));
         Assert.Empty(await _service.ListAsync(_lawyer1.Id, includeArchived: true));
         Assert.Contains("personal-reminder.delete", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d is not null && d.StartsWith("حذف تذكيره الشخصي:", StringComparison.Ordinal));
     }
 }

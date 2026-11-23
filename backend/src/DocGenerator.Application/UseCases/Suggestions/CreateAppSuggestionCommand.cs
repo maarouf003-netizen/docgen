@@ -39,7 +39,7 @@ public sealed class CreateAppSuggestionCommandHandler
             throw new ArgumentException("نص الاقتراح مطلوب");
         if (trimmed.Length > AppSuggestionService.MessageMaxLength)
             throw new ArgumentException(
-                $"نص الاقتراح أطول من الحد المسموح ({AppSuggestionService.MessageMaxLength} حرف)");
+                $"نص الاقتراح يتجاوز الحد الأقصى ({AppSuggestionService.MessageMaxLength} حرفًا)");
 
         var suggestion = new AppSuggestion
         {
@@ -51,7 +51,7 @@ public sealed class CreateAppSuggestionCommandHandler
         await _suggestions.AddAsync(suggestion, ct);
         await _uow.SaveChangesAsync(ct);
         await _audit.LogAsync(command.ActorName, "app-suggestion.create",
-            details: $"أُضيف اقتراح تطوير: {trimmed[..Math.Min(trimmed.Length, 80)]}", ct: ct);
+            details: $"أرسل اقتراح تطوير: {trimmed[..Math.Min(trimmed.Length, 80)]}", ct: ct);
 
         return new AppSuggestionDto(
             suggestion.Id,

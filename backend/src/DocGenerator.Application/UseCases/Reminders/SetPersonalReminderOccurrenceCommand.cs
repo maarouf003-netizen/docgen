@@ -40,11 +40,11 @@ public sealed class SetPersonalReminderOccurrenceCommandHandler
 
         OptimisticConcurrencyGuard.EnsureCurrent(reminder, command.Version, "التذكير الشخصي");
         if (reminder.IsArchived)
-            throw new ArgumentException("التذكير مؤرشف — لا يمكن تعليم مواعيده كمنجزة");
+            throw new ArgumentException("التذكير مؤرشف — أعد تفعيله أولًا");
 
-        // مفتاح الموعد يُطبَّع إلى صيغة اليوم (`yyyy-MM-dd`) قبل أي مقارنة.
+        // مفتاح التكرار يُطبَّع لصيغة اليوم (`yyyy-MM-dd`) عبر عقد التواريخ المعتمد.
         var key = PersonalReminderDates.Format(
-            PersonalReminderDates.ParseDay(command.OccurrenceDate, "تاريخ الموعد"));
+            PersonalReminderDates.ParseDay(command.OccurrenceDate, "تاريخ التكرار"));
         var keys = reminder.CompletedOccurrenceKeys
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(k => k.Length > 0)
@@ -55,7 +55,7 @@ public sealed class SetPersonalReminderOccurrenceCommandHandler
 
         reminder.CompletedOccurrenceKeys = string.Join(',', keys.OrderBy(k => k, StringComparer.Ordinal));
         if (reminder.CompletedOccurrenceKeys.Length > PersonalReminderCatalog.CompletedKeysMaxLength)
-            throw new ArgumentException("عدد المواعيد المنجزة أكبر من الحد — أزل بعض المواعيد أو أنشئ تذكيرًا جديدًا");
+            throw new ArgumentException("تجاوز سجل التكرارات المنجزة حده — حدّد تاريخ انتهاء للتكرار أو احذف التذكير");
 
         _reminders.Update(reminder);
         await _uow.SaveChangesAsync(ct);

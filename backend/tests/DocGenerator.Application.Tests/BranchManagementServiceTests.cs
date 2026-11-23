@@ -84,6 +84,7 @@ public class BranchManagementServiceTests : PostgresDbTest
         Assert.Equal(0, branch.UserCount);
         Assert.Equal(0, branch.DocumentCount);
         Assert.Contains("create_branch", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d is not null && d.StartsWith("أنشأ فرعاً: حمص (HMS)", StringComparison.Ordinal));
     }
 
     [PostgresFact]
