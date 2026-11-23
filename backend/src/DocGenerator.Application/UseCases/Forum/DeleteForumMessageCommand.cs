@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.UseCases.Forum;
@@ -29,12 +30,7 @@ public sealed class DeleteForumMessageCommandHandler
         var message = await _forum.GetTrackedByIdAsync(command.MessageId, ct)
             ?? throw new KeyNotFoundException("الرسالة غير موجودة");
 
-        var actor = await _users.GetByIdAsync(command.ActorUserId, ct)
-            ?? throw new UnauthorizedAccessException("الحساب غير موجود");
-        if (!actor.IsActive || actor.Role == UserRole.EntityManager)
-            throw new UnauthorizedAccessException("لا تملك صلاحية المنتدى");
-        if (actor.Role == UserRole.SubHead && actor.SectionId is null)
-            throw new UnauthorizedAccessException("حساب رئيس الشعبة بلا شعبة — أعد الدخول");
+        var actor = await ForumMembership.RequireAsync(_users, command.ActorUserId, ct);
 
         if (message.AuthorId != command.ActorUserId && actor.Role != UserRole.Admin)
             throw new UnauthorizedAccessException("حذف الرسالة متاح لكاتبها أو للمشرف فقط");

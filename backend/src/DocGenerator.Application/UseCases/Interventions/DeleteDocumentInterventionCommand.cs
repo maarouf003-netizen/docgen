@@ -39,7 +39,7 @@ public sealed class DeleteDocumentInterventionCommandHandler
     {
         var doc = await _documents.GetByIdAsync(command.DocumentId, ct)
             ?? throw new KeyNotFoundException();
-        DocumentInterventionService.EnsureSupportedSide(doc);
+        DocumentInterventionRules.EnsureSupportedSide(doc);
 
         var intervention = doc.Interventions.FirstOrDefault(i => i.Id == command.InterventionId);
         if (intervention is null)

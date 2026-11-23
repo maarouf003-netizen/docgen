@@ -33,7 +33,6 @@ public interface IForumService
     /// <summary>حذف صلب — الكاتب لرسالته والمشرف لأي رسالة (مع إيصالاتها).</summary>
 
     /// <summary>تبديل التثبيت — المشرف فقط (الجديد يُسقط السابق).</summary>
-    Task<ForumMessageDto> TogglePinAsync(int id, int actorUserId, CancellationToken ct = default);
 
     /// <summary>تعليم القراءة حتى رسالة — عدّادي (`max` فقط بلا تراجع)؛ يُعيد العلامة الجديدة.</summary>
     Task<int> MarkReadAsync(int actorUserId, string? actorName, int upToMessageId, CancellationToken ct = default);
@@ -197,46 +196,6 @@ public sealed class ForumService : IForumService
     }
 
 
-    public async Task<ForumMessageDto> TogglePinAsync(int id, int actorUserId, CancellationToken ct = default)
-    {
-        var actor = await RequireForumMemberAsync(actorUserId, ct);
-        if (actor.Role != UserRole.Admin)
-            throw new UnauthorizedAccessException("التثبيت متاح للمشرف فقط");
-
-        var message = await _forum.GetTrackedByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException("الرسالة غير موجودة");
-
-        try
-        {
-            await _tx.RunAsync(async token =>
-            {
-                if (message.IsPinned)
-                {
-                    message.IsPinned = false;
-                }
-                else
-                {
-                    var current = await _forum.GetTrackedPinnedAsync(token);
-                    if (current is not null && current.Id != message.Id)
-                        current.IsPinned = false;
-                    message.IsPinned = true;
-                }
-                await _uow.SaveChangesAsync(token);
-            }, ct);
-        }
-        catch (Exception ex) when (_errors.IsUniqueViolation(ex))
-        {
-            // سباق تثبيت مزدوج: القيد الفريد هو الحارس الأخير — خطأ ودود لا 500.
-            throw new DocumentConflictException("تزامن تثبيت مع مستخدم آخر — حُدّثت الحالة، أعد المحاولة", ex);
-        }
-
-        // العدّاد لرسائل الكاتب نفسه فقط (كبقية المسارات — لا كشف لغيره).
-        var pinCounts = message.AuthorId == actorUserId
-            ? await _forum.CountReadsAsync(new[] { message.Id }, ct)
-            : new Dictionary<int, int>();
-        return ToDto(message, pinCounts.GetValueOrDefault(message.Id));
-    }
-
     public async Task<int> MarkReadAsync(int actorUserId, string? actorName, int upToMessageId, CancellationToken ct = default)
     {
         if (upToMessageId < 1)
@@ -299,20 +258,11 @@ public sealed class ForumService : IForumService
     }
 
     /// <summary>
-    /// عضوية المنتدى من حقيقة القاعدة (لا من ادعاءات الرمز): الخمسة الداخلية فقط —
-    /// المندوب والمعطَّل والغائب مرفوضون بنيويًا (فوق حارس البوابة وسمات التفويض).
-    /// رئيس الشعبة بلا شعبة جلسة مكسورة (`null` تعني خللًا لا ملك القسم هنا).
+    /// عضوية المنتدى (مشتركة عبر <see cref="ForumMembership"/>) — تبقى هنا لمسارات
+    /// الخدمة الداخلية، ونقطة الحقيقة واحدة مع المعالجات.
     /// </summary>
-    private async Task<User> RequireForumMemberAsync(int actorUserId, CancellationToken ct)
-    {
-        var user = await _users.GetByIdAsync(actorUserId, ct)
-            ?? throw new UnauthorizedAccessException("الحساب غير موجود");
-        if (!user.IsActive || user.Role == UserRole.EntityManager)
-            throw new UnauthorizedAccessException("لا تملك صلاحية المنتدى");
-        if (user.Role == UserRole.SubHead && user.SectionId is null)
-            throw new UnauthorizedAccessException("حساب رئيس الشعبة بلا شعبة — أعد الدخول");
-        return user;
-    }
+    private Task<User> RequireForumMemberAsync(int actorUserId, CancellationToken ct)
+        => ForumMembership.RequireAsync(_users, actorUserId, ct);
 
     private static string RequireBody(string? body)
     {
@@ -382,7 +332,7 @@ public sealed class ForumService : IForumService
     private static string Truncate(string value, int max)
         => value.Length <= max ? value : value.Substring(0, max);
 
-    private static ForumMessageDto ToDto(ForumMessage m, int readCount) => new(
+    internal static ForumMessageDto ToDto(ForumMessage m, int readCount) => new(
         m.Id,
         m.Body,
         m.AuthorId,

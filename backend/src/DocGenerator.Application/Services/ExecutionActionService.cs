@@ -52,38 +52,30 @@ public sealed class ExecutionActionService : IExecutionActionService
             .ToList();
     }
 
-    public async Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default)
-    {
-        var action = await _actions.GetByIdAsync(actionId, ct);
-        if (action is null || action.DocumentId != documentId)
-            return false;
-
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            return false;
-
-        await ClearReminderCoreAsync(action, doc, actorName, ct);
-        return true;
-    }
-
     /// <summary>
-    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه `ClearReminderAsync`،
-    /// ومسار `PUT .../reminder` بالحقلين الفارغين) فلا تنحرف رسالة التدقيق بين المسارين.
-    /// يستقبل الكيان المحمَّل والمستند تفاديًا لإعادة القراءة.
+    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه مسار
+    /// `PUT .../reminder` بالحقلين الفارغين ومعالج `ClearActionReminderCommand`)
+    /// فلا تنحرف رسالة التدقيق بين المسارين. لا يفتح معاملة بنفسه: المستدعي يملكها
+    /// (الخدمة عبر `_tx`، والمعالج عبر وسم `ITransactionalRequest`).
     /// </summary>
-    private async Task ClearReminderCoreAsync(
-        ExecutionAction action, Document doc, string? actorName, CancellationToken ct)
+    internal static async Task ClearReminderWriteAsync(
+        ExecutionAction action, Document doc, string? actorName,
+        IRepository<ExecutionAction> actions, IUnitOfWork uow, IAuditLogger audit,
+        CancellationToken ct)
     {
         ClearReminderFields(action);
 
-        await _tx.RunAsync(async token =>
-        {
-            _actions.Update(action);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
-                DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
-        }, ct);
+        actions.Update(action);
+        await uow.SaveChangesAsync(ct);
+        await audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
+            DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), ct);
     }
+
+    private Task ClearReminderCoreAsync(
+        ExecutionAction action, Document doc, string? actorName, CancellationToken ct)
+        => _tx.RunAsync(
+            token => ClearReminderWriteAsync(action, doc, actorName, _actions, _uow, _audit, token),
+            ct);
 
     /// <summary>
     /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون): تهيئة `ReminderBaseDate` من تاريخ الإجراء

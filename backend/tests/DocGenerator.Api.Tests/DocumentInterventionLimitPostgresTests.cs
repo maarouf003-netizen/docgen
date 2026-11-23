@@ -1,7 +1,9 @@
 using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -65,8 +67,8 @@ public sealed class DocumentInterventionLimitPostgresTests
                 await lockCommand.ExecuteScalarAsync();
             }
 
-            var addTask = service.AddAsync(
-                documentId, NaturalRequest(), userId, "مستخدم اختبار حد المتدخلين");
+            var addTask = service.HandleAsync(new AddDocumentInterventionCommand(
+                documentId, NaturalRequest(), userId, "مستخدم اختبار حد المتدخلين"));
 
             await WaitForBlockedRowLockAsync(observer, addTask);
 
@@ -173,14 +175,18 @@ public sealed class DocumentInterventionLimitPostgresTests
         Assert.Fail("لم يصل طلب الإضافة إلى انتظار قفل صف الملف خلال المهلة.");
     }
 
-    private static DocumentInterventionService CreateService(DocGeneratorPostgresDbContext db) =>
+    private static AddDocumentInterventionCommandHandler CreateService(DocGeneratorPostgresDbContext db) =>
         new(
             new DocumentRepository(db),
             new Repository<PublicEntity>(db),
             new Repository<PublicEntityGroup>(db),
             new UnitOfWork(db),
-            new TransactionRunner(db),
-            new NoopAuditLogger());
+            new NoopAuditLogger(),
+            new IPipelineBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>[]
+            {
+                new TransactionBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>(
+                    new TransactionRunner(db)),
+            });
 
     private static DocumentInterventionUpsertRequest NaturalRequest() => new()
     {
