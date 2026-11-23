@@ -13,8 +13,6 @@ public interface IExecutionActionService
 {
     Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default);
 
-    Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-
     /// <summary>
     /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون) عبر مسار مستقل عن تعديل الإجراء:
     /// يهيّئ `ReminderBaseDate` من تاريخ الإجراء مرة واحدة فقط. الحقلان الفارغان = إلغاء.

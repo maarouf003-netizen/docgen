@@ -30,18 +30,18 @@ public sealed class DocumentAccessProjectionTests
     public async Task AddIntervention_UsesAccessProjection_AndNeverLoadsFullDocument()
     {
         var documents = new StubDocumentService();
-        var interventions = new StubInterventionService();
+        var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId, 3, null, null),
         };
-        var controller = CreateController(documents, interventions, authorization);
+        var controller = CreateController(documents, authorization, add);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result);
-        Assert.True(interventions.AddCalled);
+        Assert.True(add.Called);
         Assert.False(documents.GetAsyncCalled);
     }
 
@@ -49,18 +49,18 @@ public sealed class DocumentAccessProjectionTests
     public async Task AddIntervention_OtherLawyer_Forbids_AndNeverLoadsFullDocument()
     {
         var documents = new StubDocumentService();
-        var interventions = new StubInterventionService();
+        var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId + 1, 3, null, null),
         };
-        var controller = CreateController(documents, interventions, authorization);
+        var controller = CreateController(documents, authorization, add);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
 
         Assert.IsType<ForbidResult>(result);
-        Assert.False(interventions.AddCalled);
+        Assert.False(add.Called);
         Assert.False(documents.GetAsyncCalled);
     }
 
@@ -68,15 +68,15 @@ public sealed class DocumentAccessProjectionTests
     public async Task AddIntervention_MissingDocument_ReturnsNotFound_AndNeverLoadsFullDocument()
     {
         var documents = new StubDocumentService();
-        var interventions = new StubInterventionService();
+        var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization { AccessInfo = null };
-        var controller = CreateController(documents, interventions, authorization);
+        var controller = CreateController(documents, authorization, add);
 
         var result = await controller.AddIntervention(
             10, new DocumentInterventionUpsertRequest(), CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(result);
-        Assert.False(interventions.AddCalled);
+        Assert.False(add.Called);
         Assert.False(documents.GetAsyncCalled);
     }
 
@@ -84,28 +84,32 @@ public sealed class DocumentAccessProjectionTests
     public async Task UpdateAndDeleteIntervention_UseAccessProjection_AndNeverLoadFullDocument()
     {
         var documents = new StubDocumentService();
-        var interventions = new StubInterventionService();
-        var deleteIntervention = new StubDeleteInterventionHandler();
+        var update = new StubHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?>(null);
+        var delete = new StubHandler<DeleteDocumentInterventionCommand, bool>(false);
         var authorization = new StubDocumentAuthorization
         {
             AccessInfo = new DocumentAccessInfo(10, UserId, 3, null, null),
         };
-        var controller = CreateController(documents, interventions, authorization, deleteIntervention);
+        var controller = CreateController(
+            documents, authorization,
+            add: new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!),
+            update: update, delete: delete);
 
         await controller.UpdateIntervention(
             10, 5, new DocumentInterventionUpsertRequest(), CancellationToken.None);
         await controller.DeleteIntervention(10, 5, CancellationToken.None);
 
-        Assert.True(interventions.UpdateCalled);
-        Assert.True(deleteIntervention.Called);
+        Assert.True(update.Called);
+        Assert.True(delete.Called);
         Assert.False(documents.GetAsyncCalled);
     }
 
     private static DocumentsController CreateController(
         StubDocumentService documents,
-        StubInterventionService interventions,
         StubDocumentAuthorization authorization,
-        ICommandHandler<DeleteDocumentInterventionCommand, bool>? deleteIntervention = null)
+        ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto>? add = null,
+        ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?>? update = null,
+        ICommandHandler<DeleteDocumentInterventionCommand, bool>? delete = null)
     {
         var identity = new ClaimsIdentity(
         [
@@ -117,7 +121,6 @@ public sealed class DocumentAccessProjectionTests
         return new DocumentsController(
             documents,
             null!,
-            interventions,
             null!,
             null!,
             null!,
@@ -132,7 +135,10 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
-            deleteIntervention!,
+            delete!,
+            add!,
+            update!,
+            null!,
             null!,
             null!,
             ApiTestClock.Provider,
@@ -195,42 +201,19 @@ public sealed class DocumentAccessProjectionTests
             => throw new NotSupportedException();
     }
 
-    private sealed class StubInterventionService : IDocumentInterventionService
-    {
-        public bool AddCalled { get; private set; }
-        public bool UpdateCalled { get; private set; }
-
-        public Task<DocumentInterventionDto> AddAsync(
-            int documentId, DocumentInterventionUpsertRequest request, int userId,
-            string? actorName, CancellationToken ct = default)
-        {
-            AddCalled = true;
-            return Task.FromResult<DocumentInterventionDto>(null!);
-        }
-
-        public Task<DocumentInterventionDto?> UpdateAsync(
-            int documentId, int interventionId, DocumentInterventionUpsertRequest request,
-            int userId, string? actorName, CancellationToken ct = default)
-        {
-            UpdateCalled = true;
-            return Task.FromResult<DocumentInterventionDto?>(null);
-        }
-    }
-
     /// <summary>
-    /// بديل معالج الحذف: يثبت أن المتحكم يفوّض الحذف إلى الأمر (P4-01n) بعد فحص الوصول،
-    /// وأن الحالات 404/403/204 محفوظة.
+    /// بديل معالج أمر: يثبت أن المتحكم فوّض العملية إلى الأمر (P4-01) بعد فحص الوصول،
+    /// وأن الحالات 404/403/200 محفوظة.
     /// </summary>
-    private sealed class StubDeleteInterventionHandler
-        : ICommandHandler<DeleteDocumentInterventionCommand, bool>
+    private sealed class StubHandler<TCommand, TResult>(TResult result)
+        : ICommandHandler<TCommand, TResult> where TCommand : ICommand<TResult>
     {
         public bool Called { get; private set; }
 
-        public Task<bool> HandleAsync(
-            DeleteDocumentInterventionCommand command, CancellationToken ct = default)
+        public Task<TResult> HandleAsync(TCommand command, CancellationToken ct = default)
         {
             Called = true;
-            return Task.FromResult(false);
+            return Task.FromResult(result);
         }
     }
 

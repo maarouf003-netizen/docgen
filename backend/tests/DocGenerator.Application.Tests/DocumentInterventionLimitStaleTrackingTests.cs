@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.Tests.TestHelpers;
+using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -85,15 +87,20 @@ public sealed class DocumentInterventionLimitStaleTrackingTests : IAsyncLifetime
             await deleter.SaveChangesAsync();
         }
 
-        var service = new DocumentInterventionService(
+        var service = new AddDocumentInterventionCommandHandler(
             staleRepo,
             new Repository<PublicEntity>(stale),
             new Repository<PublicEntityGroup>(stale),
             new UnitOfWork(stale),
-            new TransactionRunner(stale),
-            new FakeAuditLogger());
+            new FakeAuditLogger(),
+            new IPipelineBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>[]
+            {
+                new TransactionBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>(
+                    new TransactionRunner(stale)),
+            });
 
-        var created = await service.AddAsync(documentId, NaturalRequest(), userId, "فاحص");
+        var created = await service.HandleAsync(
+            new AddDocumentInterventionCommand(documentId, NaturalRequest(), userId, "فاحص"));
 
         Assert.NotNull(created);
         await using var verify = _pg.CreateContext();

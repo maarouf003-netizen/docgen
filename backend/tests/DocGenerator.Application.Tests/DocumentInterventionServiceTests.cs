@@ -18,7 +18,8 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class DocumentInterventionServiceTests : PostgresDbTest
 {
-    private readonly DocumentInterventionService _service;
+    private readonly ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto> _add;
+    private readonly ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?> _update;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _delete;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -53,13 +54,28 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         _db.Documents.Add(_document);
         _db.SaveChanges();
 
-        _service = new DocumentInterventionService(
+        _add = new AddDocumentInterventionCommandHandler(
             new DocumentRepository(_db),
             new Repository<PublicEntity>(_db),
             new Repository<PublicEntityGroup>(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit);
+            _audit,
+            new IPipelineBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>[]
+            {
+                new TransactionBehavior<AddDocumentInterventionCommand, DocumentInterventionDto>(
+                    new TransactionRunner(_db)),
+            });
+        _update = new UpdateDocumentInterventionCommandHandler(
+            new DocumentRepository(_db),
+            new Repository<PublicEntity>(_db),
+            new Repository<PublicEntityGroup>(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<UpdateDocumentInterventionCommand, DocumentInterventionDto?>[]
+            {
+                new TransactionBehavior<UpdateDocumentInterventionCommand, DocumentInterventionDto?>(
+                    new TransactionRunner(_db)),
+            });
         _delete = new DeleteDocumentInterventionCommandHandler(
             new DocumentRepository(_db),
             new UnitOfWork(_db),
@@ -70,6 +86,16 @@ public class DocumentInterventionServiceTests : PostgresDbTest
                     new TransactionRunner(_db)),
             });
     }
+
+    private Task<DocumentInterventionDto> AddAsync(
+        int documentId, DocumentInterventionUpsertRequest request, int userId, string? actorName)
+        => _add.HandleAsync(new AddDocumentInterventionCommand(documentId, request, userId, actorName));
+
+    private Task<DocumentInterventionDto?> UpdateAsync(
+        int documentId, int interventionId, DocumentInterventionUpsertRequest request,
+        int userId, string? actorName)
+        => _update.HandleAsync(new UpdateDocumentInterventionCommand(
+            documentId, interventionId, request, userId, actorName));
 
     private Task<bool> DeleteAsync(int documentId, int interventionId, string? actorName)
         => _delete.HandleAsync(new DeleteDocumentInterventionCommand(documentId, interventionId, actorName));
@@ -138,7 +164,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         var request = NaturalRequest();
         request.Heirs.Add(new HeirDto(null, "وليد", "سامر", "الحسن", "أصالة", "عنوان", "المزة"));
 
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.True(dto.Id > 0);
         Assert.Equal("سامر محمود الحسن", dto.DisplayName);
@@ -172,7 +198,8 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         Assert.Contains("وليد", refreshed.SearchText);
 
         Assert.Contains("intervention", _audit.Actions);
-        Assert.Contains(_audit.Details, d => d is not null && d.Contains("سامر محمود الحسن"));
+        Assert.Contains(_audit.Details,
+            d => d == "أضاف متدخلًا: سامر محمود الحسن — المنفذ عليه: أحمد");
     }
 
     private const string InterventionOccurrenceLabel = "طلب تدخل";
@@ -183,7 +210,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         var request = NaturalRequest();
         request.ReceiptNumber = "ورود ١٢٣";
 
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.Equal("ورود 123", dto.ReceiptNumber);
     }
@@ -193,7 +220,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
     {
         var request = NaturalRequest();
         request.Name = "اسم فريد للبحث";
-        await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         // محاكاة تقادم/قصّ SearchText: البحث الاسمي المباشر على جدول المتدخلين
         // يجب أن يبقى صالحًا (كبقية فروع الأطراف في الكتلة الموحدة).
@@ -219,7 +246,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
             EntityName = "جهة",
             RegistryId = entry.Id,
         };
-        var created = await _service.AddAsync(_document.Id, addRequest, _lawyer.Id, "المحامي الأول");
+        var created = await AddAsync(_document.Id, addRequest, _lawyer.Id, "المحامي الأول");
 
         // تعطيل القيد والجهة الأم بعد الإضافة (بيانات تاريخية): يبقى التعديل ممكنًا
         // ما دام المتدخل محافظًا على القيد نفسه؛ القيد الجديد يُشترط نشطًا.
@@ -227,7 +254,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         group.IsActive = false;
         await _db.SaveChangesAsync();
 
-        var updated = await _service.UpdateAsync(
+        var updated = await UpdateAsync(
             _document.Id,
             created.Id,
             new DocumentInterventionUpsertRequest
@@ -257,7 +284,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
             RegistryId = entry.Id,
         };
 
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.Equal("وزارة العدل", dto.EntityName);
         Assert.Equal("وزارة العدل مديرية التنفيذ", dto.DisplayName);
@@ -278,7 +305,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
             RegistryId = entry.Id,
         };
 
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.Equal("وزارة العدل", dto.EntityName);
         Assert.Equal("مديرية التنفيذ", dto.EntityBranch);
@@ -298,7 +325,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("السجل المرجعي", ex.Message);
     }
 
@@ -315,7 +342,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         };
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
     }
 
     [PostgresFact]
@@ -325,7 +352,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.ReceiptDate = " ";
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("تاريخ ورود طلب التدخل مطلوب", ex.Message);
     }
 
@@ -338,7 +365,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.AcceptanceDate = acceptanceDate;
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("يجب أن يسبق تاريخ الورود", ex.Message);
     }
 
@@ -351,7 +378,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.Heirs.Add(new HeirDto(null, "وليد", "سامر", "الحسن", "أصالة", "عنوان", "المزة"));
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("لا يجتمع", ex.Message);
     }
 
@@ -368,7 +395,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.RepresentativeAddressType = "عنوان";
         request.RepresentativeAddress = "دمشق";
 
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.Null(dto.AddressType);
         Assert.Null(dto.Address);
@@ -383,7 +410,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         request.EntityName = "";
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول"));
         Assert.Contains("اسم الشخص الاعتباري مطلوب", ex.Message);
     }
 
@@ -394,20 +421,20 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
         Assert.Contains("عرض وايداع", ex.Message);
     }
 
     [PostgresFact]
     public async Task Update_SyncsOccurrenceAndSearchText()
     {
-        var dto = await _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
 
         var request = NaturalRequest();
         request.Name = "سامر سعيد";
         request.AcceptanceDate = "30/7/2026";
         request.Subject = "موضوع معدّل";
-        var updated = await _service.UpdateAsync(
+        var updated = await UpdateAsync(
             _document.Id, dto.Id, request, _lawyer.Id, "المحامي الأول");
 
         Assert.NotNull(updated);
@@ -423,6 +450,8 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         var refreshed = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == _document.Id);
         Assert.Contains("سامر سعيد", refreshed.SearchText);
         Assert.DoesNotContain("سامر محمود", refreshed.SearchText);
+        Assert.Contains(_audit.Details,
+            d => d == "عدّل متدخلًا: سامر سعيد محمود الحسن — المنفذ عليه: أحمد");
     }
 
     [PostgresFact]
@@ -430,7 +459,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
     {
         var request = NaturalRequest();
         request.Heirs.Add(new HeirDto(null, "وليد", "سامر", "الحسن", "أصالة", "عنوان", "المزة"));
-        var dto = await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
 
         var deleted = await DeleteAsync(_document.Id, dto.Id, "المحامي الأول");
 
@@ -456,7 +485,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_DepositSide_ThrowsWithOriginalMessage()
     {
-        var dto = await _service.AddAsync(
+        var dto = await AddAsync(
             _document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
 
         // `AddAsync` يفرّغ المتتبَّع (`ClearChanges`) ثم يعيد تحميل المستند متتبَّعًا؛ الكتابة
@@ -475,7 +504,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateOrDelete_InterventionOfAnotherDocument_ReturnsNotFound()
     {
-        var dto = await _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
+        var dto = await AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
         var other = new Document
         {
             CreatedById = _lawyer.Id,
@@ -486,7 +515,7 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         _db.Documents.Add(other);
         await _db.SaveChangesAsync();
 
-        Assert.Null(await _service.UpdateAsync(
+        Assert.Null(await UpdateAsync(
             other.Id, dto.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
         Assert.False(await DeleteAsync(other.Id, dto.Id, "المحامي الأول"));
     }
@@ -498,11 +527,11 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         {
             var request = NaturalRequest();
             request.Name = $"متدخل {i}";
-            await _service.AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
+            await AddAsync(_document.Id, request, _lawyer.Id, "المحامي الأول");
         }
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
+            () => AddAsync(_document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول"));
         Assert.Contains(InterventionLimitsCatalog.MaxPerDocument.ToString(), ex.Message);
     }
 }

@@ -43,7 +43,6 @@ public static class DependencyInjection
         services.AddSingleton(new NumberRegistryOptions());
         services.AddScoped<IDocumentNumberRegistry, DocumentNumberRegistry>();
         services.AddScoped<IExecutionActionService, ExecutionActionService>();
-        services.AddScoped<IDocumentInterventionService, DocumentInterventionService>();
         services.AddScoped<IDocumentSearchService, DocumentSearchService>();
         services.AddScoped<IDocumentStatusService, DocumentStatusService>();
         services.AddScoped<IDocumentWriteGuard, DocumentWriteGuard>();
@@ -88,10 +87,13 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteBranchCommand, bool>, DeleteBranchCommandHandler>();
         services.AddScoped<ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto>, CreateAppSuggestionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteForumMessageCommand, bool>, DeleteForumMessageCommandHandler>();
+        services.AddScoped<ICommandHandler<ToggleForumPinCommand, ForumMessageDto>, ToggleForumPinCommandHandler>();
         services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteExecutionActionCommand, bool>, DeleteExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentInterventionCommand, bool>, DeleteDocumentInterventionCommandHandler>();
+        services.AddScoped<ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto>, AddDocumentInterventionCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?>, UpdateDocumentInterventionCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateBranchCommand, BranchDto?>, UpdateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto>, CreatePersonalReminderCommandHandler>();
         services.AddScoped<ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?>, UpdatePersonalReminderCommandHandler>();
@@ -101,6 +103,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
         services.AddScoped<ICommandHandler<AddExecutionActionCommand, ExecutionActionDto>, AddExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?>, UpdateExecutionActionCommandHandler>();
+        services.AddScoped<ICommandHandler<ClearActionReminderCommand, bool>, ClearActionReminderCommandHandler>();
         return services;
     }
 }

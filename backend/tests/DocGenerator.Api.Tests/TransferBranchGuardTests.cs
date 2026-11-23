@@ -24,8 +24,9 @@ public sealed class TransferBranchGuardTests
     private static DocumentsController BranchlessHeadController()
     {
         var controller = new DocumentsController(
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
-            new CatalogAuthorization(), null!, null!, null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            new CatalogAuthorization(),
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

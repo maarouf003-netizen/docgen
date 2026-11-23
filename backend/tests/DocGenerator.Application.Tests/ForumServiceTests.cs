@@ -22,6 +22,7 @@ public class ForumServiceTests : PostgresDbTest
     private readonly FakeTimeProvider _clock;
     private readonly IForumService _service;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
+    private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
     private readonly int _branchId;
     private readonly int _otherBranchId;
     private readonly int _sectionId;
@@ -69,7 +70,23 @@ public class ForumServiceTests : PostgresDbTest
             new ForumRepository(_db),
             new UserRepository(_db),
             Array.Empty<IPipelineBehavior<DeleteForumMessageCommand, bool>>());
+        _togglePin = BuildTogglePin(new UnitOfWork(_db));
     }
+
+    private ToggleForumPinCommandHandler BuildTogglePin(IUnitOfWork uow)
+        => new(
+            new ForumRepository(_db),
+            new UserRepository(_db),
+            uow,
+            new DbExceptionClassifier(),
+            new IPipelineBehavior<ToggleForumPinCommand, ForumMessageDto>[]
+            {
+                new TransactionBehavior<ToggleForumPinCommand, ForumMessageDto>(
+                    new TransactionRunner(_db)),
+            });
+
+    private Task<ForumMessageDto> TogglePinAsync(int messageId, int actorUserId)
+        => _togglePin.HandleAsync(new ToggleForumPinCommand(messageId, actorUserId));
 
     private Task<bool> DeleteMessageAsync(int id, int actorUserId)
         => _deleteMessage.HandleAsync(new DeleteForumMessageCommand(id, actorUserId));
@@ -352,10 +369,10 @@ public class ForumServiceTests : PostgresDbTest
         var first = await PostAsync(_lawyer1, "أولى");
         var second = await PostAsync(_lawyer1, "ثانية");
 
-        await _service.TogglePinAsync(first.Id, _admin.Id);
+        await TogglePinAsync(first.Id, _admin.Id);
         Assert.True((await _service.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
 
-        await _service.TogglePinAsync(second.Id, _admin.Id);
+        await TogglePinAsync(second.Id, _admin.Id);
         Assert.False((await _service.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
         Assert.True((await _service.GetByIdAsync(second.Id, _admin.Id))!.IsPinned);
 
@@ -367,9 +384,9 @@ public class ForumServiceTests : PostgresDbTest
     public async Task Pin_ToggleOff_Unpins()
     {
         var posted = await PostAsync(_lawyer1);
-        await _service.TogglePinAsync(posted.Id, _admin.Id);
+        await TogglePinAsync(posted.Id, _admin.Id);
 
-        var result = await _service.TogglePinAsync(posted.Id, _admin.Id);
+        var result = await TogglePinAsync(posted.Id, _admin.Id);
 
         Assert.False(result.IsPinned);
         Assert.Null(await _service.GetPinnedAsync(_admin.Id));
@@ -381,32 +398,25 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.TogglePinAsync(posted.Id, _manager.Id));
+            () => TogglePinAsync(posted.Id, _manager.Id));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.TogglePinAsync(posted.Id, _lawyer1.Id));
+            () => TogglePinAsync(posted.Id, _lawyer1.Id));
     }
 
     [PostgresFact]
     public async Task Pin_MissingMessage_ThrowsNotFound()
     {
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.TogglePinAsync(9999, _admin.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => TogglePinAsync(9999, _admin.Id));
     }
 
     [PostgresFact]
     public async Task Pin_ConcurrentDoublePin_MapsUniqueViolationToConflict()
     {
         var posted = await PostAsync(_lawyer1, "سباق تثبيت");
-        var racing = new ForumService(
-            new ForumRepository(_db),
-            new Repository<ForumMessageRead>(_db),
-            new UserRepository(_db),
-            new FailOncePinConflictUnitOfWork(new UnitOfWork(_db)),
-            new TransactionRunner(_db),
-            new DbExceptionClassifier(),
-            _clock);
+        var racing = BuildTogglePin(new FailOncePinConflictUnitOfWork(new UnitOfWork(_db)));
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(
-            () => racing.TogglePinAsync(posted.Id, _admin.Id));
+            () => racing.HandleAsync(new ToggleForumPinCommand(posted.Id, _admin.Id)));
 
         Assert.Contains("تزامن تثبيت", ex.Message);
         // التراجع يبطل المعاملة لكن الكيان المتعقَّب في السياق المشترك يبقى

@@ -22,6 +22,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
     private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateAction;
+    private readonly ICommandHandler<ClearActionReminderCommand, bool> _clearReminder;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -80,6 +81,15 @@ public class DocumentServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<UpdateExecutionActionCommand, ExecutionActionDto?>(tx),
             });
+        _clearReminder = new ClearActionReminderCommandHandler(
+            actions,
+            documents,
+            uow,
+            _audit,
+            new IPipelineBehavior<ClearActionReminderCommand, bool>[]
+            {
+                new TransactionBehavior<ClearActionReminderCommand, bool>(tx),
+            });
     }
 
     private Task<ExecutionActionDto> AddExecutionActionAsync(
@@ -91,6 +101,10 @@ public class DocumentServiceTests : PostgresDbTest
         int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName)
         => _updateAction.HandleAsync(
             new UpdateExecutionActionCommand(documentId, actionId, request, actorName));
+
+    private Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName)
+        => _clearReminder.HandleAsync(
+            new ClearActionReminderCommand(documentId, actionId, actorName));
 
     private Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName)
         => _deleteAction.HandleAsync(new DeleteExecutionActionCommand(documentId, actionId, actorName));
@@ -3107,7 +3121,7 @@ public class DocumentServiceTests : PostgresDbTest
             },
             userId: 1, actorName: "lawyer1");
 
-        var cleared = await _actions.ClearReminderAsync(doc.Id, action.Id, "lawyer1");
+        var cleared = await ClearReminderAsync(doc.Id, action.Id, "lawyer1");
 
         Assert.True(cleared);
         var list = await _actions.GetExecutionActionsAsync(doc.Id);
@@ -3116,6 +3130,8 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Null(single.ReminderDuration);
         Assert.Null(single.ReminderColor);
         Assert.Contains("action", _audit.Actions);
+        Assert.Contains(_audit.Details,
+            d => d == "ألغى التذكير عن إجراء: إجراء بموعد — المنفذ عليه: أحمد خالد الخطيب");
     }
 
     [PostgresFact]
@@ -3126,7 +3142,7 @@ public class DocumentServiceTests : PostgresDbTest
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var cleared = await _actions.ClearReminderAsync(doc.Id + 9999, action.Id, "lawyer1");
+        var cleared = await ClearReminderAsync(doc.Id + 9999, action.Id, "lawyer1");
         Assert.False(cleared);
     }
 
@@ -3135,7 +3151,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var cleared = await _actions.ClearReminderAsync(doc.Id, 9999, "lawyer1");
+        var cleared = await ClearReminderAsync(doc.Id, 9999, "lawyer1");
         Assert.False(cleared);
     }
 

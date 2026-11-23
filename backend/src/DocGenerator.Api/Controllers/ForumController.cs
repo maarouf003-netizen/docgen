@@ -25,15 +25,18 @@ public class ForumController : ControllerBase
     private readonly IForumService _forum;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
+    private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
 
     public ForumController(
         IForumService forum,
         IUserCapabilities capabilities,
-        ICommandHandler<DeleteForumMessageCommand, bool> deleteMessage)
+        ICommandHandler<DeleteForumMessageCommand, bool> deleteMessage,
+        ICommandHandler<ToggleForumPinCommand, ForumMessageDto> togglePin)
     {
         _forum = forum;
         _capabilities = capabilities;
         _deleteMessage = deleteMessage;
+        _togglePin = togglePin;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -132,7 +135,8 @@ public class ForumController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _forum.TogglePinAsync(id, UserId, ct));
+            return Ok(await _togglePin.HandleAsync(
+                new ToggleForumPinCommand(id, UserId), ct));
         }
         catch (KeyNotFoundException e)
         {

@@ -37,7 +37,6 @@ public class DocumentsController : ControllerBase
 
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
-    private readonly IDocumentInterventionService _interventions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
@@ -53,15 +52,17 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
+    private readonly ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto> _addIntervention;
+    private readonly ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?> _updateIntervention;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addExecutionAction;
     private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateExecutionAction;
+    private readonly ICommandHandler<ClearActionReminderCommand, bool> _clearReminder;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
     public DocumentsController(
         IDocumentService documents,
         IExecutionActionService executionActions,
-        IDocumentInterventionService interventions,
         IDocumentSearchService search,
         IDocumentStatusService status,
         IWordDocumentGenerator generator,
@@ -77,14 +78,16 @@ public class DocumentsController : ControllerBase
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
+        ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto> addIntervention,
+        ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?> updateIntervention,
         ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> addExecutionAction,
         ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> updateExecutionAction,
+        ICommandHandler<ClearActionReminderCommand, bool> clearReminder,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
         _documents = documents;
         _executionActions = executionActions;
-        _interventions = interventions;
         _search = search;
         _status = status;
         _generator = generator;
@@ -100,8 +103,11 @@ public class DocumentsController : ControllerBase
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
+        _addIntervention = addIntervention;
+        _updateIntervention = updateIntervention;
         _addExecutionAction = addExecutionAction;
         _updateExecutionAction = updateExecutionAction;
+        _clearReminder = clearReminder;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -575,7 +581,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
         if (denied is not null) return denied;
 
-        var created = await _interventions.AddAsync(id, request, User.GetUserId(), ActorName, ct);
+        var created = await _addIntervention.HandleAsync(new AddDocumentInterventionCommand(
+            id, request, User.GetUserId(), ActorName), ct);
         return Ok(created);
     }
 
@@ -588,8 +595,9 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Edit, ct);
         if (denied is not null) return denied;
 
-        var updated = await _interventions.UpdateAsync(
-            id, interventionId, request, User.GetUserId(), ActorName, ct);
+        var updated = await _updateIntervention.HandleAsync(
+            new UpdateDocumentInterventionCommand(
+                id, interventionId, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -965,7 +973,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        return await _executionActions.ClearReminderAsync(id, actionId, ActorName, ct)
+        return await _clearReminder.HandleAsync(
+            new ClearActionReminderCommand(id, actionId, ActorName), ct)
             ? NoContent()
             : NotFound();
     }
