@@ -117,6 +117,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CompletePendingRegistrationsCommand, int>, CompletePendingRegistrationsCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteExecutionCircuitCommand, bool>, DeleteExecutionCircuitCommandHandler>();
         services.AddScoped<ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto>, TransferExecutionCircuitCommandHandler>();
+        services.AddScoped<ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult>, ReferCircuitFilesCommandHandler>();
         return services;
     }
 }

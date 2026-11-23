@@ -96,6 +96,42 @@ internal static class ExecutionCircuitRules
         return circuit;
     }
 
+    /// <summary>جلب الدائرة ثم فرض نطاق الملكية — مشتركة بين القراءة والإحالة.</summary>
+    internal static async Task<ExecutionCircuit> GetOwnedAsync(
+        int circuitId, int branchId, int? ownerSectionId,
+        IRepository<ExecutionCircuit> circuits, CancellationToken token)
+    {
+        var circuit = await circuits.GetByIdAsync(circuitId, token)
+            ?? throw new ArgumentException("الدائرة غير موجودة");
+        return EnsureOwned(circuit, branchId, ownerSectionId);
+    }
+
+    /// <summary>
+    /// تسجيل تنبيه إعادة القيد عبر Outbox داخل معاملة العمل — المفتاح الدلالي
+    /// (محامٍ × دائرة) يضمن إنشاءً أو تحديثًا واحدًا بلا بحث نصي.
+    /// </summary>
+    internal static Task EnqueuePendingAlertAsync(
+        IHeadAlertOutbox alertOutbox,
+        int lawyerId,
+        int branchId,
+        int actorUserId,
+        int circuitId,
+        string circuitName,
+        DateTime occurredAt,
+        CancellationToken token)
+        => alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.CircuitPendingDocuments,
+                HeadAlertMessages.CircuitPendingDocuments(new(circuitName)),
+                HeadAlertAudience.SingleLawyer,
+                branchId,
+                actorUserId,
+                ExecutionCircuitId: circuitId,
+                RecipientUserId: lawyerId),
+            supersedePlan: null,
+            occurredAt: occurredAt,
+            ct: token);
+
     internal static async Task<ExecutionCircuitDto> BuildDtoAsync(
         ExecutionCircuit c, IDocumentRepository documents,
         IRepository<Section> sections, CancellationToken token)

@@ -31,6 +31,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
     private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
     private readonly ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> _transferCircuit;
+    private readonly ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> _referFiles;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
@@ -67,8 +68,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _circuits = new ExecutionCircuitService(
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
-            occurrences, alertsRepo, users,
-            uow, _tx, _audit, outbox, classifier, TestClock.Provider, TestClock.TimeZone);
+            alertsRepo, users, uow, _tx, outbox);
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         _createCircuit = new CreateExecutionCircuitCommandHandler(
@@ -115,6 +115,13 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<TransferExecutionCircuitCommand, ExecutionCircuitDto>(_tx),
             });
+        _referFiles = new ReferCircuitFilesCommandHandler(
+            circuitsRepo, branchesRepo, documents, new DelegationRepository(_db), occurrences, users,
+            outbox, uow, _tx, _audit, TestClock.Provider, TestClock.TimeZone,
+            new IPipelineBehavior<ReferCircuitFilesCommand, ReferCircuitFilesResult>[]
+            {
+                new TransactionBehavior<ReferCircuitFilesCommand, ReferCircuitFilesResult>(_tx),
+            });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
@@ -154,6 +161,13 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         CancellationToken ct = default, long? version = null)
         => _transferCircuit.HandleAsync(
             new TransferExecutionCircuitCommand(circuitId, targetSectionId, actorUserId, actorName, version), ct);
+
+    private Task<ReferCircuitFilesResult> ReferFilesAsync(
+        int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName,
+        ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null)
+        => _referFiles.HandleAsync(
+            new ReferCircuitFilesCommand(
+                sourceCircuitId, branchId, ownerSectionId, actorUserId, actorName, request, idempotencyKey), ct);
 
 
     private DocumentUpsertRequest Sample(string? number = "100", string? year = "2026") => new()
@@ -335,7 +349,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var result = await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        var result = await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         Assert.Equal(1, result.ReferredCount);
 
@@ -356,6 +370,16 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Assert.Equal("دائرة الهدف", occ.ToCircuitName);
         // الرقم القديم من EffectiveFileIdentity (رقم الأساس 99 لسنة 2025 يغلب رقم الملف 200).
         Assert.Equal("200", occ.FileNumber);
+        // تثبيت نص التدقيق الجماعي حرفيًا (نقل السلوك لا الرسائل فقط).
+        Assert.Contains(
+            "أحال 1 ملفًا من دائرة «دائرة المصدر» إلى دائرة «دائرة الهدف» للمحامي محامي ثان (متخطى 0)",
+            _audit.Details);
+        // وتنبيه المحامي المدمج يُنشأ بنصه الكامل عبر Outbox.
+        await FlushAlertsAsync();
+        var alert = Assert.Single(_db.HeadAlerts.ToList());
+        Assert.Equal(
+            "أحال لك رئيس القسم ملفات من دائرة دائرة الهدف — يرجى تحديث معلوماتها",
+            alert.Message);
     }
 
     [PostgresFact]
@@ -365,7 +389,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id);
         // إحالة أولى تنقل للمحامي الثاني.
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         // الدائرة المصدر أُفرغت وعُطّلت؛ أعد تفعيلها وأعد ملفًا جديدًا للتجربة الثانية؟ — نبسّط:
         // نحيل ملفًا هو أصلًا عند الهدف (يُتخطى).
@@ -379,7 +403,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "300", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var count = await CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
@@ -408,7 +432,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "400", "2025");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         var repo = new DocumentRepository(_db);
         var (total, _) = await repo.GetRotationCandidatesAsync(_lawyer2Id, 2026, 1, 20);
@@ -421,7 +445,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "500", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _documentStatus.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
@@ -525,7 +549,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة مصدر");
         var target = await CreateCircuitAsync("دائرة مؤرشفة");
         var docId = await CreateDocAsync(source, _lawyer1Id, "822", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest
             {
                 FileIds = new List<int> { docId },
@@ -622,7 +646,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "720", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         await RenameAsync(target, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
@@ -672,7 +696,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { sourceId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var moved = _db.DocumentOccurrences
@@ -736,7 +760,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { mirrorId, externalMirrorId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var src2 = await _db.DocumentDelegations.FindAsync(delegation.Id);
@@ -807,7 +831,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
 
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { doubleId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         // قاعدة 2: وقعة على مناب المنيب المنقول بمضامينه القديمة.
@@ -831,20 +855,22 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "730", "2026");
-        var svc = BuildServiceWithIdempotency();
+        var svc = BuildReferHandlerWithIdempotency();
         var req = new ReferCircuitFilesRequest
         {
             FileIds = new List<int> { docId },
             TargetLawyerId = _lawyer2Id,
             TargetCircuitId = target,
         };
-        var first = await svc.ReferFilesAsync(source, _branchId, null, _headId, "head1", req, default, "idem-key-1");
+        var first = await svc.HandleAsync(new ReferCircuitFilesCommand(
+            source, _branchId, null, _headId, "head1", req, "idem-key-1"));
         Assert.Equal(1, first.ReferredCount);
         var occCount = _db.DocumentOccurrences
             .Count(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred);
 
         var replay = await Assert.ThrowsAsync<IdempotentReplayException>(() =>
-            svc.ReferFilesAsync(source, _branchId, null, _headId, "head1", req, default, "idem-key-1"));
+            svc.HandleAsync(new ReferCircuitFilesCommand(
+                source, _branchId, null, _headId, "head1", req, "idem-key-1")));
         Assert.Contains("referredCount", replay.ResponseBody);
         Assert.Equal(occCount, _db.DocumentOccurrences
             .Count(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred));
@@ -857,7 +883,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "740", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer1Id, TargetCircuitId = target });
         await FlushAlertsAsync();
         Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
@@ -878,7 +904,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "750", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -910,7 +936,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var circuitA = await CreateCircuitAsync("دائرة موحدة");
         var circuitB = (await CreateAsync(branch2.Id, head2.Id, "head2", "دائرة موحدة")).Id;
         var docId = await CreateDocAsync(source, _lawyer1Id, "770", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer1Id, TargetCircuitId = circuitA });
 
         var otherMessage = HeadAlertMessages.CircuitPendingDocuments(new("دائرة موحدة"));
@@ -1027,7 +1053,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "781", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         var log = Assert.Single(_audit.ChangeLogs.Where(c => c.ActionType == "refer_circuit_files" && c.DocumentId == docId));
@@ -1041,7 +1067,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "782", "2026");
-        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+        await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         await CompleteRegistrationsAsync(_lawyer2Id, "lawyer2",
@@ -1550,21 +1576,19 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Assert.Contains("الفرع غير موجود", exBranch.Message);
     }
 
-    private IExecutionCircuitService BuildServiceWithIdempotency()
+    private ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> BuildReferHandlerWithIdempotency()
     {
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        var classifier = new DbExceptionClassifier();
-        return new ExecutionCircuitService(
+        return new ReferCircuitFilesCommandHandler(
             new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
-            new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
             new Repository<DocumentOccurrence>(_db),
-            new HeadAlertRepository(_db), users,
-            uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            classifier, TestClock.Provider, TestClock.TimeZone,
+            users, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
+            uow, tx, _audit, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<ReferCircuitFilesCommand, ReferCircuitFilesResult>>(),
             new IdempotencyStore(_db));
     }
 
@@ -1574,17 +1598,13 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        var classifier = new DbExceptionClassifier();
         return new ExecutionCircuitService(
             new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
             new Repository<Section>(_db),
             documents, new DelegationRepository(_db),
-            new Repository<DocumentOccurrence>(_db),
             new HeadAlertRepository(_db), users,
-            uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            classifier, TestClock.Provider, TestClock.TimeZone,
-            new IdempotencyStore(_db),
-            cache: cache);
+            uow, tx, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
+            cache);
     }
 
     [PostgresFact]
