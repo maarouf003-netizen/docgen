@@ -51,6 +51,7 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _updateDocument;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _deleteDocument;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transferDocument;
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
@@ -82,6 +83,7 @@ public class DocumentsController : ControllerBase
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
         ICommandHandler<UpdateDocumentCommand, DocumentResponse?> updateDocument,
         ICommandHandler<DeleteDocumentCommand, bool> deleteDocument,
+        ICommandHandler<TransferDocumentCommand, DocumentResponse> transferDocument,
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
@@ -112,6 +114,7 @@ public class DocumentsController : ControllerBase
         _createDocument = createDocument;
         _updateDocument = updateDocument;
         _deleteDocument = deleteDocument;
+        _transferDocument = transferDocument;
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
@@ -884,8 +887,9 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var updated = await _documents.TransferAsync(
-                id, request.TargetLawyerId, ActorName, ct, User.GetUserId());
+            var updated = await _transferDocument.HandleAsync(
+                new TransferDocumentCommand(
+                    id, request.TargetLawyerId, ActorName, User.GetUserId()), ct);
             return Ok(updated);
         }
         catch (KeyNotFoundException)

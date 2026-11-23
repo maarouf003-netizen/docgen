@@ -21,6 +21,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly FakeAuditLogger _audit = new();
 
     public ApplicantAndAssignmentTests()
@@ -54,6 +55,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
         _update = bundle.UpdateDocument;
+        _transfer = bundle.TransferDocument;
     }
 
 
@@ -202,7 +204,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
 
-        await _service.TransferAsync(doc.Id, 2, "lawyer1");
+        await _transfer.TransferAsync(doc.Id, 2, "lawyer1");
 
         var loaded = await _service.GetAsync(doc.Id);
         Assert.Equal(2, loaded!.Assignments.Count);

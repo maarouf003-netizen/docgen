@@ -19,6 +19,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
@@ -54,6 +55,7 @@ public class DocumentServiceTests : PostgresDbTest
         _service = bundle.Documents;
         _update = bundle.UpdateDocument;
         _delete = bundle.DeleteDocument;
+        _transfer = bundle.TransferDocument;
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
@@ -864,7 +866,7 @@ public class DocumentServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var transferred = await _service.TransferAsync(created.Id, 2, "head1");
+        var transferred = await _transfer.TransferAsync(created.Id, 2, "head1");
 
         Assert.Equal(2, transferred.CreatedById);
         Assert.Equal("محامي ثانٍ", transferred.Lawyer);
@@ -872,6 +874,9 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Equal("محامي", transferred.ReferredFromLawyer);
         Assert.NotNull(transferred.ReferredAt);
         Assert.Contains("transfer", _audit.Actions);
+        // تثبيت نص التدقيق حرفيًا (الهدف + المنفذ عليه).
+        Assert.Contains(_audit.Details,
+            d => d == "نقل الملف إلى المحامي: محامي ثانٍ — المنفذ عليه: أحمد خالد الخطيب");
     }
 
     [PostgresFact]
@@ -889,7 +894,7 @@ public class DocumentServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 2, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transfer.TransferAsync(created.Id, 2, "head1"));
     }
 
     [PostgresFact]
@@ -907,7 +912,7 @@ public class DocumentServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 2, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transfer.TransferAsync(created.Id, 2, "head1"));
     }
 
     [PostgresFact]
@@ -915,7 +920,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 1, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transfer.TransferAsync(created.Id, 1, "head1"));
     }
 
     private async Task<int> AddLawyerInBranch1Async(string username, string fullName, bool isActive = true)
@@ -5570,6 +5575,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
@@ -5594,6 +5600,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _service = considerBundle.Documents;
         _update = considerBundle.UpdateDocument;
         _delete = considerBundle.DeleteDocument;
+        _transfer = considerBundle.TransferDocument;
         _status = considerBundle.Status;
     }
 

@@ -137,6 +137,7 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
+            null!,
             delete!,
             add!,
             update!,

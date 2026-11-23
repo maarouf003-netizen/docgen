@@ -9,56 +9,6 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService : IDocumentService
 {
-    public async Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null)
-    {
-        return await _tx.RunAsync(async token =>
-        {
-            // كل التحققات داخل المعاملة نفسها لتفادي أي TOCTOU: حالة الهدف (وجود/دور/تفعيل)
-            // تُقرأ في نفس لقطة المعاملة التي يُنفَّذ فيها النقل الذرّي، فلو عُطّل المحامي
-            // أو تغيّرت بياناته لحظياً أثناء النقل لن يُنقل الملف إليه.
-            var target = await _users.GetByIdAsync(targetLawyerId, token);
-            if (target is null || target.Role != UserRole.Lawyer)
-                throw new ArgumentException("المحامي المستهدف غير موجود");
-            if (!target.IsActive)
-                throw new ArgumentException("المحامي المستهدف غير مفعل");
-
-            var doc = await _documents.GetByIdAsync(documentId, token);
-            if (doc is null)
-                throw new KeyNotFoundException();
-
-            if (doc.CreatedById == target.Id)
-                throw new ArgumentException("لا يمكن نقل الملف إلى المحامي المختص به حاليًا");
-            if (target.BranchId != doc.BranchId)
-                throw new ArgumentException("لا يمكن نقل الملف إلى محامٍ من فرع آخر");
-
-            var sourceOwnerId = doc.CreatedById;
-            var transferred = await _documents.TransferOwnerAsync(
-                documentId, doc.CreatedById, target.Id, target.FullName,
-                doc.Lawyer ?? doc.CreatedBy?.FullName ?? string.Empty, token);
-            if (transferred is null)
-                throw new DocumentConflictException("تغيّر المحامي المختص للملف أثناء النقل — أعد المحاولة");
-
-            // سجل تعاقب: الملف أُحيل إلى المحامي المستهدف بتاريخ النقل.
-            await _documents.AddAssignmentAsync(documentId, AssignmentKindCatalog.Transfer,
-                target.FullName, actorName, DateTime.UtcNow, token);
-
-            // الملف المناب: يُزامَن المحامي المختص المخزّن على الإنابة مع المالك الجديد
-            // في نفس المعاملة، فتعرض «تشعبات الملف» ونافذة الإتمام المتابع الحالي.
-            await _delegationService.SyncTargetsTransferredAsync(
-                new[] { documentId }, target.Id, actorName, actorUserId, token);
-
-            await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
-
-            // H2: التنبيه يتبع المالك — داخل معاملة النقل كي لا يبقى تنبيه قديم بلا مالك.
-            if (_executionCircuits is not null && actorUserId.HasValue)
-                await _executionCircuits.SyncPendingAlertsAfterTransferAsync(
-                    sourceOwnerId, target.Id, doc.BranchId ?? target.BranchId ?? 0, actorUserId.Value, token);
-
-            return DocumentResponse.FromEntity(transferred, CurrentYear());
-        }, ct);
-    }
-
     public async Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null)
     {
         var owner = await _users.GetByIdAsync(ownerId, ct);

@@ -22,6 +22,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly IDocumentService _documentService;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
+    private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _documentTransfer;
     private readonly IDocumentSearchService _documentSearch;
     private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
@@ -90,6 +91,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _documentService = docBundle.Documents;
         _documentUpdate = docBundle.UpdateDocument;
         _documentDelete = docBundle.DeleteDocument;
+        _documentTransfer = docBundle.TransferDocument;
         _documentSearch = docBundle.Search;
         _documentStatus = docBundle.Status;
     }
@@ -615,7 +617,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
-        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        await _documentTransfer.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
         _db.ChangeTracker.Clear();
 
         var stored = await _db.DocumentDelegations.AsNoTracking()
@@ -642,7 +644,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
                 && !a.IsArchived);
         Assert.Contains(_lawyer2.Id, oldAlert.Recipients.Select(r => r.UserId));
 
-        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        await _documentTransfer.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
         // محاكاة نطاق الصادر الإنتاجي: معالج التنبيه يعمل بسياق جديد فيرى مالك الملف الجديد.
         _db.ChangeTracker.Clear();
         await FlushAlertsAsync();
@@ -668,7 +670,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var (_, created, targetId) = await RegisteredDelegationAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        await _documentTransfer.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
         _db.ChangeTracker.Clear();
         await FlushAlertsAsync();
 
