@@ -11,7 +11,6 @@ public interface IBranchManagementService
     Task<List<BranchDto>> ListBranchesAsync(CancellationToken ct = default);
     Task<BranchDto> CreateBranchAsync(CreateBranchRequest request, string? actorName, CancellationToken ct = default);
     Task<BranchDto?> UpdateBranchAsync(int branchId, UpdateBranchRequest request, string? actorName, CancellationToken ct = default);
-    Task<bool> DeleteBranchAsync(int branchId, string? actorName, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -142,28 +141,6 @@ public sealed class BranchManagementService : IBranchManagementService
                 branch,
                 userCounts.GetValueOrDefault(branch.Id),
                 documentCounts.GetValueOrDefault(branch.Id));
-        }, ct);
-    }
-
-    public async Task<bool> DeleteBranchAsync(int branchId, string? actorName, CancellationToken ct = default)
-    {
-        var branch = await _branches.GetByIdAsync(branchId, ct);
-        if (branch is null)
-            return false;
-
-        if (await _branches.HasUsersAsync(branchId, ct))
-            throw new ArgumentException("لا يمكن حذف فرع يحتوي على مستخدمين؛ عطّل الفرع بدلاً من ذلك");
-        if (await _branches.HasDocumentsAsync(branchId, ct))
-            throw new ArgumentException("لا يمكن حذف فرع يحتوي على مستندات؛ عطّل الفرع بدلاً من ذلك");
-
-        return await _tx.RunAsync(async token =>
-        {
-            _branches.Remove(branch);
-            await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Branches);
-            await _audit.LogAsync(actorName, "delete_branch",
-                details: $"حذف الفرع: {branch.Name} ({branch.Code})", ct: token);
-            return true;
         }, ct);
     }
 

@@ -13,7 +13,6 @@ public interface IPersonalReminderService
     Task<PersonalReminderDto> CreateAsync(CreatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
     Task<PersonalReminderDto?> UpdateAsync(int id, UpdatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
     Task<PersonalReminderDto?> SetOccurrenceAsync(int id, string occurrenceDate, bool done, int userId, long? version = null, CancellationToken ct = default);
-    Task<bool> DeleteAsync(int id, int userId, string? actorName, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -195,24 +194,6 @@ public sealed class PersonalReminderService : IPersonalReminderService
         }, ct);
 
         return ToDto(reminder);
-    }
-
-    public async Task<bool> DeleteAsync(int id, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var reminder = await _reminders.GetByIdAsync(id, ct);
-        if (reminder is null || reminder.LawyerId != userId)
-            return false;
-
-        var title = reminder.Title;
-        await _tx.RunAsync(async token =>
-        {
-            _reminders.Remove(reminder);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "personal-reminder.delete",
-                details: $"حذف تذكيره الشخصي: {title}",
-                ct: token);
-        }, ct);
-        return true;
     }
 
     private static string ValidateTitle(string? title)

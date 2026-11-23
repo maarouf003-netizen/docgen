@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,6 +16,7 @@ namespace DocGenerator.Application.Tests;
 public class BranchManagementServiceTests : PostgresDbTest
 {
     private readonly IBranchManagementService _service;
+    private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
@@ -32,6 +35,8 @@ public class BranchManagementServiceTests : PostgresDbTest
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         _service = new BranchManagementService(branches, uow, tx, _audit);
+        _deleteBranch = new DeleteBranchCommandHandler(
+            branches, uow, _audit, Array.Empty<IPipelineBehavior<DeleteBranchCommand, bool>>());
     }
 
     [PostgresFact]
@@ -231,7 +236,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_UnusedBranch_Succeeds()
     {
-        var ok = await _service.DeleteBranchAsync(AleppoId, "admin");
+        var ok = await _deleteBranch.HandleAsync(new DeleteBranchCommand(AleppoId, "admin"));
 
         Assert.True(ok);
         Assert.Null(await _db.Branches.FindAsync(AleppoId));
@@ -252,7 +257,7 @@ public class BranchManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DeleteBranchAsync(DamascusId, "admin"));
+            _deleteBranch.HandleAsync(new DeleteBranchCommand(DamascusId, "admin")));
 
         Assert.Contains("مستخدمين", ex.Message);
         Assert.NotNull(await _db.Branches.FindAsync(DamascusId));
@@ -286,7 +291,7 @@ public class BranchManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DeleteBranchAsync(DamascusId, "admin"));
+            _deleteBranch.HandleAsync(new DeleteBranchCommand(DamascusId, "admin")));
 
         Assert.Contains("مستندات", ex.Message);
         Assert.NotNull(await _db.Branches.FindAsync(DamascusId));
@@ -295,7 +300,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_NotFound_ReturnsFalse()
     {
-        var ok = await _service.DeleteBranchAsync(999, "admin");
+        var ok = await _deleteBranch.HandleAsync(new DeleteBranchCommand(999, "admin"));
 
         Assert.False(ok);
     }

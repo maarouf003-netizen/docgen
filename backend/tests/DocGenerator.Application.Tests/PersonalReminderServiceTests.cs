@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -13,6 +15,7 @@ namespace DocGenerator.Application.Tests;
 public class PersonalReminderServiceTests : PostgresDbTest
 {
     private readonly IPersonalReminderService _service;
+    private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer1;
     private readonly User _lawyer2;
@@ -46,6 +49,14 @@ public class PersonalReminderServiceTests : PostgresDbTest
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit);
+        _deleteReminder = new DeletePersonalReminderCommandHandler(
+            new PersonalReminderRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<DeletePersonalReminderCommand, bool>[]
+            {
+                new TransactionBehavior<DeletePersonalReminderCommand, bool>(new TransactionRunner(_db)),
+            });
     }
 
 
@@ -334,8 +345,8 @@ public class PersonalReminderServiceTests : PostgresDbTest
     {
         var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
-        Assert.False(await _service.DeleteAsync(dto.Id, _lawyer2.Id, "lawyer2"));
-        Assert.True(await _service.DeleteAsync(dto.Id, _lawyer1.Id, "lawyer1"));
+        Assert.False(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer2.Id, "lawyer2")));
+        Assert.True(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer1.Id, "lawyer1")));
         Assert.Empty(await _service.ListAsync(_lawyer1.Id, includeArchived: true));
         Assert.Contains("personal-reminder.delete", _audit.Actions);
     }
