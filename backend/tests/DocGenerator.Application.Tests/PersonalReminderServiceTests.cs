@@ -17,6 +17,8 @@ public class PersonalReminderServiceTests : PostgresDbTest
     private readonly IPersonalReminderService _service;
     private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
     private readonly ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> _setOccurrence;
+    private readonly ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> _createReminder;
+    private readonly ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?> _updateReminder;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer1;
     private readonly User _lawyer2;
@@ -45,11 +47,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
         _db.Users.AddRange(_lawyer1, _lawyer2);
         _db.SaveChanges();
 
-        _service = new PersonalReminderService(
-            new PersonalReminderRepository(_db),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit);
+        _service = new PersonalReminderService(new PersonalReminderRepository(_db));
         _deleteReminder = new DeletePersonalReminderCommandHandler(
             new PersonalReminderRepository(_db),
             new UnitOfWork(_db),
@@ -66,7 +64,34 @@ public class PersonalReminderServiceTests : PostgresDbTest
                 new TransactionBehavior<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>(
                     new TransactionRunner(_db)),
             });
+        _createReminder = new CreatePersonalReminderCommandHandler(
+            new PersonalReminderRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<CreatePersonalReminderCommand, PersonalReminderDto>[]
+            {
+                new TransactionBehavior<CreatePersonalReminderCommand, PersonalReminderDto>(
+                    new TransactionRunner(_db)),
+            });
+        _updateReminder = new UpdatePersonalReminderCommandHandler(
+            new PersonalReminderRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<UpdatePersonalReminderCommand, PersonalReminderDto?>[]
+            {
+                new TransactionBehavior<UpdatePersonalReminderCommand, PersonalReminderDto?>(
+                    new TransactionRunner(_db)),
+            });
     }
+
+    private Task<PersonalReminderDto> CreateAsync(
+        CreatePersonalReminderRequest request, int userId, string? actorName)
+        => _createReminder.HandleAsync(new CreatePersonalReminderCommand(request, userId, actorName));
+
+    private Task<PersonalReminderDto?> UpdateAsync(
+        int id, UpdatePersonalReminderRequest request, int userId, string? actorName)
+        => _updateReminder.HandleAsync(
+            new UpdatePersonalReminderCommand(id, request, userId, actorName));
 
     private Task<PersonalReminderDto?> SetOccurrenceAsync(
         int id, string occurrenceDate, bool done, int userId, long? version = null)
@@ -85,7 +110,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_Valid_ReturnsDtoWithIsoDates()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
         Assert.Equal("مراجعة الملف", dto.Title);
         Assert.Equal("2026-08-08", dto.DueDate);
@@ -93,6 +118,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
         Assert.False(dto.IsArchived);
         Assert.Empty(dto.CompletedOccurrenceKeys);
         Assert.Contains("personal-reminder.create", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d == "أنشأ تذكيرًا شخصيًا: مراجعة الملف");
     }
 
     [PostgresTheory]
@@ -101,7 +127,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     public async Task Create_EmptyTitle_Throws(string title)
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(title: title), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(title: title), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
@@ -109,7 +135,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     {
         var request = ValidRequest(title: new string('ع', PersonalReminderCatalog.TitleMaxLength + 1));
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(request, _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(request, _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresTheory]
@@ -118,14 +144,14 @@ public class PersonalReminderServiceTests : PostgresDbTest
     public async Task Create_InvalidColor_Throws(string color)
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(color: color), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(color: color), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
     public async Task Create_InvalidRecurrence_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(recurrence: "سنوي"), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(recurrence: "سنوي"), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresTheory]
@@ -135,14 +161,14 @@ public class PersonalReminderServiceTests : PostgresDbTest
     public async Task Create_InvalidDueDate_Throws(string dueDate)
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(dueDate: dueDate), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(dueDate: dueDate), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
     public async Task Create_AcceptsSystemDateFormats()
     {
         // نفس عقد تواريخ النظام: `d/M/yyyy` والأرقام العربية مقبولة وتُطبَّع `yyyy-MM-dd`.
-        var dto = await _service.CreateAsync(ValidRequest(dueDate: "8/8/2026"), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(dueDate: "8/8/2026"), _lawyer1.Id, "lawyer1");
         Assert.Equal("2026-08-08", dto.DueDate);
     }
 
@@ -153,19 +179,19 @@ public class PersonalReminderServiceTests : PostgresDbTest
             recurrence: PersonalReminderCatalog.RecurrenceDaily,
             recurrenceEnd: "2026-08-07");
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(request, _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(request, _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
     public async Task Update_DueDateBeyondRecurrenceEnd_Throws()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily, recurrenceEnd: "2026-08-10"),
             _lawyer1.Id,
             "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.UpdateAsync(
+            () => UpdateAsync(
                 dto.Id,
                 new UpdatePersonalReminderRequest(null, null, "2026-08-15", null, null, null, null),
                 _lawyer1.Id,
@@ -176,10 +202,10 @@ public class PersonalReminderServiceTests : PostgresDbTest
     public async Task Create_BeyondCap_Throws()
     {
         for (var i = 0; i < PersonalReminderCatalog.MaxActivePerUser; i++)
-            await _service.CreateAsync(ValidRequest(title: $"تذكير {i}"), _lawyer1.Id, "lawyer1");
+            await CreateAsync(ValidRequest(title: $"تذكير {i}"), _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
@@ -187,10 +213,10 @@ public class PersonalReminderServiceTests : PostgresDbTest
     {
         // بلا خيار أرشفة في الواجهة: الرسالة توجه للحذف لا للأرشفة.
         for (var i = 0; i < PersonalReminderCatalog.MaxActivePerUser; i++)
-            await _service.CreateAsync(ValidRequest(title: $"تذكير {i}"), _lawyer1.Id, "lawyer1");
+            await CreateAsync(ValidRequest(title: $"تذكير {i}"), _lawyer1.Id, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
+            () => CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
         Assert.Equal(
             $"تجاوزت الحد الأقصى للتذكيرات النشطة ({PersonalReminderCatalog.MaxActivePerUser}) — احذف القديم منها",
             ex.Message);
@@ -199,7 +225,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetOccurrence_Overflow_MessageDirectsToEndDateOrDelete()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
         // ملء السجل حتى حده مباشرة بمفاتيح مميزة (أسرع من مئات الاستدعاءات) ثم تجاوزه بنداء واحد.
         var stuffed = await _db.PersonalReminders.FindAsync(dto.Id);
@@ -217,7 +243,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task GetById_OwnerReturnsNonOwnerNull()
     {
-        var created = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var created = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
         var found = await _service.GetByIdAsync(created.Id, _lawyer1.Id);
         Assert.NotNull(found);
@@ -231,9 +257,9 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_NonOwner_ReturnsNull()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
-        var result = await _service.UpdateAsync(
+        var result = await UpdateAsync(
             dto.Id,
             new UpdatePersonalReminderRequest("معدل", null, null, null, null, null, null),
             _lawyer2.Id,
@@ -245,9 +271,9 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_Owner_AppliesFieldsAndArchive()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(
+        var updated = await UpdateAsync(
             dto.Id,
             new UpdatePersonalReminderRequest("معدل", null, "2026-09-01", null, null, null, true),
             _lawyer1.Id,
@@ -263,10 +289,10 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_StaleVersion_ThrowsConflict_WithoutChanges()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.UpdateAsync(
+            UpdateAsync(
                 dto.Id,
                 new UpdatePersonalReminderRequest("لا يُحفظ", null, null, null, null, null, null, dto.Version + 3),
                 _lawyer1.Id,
@@ -280,10 +306,10 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_MatchingVersion_IncrementsVersion()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
         Assert.Equal(0, dto.Version);
 
-        var updated = await _service.UpdateAsync(
+        var updated = await UpdateAsync(
             dto.Id,
             new UpdatePersonalReminderRequest("معدل", null, null, null, null, null, null, dto.Version),
             _lawyer1.Id,
@@ -296,7 +322,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetOccurrence_StaleVersion_ThrowsConflict()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
@@ -308,8 +334,8 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task List_ExcludesArchivedByDefault()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
-        await _service.UpdateAsync(
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        await UpdateAsync(
             dto.Id,
             new UpdatePersonalReminderRequest(null, null, null, null, null, null, true),
             _lawyer1.Id,
@@ -322,7 +348,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetOccurrence_TogglesDoneAndRejectsBadKey()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
 
         var done = await SetOccurrenceAsync(dto.Id, "2026-08-09", true, _lawyer1.Id);
@@ -342,9 +368,9 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetOccurrence_Archived_Throws()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
-        await _service.UpdateAsync(
+        await UpdateAsync(
             dto.Id,
             new UpdatePersonalReminderRequest(null, null, null, null, null, null, true),
             _lawyer1.Id,
@@ -357,7 +383,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_OwnerOnly()
     {
-        var dto = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
+        var dto = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
         Assert.False(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer2.Id, "lawyer2")));
         Assert.True(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer1.Id, "lawyer1")));

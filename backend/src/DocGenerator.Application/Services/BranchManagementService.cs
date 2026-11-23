@@ -9,12 +9,11 @@ namespace DocGenerator.Application.Services;
 public interface IBranchManagementService
 {
     Task<List<BranchDto>> ListBranchesAsync(CancellationToken ct = default);
-    Task<BranchDto?> UpdateBranchAsync(int branchId, UpdateBranchRequest request, string? actorName, CancellationToken ct = default);
 }
 
 /// <summary>
-/// إدارة الفروع (إضافة/تعديل/حذف) — مشرف النظام والمدير (قرار §2.15).
-/// التحقق من الصلاحية في المتحكم، والتحقق المنطقي والكتابة هنا ضمن معاملة مع سجل التدقيق.
+/// إدارة الفروع (قراءة القائمة؛ الإنشاء/التعديل/الحذف في Commands `P4-01`).
+/// التحقق من الصلاحية في المتحكم، والتحقق المنطقي والكتابة في المعالجات ضمن معاملة مع سجل التدقيق.
 /// المحافظة إجبارية في الإنشاء والتعديل (تحدد نطاق رئيس القسم في سجل الجهات العامة).
 /// الحذف النهائي محصور بالفروع غير المستخدمة؛ الفرع المستخدم يُعطَّل (IsActive) بدلاً من الحذف.
 /// </summary>
@@ -22,20 +21,17 @@ public sealed class BranchManagementService : IBranchManagementService
 {
     private readonly IBranchRepository _branches;
     private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IReferenceDataCache? _cache;
 
     public BranchManagementService(
         IBranchRepository branches,
         IUnitOfWork uow,
-        ITransactionRunner tx,
         IAuditLogger audit,
         IReferenceDataCache? cache = null)
     {
         _branches = branches;
         _uow = uow;
-        _tx = tx;
         _audit = audit;
         _cache = cache;
     }
@@ -61,50 +57,6 @@ public sealed class BranchManagementService : IBranchManagementService
             .ToList();
     }
 
-    public async Task<BranchDto?> UpdateBranchAsync(int branchId, UpdateBranchRequest request, string? actorName, CancellationToken ct = default)
-    {
-        var branch = await _branches.GetByIdAsync(branchId, ct);
-        if (branch is null)
-            return null;
-
-        OptimisticConcurrencyGuard.EnsureCurrent(branch, request.Version, "الفرع");
-
-        var name = NormalizeRequired(request.Name, "اسم الفرع مطلوب");
-        var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
-        // المحافظة إجبارية حتى في التعديل — إن كانت فرعًا قديمًا بلا محافظة فالتعديل يفرض اختيارها
-        // (تُشفى البيانات القديمة تدريجيًا عبر نفس الشاشة بلا هجرة بيانات).
-        var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
-        if (!GovernorateCatalog.IsGovernorate(governorate))
-            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
-
-        if (await _branches.NameExistsAsync(name, branch.Id, ct))
-            throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
-        if (await _branches.CodeExistsAsync(code, branch.Id, ct))
-            throw new ArgumentException("كود الفرع مستخدم مسبقاً");
-
-        branch.Name = name;
-        branch.Code = code;
-        branch.Address = NormalizeOptional(request.Address);
-        branch.Phone = NormalizeOptional(request.Phone);
-        branch.Governorate = governorate;
-        branch.IsActive = request.IsActive;
-
-        var userCounts = await _branches.CountUsersByBranchAsync(ct);
-        var documentCounts = await _branches.CountDocumentsByBranchAsync(ct);
-
-        return await _tx.RunAsync(async token =>
-        {
-            _branches.Update(branch);
-            await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Branches);
-            await _audit.LogAsync(actorName, "update_branch",
-                details: $"عدّل الفرع: {branch.Name} ({branch.Code})", ct: token);
-            return ToDto(
-                branch,
-                userCounts.GetValueOrDefault(branch.Id),
-                documentCounts.GetValueOrDefault(branch.Id));
-        }, ct);
-    }
 
     internal static string NormalizeRequired(string? value, string message)
     {

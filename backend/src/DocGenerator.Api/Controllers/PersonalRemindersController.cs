@@ -19,17 +19,23 @@ public class PersonalRemindersController : ControllerBase
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
     private readonly ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> _setOccurrence;
+    private readonly ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> _createReminder;
+    private readonly ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?> _updateReminder;
 
     public PersonalRemindersController(
         IPersonalReminderService reminders,
         IUserCapabilities capabilities,
         ICommandHandler<DeletePersonalReminderCommand, bool> deleteReminder,
-        ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> setOccurrence)
+        ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> setOccurrence,
+        ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> createReminder,
+        ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?> updateReminder)
     {
         _reminders = reminders;
         _capabilities = capabilities;
         _deleteReminder = deleteReminder;
         _setOccurrence = setOccurrence;
+        _createReminder = createReminder;
+        _updateReminder = updateReminder;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -52,7 +58,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var reminder = await _reminders.CreateAsync(request, User.GetUserId(), ActorName, ct);
+        var reminder = await _createReminder.HandleAsync(
+            new CreatePersonalReminderCommand(request, User.GetUserId(), ActorName), ct);
         return CreatedAtAction(nameof(Get), new { id = reminder.Id }, reminder);
     }
 
@@ -72,7 +79,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var reminder = await _reminders.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        var reminder = await _updateReminder.HandleAsync(
+            new UpdatePersonalReminderCommand(id, request, User.GetUserId(), ActorName), ct);
         return reminder is null ? NotFound() : Ok(reminder);
     }
 

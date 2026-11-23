@@ -17,17 +17,20 @@ public class BranchesController : ControllerBase
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
     private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
+    private readonly ICommandHandler<UpdateBranchCommand, BranchDto?> _updateBranch;
 
     public BranchesController(
         IBranchManagementService branches,
         IUserCapabilities capabilities,
         ICommandHandler<DeleteBranchCommand, bool> deleteBranch,
-        ICommandHandler<CreateBranchCommand, BranchDto> createBranch)
+        ICommandHandler<CreateBranchCommand, BranchDto> createBranch,
+        ICommandHandler<UpdateBranchCommand, BranchDto?> updateBranch)
     {
         _branches = branches;
         _capabilities = capabilities;
         _deleteBranch = deleteBranch;
         _createBranch = createBranch;
+        _updateBranch = updateBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -64,7 +67,8 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        var branch = await _branches.UpdateBranchAsync(id, request, ActorName, ct);
+        var branch = await _updateBranch.HandleAsync(
+            new UpdateBranchCommand(id, request, ActorName), ct);
         return branch is null ? NotFound() : Ok(branch);
     }
 

@@ -91,6 +91,9 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteExecutionActionCommand, bool>, DeleteExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentInterventionCommand, bool>, DeleteDocumentInterventionCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateBranchCommand, BranchDto?>, UpdateBranchCommandHandler>();
+        services.AddScoped<ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto>, CreatePersonalReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?>, UpdatePersonalReminderCommandHandler>();
         return services;
     }
 }

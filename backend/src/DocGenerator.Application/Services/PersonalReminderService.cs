@@ -10,32 +10,20 @@ public interface IPersonalReminderService
 {
     Task<List<PersonalReminderDto>> ListAsync(int userId, bool includeArchived, CancellationToken ct = default);
     Task<PersonalReminderDto?> GetByIdAsync(int id, int userId, CancellationToken ct = default);
-    Task<PersonalReminderDto> CreateAsync(CreatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<PersonalReminderDto?> UpdateAsync(int id, UpdatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
 }
 
 /// <summary>
 /// التذكيرات الشخصية الحرة للمحامي: كل عملية مقيدة بمالك التذكير (غير المالك
 /// يُعامل كغياب — `null`/`false` — دون كشف الوجود)، والكتابة ضمن معاملة مع سجل التدقيق.
+/// الإنشاء/التعديل مملوكان لـ`CreatePersonalReminderCommand`/`UpdatePersonalReminderCommand`؛
+/// هذه الخدمة للقراءة والتحقق/الإسقاط المشتركين.
 /// </summary>
 public sealed class PersonalReminderService : IPersonalReminderService
 {
     private readonly IPersonalReminderRepository _reminders;
-    private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
 
-    public PersonalReminderService(
-        IPersonalReminderRepository reminders,
-        IUnitOfWork uow,
-        ITransactionRunner tx,
-        IAuditLogger audit)
-    {
-        _reminders = reminders;
-        _uow = uow;
-        _tx = tx;
-        _audit = audit;
-    }
+    public PersonalReminderService(IPersonalReminderRepository reminders)
+        => _reminders = reminders;
 
     public async Task<List<PersonalReminderDto>> ListAsync(int userId, bool includeArchived, CancellationToken ct = default)
     {
@@ -55,114 +43,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return ToDto(reminder);
     }
 
-    public async Task<PersonalReminderDto> CreateAsync(
-        CreatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var title = ValidateTitle(request.Title);
-        var notes = ValidateNotes(request.Notes);
-        var dueDate = PersonalReminderDates.ParseDay(request.DueDate, "تاريخ الاستحقاق");
-        var color = ValidateColor(request.Color);
-        var recurrence = ValidateRecurrence(request.Recurrence);
-        DateTime? recurrenceEnd = request.RecurrenceEnd is null
-            ? null
-            : PersonalReminderDates.ParseDay(request.RecurrenceEnd, "تاريخ انتهاء التكرار");
-        if (recurrenceEnd < dueDate)
-            throw new ArgumentException("تاريخ انتهاء التكرار يجب أن يكون مساويًا لتاريخ الاستحقاق أو بعده");
-
-        var activeCount = await _reminders.CountActiveAsync(userId, ct);
-        if (activeCount >= PersonalReminderCatalog.MaxActivePerUser)
-            throw new ArgumentException($"تجاوزت الحد الأقصى للتذكيرات النشطة ({PersonalReminderCatalog.MaxActivePerUser}) — احذف القديم منها");
-
-        var reminder = new PersonalReminder
-        {
-            LawyerId = userId,
-            Title = title,
-            Notes = notes,
-            DueDate = dueDate,
-            Color = color,
-            Recurrence = recurrence,
-            RecurrenceEnd = recurrenceEnd,
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _reminders.AddAsync(reminder, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "personal-reminder.create",
-                details: $"أنشأ تذكيرًا شخصيًا: {title}",
-                ct: token);
-        }, ct);
-
-        return ToDto(reminder);
-    }
-
-    public async Task<PersonalReminderDto?> UpdateAsync(
-        int id, UpdatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var reminder = await _reminders.GetByIdAsync(id, ct);
-        if (reminder is null || reminder.LawyerId != userId)
-            return null;
-
-        OptimisticConcurrencyGuard.EnsureCurrent(reminder, request.Version, "التذكير الشخصي");
-
-        var changed = new List<string>();
-        if (request.Title is not null)
-        {
-            reminder.Title = ValidateTitle(request.Title);
-            changed.Add("العنوان");
-        }
-        if (request.Notes is not null)
-        {
-            reminder.Notes = ValidateNotes(request.Notes);
-            changed.Add("الملاحظة");
-        }
-        if (request.DueDate is not null)
-        {
-            reminder.DueDate = PersonalReminderDates.ParseDay(request.DueDate, "تاريخ الاستحقاق");
-            changed.Add("تاريخ الاستحقاق");
-        }
-        if (request.Color is not null)
-        {
-            reminder.Color = ValidateColor(request.Color);
-            changed.Add("اللون");
-        }
-        if (request.Recurrence is not null)
-        {
-            reminder.Recurrence = ValidateRecurrence(request.Recurrence);
-            changed.Add("التكرار");
-        }
-        if (request.RecurrenceEnd is not null)
-        {
-            reminder.RecurrenceEnd = string.IsNullOrWhiteSpace(request.RecurrenceEnd)
-                ? null
-                : PersonalReminderDates.ParseDay(request.RecurrenceEnd, "تاريخ انتهاء التكرار");
-            changed.Add("انتهاء التكرار");
-        }
-        if (reminder.RecurrenceEnd < reminder.DueDate)
-            throw new ArgumentException("تاريخ انتهاء التكرار يجب أن يكون مساويًا لتاريخ الاستحقاق أو بعده");
-        if (request.IsArchived is not null && reminder.IsArchived != request.IsArchived.Value)
-        {
-            reminder.IsArchived = request.IsArchived.Value;
-            changed.Add(request.IsArchived.Value ? "الأرشفة" : "إعادة التفعيل");
-        }
-
-        if (changed.Count == 0)
-            return ToDto(reminder);
-
-        await _tx.RunAsync(async token =>
-        {
-            _reminders.Update(reminder);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "personal-reminder.update",
-                details: $"عدّل تذكيره الشخصي «{reminder.Title}»: {string.Join("، ", changed)}",
-                ct: token);
-        }, ct);
-
-        return ToDto(reminder);
-    }
-
-    private static string ValidateTitle(string? title)
+    internal static string ValidateTitle(string? title)
     {
         var trimmed = title?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(trimmed))
@@ -172,7 +53,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return trimmed;
     }
 
-    private static string? ValidateNotes(string? notes)
+    internal static string? ValidateNotes(string? notes)
     {
         var trimmed = notes?.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -182,7 +63,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return trimmed;
     }
 
-    private static string? ValidateColor(string? color)
+    internal static string? ValidateColor(string? color)
     {
         var trimmed = color?.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -192,7 +73,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return trimmed;
     }
 
-    private static string ValidateRecurrence(string? recurrence)
+    internal static string ValidateRecurrence(string? recurrence)
     {
         var trimmed = recurrence?.Trim() ?? string.Empty;
         if (!PersonalReminderCatalog.Recurrences.Contains(trimmed))

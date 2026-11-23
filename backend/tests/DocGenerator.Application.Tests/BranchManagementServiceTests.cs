@@ -18,6 +18,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     private readonly IBranchManagementService _service;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
     private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
+    private readonly ICommandHandler<UpdateBranchCommand, BranchDto?> _updateBranch;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
@@ -34,13 +35,18 @@ public class BranchManagementServiceTests : PostgresDbTest
 
         var branches = new BranchRepository(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        _service = new BranchManagementService(branches, uow, tx, _audit);
+        _service = new BranchManagementService(branches, uow, _audit);
         _deleteBranch = new DeleteBranchCommandHandler(
             branches, uow, _audit, Array.Empty<IPipelineBehavior<DeleteBranchCommand, bool>>());
         _createBranch = new CreateBranchCommandHandler(
             branches, uow, _audit, Array.Empty<IPipelineBehavior<CreateBranchCommand, BranchDto>>());
+        _updateBranch = new UpdateBranchCommandHandler(
+            branches, uow, _audit, Array.Empty<IPipelineBehavior<UpdateBranchCommand, BranchDto?>>());
     }
+
+    private Task<BranchDto?> UpdateBranchAsync(
+        int branchId, UpdateBranchRequest request, string? actorName)
+        => _updateBranch.HandleAsync(new UpdateBranchCommand(branchId, request, actorName));
 
     private Task<BranchDto> CreateBranchAsync(CreateBranchRequest request, string? actorName)
         => _createBranch.HandleAsync(new CreateBranchCommand(request, actorName));
@@ -52,7 +58,7 @@ public class BranchManagementServiceTests : PostgresDbTest
             new Microsoft.Extensions.Caching.Memory.MemoryCache(
                 new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
         var cachedService = new BranchManagementService(
-            new BranchRepository(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit, cache);
+            new BranchRepository(_db), new UnitOfWork(_db), _audit, cache);
 
         var cachedCreate = new CreateBranchCommandHandler(
             new BranchRepository(_db), new UnitOfWork(_db), _audit,
@@ -128,7 +134,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_ModifiesFields_AndDeactivates()
     {
-        var updated = await _service.UpdateBranchAsync(
+        var updated = await UpdateBranchAsync(
             DamascusId,
             new UpdateBranchRequest("دمشق المركز", "DAMC", "شارع البريد", "011123456", false, "دمشق"),
             "admin");
@@ -140,13 +146,14 @@ public class BranchManagementServiceTests : PostgresDbTest
         Assert.False(updated.IsActive);
         Assert.Equal("011123456", updated.Phone);
         Assert.Contains("update_branch", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d == "عدّل الفرع: دمشق المركز (DAMC)");
     }
 
     [PostgresFact]
     public async Task Update_EmptyGovernorate_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateBranchAsync(DamascusId, new UpdateBranchRequest("دمشق", "DAM", null, null, true, "  "), "admin"));
+            UpdateBranchAsync(DamascusId, new UpdateBranchRequest("دمشق", "DAM", null, null, true, "  "), "admin"));
 
         Assert.Contains("المحافظة مطلوبة", ex.Message);
         Assert.Equal("دمشق", (await _db.Branches.FindAsync(DamascusId))!.Governorate);
@@ -157,14 +164,14 @@ public class BranchManagementServiceTests : PostgresDbTest
     {
         // حلب تأخذ اسم "دمشق" — ممنوع (فرع آخر بنفس الاسم).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateBranchAsync(AleppoId, new UpdateBranchRequest("دمشق", "ALP", null, null, true, "حلب"), "admin"));
+            UpdateBranchAsync(AleppoId, new UpdateBranchRequest("دمشق", "ALP", null, null, true, "حلب"), "admin"));
     }
 
     [PostgresFact]
     public async Task Update_SameNameSelf_IsAllowed()
     {
         // الإبقاء على نفس الاسم والكود عند التحديث لا يعد تكراراً.
-        var updated = await _service.UpdateBranchAsync(
+        var updated = await UpdateBranchAsync(
             DamascusId,
             new UpdateBranchRequest("دمشق", "DAM", null, null, true, "دمشق"),
             "admin");
@@ -176,7 +183,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_NotFound_ReturnsNull()
     {
-        var result = await _service.UpdateBranchAsync(
+        var result = await UpdateBranchAsync(
             999, new UpdateBranchRequest("غير موجود", "XXX", null, null, true), "admin");
 
         Assert.Null(result);
@@ -187,7 +194,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     {
         // P0-06: النسخة القادمة من العميل لا تطابق المحمّلة — رفض مبكر 409.
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.UpdateBranchAsync(
+            UpdateBranchAsync(
                 DamascusId,
                 new UpdateBranchRequest("اسم مبتذل", "DAM", null, null, true, "دمشق", 99),
                 "admin"));
@@ -203,7 +210,7 @@ public class BranchManagementServiceTests : PostgresDbTest
         var stored = await _db.Branches.AsNoTracking().SingleAsync(b => b.Id == DamascusId);
         Assert.Equal(0, stored.Version);
 
-        var updated = await _service.UpdateBranchAsync(
+        var updated = await UpdateBranchAsync(
             DamascusId,
             new UpdateBranchRequest("دمشق الجديدة", "DAM", null, null, true, "دمشق", stored.Version),
             "admin");

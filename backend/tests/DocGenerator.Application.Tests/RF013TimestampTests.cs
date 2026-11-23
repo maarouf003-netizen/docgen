@@ -1,5 +1,7 @@
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -17,6 +19,7 @@ namespace DocGenerator.Application.Tests;
 public class RF013TimestampTests : PostgresDbTest
 {
     private readonly IPersonalReminderService _service;
+    private readonly ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> _createReminder;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
 
@@ -35,12 +38,21 @@ public class RF013TimestampTests : PostgresDbTest
         _db.Users.Add(_lawyer);
         _db.SaveChanges();
 
-        _service = new PersonalReminderService(
+        _service = new PersonalReminderService(new PersonalReminderRepository(_db));
+        _createReminder = new CreatePersonalReminderCommandHandler(
             new PersonalReminderRepository(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit);
+            _audit,
+            new IPipelineBehavior<CreatePersonalReminderCommand, PersonalReminderDto>[]
+            {
+                new TransactionBehavior<CreatePersonalReminderCommand, PersonalReminderDto>(
+                    new TransactionRunner(_db)),
+            });
     }
+
+    private Task<PersonalReminderDto> CreateAsync(
+        CreatePersonalReminderRequest request, int userId, string? actorName)
+        => _createReminder.HandleAsync(new CreatePersonalReminderCommand(request, userId, actorName));
 
 
     private static DocGeneratorPostgresDbContext PostgresModel()
@@ -73,7 +85,7 @@ public class RF013TimestampTests : PostgresDbTest
     public async Task ReminderDay_RoundTrips_OnNewYearMidnight()
     {
         // توصيف (يخضر قبل/بعد): يوم رأس السنة الحرج يُحفَظ ويُقرأ نفسه على `SQLite`.
-        var dto = await _service.CreateAsync(
+        var dto = await CreateAsync(
             new CreatePersonalReminderRequest("رأس السنة", null, "1/1/2026", null, PersonalReminderCatalog.RecurrenceOnce, "1/1/2026"),
             _lawyer.Id, "tester");
 
