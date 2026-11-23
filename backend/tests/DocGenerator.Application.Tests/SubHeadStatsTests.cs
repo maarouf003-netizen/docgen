@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,6 +22,7 @@ public class SubHeadStatsTests : PostgresDbTest
     private readonly IStatisticsRepository _stats;
     private readonly IExecutionCircuitService _circuits;
     private readonly IHeadAlertService _alerts;
+    private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
 
@@ -74,6 +77,8 @@ public class SubHeadStatsTests : PostgresDbTest
             tx,
             _audit,
             tx);
+        _markRead = new MarkHeadAlertReadCommandHandler(
+            new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
     }
 
 
@@ -300,8 +305,8 @@ public class SubHeadStatsTests : PostgresDbTest
         // تعليم القراءة يعمل للمستلم الرئيس.
         var own = Assert.Single(headList);
         Assert.False(own.IsRead);
-        Assert.True(await _alerts.MarkReadAsync(
-            own.Id, new HeadAlertActor(_head1.Id, _head1.Role, _head1.BranchId)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(
+            own.Id, new HeadAlertActor(_head1.Id, _head1.Role, _head1.BranchId))));
         var afterRead = (await ReceivedAlertsAsync(_head1)).Items;
         Assert.True(Assert.Single(afterRead).IsRead);
     }

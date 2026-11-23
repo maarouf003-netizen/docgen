@@ -793,9 +793,6 @@ public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
             CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default)
             => _inner.CreateAsync(request, actor, actorName, ct);
 
-        public Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default)
-            => _inner.MarkReadAsync(alertId, actor, ct);
-
         public Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
             => _inner.RemoveAppealRecipientAsync(appealId, userId, ct);
 

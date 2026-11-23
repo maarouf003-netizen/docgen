@@ -3,8 +3,10 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ReviewLetters;
+using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Application.UseCases.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,6 +76,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         services.AddScoped<ICommandHandler<MarkReviewRepliesSeenCommand, bool>, MarkReviewRepliesSeenCommandHandler>();
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();
+        services.AddScoped<ICommandHandler<MarkHeadAlertReadCommand, bool>, MarkHeadAlertReadCommandHandler>();
+        services.AddScoped<ICommandHandler<MarkAppSuggestionReadCommand, bool>, MarkAppSuggestionReadCommandHandler>();
         return services;
     }
 }

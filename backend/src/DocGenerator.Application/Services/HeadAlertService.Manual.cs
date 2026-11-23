@@ -88,24 +88,6 @@ public sealed partial class HeadAlertService : IHeadAlertService
         return created;
     }
 
-    public async Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-
-        if (!RolePermissions.CanReceiveAlerts(actor.Role))
-            throw new UnauthorizedAccessException("تعليم القراءة مخصص للمستلمين (محامٍ أو رئيس نطاق)");
-
-        // تعليم ذرّي في المستودع (مراجعة PR-4: `ح‑2` ثم ملاحظة المرحلة 3 `ح‑10`):
-        // قراءة ثم حفظ داخل معاملة الخدمة كانت تُبقي نافذة TOCTOU، وتُبطل ضمان إعادة
-        // المحاولة لأن الكيان المتتبَّع يختصر الحفظ بعد فشل عابر. التحديث الشرطي
-        // الواحد يُغلق النافذتين، ويُبقي إعادة التعليم idempotent (لا يمسّ `ReadAt`).
-        return await _alerts.TryMarkReadAsync(alertId, actor.UserId, DateTime.UtcNow, ct);
-    }
-
-    /// <summary>
-    /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
-    /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
-    /// </summary>
     public async Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
     {
         var removed = 0;

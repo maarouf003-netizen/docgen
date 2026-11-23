@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,6 +16,7 @@ namespace DocGenerator.Application.Tests;
 public class HeadAlertServiceTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
+    private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly FakeAuditLogger _audit = new();
     private readonly TransactionRunner _tx;
     private readonly int _branchId;
@@ -66,6 +69,8 @@ public class HeadAlertServiceTests : PostgresDbTest
         _tx = new TransactionRunner(_db);
         _service = new HeadAlertService(alerts, documents, users, branches,
             new DelegationRepository(_db), uow, _tx, _audit);
+        _markRead = new MarkHeadAlertReadCommandHandler(
+            new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
     }
 
 
@@ -332,7 +337,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         Assert.Equal(1, single.UnreadCount);
 
         // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
-        Assert.True(await _service.MarkReadAsync(ownId, ActorFor(_head)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(ownId, ActorFor(_head))));
         list = await ReceivedAsync(_head);
         Assert.True(Assert.Single(list).IsRead);
 
@@ -350,7 +355,7 @@ public class HeadAlertServiceTests : PostgresDbTest
 
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
-        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer1));
+        var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(alert.Id, ActorFor(_lawyer1)));
 
         Assert.True(ok);
         Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
@@ -362,7 +367,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRead_NotFound_ReturnsFalse()
     {
-        var ok = await _service.MarkReadAsync(999, ActorFor(_lawyer1));
+        var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(999, ActorFor(_lawyer1)));
         Assert.False(ok);
     }
 
@@ -372,7 +377,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         var alert = await _service.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer2));
+        var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(alert.Id, ActorFor(_lawyer2)));
 
         Assert.False(ok);
     }
@@ -503,7 +508,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         var created = await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
-        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(created.Id, ActorFor(_lawyer1))));
 
         // قراءة حالة القاعدة فعليًا (لا الكيانات المتتبَّعة من الإنشاء): التعليم صار
         // تحديثًا ذرّيًا في المستودع لا يمرّ بمتتبِّع التغييرات.
@@ -522,7 +527,7 @@ public class HeadAlertServiceTests : PostgresDbTest
 
         // إعادة التعليم idempotent: لا تُغيّر زمن القراءة المحفوظ.
         var readAt = mine.ReadAt;
-        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
+        Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(created.Id, ActorFor(_lawyer1))));
         _db.ChangeTracker.Clear();
         Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
 

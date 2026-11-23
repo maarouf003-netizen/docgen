@@ -1,7 +1,9 @@
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Alerts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +22,7 @@ namespace DocGenerator.Api.Controllers;
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
+    private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
 
     /// <summary>
     /// رسالة 404 الموحّدة لمسارات التنبيهات (قرار المالك 2026-11-03): جسم عربي واحد
@@ -29,7 +32,13 @@ public class AlertsController : ControllerBase
     /// </summary>
     private const string NotFoundMessage = "التنبيه غير موجود أو لا تملك صلاحية عرضه";
 
-    public AlertsController(IHeadAlertService alerts) => _alerts = alerts;
+    public AlertsController(
+        IHeadAlertService alerts,
+        ICommandHandler<MarkHeadAlertReadCommand, bool> markRead)
+    {
+        _alerts = alerts;
+        _markRead = markRead;
+    }
 
     private string? ActorName => User.Identity?.Name;
 
@@ -196,7 +205,7 @@ public class AlertsController : ControllerBase
     {
         try
         {
-            var ok = await _alerts.MarkReadAsync(id, Actor, ct);
+            var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(id, Actor), ct);
             return ok
                 ? NoContent()
                 : ApiProblem.Result(
