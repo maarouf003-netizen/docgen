@@ -2,8 +2,10 @@ using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Forum;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -22,11 +24,16 @@ public class ForumController : ControllerBase
 {
     private readonly IForumService _forum;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
 
-    public ForumController(IForumService forum, IUserCapabilities capabilities)
+    public ForumController(
+        IForumService forum,
+        IUserCapabilities capabilities,
+        ICommandHandler<DeleteForumMessageCommand, bool> deleteMessage)
     {
         _forum = forum;
         _capabilities = capabilities;
+        _deleteMessage = deleteMessage;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -101,7 +108,7 @@ public class ForumController : ControllerBase
             return Forbid();
         try
         {
-            await _forum.DeleteAsync(id, UserId, ct);
+            await _deleteMessage.HandleAsync(new DeleteForumMessageCommand(id, UserId), ct);
             return NoContent();
         }
         catch (KeyNotFoundException e)

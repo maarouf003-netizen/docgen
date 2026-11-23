@@ -6,6 +6,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.Forum;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Application.UseCases.Suggestions;
@@ -82,6 +83,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<MarkAppSuggestionReadCommand, bool>, MarkAppSuggestionReadCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePersonalReminderCommand, bool>, DeletePersonalReminderCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteBranchCommand, bool>, DeleteBranchCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto>, CreateAppSuggestionCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteForumMessageCommand, bool>, DeleteForumMessageCommandHandler>();
         return services;
     }
 }

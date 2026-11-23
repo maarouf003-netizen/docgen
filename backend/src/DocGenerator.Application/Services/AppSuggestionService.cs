@@ -9,7 +9,6 @@ public interface IAppSuggestionService
 {
     Task<List<AppSuggestionDto>> ListMineAsync(int senderId, CancellationToken ct = default);
     Task<AppSuggestionDto?> GetByIdAsync(int id, int? senderId, CancellationToken ct = default);
-    Task<AppSuggestionDto> CreateAsync(string message, int senderId, string? actorName, CancellationToken ct = default);
     Task<PagedResult<AppSuggestionDto>> ListForAdminAsync(int page, int perPage, CancellationToken ct = default);
     /// <summary>عدد الاقتراحات غير المقروءة في صندوق المشرف/المدير.</summary>
     Task<int> CountUnreadAsync(CancellationToken ct = default);
@@ -67,33 +66,6 @@ public sealed class AppSuggestionService : IAppSuggestionService
             return ToDto(suggestion, includeSender: false);
         }
         return ToDto(suggestion, includeSender: true);
-    }
-
-    public async Task<AppSuggestionDto> CreateAsync(string message, int senderId, string? actorName, CancellationToken ct = default)
-    {
-        var trimmed = message?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(trimmed))
-            throw new ArgumentException("نص الاقتراح مطلوب");
-        if (trimmed.Length > MessageMaxLength)
-            throw new ArgumentException($"نص الاقتراح يتجاوز الحد الأقصى ({MessageMaxLength} حرفًا)");
-
-        var suggestion = new AppSuggestion
-        {
-            SenderId = senderId,
-            Message = trimmed,
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _suggestions.AddAsync(suggestion, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "app-suggestion.create",
-                details: $"أرسل اقتراح تطوير: {trimmed[..Math.Min(trimmed.Length, 80)]}",
-                ct: token);
-        }, ct);
-
-        return ToDto(suggestion, includeSender: false);
     }
 
     public async Task<PagedResult<AppSuggestionDto>> ListForAdminAsync(int page, int perPage, CancellationToken ct = default)
