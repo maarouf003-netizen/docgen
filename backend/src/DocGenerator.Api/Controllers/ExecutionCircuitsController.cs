@@ -328,10 +328,14 @@ public class ExecutionCircuitsController : ControllerBase
 public class PendingRegistrationsController : ControllerBase
 {
     private readonly IExecutionCircuitService _circuits;
+    private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
 
-    public PendingRegistrationsController(IExecutionCircuitService circuits)
+    public PendingRegistrationsController(
+        IExecutionCircuitService circuits,
+        ICommandHandler<CompletePendingRegistrationsCommand, int> completeRegistrations)
     {
         _circuits = circuits;
+        _completeRegistrations = completeRegistrations;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -349,7 +353,8 @@ public class PendingRegistrationsController : ControllerBase
     {
         try
         {
-            var count = await _circuits.CompleteRegistrationsAsync(User.GetUserId(), ActorName, request, ct);
+            var count = await _completeRegistrations.HandleAsync(
+                new CompletePendingRegistrationsCommand(User.GetUserId(), ActorName, request), ct);
             return Ok(new { completedCount = count });
         }
         catch (DocumentConflictException e)
