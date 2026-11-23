@@ -23,6 +23,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     private readonly IDocumentService _service;
     private readonly IExecutionActionService _actions;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
+    private readonly ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> _reschedule;
     private readonly FakeAuditLogger _audit = new();
 
     public RescheduleDocumentReminderTests()
@@ -52,7 +53,22 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
                 new TransactionBehavior<AddExecutionActionCommand, ExecutionActionDto>(
                     new TransactionRunner(_db)),
             });
+        _reschedule = new RescheduleActionReminderCommandHandler(
+            new Repository<ExecutionAction>(_db),
+            new DocumentRepository(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new IPipelineBehavior<RescheduleActionReminderCommand, ExecutionActionDto>[]
+            {
+                new TransactionBehavior<RescheduleActionReminderCommand, ExecutionActionDto>(
+                    new TransactionRunner(_db)),
+            });
     }
+
+    private Task<ExecutionActionDto> RescheduleReminderAsync(
+        int documentId, int actionId, string? newDueDate, string? actorName, long? version = null)
+        => _reschedule.HandleAsync(new RescheduleActionReminderCommand(
+            documentId, actionId, newDueDate, actorName, version));
 
     private Task<ExecutionActionDto> AddExecutionActionAsync(
         int documentId, AddExecutionActionRequest request, int userId, string? actorName)
@@ -98,7 +114,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     {
         var (documentId, action) = await SeedActionAsync();
 
-        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
+        var rescheduled = await RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
         // تاريخ الإجراء واقعة قانونية: يبقى كما أُدخل حرفيًا.
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
@@ -109,6 +125,8 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
             stored.ReminderBaseDate, rescheduled.ActionDate, rescheduled.ReminderDuration, rescheduled.CreatedAt);
         Assert.Equal(new DateTime(2026, 8, 10), due);
         Assert.False(suspect);
+        Assert.Contains(_audit.Details,
+            d => d == "نقل التذكير إلى 2026-08-10 (تاريخ الأساس: 2026-08-01 ← 2026-08-07) — تاريخ الإجراء لم يتغير — المنفذ عليه: أحمد خالد الخطيب");
         // بقية الحقول دون مساس.
         Assert.Equal(action.Type, rescheduled.Type);
         Assert.Equal(action.Text, rescheduled.Text);
@@ -134,7 +152,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     {
         var (documentId, action) = await SeedActionAsync("10-11-2026");
 
-        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "14-11-2026", "lawyer1");
+        var rescheduled = await RescheduleReminderAsync(documentId, action.Id, "14-11-2026", "lawyer1");
 
         Assert.Equal("10-11-2026", rescheduled.ActionDate);
     }
@@ -144,7 +162,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     {
         var (documentId, action) = await SeedActionAsync();
 
-        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "١٠/٨/٢٠٢٦", "lawyer1");
+        var rescheduled = await RescheduleReminderAsync(documentId, action.Id, "١٠/٨/٢٠٢٦", "lawyer1");
 
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal(new DateTime(2026, 8, 7),
@@ -160,7 +178,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         var (documentId, action) = await SeedActionAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _actions.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
+            () => RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
         Assert.Equal("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026", ex.Message);
     }
 
@@ -172,7 +190,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         var (documentId, action) = await SeedActionAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _actions.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
+            () => RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
         Assert.Equal("اليوم الجديد غير صالح — استخدم مثال: 1/8/2026", ex.Message);
     }
 
@@ -185,7 +203,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
             userId: 1, actorName: "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _actions.RescheduleReminderAsync(doc.Id, action.Id, "10/8/2026", "lawyer1"));
+            () => RescheduleReminderAsync(doc.Id, action.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("لا يوجد تذكير لإعادة جدولته", ex.Message);
     }
 
@@ -209,7 +227,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _actions.RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
+            () => RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات", ex.Message);
         // التاريخ الأصلي لم يُمسّ.
         Assert.Equal("1/8/2026", (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!.ActionDate);
@@ -220,7 +238,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     {
         var (documentId, action) = await SeedActionAsync(duration: null, color: "أصفر");
 
-        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
+        var rescheduled = await RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
         // بلا مدة ⇒ الأساس هو يوم الاستحقاق نفسه، وتاريخ الإجراء لا يُلمس.
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
@@ -235,7 +253,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         // الملاحظة بلا تاريخ تُؤرَّخ تلقائيًا عند الإنشاء — وهذا التاريخ لا يُعاد كتابته بالنقل.
         Assert.False(string.IsNullOrWhiteSpace(action.ActionDate));
 
-        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "15/8/2026", "lawyer1");
+        var rescheduled = await RescheduleReminderAsync(documentId, action.Id, "15/8/2026", "lawyer1");
 
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
         Assert.Equal("note", rescheduled.Type);
@@ -250,11 +268,11 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         var other = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _actions.RescheduleReminderAsync(documentId, 999999, "10/8/2026", "lawyer1"));
+            () => RescheduleReminderAsync(documentId, 999999, "10/8/2026", "lawyer1"));
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _actions.RescheduleReminderAsync(other.Id, action.Id, "10/8/2026", "lawyer1"));
+            () => RescheduleReminderAsync(other.Id, action.Id, "10/8/2026", "lawyer1"));
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _actions.RescheduleReminderAsync(999999, action.Id, "10/8/2026", "lawyer1"));
+            () => RescheduleReminderAsync(999999, action.Id, "10/8/2026", "lawyer1"));
     }
 }
 

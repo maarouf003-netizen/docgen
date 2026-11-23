@@ -104,6 +104,9 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<AddExecutionActionCommand, ExecutionActionDto>, AddExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?>, UpdateExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<ClearActionReminderCommand, bool>, ClearActionReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<SetActionReminderCommand, ExecutionActionDto>, SetActionReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto>, RescheduleActionReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<RestoreDocumentCommand, bool>, RestoreDocumentCommandHandler>();
         return services;
     }
 }

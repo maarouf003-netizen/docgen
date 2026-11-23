@@ -1,4 +1,3 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Security;
@@ -8,17 +7,17 @@ using DocGenerator.Domain.Entities;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// خدمة إجراءات التنفيذ والتذكيرات (مستخرجة من `DocumentService` — المرحلة 1، نقل ميكانيكي
-/// بلا سلوك): كل نقطة دخول عامة تفتح معاملتها الخاصة عبر `_tx.RunAsync` — باستثناء
-/// `SeedInitialActionsAsync` التي تنضم لمعاملة حفظ المستند (داخل معاملة المستدعي حصرًا).
-/// الاعتمادات: `_actions` و`_documents` و`_uow` و`_tx` و`_audit` والساعة/المنطقة فقط.
+/// خدمة إجراءات التنفيذ (مستخرجة من `DocumentService` — المرحلة 1، نقل ميكانيكي بلا سلوك):
+/// بقيت فيها القراءة و`SeedInitialActionsAsync` التي تنضم لمعاملة حفظ المستند (داخل معاملة
+/// المستدعي حصرًا) والمساعدات المشتركة مع معالجات `P4-01` (تطبيع/إسقاط/تفريغ تذكير).
+/// كل نقاط الكتابة المستقلة مملوكة لأوامر: الإضافة/التعديل/الحذف/التذكيرات الثلاثة.
+/// الاعتمادات: `_actions` و`_documents` و`_uow` و`_audit` والساعة/المنطقة فقط.
 /// </summary>
 public sealed class ExecutionActionService : IExecutionActionService
 {
     private readonly IRepository<ExecutionAction> _actions;
     private readonly IDocumentRepository _documents;
     private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
@@ -27,7 +26,6 @@ public sealed class ExecutionActionService : IExecutionActionService
         IRepository<ExecutionAction> actions,
         IDocumentRepository documents,
         IUnitOfWork uow,
-        ITransactionRunner tx,
         IAuditLogger audit,
         TimeProvider clock,
         TimeZoneInfo timeZone)
@@ -35,7 +33,6 @@ public sealed class ExecutionActionService : IExecutionActionService
         _actions = actions;
         _documents = documents;
         _uow = uow;
-        _tx = tx;
         _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
@@ -71,115 +68,11 @@ public sealed class ExecutionActionService : IExecutionActionService
             DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), ct);
     }
 
-    private Task ClearReminderCoreAsync(
-        ExecutionAction action, Document doc, string? actorName, CancellationToken ct)
-        => _tx.RunAsync(
-            token => ClearReminderWriteAsync(action, doc, actorName, _actions, _uow, _audit, token),
-            ct);
-
     /// <summary>
     /// إنشاء/تعديل تذكير إجراء قائم (مدة/لون): تهيئة `ReminderBaseDate` من تاريخ الإجراء
     /// مرة واحدة فقط (`??=`) — بلا سقوط إلى `CreatedAt` كي لا يُجمَّد احتياط صامت؛ والصفوف
     /// القديمة غير القابلة للتحليل تبقى أساسها `null` فيُحسب الاستحقاق احتياطيًا **موسومًا**.
     /// إرسال الحقلين فارغين = إلغاء التذكير (نقطة قرار واحدة مع `ClearReminderAsync`).
-    /// </summary>
-    public async Task<ExecutionActionDto> SetReminderAsync(
-        int documentId, int actionId, SetActionReminderRequest request, string? actorName, CancellationToken ct = default)
-    {
-        var action = await _actions.GetByIdAsync(actionId, ct);
-        if (action is null || action.DocumentId != documentId)
-            throw new KeyNotFoundException();
-
-        OptimisticConcurrencyGuard.EnsureCurrent(action, request.Version, "الإجراء");
-
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            throw new KeyNotFoundException();
-
-        var (reminderDuration, reminderColor) = NormalizeReminder(request.ReminderDuration, request.ReminderColor);
-
-        if (reminderDuration is null && reminderColor is null)
-        {
-            await ClearReminderCoreAsync(action, doc, actorName, ct);
-            return ToDto(action, actorName);
-        }
-
-        action.ReminderDuration = reminderDuration;
-        action.ReminderColor = reminderColor;
-        action.ReminderBaseDate ??= ActionDateParser.TryParse(action.ActionDate);
-
-        await _tx.RunAsync(async token =>
-        {
-            _actions.Update(action);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor(
-                    $"ضبط تذكير {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)} ({reminderDuration ?? "—"} — {reminderColor ?? "—"})",
-                    doc), token);
-        }, ct);
-
-        return ToDto(action, actorName);
-    }
-
-    /// <summary>
-    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل (`newDueDate`) هو يوم
-    /// الاستحقاق نفسه لا تاريخ الإجراء؛ وتُكتب `ReminderBaseDate = newDueDate − DurationDays`
-    /// مع بقاء المدة وبقية الحقول دون مساس. **تاريخ الإجراء لا يُكتب ولا يُعاد تنسيقه** —
-    /// واقعة قانونية (I1) — وكل حسابات التذكير على `DateTime` لا على نص (I7).
-    /// </summary>
-    public async Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, long? version = null, CancellationToken ct = default)
-    {
-        var action = await _actions.GetByIdAsync(actionId, ct);
-        if (action is null || action.DocumentId != documentId)
-            throw new KeyNotFoundException();
-
-        OptimisticConcurrencyGuard.EnsureCurrent(action, version, "الإجراء");
-
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            throw new KeyNotFoundException();
-
-        if (string.IsNullOrWhiteSpace(newDueDate))
-            throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
-
-        var due = DocumentValidator.ParseDateTime(newDueDate.Trim(), "اليوم الجديد")
-            ?? throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
-
-        if (string.IsNullOrWhiteSpace(action.ReminderDuration)
-            && string.IsNullOrWhiteSpace(action.ReminderColor)
-            && action.ReminderBaseDate is null)
-            throw new ArgumentException("لا يوجد تذكير لإعادة جدولته");
-
-        // حارس المدة الملتبسة (بيانات قديمة): مدة غير فارغة خارج المدد الأربع كانت
-        // تُحسب صفرًا بصمت فيُسكت وسم `dueDateSuspect` — هنا تُرفض برسالة توجه
-        // لنافذة الإجراءات بدل إصلاح صامت.
-        var trimmedDuration = action.ReminderDuration?.Trim();
-        if (!string.IsNullOrWhiteSpace(trimmedDuration) && !ActionReminderCalculator.ValidDurations.Contains(trimmedDuration))
-            throw new ArgumentException("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات");
-
-        // الإسناد إلى تاريخ أساس التذكير وحده (`DateTime` خالص): تاريخ الإجراء واقعة
-        // قانونية لا تُعاد كتابتها، ولا يُعاد تنسيق نصها — I1/I7.
-        var oldBaseDate = action.ReminderBaseDate;
-        action.ReminderBaseDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration));
-
-        await _tx.RunAsync(async token =>
-        {
-            _actions.Update(action);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor(
-                    $"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الأساس: {oldBaseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—"} ← {action.ReminderBaseDate:yyyy-MM-dd}) — تاريخ الإجراء لم يتغير",
-                    doc), token);
-        }, ct);
-        return ToDto(action, actorName);
-    }
-
-    /// <summary>
-    /// يزرع إجراءات/ملاحظات «الإدخال المبدئي» (InitialActions) في جدول الإجراءات والملاحظات
-    /// ذرّيًا ضمن معاملة حفظ المستند نفسها — داخل معاملة المستدعي حصرًا (لا تفتح معاملة
-    /// خاصة). كل عنصر يمر بـ NormalizeAction/NormalizeReminder فنُرفض الطلبات الخبيثة
-    /// أو الناقصة ذرّيًا، وتُتجاهل الحقول الفارغة، ولا يُنشأ أي سجل مكرر (لا مقابل
-    /// سجلات الملف القائمة ولا بين عناصر الطلب نفسه).
     /// </summary>
     public async Task SeedInitialActionsAsync(
         Document doc,

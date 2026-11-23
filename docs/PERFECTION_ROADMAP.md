@@ -836,6 +836,9 @@
   العضوية المكررة)، `ClearActionReminderCommand` (مع `ClearReminderWriteAsync` المشتركة)،
   و`AddDocumentInterventionCommand`/`UpdateDocumentInterventionCommand` (مع
   `DocumentInterventionRules`) — وأُزيلت خدمة المتدخلين وعقدها نهائيًا.
+  **`P4-01aa/ab`:** `RestoreDocumentCommand` و`SetActionReminderCommand`/
+  `RescheduleActionReminderCommand` يملكون المعاملة والتدقيق (`restore`/`action`)،
+  وأُزيلت الثلاثة من عقدي خدمتيهما (بقي `IExecutionActionService` للقراءة والزرع).
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -848,7 +851,8 @@
   `docs/audit/136-p4-01opq-branch-reminder-commands-20261123.md` و
   `docs/audit/137-p4-01rstu-sections-commands-20261123.md` و
   `docs/audit/138-p4-01vw-execution-action-writes-20261123.md` و
-  `docs/audit/139-p4-01xyz-forum-reminder-intervention-20261123.md`.
+  `docs/audit/139-p4-01xyz-forum-reminder-intervention-20261123.md` و
+  `docs/audit/140-p4-01aaab-restore-reminder-commands-20261123.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
