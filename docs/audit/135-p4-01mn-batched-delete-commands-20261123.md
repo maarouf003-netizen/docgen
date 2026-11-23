@@ -79,7 +79,7 @@
 | 9 | البناء والتنسيق | `build -warnaserror` / `format --verify-no-changes` | 0/0 ونظيف | ✅ |
 | 10 | العزل | ملفات المرحلة: المعالج + الخدمة/العقد + DI + المتحكم + اختبارات | المتحكم وDI فقط مشتركان مع `m` | ✅ |
 | 11 | بديل الاختبار الوحدوي للمتحكم | `DocumentAccessProjectionTests` كان يراقب `DeleteAsync` في البديل | بديل `ICommandHandler<DeleteDocumentInterventionCommand, bool>` يراقب التفويض | ✅ |
-| 12 | ثغرة في اختبار الصفة الجديد (كشفها `backend-postgres`) | `DocumentInterventionServiceTests.Delete_DepositSide_ThrowsWithOriginalMessage`: `AddAsync` ينادي `ClearChanges` فيفصل `_document`، فلم يُكتب التغيير | الكتابة عبر `ExecuteUpdateAsync` مباشرة في القاعدة ثم إعادة تحميل المعالج لها | ✅ |
+| 12 | ثغرة في اختبار الصفة الجديد (كشفها `backend-postgres`) | `DocumentInterventionServiceTests.Delete_DepositSide_ThrowsWithOriginalMessage`: المستند يبقى متتبَّعًا بعد `AddAsync`، فتقرأ `GetByIdAsync` النسخة المتتبَّعة القديمة | الكتابة عبر `ExecuteUpdateAsync` + `ChangeTracker.Clear()` ثم إعادة تحميل المعالج | ✅ |
 
 ## التحقق
 
