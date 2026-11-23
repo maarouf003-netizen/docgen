@@ -802,6 +802,13 @@
 
 #### `P4-01` — Command/Query pipeline
 
+- **الحالة (2026-11-23):** **جزئيًا — الأساس مثبت بشريحة رأسية في `Documents`.**
+  أُضيفت عقود `ICommandHandler`/`IQueryHandler`/`IPipelineBehavior` وأساسا التركيب،
+  وثلاثة سلوكيات (`Validation`/`Transaction`/`Audit`) مسجّلة كـ open generics،
+  وحُوِّلت نقطتا `Get`/`Create` في `DocumentsController` إلى معالجين **بلا تغيير سلوكي**.
+  المعاملة/التدقيق لا يعملان إلا للطلبات الموسومة (`ITransactionalRequest`/`IAuditedRequest`)
+  لأن الخدمات الحالية تملكهما. التفاصيل: `docs/audit/128-p4-01a-command-query-slice-20261123.md`.
+  **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

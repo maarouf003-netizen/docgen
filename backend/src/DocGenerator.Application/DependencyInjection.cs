@@ -1,6 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -59,6 +62,13 @@ public static class DependencyInjection
         services.AddScoped<IDocumentRenderer, WordTemplateRenderer>();
         services.AddScoped<IWordDocumentGenerator, WordDocumentGenerator>();
         services.AddScoped<IExcelExportService, ExcelExportService>();
+
+        // P4-01a: خط أوامر/استعلامات ضيق — السلوكيات المسجّلة بالترتيب (الأول خارجي).
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(AuditBehavior<,>));
+        services.AddScoped<IQueryHandler<GetDocumentQuery, DocumentResponse?>, GetDocumentQueryHandler>();
+        services.AddScoped<ICommandHandler<CreateDocumentCommand, DocumentResponse>, CreateDocumentCommandHandler>();
         return services;
     }
 }
