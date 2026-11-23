@@ -802,7 +802,7 @@
 
 #### `P4-01` — Command/Query pipeline
 
-- **الحالة (2026-11-23):** **جزئيًا — الأساس مثبت بشريحة رأسية في `Documents`.**
+- **الحالة (2026-11-24):** **جزئيًا — الأساس مثبت بشريحة رأسية في `Documents`.**
   أُضيفت عقود `ICommandHandler`/`IQueryHandler`/`IPipelineBehavior` وأساسا التركيب،
   وثلاثة سلوكيات (`Validation`/`Transaction`/`Audit`) مسجّلة كـ open generics،
   وحُوِّلت نقطتا `Get`/`Create` في `DocumentsController` إلى معالجين **بلا تغيير سلوكي**.
@@ -854,6 +854,11 @@
   **`P4-01aj`:** `DeleteExecutionCircuitCommand` يملك الحذف الفيزيائي/التطهير النهائي
   (فصل الإنابات، أرقام الأساس، أرشفة التنبيهات)؛ وحُذف `ExecutionCircuitService.Crud.cs`
   مع حقلي `DocumentBaseNumber` الميتين.
+  **`P4-01ak`:** `TransferExecutionCircuitCommand` يملك نقل الملكية كاملًا (فحص النسخة،
+  سجل التعاقب، والتنبيه البديل عبر `Outbox` بلا تعديل القديم) ومعاملته الخاصة عبر
+  `ITransactionRunner` — بلا وسم `ITransactionalRequest` — كي يلتف `catch` تعارض التزامن
+  حولها كما الأصل؛ وبقيت `SyncPendingAlertsAfterTransferAsync` عند مستدعيها في
+  `DocumentService` (نقل الملفات) ولا تدخل مسار نقل الدائرة.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -872,7 +877,8 @@
   `docs/audit/142-p4-01afag-circuit-create-active-20261123.md` و
   `docs/audit/143-p4-01ah-circuit-rename-20261123.md` و
   `docs/audit/144-p4-01ai-complete-registrations-20261123.md` و
-  `docs/audit/145-p4-01aj-circuit-delete-20261123.md`.
+  `docs/audit/145-p4-01aj-circuit-delete-20261123.md` و
+  `docs/audit/146-p4-01ak-circuit-transfer-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

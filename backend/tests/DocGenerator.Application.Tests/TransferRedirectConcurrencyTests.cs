@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -30,29 +32,31 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    private static ExecutionCircuitService CircuitService(DocGeneratorDbContext db)
+    private static TransferExecutionCircuitCommandHandler CircuitTransferHandler(DocGeneratorDbContext db)
     {
         var uow = new UnitOfWork(db);
         var tx = new TransactionRunner(db);
-        return new ExecutionCircuitService(
+        return new TransferExecutionCircuitCommandHandler(
             new Repository<ExecutionCircuit>(db),
-            new Repository<Branch>(db),
             new Repository<Section>(db),
             new DocumentRepository(db),
             new DelegationRepository(db),
             new AppealRepository(db),
-            new Repository<DocumentOccurrence>(db),
             new Repository<HeadSuccession>(db),
-            new HeadAlertRepository(db),
             new UserRepository(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             uow,
             tx,
             new FakeAuditLogger(),
-            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             new DbExceptionClassifier(),
-            TestClock.Provider,
-            TestClock.TimeZone);
+            Array.Empty<IPipelineBehavior<TransferExecutionCircuitCommand, ExecutionCircuitDto>>());
     }
+
+    private static Task<ExecutionCircuitDto> TransferAsync(
+        DocGeneratorDbContext db, int circuitId, int? targetSectionId, int actorUserId, string? actorName,
+        CancellationToken ct = default, long? version = null)
+        => CircuitTransferHandler(db).HandleAsync(
+            new TransferExecutionCircuitCommand(circuitId, targetSectionId, actorUserId, actorName, version), ct);
 
     private async Task<(int BranchId, int SectionA, int SectionB, int CircuitId, int ManagerId, int HeadId)> SeedTransferAsync()
     {
@@ -106,18 +110,17 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
     {
         var seed = await SeedTransferAsync();
         await using var db = _pg.CreateContext();
-        var service = CircuitService(db);
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            service.TransferCircuitAsync(seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr", default, 9999));
+            TransferAsync(db, seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr", default, 9999));
 
-        var before = (await service.TransferCircuitAsync(seed.CircuitId, null, seed.ManagerId, "mgr")).Version;
-        var moved = await service.TransferCircuitAsync(seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr");
+        var before = (await TransferAsync(db, seed.CircuitId, null, seed.ManagerId, "mgr")).Version;
+        var moved = await TransferAsync(db, seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr");
         Assert.Equal(seed.SectionA, moved.SectionId);
         Assert.Equal(before + 1, moved.Version);
 
         // النقل لذات المالك عملية خاملة — بلا رفع رمز.
-        var noop = await service.TransferCircuitAsync(seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr", default, moved.Version);
+        var noop = await TransferAsync(db, seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr", default, moved.Version);
         Assert.Equal(moved.Version, noop.Version);
     }
 
@@ -132,7 +135,7 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    await CircuitService(db).TransferCircuitAsync(seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr");
+                    await TransferAsync(db, seed.CircuitId, seed.SectionA, seed.ManagerId, "mgr");
                     return "ok-a";
                 }
                 catch (Exception ex) { return ex.GetType().Name; }
@@ -142,7 +145,7 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    await CircuitService(db).TransferCircuitAsync(seed.CircuitId, seed.SectionB, seed.ManagerId, "mgr");
+                    await TransferAsync(db, seed.CircuitId, seed.SectionB, seed.ManagerId, "mgr");
                     return "ok-b";
                 }
                 catch (Exception ex) { return ex.GetType().Name; }

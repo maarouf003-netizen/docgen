@@ -1,38 +1,96 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.ExecutionCircuits;
 
-public sealed partial class ExecutionCircuitService : IExecutionCircuitService
+/// <summary>
+/// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قرار §2.5 + §8.3): المفتوح والمغلق
+/// يتبع الجديد، والتدقيق ثابت بأسماء الفاعلين الأصليين. الإحالات المفتوحة (§6.6):
+/// تُنشأ تنبيهات بديلة للمالك الجديد (لا تعديل القديمة) — و`ForwardState` لا يتغير.
+/// <para>
+/// **حدود المعاملة:** يستثني وسم `ITransactionalRequest` عمدًا ويملك معاملته عبر
+/// `ITransactionRunner`، لأن معالجة تعارض التزامن (`IsConcurrencyViolation`) تلتف
+/// حول المعاملة كلها كما الأصل — فلا معاملة متداخلة ولا التماس لخطأ بعد الإجهاض.
+/// </para>
+/// </summary>
+public sealed record TransferExecutionCircuitCommand(
+    int CircuitId,
+    int? TargetSectionId,
+    int ActorUserId,
+    string? ActorName,
+    long? Version = null) : ICommand<ExecutionCircuitDto>;
+
+public sealed class TransferExecutionCircuitCommandHandler
+    : CommandHandlerBase<TransferExecutionCircuitCommand, ExecutionCircuitDto>
 {
-    /// <summary>
-    /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قرار §2.5 + §8.3): المفتوح
-    /// والمغلق يتبع الجديد (الملكية على الدائرة نفسها)، والتدقيق ثابت. الإحالات
-    /// المفتوحة (§6.6): تُنشأ تنبيهات بديلة للمالك الجديد (لا تعديل القديمة) —
-    /// و`ForwardState` لا يتغير (استثناء فرعي لا شعبي).
-    /// </summary>
-    public async Task<ExecutionCircuitDto> TransferCircuitAsync(
-        int circuitId, int? targetSectionId, int actorUserId, string? actorName, CancellationToken ct = default, long? version = null)
+    private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IRepository<Section> _sections;
+    private readonly IDocumentRepository _documents;
+    private readonly IDelegationRepository _delegations;
+    private readonly IAppealRepository _appeals;
+    private readonly IRepository<HeadSuccession> _successions;
+    private readonly IUserRepository _users;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
+    private readonly IReferenceDataCache? _cache;
+
+    public TransferExecutionCircuitCommandHandler(
+        IRepository<ExecutionCircuit> circuits,
+        IRepository<Section> sections,
+        IDocumentRepository documents,
+        IDelegationRepository delegations,
+        IAppealRepository appeals,
+        IRepository<HeadSuccession> successions,
+        IUserRepository users,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IDbExceptionClassifier dbErrors,
+        IEnumerable<IPipelineBehavior<TransferExecutionCircuitCommand, ExecutionCircuitDto>> behaviors,
+        IReferenceDataCache? cache = null)
+        : base(behaviors)
+    {
+        _circuits = circuits;
+        _sections = sections;
+        _documents = documents;
+        _delegations = delegations;
+        _appeals = appeals;
+        _successions = successions;
+        _users = users;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _dbErrors = dbErrors;
+        _cache = cache;
+    }
+
+    protected override async Task<ExecutionCircuitDto> HandleCoreAsync(
+        TransferExecutionCircuitCommand command, CancellationToken ct)
     {
         ExecutionCircuitDto result = null!;
         try
         {
             await _tx.RunAsync(async token =>
             {
-                var circuit = await _circuits.GetByIdAsync(circuitId, token)
+                var circuit = await _circuits.GetByIdAsync(command.CircuitId, token)
                     ?? throw new ArgumentException("الدائرة غير موجودة");
-                if (version is not null && circuit.Version != version.Value)
+                if (command.Version is not null && circuit.Version != command.Version.Value)
                     throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
 
                 Section? targetSection = null;
-                if (targetSectionId.HasValue)
+                if (command.TargetSectionId.HasValue)
                 {
-                    targetSection = await _sections.GetByIdAsync(targetSectionId.Value, token)
+                    targetSection = await _sections.GetByIdAsync(command.TargetSectionId.Value, token)
                         ?? throw new ArgumentException("الشعبة الهدف غير موجودة");
                     if (targetSection.BranchId != circuit.BranchId)
                         throw new ArgumentException("النقل داخل الفرع نفسه — الشعبة من فرع آخر");
@@ -40,9 +98,9 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                         throw new ArgumentException("الشعبة الهدف معطلة — اختر شعبة نشطة");
                 }
 
-                if (circuit.SectionId == targetSectionId)
+                if (circuit.SectionId == command.TargetSectionId)
                 {
-                    result = await ToDtoAsync(circuit, token);
+                    result = await ExecutionCircuitRules.BuildDtoAsync(circuit, _documents, _sections, token);
                     return;
                 }
 
@@ -51,7 +109,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                     : "رئيس القسم";
                 var newOwner = targetSection?.Name ?? "رئيس القسم";
 
-                circuit.SectionId = targetSectionId;
+                circuit.SectionId = command.TargetSectionId;
                 circuit.UpdatedAt = DateTime.UtcNow;
                 circuit.Version++;
                 _circuits.Update(circuit);
@@ -59,14 +117,14 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                 _cache?.Invalidate(ReferenceDataGroups.Circuits);
                 // النتيجة تُثبَّت هنا قبل أي خروج مبكر (مالك بلا رئيس) — وإلا عاد
                 // `null` فتحوّل `Ok` إلى `204`.
-                result = await ToDtoAsync(circuit, token);
+                result = await ExecutionCircuitRules.BuildDtoAsync(circuit, _documents, _sections, token);
 
-                await _audit.LogAsync(actorName, "transfer_circuit", null, null,
+                await _audit.LogAsync(command.ActorName, "transfer_circuit", null, null,
                     $"نقل الدائرة «{circuit.Name}» من {oldOwner} إلى {newOwner} (الملفات المفتوحة والمغلقة تتبع المالك الجديد)", token);
 
                 // المالك الجديد: رئيس الشعبة الهدف، أو رئيس القسم للقسم.
-                var newHead = targetSectionId.HasValue
-                    ? await _users.FindActiveHeadAsync(UserRole.SubHead, circuit.BranchId, targetSectionId, token)
+                var newHead = command.TargetSectionId.HasValue
+                    ? await _users.FindActiveHeadAsync(UserRole.SubHead, circuit.BranchId, command.TargetSectionId, token)
                     : await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, token);
                 if (newHead is null)
                     return;
@@ -74,12 +132,12 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                 await _successions.AddAsync(new HeadSuccession
                 {
                     BranchId = circuit.BranchId,
-                    SectionId = targetSectionId,
+                    SectionId = command.TargetSectionId,
                     UserId = newHead.Id,
                     Role = newHead.Role,
                     Event = HeadSuccessionEventCatalog.CircuitTransferred,
                     At = DateTime.UtcNow,
-                    ActorName = actorName,
+                    ActorName = command.ActorName,
                     Reason = $"نُقلت الدائرة «{circuit.Name}» من {oldOwner} إلى {newOwner}",
                 }, token);
 
@@ -104,7 +162,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                             circuit.Name, fileIds.Count, pendingDelegations, pendingAppeals)),
                         HeadAlertAudience.SingleHead,
                         circuit.BranchId,
-                        actorUserId,
+                        command.ActorUserId,
                         ExecutionCircuitId: circuit.Id,
                         RecipientUserId: newHead.Id),
                     supersedePlan: null,
