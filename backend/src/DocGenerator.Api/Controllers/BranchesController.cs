@@ -16,15 +16,18 @@ public class BranchesController : ControllerBase
     private readonly IBranchManagementService _branches;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
+    private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
 
     public BranchesController(
         IBranchManagementService branches,
         IUserCapabilities capabilities,
-        ICommandHandler<DeleteBranchCommand, bool> deleteBranch)
+        ICommandHandler<DeleteBranchCommand, bool> deleteBranch,
+        ICommandHandler<CreateBranchCommand, BranchDto> createBranch)
     {
         _branches = branches;
         _capabilities = capabilities;
         _deleteBranch = deleteBranch;
+        _createBranch = createBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -44,7 +47,7 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        var branch = await _branches.CreateBranchAsync(request, ActorName, ct);
+        var branch = await _createBranch.HandleAsync(new CreateBranchCommand(request, ActorName), ct);
         return CreatedAtAction(nameof(Get), new { id = branch.Id }, branch);
     }
 

@@ -30,14 +30,14 @@ public sealed class DeleteForumMessageCommandHandler
             ?? throw new KeyNotFoundException("الرسالة غير موجودة");
 
         var actor = await _users.GetByIdAsync(command.ActorUserId, ct)
-            ?? throw new UnauthorizedAccessException("المستخدم غير موجود");
+            ?? throw new UnauthorizedAccessException("الحساب غير موجود");
         if (!actor.IsActive || actor.Role == UserRole.EntityManager)
-            throw new UnauthorizedAccessException("لا تملك صلاحية الوصول للمنتدى");
+            throw new UnauthorizedAccessException("لا تملك صلاحية المنتدى");
         if (actor.Role == UserRole.SubHead && actor.SectionId is null)
-            throw new UnauthorizedAccessException("حسابك بلا شعبة — أعد الدخول");
+            throw new UnauthorizedAccessException("حساب رئيس الشعبة بلا شعبة — أعد الدخول");
 
         if (message.AuthorId != command.ActorUserId && actor.Role != UserRole.Admin)
-            throw new UnauthorizedAccessException("ليس لديك صلاحية حذف هذه الرسالة");
+            throw new UnauthorizedAccessException("حذف الرسالة متاح لكاتبها أو للمشرف فقط");
 
         // الحذف في قاعدة البيانات (الردود/القراءات) — داخل معاملة الوسم.
         return await _forum.DeleteMessageAsync(command.MessageId, ct);

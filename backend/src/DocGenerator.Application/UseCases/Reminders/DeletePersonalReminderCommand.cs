@@ -39,7 +39,7 @@ public sealed class DeletePersonalReminderCommandHandler
         _reminders.Remove(reminder);
         await _uow.SaveChangesAsync(ct);
         await _audit.LogAsync(command.ActorName, "personal-reminder.delete",
-            details: $"حذف التذكير الشخصي: {title}", ct: ct);
+            details: $"حذف تذكيره الشخصي: {title}", ct: ct);
         return true;
     }
 }

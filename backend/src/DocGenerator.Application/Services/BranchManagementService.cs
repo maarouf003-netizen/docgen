@@ -9,7 +9,6 @@ namespace DocGenerator.Application.Services;
 public interface IBranchManagementService
 {
     Task<List<BranchDto>> ListBranchesAsync(CancellationToken ct = default);
-    Task<BranchDto> CreateBranchAsync(CreateBranchRequest request, string? actorName, CancellationToken ct = default);
     Task<BranchDto?> UpdateBranchAsync(int branchId, UpdateBranchRequest request, string? actorName, CancellationToken ct = default);
 }
 
@@ -62,43 +61,6 @@ public sealed class BranchManagementService : IBranchManagementService
             .ToList();
     }
 
-    public async Task<BranchDto> CreateBranchAsync(CreateBranchRequest request, string? actorName, CancellationToken ct = default)
-    {
-        var name = NormalizeRequired(request.Name, "اسم الفرع مطلوب");
-        var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
-        // المحافظة إجبارية لأنها تحدد نطاق رئيس القسم في سجل الجهات العامة (Branches.Governorate).
-        var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
-        if (!GovernorateCatalog.IsGovernorate(governorate))
-            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
-
-        if (await _branches.NameExistsAsync(name, null, ct))
-            throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
-        if (await _branches.CodeExistsAsync(code, null, ct))
-            throw new ArgumentException("كود الفرع مستخدم مسبقاً");
-
-        var branch = new Branch
-        {
-            Name = name,
-            Code = code,
-            Address = NormalizeOptional(request.Address),
-            Phone = NormalizeOptional(request.Phone),
-            Governorate = governorate,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _branches.AddAsync(branch, token);
-            await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Branches);
-            await _audit.LogAsync(actorName, "create_branch",
-                details: $"أنشأ فرعاً: {branch.Name} ({branch.Code})", ct: token);
-        }, ct);
-
-        return ToDto(branch, 0, 0);
-    }
-
     public async Task<BranchDto?> UpdateBranchAsync(int branchId, UpdateBranchRequest request, string? actorName, CancellationToken ct = default)
     {
         var branch = await _branches.GetByIdAsync(branchId, ct);
@@ -144,7 +106,7 @@ public sealed class BranchManagementService : IBranchManagementService
         }, ct);
     }
 
-    private static string NormalizeRequired(string? value, string message)
+    internal static string NormalizeRequired(string? value, string message)
     {
         var normalized = value?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(normalized))
@@ -152,13 +114,13 @@ public sealed class BranchManagementService : IBranchManagementService
         return normalized;
     }
 
-    private static string? NormalizeOptional(string? value)
+    internal static string? NormalizeOptional(string? value)
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
-    private static BranchDto ToDto(Branch branch, int userCount, int documentCount) => new(
+    internal static BranchDto ToDto(Branch branch, int userCount, int documentCount) => new(
         branch.Id,
         branch.Name,
         branch.Code,
