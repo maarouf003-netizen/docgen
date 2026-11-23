@@ -26,17 +26,26 @@ public class ForumController : ControllerBase
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
     private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
+    private readonly ICommandHandler<PostForumMessageCommand, ForumMessageDto> _postMessage;
+    private readonly ICommandHandler<UpdateForumMessageCommand, ForumMessageDto> _updateMessage;
+    private readonly ICommandHandler<MarkForumReadCommand, int> _markRead;
 
     public ForumController(
         IForumService forum,
         IUserCapabilities capabilities,
         ICommandHandler<DeleteForumMessageCommand, bool> deleteMessage,
-        ICommandHandler<ToggleForumPinCommand, ForumMessageDto> togglePin)
+        ICommandHandler<ToggleForumPinCommand, ForumMessageDto> togglePin,
+        ICommandHandler<PostForumMessageCommand, ForumMessageDto> postMessage,
+        ICommandHandler<UpdateForumMessageCommand, ForumMessageDto> updateMessage,
+        ICommandHandler<MarkForumReadCommand, int> markRead)
     {
         _forum = forum;
         _capabilities = capabilities;
         _deleteMessage = deleteMessage;
         _togglePin = togglePin;
+        _postMessage = postMessage;
+        _updateMessage = updateMessage;
+        _markRead = markRead;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -79,7 +88,8 @@ public class ForumController : ControllerBase
     {
         if (SubHeadSessionBroken)
             return Forbid();
-        var message = await _forum.PostAsync(request, UserId, ct);
+        var message = await _postMessage.HandleAsync(
+            new PostForumMessageCommand(request, UserId), ct);
         return CreatedAtAction(nameof(Get), new { id = message.Id }, message);
     }
 
@@ -91,7 +101,8 @@ public class ForumController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _forum.UpdateAsync(id, request, UserId, ct));
+            return Ok(await _updateMessage.HandleAsync(
+                new UpdateForumMessageCommand(id, request, UserId), ct));
         }
         catch (KeyNotFoundException e)
         {
@@ -162,7 +173,8 @@ public class ForumController : ControllerBase
     {
         if (SubHeadSessionBroken)
             return Forbid();
-        var max = await _forum.MarkReadAsync(UserId, ActorName, request.UpToMessageId, ct);
+        var max = await _markRead.HandleAsync(
+            new MarkForumReadCommand(UserId, ActorName, request.UpToMessageId), ct);
         return Ok(new { maxReadMessageId = max });
     }
 
