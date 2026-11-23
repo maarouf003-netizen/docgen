@@ -95,39 +95,4 @@ public sealed partial class DocumentService : IDocumentService
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber);
     }
-
-    public async Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default)
-    {
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            return false;
-
-        // منع حذف ملفٍ مرتبط بإنابة (صادرة عنه أو مناب عنها — بأي حالة) أو باستئناف
-        // (بأي حالة: منظور/محسوم/مشطوب): الحذف المنطقي يُخفي الملف عن القوائم بينما تبقى
-        // الإنابة/الاستئناف تشير إليه، فيُيتّم سجلات حية. تحقق قبل تغيير وخارج المعاملة كسائر الحراس.
-        // (doc.Delegations وSourceDelegationId محمّلتان في GetByIdAsync — صفر استعلامات إضافية.)
-        if (doc.Delegations.Count > 0)
-            throw new ArgumentException("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه");
-        if (doc.SourceDelegationId is not null)
-            throw new ArgumentException("لا يمكن حذف الملف المناب لوجود إنابة مرتبطة به");
-        if ((await _appeals.ListByDocumentAsync(doc.Id, ct)).Count > 0)
-            throw new ArgumentException("لا يمكن حذف الملف لوجود استئناف مرتبط به");
-
-        return await _tx.RunAsync(async token =>
-        {
-            // الكاتب الوحيد: إلغاء صفوف الأرقام (document-deleted) قبل رفع علم الحذف
-            // حتى تبقى الصفوف مرئية لاستعلام الإلغاء، وتبقى معروضة في السجل.
-            await _numberRegistry.VoidForDocumentDeleteAsync(doc, doc.CreatedById, actorName, token);
-            doc.IsDeleted = true;
-            doc.DeletedAt = DateTime.UtcNow;
-            doc.UpdatedAt = DateTime.UtcNow;
-            doc.Version++;
-            _documents.Update(doc);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "delete", documentId, doc.DocumentType,
-                DocumentText.AuditWithActor($"حذف المستند (رقم {documentId})", doc), token);
-            return true;
-        }, ct);
-    }
-
 }

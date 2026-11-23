@@ -16,7 +16,6 @@ public interface IDocumentService
     Task<DocumentAccessInfo?> GetAccessInfoAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null);
-    Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default);
     Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null);
     /// <summary>عدد ملفات المحامي غير المحذوفة (للمعاينة قبل النقل الجماعي).</summary>
     Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null);
@@ -51,7 +50,6 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IUserRepository _users;
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
-    private readonly IAppealRepository _appeals;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -71,7 +69,6 @@ public sealed partial class DocumentService : IDocumentService
         IUserRepository users,
         IRepository<DocumentBaseNumber> baseNumbers,
         IRepository<DocumentRegistrationDate> registrationDates,
-        IAppealRepository appeals,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -92,7 +89,6 @@ public sealed partial class DocumentService : IDocumentService
         _users = users;
         _baseNumbers = baseNumbers;
         _registrationDates = registrationDates;
-        _appeals = appeals;
         _uow = uow;
         _tx = tx;
         _audit = audit;

@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -145,7 +145,6 @@ public static class DocumentServiceFactory
             usersValue,
             baseNumbersValue,
             registrationDatesValue,
-            appealsValue,
             uowValue,
             txValue,
             audit,
@@ -174,6 +173,15 @@ public static class DocumentServiceFactory
             timeZoneValue,
             Array.Empty<IPipelineBehavior<UpdateDocumentCommand, DocumentResponse?>>());
 
-        return (documentService, actionService, searchService, statusService, updateDocument);
+        var deleteDocument = new DeleteDocumentCommandHandler(
+            documentsValue,
+            appealsValue,
+            uowValue,
+            txValue,
+            audit,
+            numberRegistry,
+            Array.Empty<IPipelineBehavior<DeleteDocumentCommand, bool>>());
+
+        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument);
     }
 }

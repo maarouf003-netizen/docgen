@@ -18,6 +18,7 @@ public class DocumentServiceTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
+    private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
@@ -52,6 +53,7 @@ public class DocumentServiceTests : PostgresDbTest
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
         _update = bundle.UpdateDocument;
+        _delete = bundle.DeleteDocument;
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
@@ -448,7 +450,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchDeletedList_ProjectsDeletedCardFields()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(doc.Id, "head1");
+        await _delete.DeleteAsync(doc.Id, "head1");
 
         var legacy = await _search.SearchDeletedAsync(null, 1, 20);
         var projected = await _search.SearchDeletedListAsync(null, 1, 20);
@@ -1012,7 +1014,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task TransferAll_ExcludesDeletedFiles()
     {
         var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(created.Id, "lawyer1");
+        await _delete.DeleteAsync(created.Id, "lawyer1");
         var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
 
         var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
@@ -1028,7 +1030,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(doc.Id, "lawyer1");
+        await _delete.DeleteAsync(doc.Id, "lawyer1");
 
         var count = await _service.CountFilesByOwnerAsync(1, scopeBranchId: 1);
 
@@ -2084,8 +2086,8 @@ public class DocumentServiceTests : PostgresDbTest
         req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
         var first = await _service.CreateAsync(req, 1, "lawyer1", 1);
         var second = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
-        Assert.True(await _service.DeleteAsync(first.Id, "lawyer1"));
-        Assert.True(await _service.DeleteAsync(second.Id, "lawyer1"));
+        Assert.True(await _delete.DeleteAsync(first.Id, "lawyer1"));
+        Assert.True(await _delete.DeleteAsync(second.Id, "lawyer1"));
         // اللقطة بعد الحذف مباشرة عبر _db: الحارس يمنع الحذف فوق استئناف، فالتجهيز
         // اصطناعي عمدًا لتغطية فرع اللقطات في الكتلة الموحدة على هذه الصفحة.
         await AddAppealSnapshotAsync(first.Id, "مستأنف محذوف فريد", "ضد محذوف");
@@ -2120,7 +2122,7 @@ public class DocumentServiceTests : PostgresDbTest
             ReferredToStartFields(), "lawyer1"));
 
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        Assert.True(await _service.DeleteAsync(deleted.Id, "lawyer1"));
+        Assert.True(await _delete.DeleteAsync(deleted.Id, "lawyer1"));
 
         var plain = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         var ids = plain.Items.Select(d => d.Id).ToHashSet();
@@ -2631,10 +2633,13 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task Delete_SoftDeletesDocument_AndHidesItFromQueries()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var ok = await _service.DeleteAsync(doc.Id, "head1");
+        var ok = await _delete.DeleteAsync(doc.Id, "head1");
         Assert.True(ok);
         Assert.Null(await _service.GetAsync(doc.Id));
         Assert.Contains("delete", _audit.Actions);
+        // تثبيت نص التدقيق حرفيًا كما يركّبه DocumentText.
+        Assert.Contains(_audit.Details,
+            d => d == $"حذف المستند (رقم {doc.Id}) — المنفذ عليه: أحمد خالد الخطيب");
 
         // الصف لا يزال في القاعدة لكن موسوماً كمحذوف منطقياً
         var row = _db.Documents.IgnoreQueryFilters().First(d => d.Id == doc.Id);
@@ -2646,7 +2651,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task Delete_ThenRestore_MakesDocumentVisibleAgain()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(doc.Id, "head1");
+        await _delete.DeleteAsync(doc.Id, "head1");
         Assert.Null(await _service.GetAsync(doc.Id));
 
         var restored = await RestoreAsync(doc.Id, "head1");
@@ -2674,7 +2679,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(deleted.Id, "head1");
+        await _delete.DeleteAsync(deleted.Id, "head1");
 
         var result = await _search.SearchDeletedAsync(null, 1, 20);
 
@@ -2688,7 +2693,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchDeleted_AfterRestore_NoLongerListed()
     {
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(deleted.Id, "head1");
+        await _delete.DeleteAsync(deleted.Id, "head1");
         await RestoreAsync(deleted.Id, "head1");
 
         var result = await _search.SearchDeletedAsync(null, 1, 20);
@@ -2700,7 +2705,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchDeleted_ByQuery_FiltersByName()
     {
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(deleted.Id, "head1");
+        await _delete.DeleteAsync(deleted.Id, "head1");
 
         var result = await _search.SearchDeletedAsync("أحمد خالد الخطيب", 1, 20);
         Assert.Contains(result.Items, d => d.Id == deleted.Id);
@@ -2724,7 +2729,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.DeleteAsync(deleted.Id, "head1");
+        await _delete.DeleteAsync(deleted.Id, "head1");
 
         Assert.Null(await _service.GetDeletedAsync(active.Id));
         Assert.Null(await _service.GetDeletedAsync(99_999));
@@ -5564,6 +5569,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     private static int s_considerSeq;
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
+    private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
@@ -5587,6 +5593,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var considerBundle = DocumentServiceFactory.Create(_db, _audit, alertService: _alerts, tx: _tx);
         _service = considerBundle.Documents;
         _update = considerBundle.UpdateDocument;
+        _delete = considerBundle.DeleteDocument;
         _status = considerBundle.Status;
     }
 

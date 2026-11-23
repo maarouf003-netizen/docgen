@@ -21,6 +21,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly IDocumentDelegationService _service;
     private readonly IDocumentService _documentService;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
+    private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
     private readonly IDocumentSearchService _documentSearch;
     private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
@@ -88,6 +89,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
         _documentUpdate = docBundle.UpdateDocument;
+        _documentDelete = docBundle.DeleteDocument;
         _documentSearch = docBundle.Search;
         _documentStatus = docBundle.Status;
     }
@@ -3914,7 +3916,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceWithDelegationAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(source.Id, "lawyer1"));
+            _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
     }
 
@@ -3928,7 +3930,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(source.Id, "lawyer1"));
+            _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
     }
 
@@ -3956,7 +3958,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(mirror.Id, "lawyer2"));
+            _documentDelete.DeleteAsync(mirror.Id, "lawyer2"));
         Assert.Contains("لا يمكن حذف الملف المناب لوجود إنابة مرتبطة به", ex.Message);
     }
 
@@ -3967,7 +3969,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await SeedAppealAsync(source.Id, AppealStatusCatalog.Pending);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(source.Id, "lawyer1"));
+            _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
@@ -3979,7 +3981,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await SeedAppealAsync(source.Id, AppealStatusCatalog.Decided);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(source.Id, "lawyer1"));
+            _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
@@ -3990,7 +3992,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await SeedAppealAsync(source.Id, AppealStatusCatalog.StruckOff);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.DeleteAsync(source.Id, "lawyer1"));
+            _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
     }
 
@@ -3999,7 +4001,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
 
-        Assert.True(await _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.True(await _documentDelete.DeleteAsync(source.Id, "lawyer1"));
         Assert.Contains("delete", _audit.Actions);
         Assert.True((await _db.Documents.FindAsync(source.Id))!.IsDeleted);
     }
