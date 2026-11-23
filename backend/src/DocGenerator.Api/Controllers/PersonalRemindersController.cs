@@ -1,7 +1,9 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Reminders;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,12 +17,16 @@ public class PersonalRemindersController : ControllerBase
 {
     private readonly IPersonalReminderService _reminders;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
 
     public PersonalRemindersController(
-        IPersonalReminderService reminders, IUserCapabilities capabilities)
+        IPersonalReminderService reminders,
+        IUserCapabilities capabilities,
+        ICommandHandler<DeletePersonalReminderCommand, bool> deleteReminder)
     {
         _reminders = reminders;
         _capabilities = capabilities;
+        _deleteReminder = deleteReminder;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -85,7 +91,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var deleted = await _reminders.DeleteAsync(id, User.GetUserId(), ActorName, ct);
+        var deleted = await _deleteReminder.HandleAsync(
+            new DeletePersonalReminderCommand(id, User.GetUserId(), ActorName), ct);
         return deleted ? NoContent() : NotFound();
     }
 }

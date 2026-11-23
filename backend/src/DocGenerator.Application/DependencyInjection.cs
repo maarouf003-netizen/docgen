@@ -4,7 +4,9 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Alerts;
+using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Application.UseCases.Users;
@@ -78,6 +80,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();
         services.AddScoped<ICommandHandler<MarkHeadAlertReadCommand, bool>, MarkHeadAlertReadCommandHandler>();
         services.AddScoped<ICommandHandler<MarkAppSuggestionReadCommand, bool>, MarkAppSuggestionReadCommandHandler>();
+        services.AddScoped<ICommandHandler<DeletePersonalReminderCommand, bool>, DeletePersonalReminderCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteBranchCommand, bool>, DeleteBranchCommandHandler>();
         return services;
     }
 }

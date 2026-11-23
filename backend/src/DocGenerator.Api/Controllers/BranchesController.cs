@@ -1,6 +1,8 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Branches;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,11 +15,16 @@ public class BranchesController : ControllerBase
 {
     private readonly IBranchManagementService _branches;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
 
-    public BranchesController(IBranchManagementService branches, IUserCapabilities capabilities)
+    public BranchesController(
+        IBranchManagementService branches,
+        IUserCapabilities capabilities,
+        ICommandHandler<DeleteBranchCommand, bool> deleteBranch)
     {
         _branches = branches;
         _capabilities = capabilities;
+        _deleteBranch = deleteBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -67,7 +74,7 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        var ok = await _branches.DeleteBranchAsync(id, ActorName, ct);
+        var ok = await _deleteBranch.HandleAsync(new DeleteBranchCommand(id, ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 }
