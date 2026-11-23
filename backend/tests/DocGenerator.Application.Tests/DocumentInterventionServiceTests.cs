@@ -459,8 +459,12 @@ public class DocumentInterventionServiceTests : PostgresDbTest
         var dto = await _service.AddAsync(
             _document.Id, NaturalRequest(), _lawyer.Id, "المحامي الأول");
 
-        _document.GeneralEntitySide = GeneralEntitySideCatalog.Deposit;
-        await _db.SaveChangesAsync();
+        // `AddAsync` يفرّغ المتتبَّع (`ClearChanges`) فالكيان المحلي منفصل: التغيير يُكتب
+        // مباشرة في القاعدة ثم يُعاد تحميله داخل المعالج.
+        await _db.Documents
+            .Where(d => d.Id == _document.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(
+                d => d.GeneralEntitySide, GeneralEntitySideCatalog.Deposit));
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => DeleteAsync(_document.Id, dto.Id, "المحامي الأول"));
