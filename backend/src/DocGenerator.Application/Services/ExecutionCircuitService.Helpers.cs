@@ -38,10 +38,9 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
 
     private async Task<ExecutionCircuit> GetOwnedAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct)
     {
-        var circuit = await _circuits.GetByIdAsync(circuitId, ct)
-            ?? throw new ArgumentException("الدائرة غير موجودة");
         // ملكية النطاق (§5.3 — قرار §2.21): رئيس القسم لدوائر القسم (`null`)،
         // ورئيس الشعبة لدوائر شعبته — وغيرها «ليست ضمن نطاقك» (§14).
-        return ExecutionCircuitRules.EnsureOwned(circuit, branchId, ownerSectionId);
+        return await ExecutionCircuitRules.GetOwnedAsync(
+            circuitId, branchId, ownerSectionId, _circuits, ct);
     }
 }

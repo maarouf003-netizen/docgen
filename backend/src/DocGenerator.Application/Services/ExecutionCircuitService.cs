@@ -19,7 +19,6 @@ public interface IExecutionCircuitService
 
     Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);
-    Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null);
     Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
     Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default);
     /// <summary>
@@ -39,7 +38,8 @@ public interface IExecutionCircuitService
 /// <summary>
 /// سجل دوائر التنفيذ (BQ-004): الدائرة تابعة للفرع/المحافظة — والقفل من سجل يعبئه رئيس القسم.
 /// النطاق إجباري خلفيًا من فرع رئيس القسم (لا يُقبل أي نطاق من العميل).
-/// كل عمليات الكتابة: فحوصات (وجود/تفعيل/فرع) داخل المعاملة (ضد TOCTOU) + audit.
+/// بقيت في الخدمة القراءات وخطافات التنبيه؛ وكل الكتابات صارت أوامر تملك فحوصها
+/// (وجود/تفعيل/فرع) داخل معاملتها (ضد TOCTOU) مع تدقيقها.
 /// </summary>
 public sealed partial class ExecutionCircuitService : IExecutionCircuitService
 {
@@ -50,18 +50,11 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
     private readonly IRepository<Section> _sections;
     private readonly IDocumentRepository _documents;
     private readonly IDelegationRepository _delegations;
-    private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IHeadAlertRepository _alerts;
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
     private readonly IHeadAlertOutbox _alertOutbox;
-    private readonly IDbExceptionClassifier _dbErrors;
-    private readonly IIdempotencyStore? _idempotency;
-    private readonly TimeProvider _clock;
-    private readonly TimeZoneInfo _timeZone;
-    private readonly IDocumentNumberRegistry? _numberRegistry;
     private readonly IReferenceDataCache? _cache;
 
     public ExecutionCircuitService(
@@ -70,18 +63,11 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         IRepository<Section> sections,
         IDocumentRepository documents,
         IDelegationRepository delegations,
-        IRepository<DocumentOccurrence> occurrences,
         IHeadAlertRepository alerts,
         IUserRepository users,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit,
         IHeadAlertOutbox alertOutbox,
-        IDbExceptionClassifier dbErrors,
-        TimeProvider clock,
-        TimeZoneInfo timeZone,
-        IIdempotencyStore? idempotency = null,
-        IDocumentNumberRegistry? numberRegistry = null,
         IReferenceDataCache? cache = null)
     {
         _circuits = circuits;
@@ -89,18 +75,11 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
         _sections = sections;
         _documents = documents;
         _delegations = delegations;
-        _occurrences = occurrences;
         _alerts = alerts;
         _users = users;
         _uow = uow;
         _tx = tx;
-        _audit = audit;
         _alertOutbox = alertOutbox;
-        _dbErrors = dbErrors;
-        _idempotency = idempotency;
-        _clock = clock;
-        _timeZone = timeZone;
-        _numberRegistry = numberRegistry;
         _cache = cache;
     }
 

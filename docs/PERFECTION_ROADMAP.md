@@ -859,6 +859,11 @@
   `ITransactionRunner` — بلا وسم `ITransactionalRequest` — كي يلتف `catch` تعارض التزامن
   حولها كما الأصل؛ وبقيت `SyncPendingAlertsAfterTransferAsync` عند مستدعيها في
   `DocumentService` (نقل الملفات) ولا تدخل مسار نقل الدائرة.
+  **`P4-01al`:** `ReferCircuitFilesCommand` يملك مفتاح عدم التكرار (`RF-011`) ومعاملة
+  الإفراغ كاملة (تعطيل المصدر، الهوية الجديدة، الوقوعات الثلاث، إعادة توجيه الواردة،
+  والتدقيق الحقلي/الجماعي والتنبيه عبر `Outbox`)، مع `ExecutionCircuitRules.GetOwnedAsync`
+  و`EnqueuePendingAlertAsync` مشتركتين؛ وأُزيل من الخدمة سبعة حقول ميتة (`_occurrences`,
+  `_audit`, `_dbErrors`, `_idempotency`, `_clock`, `_timeZone`, `_numberRegistry`).
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -878,7 +883,8 @@
   `docs/audit/143-p4-01ah-circuit-rename-20261123.md` و
   `docs/audit/144-p4-01ai-complete-registrations-20261123.md` و
   `docs/audit/145-p4-01aj-circuit-delete-20261123.md` و
-  `docs/audit/146-p4-01ak-circuit-transfer-20261124.md`.
+  `docs/audit/146-p4-01ak-circuit-transfer-20261124.md` و
+  `docs/audit/147-p4-01al-circuit-refer-files-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

@@ -24,7 +24,6 @@ public sealed class ExecutionCircuitsBranchGuardTests
         public Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null) => throw new NotImplementedException();
         public Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> CompleteRegistrationsAsync(int lawyerId, string? actorName, CompleteRegistrationsRequest request, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default) => throw new NotImplementedException();
@@ -36,7 +35,7 @@ public sealed class ExecutionCircuitsBranchGuardTests
     {
         var controller = new ExecutionCircuitsController(
             new FakeCircuitService(), null!, null!, ApiTestClock.Provider, TimeZoneInfo.Utc,
-            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!, null!, null!);
+            new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

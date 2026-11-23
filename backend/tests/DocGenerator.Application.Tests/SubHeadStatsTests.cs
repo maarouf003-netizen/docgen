@@ -54,16 +54,11 @@ public class SubHeadStatsTests : PostgresDbTest
             new Repository<Section>(_db),
             new DocumentRepository(_db),
             new DelegationRepository(_db),
-            new Repository<DocumentOccurrence>(_db),
             new HeadAlertRepository(_db),
             new UserRepository(_db),
             uow,
             tx,
-            _audit,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            new DbExceptionClassifier(),
-            TestClock.Provider,
-            TestClock.TimeZone);
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx));
         _alerts = new HeadAlertService(
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),

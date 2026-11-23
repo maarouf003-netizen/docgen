@@ -40,7 +40,8 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                     .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
             if (string.IsNullOrWhiteSpace(circuitName))
                 continue;
-            await EnqueuePendingAlertAsync(
+            await ExecutionCircuitRules.EnqueuePendingAlertAsync(
+                _alertOutbox,
                 targetOwnerId,
                 branchId,
                 actorUserId,

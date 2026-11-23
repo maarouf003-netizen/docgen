@@ -31,6 +31,7 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
     private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
     private readonly ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> _transferCircuit;
+    private readonly ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> _referFiles;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
@@ -43,7 +44,8 @@ public class ExecutionCircuitsController : ControllerBase
         ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive,
         ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> renameCircuit,
         ICommandHandler<DeleteExecutionCircuitCommand, bool> deleteCircuit,
-        ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> transferCircuit)
+        ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> transferCircuit,
+        ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> referFiles)
     {
         _circuits = circuits;
         _branches = branches;
@@ -56,6 +58,7 @@ public class ExecutionCircuitsController : ControllerBase
         _renameCircuit = renameCircuit;
         _deleteCircuit = deleteCircuit;
         _transferCircuit = transferCircuit;
+        _referFiles = referFiles;
     }
 
     private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
@@ -234,8 +237,9 @@ public class ExecutionCircuitsController : ControllerBase
         if (error is not null) return error;
         try
         {
-            var result = await _circuits.ReferFilesAsync(id, branchId, ownerSectionId, User.GetUserId(), ActorName, request, ct,
-                IdempotencyKeyHeader());
+            var result = await _referFiles.HandleAsync(
+                new ReferCircuitFilesCommand(
+                    id, branchId, ownerSectionId, User.GetUserId(), ActorName, request, IdempotencyKeyHeader()), ct);
             return Ok(new
             {
                 result.ReferredCount,
