@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -222,7 +224,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
     }
 
     /// <summary>خدمات سياقٍ واحد: كل سياق = «مستخدم» مستقل في اختبار السباق.</summary>
-    private static (IDocumentDelegationService Delegations, IDocumentService Documents, IHeadAlertService Alerts)
+    private static (IDocumentDelegationService Delegations, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, IHeadAlertService Alerts)
         BuildServices(DocGeneratorDbContext db)
     {
         var documents = new DocumentRepository(db);
@@ -255,7 +257,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         var bundle = DocumentServiceFactory.Create(
             db, audit, documents: documents, users: users, registrationDates: registrationDates,
             occurrences: occurrences, uow: uow, tx: tx, alertService: alerts);
-        return (delegations, bundle.Documents, alerts);
+        return (delegations, bundle.UpdateDocument, alerts);
     }
 
     private sealed record MirrorSeed(int SourceId, int DelegationId, int TargetId, int LawyerId);
@@ -438,7 +440,8 @@ public class DelegationConcurrencyTests : IAsyncLifetime
                 var (_, documentsA, _) = BuildServices(dbA);
                 var (_, documentsB, _) = BuildServices(dbB);
 
-                async Task<Exception?> RunAsync(IDocumentService documents, DocumentUpsertRequest request)
+                async Task<Exception?> RunAsync(
+                    ICommandHandler<UpdateDocumentCommand, DocumentResponse?> documents, DocumentUpsertRequest request)
                 {
                     try
                     {

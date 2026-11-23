@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class EntityRegistryLinkTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _entryAId;
     private readonly int _entryBId;
@@ -49,7 +52,9 @@ public class EntityRegistryLinkTests : PostgresDbTest
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx).Documents;
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _update = bundle.UpdateDocument;
     }
 
 
@@ -112,7 +117,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         {
             new ApplicantPublicEntityDto(null, "مديرية النقل", "فرع النقل", "دمشق", _entryBId),
         };
-        await _service.UpdateAsync(doc.Id, update, "lawyer1", 1);
+        await _update.UpdateAsync(doc.Id, update, "lawyer1", 1);
 
         var loaded = await _service.GetAsync(doc.Id);
         Assert.Equal(_entryBId, loaded!.ApplicantRegistryId);
@@ -141,7 +146,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         {
             new ApplicantPublicEntityDto(null, "وزارة التعليم", "الفرع الرئيسي", "دمشق", null),
         };
-        await _service.UpdateAsync(doc.Id, update, "lawyer1", 1);
+        await _update.UpdateAsync(doc.Id, update, "lawyer1", 1);
 
         var loaded = await _service.GetAsync(doc.Id);
         Assert.Null(loaded!.ApplicantRegistryId);

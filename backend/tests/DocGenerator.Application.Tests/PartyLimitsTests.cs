@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -16,6 +18,7 @@ namespace DocGenerator.Application.Tests;
 public class PartyLimitsTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
 
     public PartyLimitsTests()
@@ -31,6 +34,7 @@ public class PartyLimitsTests : PostgresDbTest
         });
         _db.SaveChanges();
         _service = DocumentServiceFactory.Create(_db, _audit).Documents;
+        _update = DocumentServiceFactory.Create(_db, _audit).UpdateDocument;
     }
 
 
@@ -90,7 +94,7 @@ public class PartyLimitsTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(1), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.UpdateAsync(doc.Id, Sample(PartyLimitsCatalog.MaxGuarantors + 1), "lawyer1", 1));
+            () => _update.UpdateAsync(doc.Id, Sample(PartyLimitsCatalog.MaxGuarantors + 1), "lawyer1", 1));
         Assert.Contains(PartyLimitsCatalog.MaxTotalDebtors.ToString(), ex.Message);
     }
 

@@ -1,6 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 
@@ -16,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -156,6 +159,21 @@ public static class DocumentServiceFactory
             idempotency,
             circuits);
 
-        return (documentService, actionService, searchService, statusService);
+        var updateDocument = new UpdateDocumentCommandHandler(
+            documentsValue,
+            registrationDatesValue,
+            uowValue,
+            txValue,
+            audit,
+            actionService,
+            delegationService,
+            statusService,
+            writeGuard,
+            numberRegistry,
+            clockValue,
+            timeZoneValue,
+            Array.Empty<IPipelineBehavior<UpdateDocumentCommand, DocumentResponse?>>());
+
+        return (documentService, actionService, searchService, statusService, updateDocument);
     }
 }

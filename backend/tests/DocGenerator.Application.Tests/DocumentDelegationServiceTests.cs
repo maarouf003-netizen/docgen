@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -18,6 +20,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 {
     private readonly IDocumentDelegationService _service;
     private readonly IDocumentService _documentService;
+    private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly IDocumentSearchService _documentSearch;
     private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
@@ -84,6 +87,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
+        _documentUpdate = docBundle.UpdateDocument;
         _documentSearch = docBundle.Search;
         _documentStatus = docBundle.Status;
     }
@@ -376,7 +380,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .ToList();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+            _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
         Assert.Contains("لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة", ex.Message);
         Assert.Contains("عقار رقم 77", ex.Message);
     }
@@ -391,7 +395,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .ToList();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+            _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
         Assert.Contains("لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة", ex.Message);
     }
 
@@ -405,7 +409,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Select(a => a.Id == seizedId ? a with { SeizureDate = "5/8/2026" } : a)
             .ToList();
 
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "77");
         Assert.Equal(new DateTime(2026, 8, 5), stored.SeizureDate);
@@ -420,7 +424,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.Null((await _db.Assets.AsNoTracking().SingleAsync(a => a.Id == seizedId)).RightType);
 
         var request = await SourceEditRequestAsync(source.Id);
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "77");
         Assert.Equal(RightTypeCatalog.BareOwnership, stored.RightType);
@@ -435,7 +439,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Select(a => a.Id == freeId ? a with { SeizureDate = "" } : a)
             .ToList();
 
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "88");
         Assert.Null(stored.SeizureDate);
@@ -449,7 +453,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         request.Assets = request.Assets.Where(a => a.Id != seizedId).ToList();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+            _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
         Assert.Contains("لا يمكن حذف هذا المال لأن هناك انابة سارية", ex.Message);
         Assert.Contains("عقار رقم 77", ex.Message);
     }
@@ -461,7 +465,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var request = await SourceEditRequestAsync(source.Id);
         request.Assets = request.Assets.Where(a => a.Id != freeId).ToList();
 
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         Assert.Empty(await _db.Assets.Where(a => a.PropertyNumber == "88").ToListAsync());
     }
@@ -762,14 +766,14 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Include(d => d.RegistrationDate)
             .SingleAsync(d => d.Id == targetId));
         edit.Court = "دائرة تنفيذ حماة";
-        await _documentService.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id);
         Assert.Equal("دائرة تنفيذ حماة",
             (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
 
         // 2) تعديل دائرة المنيب لا يُزامَن إلى المناب.
         var sourceEdit = await SourceEditRequestAsync(source.Id);
         sourceEdit.Court = "دائرة تنفيذ دمشق الجديدة";
-        await _documentService.UpdateAsync(source.Id, sourceEdit, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceEdit, _lawyer1.FullName, _lawyer1.Id);
         Assert.Equal("دائرة تنفيذ حماة",
             (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
 
@@ -1416,7 +1420,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         sourceRequest.BorrowerName = "غيّر-بعد-الاعتماد";
         sourceRequest.AmountNumeric = 2_000_000;
 
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal("غيّر-بعد-الاعتماد", target.BorrowerName);
@@ -1436,7 +1440,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerName = "أحمد مُحدَّث من المنيب";
 
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
         await FlushAlertsAsync();
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -1470,7 +1474,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         targetRequest.BorrowerName = "تغيير مقفول";
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
         Assert.Contains("اسم المقترض", ex.Message);
 
@@ -1503,7 +1507,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         targetRequest.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", null, null, null));
 
-        var updated = await _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
+        var updated = await _documentUpdate.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
 
         Assert.NotNull(updated);
         Assert.Equal(1_000_000m, updated!.AmountNumeric);
@@ -1517,7 +1521,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         flip.AmountNumeric = 2_000_000m;
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, flip, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, flip, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("المبلغ (الأول)", ex.Message);
     }
 
@@ -1538,7 +1542,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         targetRequest.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", null, null, null));
 
-        var updated = await _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
+        var updated = await _documentUpdate.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
         Assert.NotNull(updated);
         await FlushAlertsAsync();
 
@@ -2185,7 +2189,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             template with { PropertyNumber = "99" },
             template with { PropertyNumber = "100" },
         };
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
         Assert.Equal("عقار رقم 77", snap.AssetLabel);
@@ -2215,7 +2219,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Include(d => d.RegistrationDate)
             .SingleAsync(d => d.Id == source.Id));
         request.Assets = new List<AssetDto> { template with { PropertyNumber = "771" } };
-        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
         var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
         Assert.Equal("عقار رقم 771", snap.AssetLabel);
@@ -2681,7 +2685,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         sourceRequest.Assets = MirrorAssets(sourceDoc);
         sourceRequest.Guarantors = sourceRequest.Guarantors.Where(g => g.GuarantorNumber != 2).ToList();
 
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
         await FlushAlertsAsync();
 
         var target = await _db.Documents
@@ -2724,7 +2728,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         addRep.BorrowerRepresentativeCapacity = "ولي";
         addRep.BorrowerRepresentativeAddressType = "عنوان";
         addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
-        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var before = await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id);
@@ -2732,7 +2736,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // تغيير عنوان المنيب: المرآة تتجاوز الكتابة فوق عنوان المناب (بلا تنبيه ضجيج).
         var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerAddress = "عنوان-المصدر-الجديد";
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
         await FlushAlertsAsync();
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -2788,7 +2792,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         removeHeir.Guarantors = new List<GuarantorDto> { guarantor with { Heirs = new List<HeirDto>() } };
         var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, removeHeir, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, removeHeir, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن حذف ورثة الكفيل", exRemove.Message);
         Assert.Contains("محمود سامي الحلبي", exRemove.Message);
 
@@ -2806,7 +2810,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
         var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, editHeir, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, editHeir, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل ورثة الكفيل", exEdit.Message);
     }
 
@@ -2855,7 +2859,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
 
-        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var stored = await _db.Documents
@@ -2925,7 +2929,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
 
-        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var archived = await _headAlerts.ArchiveByDelegationAsync(
@@ -2993,7 +2997,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
                 RepresentativeAddress = "المزة",
             },
         };
-        await _documentService.UpdateAsync(targetId, first, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, first, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         // (2) وريث جديد ⇒ إضافة ثانية (الحفظ نفسه لا يحتسب مرة أخرى).
@@ -3005,7 +3009,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         second.BorrowerHeirs = second.BorrowerHeirs
             .Append(new HeirDto(null, "سامر", "حسن", "العلي", "أصالة", "عنوان", "الحريقة"))
             .ToList();
-        await _documentService.UpdateAsync(targetId, second, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, second, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
@@ -3040,7 +3044,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
                 null, $"{longName}{i:00}", "والد", "عائلة", "أصالة", "عنوان", "دمشق"))
             .ToList();
 
-        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
@@ -3102,7 +3106,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
                 RepresentativeAddress = "المزة",
             },
         };
-        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
 
         var stored = await _db.Documents
             .Include(d => d.RegistrationDate)
@@ -3116,7 +3120,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             edit.BorrowerHeirs.Single() with { RepresentativeName = "ممثل آخر" },
         };
         var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الممثل الشرعي للوريث", exEdit.Message);
 
         var remove = baseRequest;
@@ -3133,7 +3137,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
         var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, remove, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, remove, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن إزالة الممثل الشرعي للوريث", exRemove.Message);
     }
 
@@ -3156,14 +3160,14 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Include(d => d.RegistrationDate)
             .SingleAsync(d => d.Id == targetId));
         addHeirs.BorrowerHeirs.Add(new HeirDto(null, "وريث", "أب", "عائلة", "أصالة", "عنوان", "المزة"));
-        await _documentService.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
 
         var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerRepresentativeName = "ممثل";
         sourceRequest.BorrowerRepresentativeFather = "أب";
         sourceRequest.BorrowerRepresentativeFamily = "عائلة";
         sourceRequest.BorrowerRepresentativeCapacity = "ولي";
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
 
         var target = await _db.Documents
             .Include(d => d.Heirs)
@@ -3207,7 +3211,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         duplicated.Guarantors = new List<GuarantorDto> { guarantor, guarantor with { Id = null } };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, duplicated, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, duplicated, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("أرقام الكفلاء مكررة", ex.Message);
 
         // الحالة المخزَّنة لم تُمسّ (الرفض قبل أي كتابة).
@@ -3253,7 +3257,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         edit.Assets = MirrorAssets(loaded);
         edit.Guarantors = new List<GuarantorDto>();
         // المزامنة للمناب وإطلاق التنبيه يتمّان داخل UpdateAsync نفسه.
-        await _documentService.UpdateAsync(source.Id, edit, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, edit, _lawyer1.FullName, _lawyer1.Id);
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts
@@ -3298,7 +3302,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         withBorrowerHeir.BorrowerHeirs.Add(new HeirDto(null, "غريب", "عن", "المقترض", null, null, null));
         var exHeir = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, withBorrowerHeir, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, withBorrowerHeir, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن إضافة ورثة أو ممثل شرعي على المقترض الاعتباري", exHeir.Message);
 
         var withBorrowerRep = MirrorRequest(await _db.Documents
@@ -3308,7 +3312,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         withBorrowerRep.BorrowerRepresentativeFather = "على";
         withBorrowerRep.BorrowerRepresentativeFamily = "المقترض";
         var exRep = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, withBorrowerRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, withBorrowerRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن إضافة ورثة أو ممثل شرعي على المقترض الاعتباري", exRep.Message);
 
         // كفيل اعتباري قائم بممثل مرسَل معه: مرفوض صراحةً (رقمه القائم + حقول تمثيل).
@@ -3331,7 +3335,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
         var exGuarantor = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, withGuarantorRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, withGuarantorRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("على الكفيل الاعتباري", exGuarantor.Message);
         Assert.Contains("شركة الكفل", exGuarantor.Message);
     }
@@ -3358,7 +3362,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         addRep.BorrowerRepresentativeCapacity = "ولي";
         addRep.BorrowerRepresentativeAddressType = "عنوان";
         addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
-        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
 
         // إزالة الممثل القائم (الطلب بلا ممثل): مرفوض.
         var removeRep = MirrorRequest(await _db.Documents
@@ -3371,7 +3375,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         removeRep.BorrowerRepresentativeAddressType = null;
         removeRep.BorrowerRepresentativeAddress = null;
         var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن إزالة الممثل الشرعي للمقترض", exRemove.Message);
 
         // تعديل اسم الممثل القائم: مرفوض.
@@ -3380,7 +3384,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         editRep.BorrowerRepresentativeName = "اسم-معدل";
         var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الممثل الشرعي للمقترض", exEdit.Message);
     }
 
@@ -3425,7 +3429,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
                 RepresentativeAddress = "عنوان-الممثل",
             },
         };
-        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
 
         var removeRep = MirrorRequestWithParties(await _db.Documents
             .Include(d => d.RegistrationDate)
@@ -3442,7 +3446,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
         var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن إزالة الممثل الشرعي للكفيل", exRemove.Message);
 
         var editRep = MirrorRequestWithParties(await _db.Documents
@@ -3453,7 +3457,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var withRep = editRep.Guarantors.Single();
         editRep.Guarantors = new List<GuarantorDto> { withRep with { RepresentativeName = "اسم-معدل" } };
         var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الممثل الشرعي للكفيل", exEdit.Message);
     }
 
@@ -3506,7 +3510,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             },
         };
 
-        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
         var target = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -3560,14 +3564,14 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Include(d => d.RegistrationDate)
             .SingleAsync(d => d.Id == targetId));
         addHeir.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", "أصالة", "عنوان", null));
-        await _documentService.UpdateAsync(targetId, addHeir, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addHeir, _lawyer2.FullName, _lawyer2.Id);
 
         var repeated = MirrorRequestWithParties(await _db.Documents
             .Include(d => d.RegistrationDate)
             .Include(d => d.Heirs)
             .SingleAsync(d => d.Id == targetId));
 
-        var updated = await _documentService.UpdateAsync(targetId, repeated, _lawyer2.FullName, _lawyer2.Id);
+        var updated = await _documentUpdate.UpdateAsync(targetId, repeated, _lawyer2.FullName, _lawyer2.Id);
         Assert.NotNull(updated);
 
         var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -3598,7 +3602,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new(null, "مرسى", "أحمد", "الخطيب", "أصالة", "عنوان", "عنوان-وريث-1"),
             new(null, "سلمى", "أحمد", "الخطيب", "أصالة", "عنوان", "عنوان-وريث-2"),
         });
-        await _documentService.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
 
         var addRep = MirrorRequestWithParties(await _db.Documents
             .Include(d => d.RegistrationDate)
@@ -3612,7 +3616,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يجتمع الممثل الشرعي مع الورثة — المقترض", ex.Message);
 
         var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -3675,7 +3679,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يجتمع الممثل الشرعي مع الورثة — الكفيل 2", ex.Message);
 
         var stored = await _db.Documents
@@ -3709,7 +3713,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         request.BorrowerAddressType = null;
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
         Assert.Contains("عنوان المقترض", ex.Message);
 
@@ -3747,7 +3751,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // 2) دمج المرآة: تعديل المنيب يُحدث المناب بنفس الحقل.
         var sourceRequest = await SourceEditRequestAsync(source.Id);
         c.RequestSet(sourceRequest, c.V2);
-        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await _documentUpdate.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
         var mirrored = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal(c.V2, c.EntityGet(mirrored));
 
@@ -3755,7 +3759,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var roundTrip = MirrorRequest(await _db.Documents
             .Include(d => d.RegistrationDate)
             .SingleAsync(d => d.Id == targetId));
-        await _documentService.UpdateAsync(targetId, roundTrip, _lawyer2.FullName, _lawyer2.Id);
+        await _documentUpdate.UpdateAsync(targetId, roundTrip, _lawyer2.FullName, _lawyer2.Id);
 
         // 4) فحص الحارس: قلب نفس الحقل يبقى مرفوضًا (مقفولًا ومُزامنًا).
         var flipRequest = MirrorRequest(await _db.Documents
@@ -3763,7 +3767,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .SingleAsync(d => d.Id == targetId));
         c.RequestSet(flipRequest, c.Flip);
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateAsync(targetId, flipRequest, _lawyer2.FullName, _lawyer2.Id));
+            _documentUpdate.UpdateAsync(targetId, flipRequest, _lawyer2.FullName, _lawyer2.Id));
         Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
     }
 
