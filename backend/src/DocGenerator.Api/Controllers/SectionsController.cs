@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Sections;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,11 +17,19 @@ public class SectionsController : ControllerBase
 {
     private readonly ISectionService _sections;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<CreateSectionCommand, SectionDto> _createSection;
+    private readonly ICommandHandler<DeleteSectionCommand, bool> _deleteSection;
 
-    public SectionsController(ISectionService sections, IUserCapabilities capabilities)
+    public SectionsController(
+        ISectionService sections,
+        IUserCapabilities capabilities,
+        ICommandHandler<CreateSectionCommand, SectionDto> createSection,
+        ICommandHandler<DeleteSectionCommand, bool> deleteSection)
     {
         _sections = sections;
         _capabilities = capabilities;
+        _createSection = createSection;
+        _deleteSection = deleteSection;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -47,7 +57,8 @@ public class SectionsController : ControllerBase
             return Forbid();
         try
         {
-            var section = await _sections.CreateSectionAsync(request.BranchId, request.Name, ActorName, ct);
+            var section = await _createSection.HandleAsync(
+                new CreateSectionCommand(request.BranchId, request.Name, ActorName), ct);
             return CreatedAtAction(nameof(Get), new { id = section.Id }, section);
         }
         catch (DocumentConflictException e)
@@ -104,6 +115,7 @@ public class SectionsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        return await _sections.DeleteSectionAsync(id, ActorName, ct) ? NoContent() : NotFound();
+        return await _deleteSection.HandleAsync(
+            new DeleteSectionCommand(id, ActorName), ct) ? NoContent() : NotFound();
     }
 }

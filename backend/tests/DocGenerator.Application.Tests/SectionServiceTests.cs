@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Sections;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -18,6 +20,8 @@ namespace DocGenerator.Application.Tests;
 public class SectionServiceTests : PostgresDbTest
 {
     private readonly ISectionService _service;
+    private readonly ICommandHandler<CreateSectionCommand, SectionDto> _createSection;
+    private readonly ICommandHandler<DeleteSectionCommand, bool> _deleteSection;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
@@ -41,7 +45,33 @@ public class SectionServiceTests : PostgresDbTest
             new UserRepository(_db),
             new Repository<HeadSuccession>(_db),
             uow, tx, _audit, new DbExceptionClassifier());
+        _createSection = new CreateSectionCommandHandler(
+            new Repository<Section>(_db),
+            new Repository<Branch>(_db),
+            uow,
+            _audit,
+            new DbExceptionClassifier(),
+            new IPipelineBehavior<CreateSectionCommand, SectionDto>[]
+            {
+                new TransactionBehavior<CreateSectionCommand, SectionDto>(tx),
+            });
+        _deleteSection = new DeleteSectionCommandHandler(
+            new Repository<Section>(_db),
+            new Repository<ExecutionCircuit>(_db),
+            new UserRepository(_db),
+            uow,
+            _audit,
+            new IPipelineBehavior<DeleteSectionCommand, bool>[]
+            {
+                new TransactionBehavior<DeleteSectionCommand, bool>(tx),
+            });
     }
+
+    private Task<SectionDto> CreateSectionAsync(int branchId, string? name, string? actorName)
+        => _createSection.HandleAsync(new CreateSectionCommand(branchId, name, actorName));
+
+    private Task<bool> DeleteSectionAsync(int sectionId, string? actorName)
+        => _deleteSection.HandleAsync(new DeleteSectionCommand(sectionId, actorName));
 
     [PostgresFact]
     public async Task ListSections_CacheInvalidatedAfterCreateAndRename()
@@ -61,10 +91,20 @@ public class SectionServiceTests : PostgresDbTest
             new DbExceptionClassifier(),
             cache);
 
+        var cachedCreate = new CreateSectionCommandHandler(
+            new Repository<Section>(_db),
+            new Repository<Branch>(_db),
+            new UnitOfWork(_db),
+            _audit,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateSectionCommand, SectionDto>>(),
+            cache);
+
         _ = await cachedService.ListSectionsAsync(_damascusId);
         _ = await cachedService.ListSectionsAsync(_damascusId);
 
-        var created = await cachedService.CreateSectionAsync(_damascusId, "شعبة الكاش", "admin");
+        var created = await cachedCreate.HandleAsync(
+            new CreateSectionCommand(_damascusId, "شعبة الكاش", "admin"));
         var afterCreate = await cachedService.ListSectionsAsync(_damascusId);
         Assert.Contains(afterCreate, s => s.Id == created.Id);
 
@@ -125,7 +165,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_AddsActiveSection_WithZeroCounts()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
         Assert.True(section.Id > 0);
         Assert.Equal("شعبة مصياف", section.Name);
@@ -133,6 +173,7 @@ public class SectionServiceTests : PostgresDbTest
         Assert.Equal(0, section.CircuitCount);
         Assert.Null(section.HeadName);
         Assert.Contains("create_section", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d == "أنشأ شعبة «شعبة مصياف» في فرع دمشق");
     }
 
     [PostgresTheory]
@@ -141,39 +182,39 @@ public class SectionServiceTests : PostgresDbTest
     public async Task Create_BlankName_Throws(string? name)
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateSectionAsync(_damascusId, name, "admin"));
+            CreateSectionAsync(_damascusId, name, "admin"));
     }
 
     [PostgresFact]
     public async Task Create_TooLongName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateSectionAsync(_damascusId, new string('س', 201), "admin"));
+            CreateSectionAsync(_damascusId, new string('س', 201), "admin"));
     }
 
     [PostgresFact]
     public async Task Create_UnknownBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateSectionAsync(999999, "شعبة يتيمة", "admin"));
+            CreateSectionAsync(999999, "شعبة يتيمة", "admin"));
     }
 
     [PostgresFact]
     public async Task Create_DuplicateNormalizedNameSameBranch_Throws()
     {
-        await _service.CreateSectionAsync(_damascusId, "شعبة أحمد", "admin");
+        await CreateSectionAsync(_damascusId, "شعبة أحمد", "admin");
 
         // الهمزة المختلفة تُطبَّع للاسم نفسه (PB-001) — تكرار مرفوض برسالة عربية.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateSectionAsync(_damascusId, "شعبة احمد", "admin"));
+            CreateSectionAsync(_damascusId, "شعبة احمد", "admin"));
         Assert.Contains("موجودة مسبقًا", ex.Message);
     }
 
     [PostgresFact]
     public async Task Create_SameNameDifferentBranch_Allowed()
     {
-        await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
-        var other = await _service.CreateSectionAsync(_aleppoId, "شعبة مصياف", "admin");
+        await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var other = await CreateSectionAsync(_aleppoId, "شعبة مصياف", "admin");
 
         Assert.Equal(_aleppoId, other.BranchId);
     }
@@ -181,7 +222,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task List_ShowsCircuitCountAndHeadName()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         var manager = await AddManagerAsync();
         await AddCircuitAsync("دائرة مصياف", _damascusId, section.Id, manager.Id);
         await AddCircuitAsync("دائرة أخرى", _damascusId, section.Id, manager.Id);
@@ -210,7 +251,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_UpdatesName_WritesSuccessionWhenHeaded()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         var head = await AddHeadAsync("sub_masyaf", _damascusId, section.Id);
 
         var renamed = await _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin");
@@ -227,7 +268,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_SameName_NoOpWithoutAudit()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         var auditCount = _audit.Actions.Count;
 
         var same = await _service.RenameSectionAsync(section.Id, "شعبة مصياف", "admin");
@@ -240,7 +281,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_HeadlessSection_NoSuccessionRow()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
         await _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin");
 
@@ -251,8 +292,8 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_Duplicate_Throws()
     {
-        await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
-        var other = await _service.CreateSectionAsync(_damascusId, "شعبة السلمية", "admin");
+        await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var other = await CreateSectionAsync(_damascusId, "شعبة السلمية", "admin");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RenameSectionAsync(other.Id, "شعبة مصياف", "admin"));
@@ -267,7 +308,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_StaleVersion_ThrowsConflict_WithoutPersisting()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin", section.Version + 7));
@@ -280,7 +321,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Rename_MatchingVersion_SucceedsAndIncrementsVersion()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         Assert.Equal(0, section.Version);
 
         var renamed = await _service.RenameSectionAsync(section.Id, "شعبة السلمية", "admin", section.Version);
@@ -292,7 +333,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetActive_StaleVersion_ThrowsConflict()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _service.SetActiveAsync(section.Id, false, "admin", section.Version + 1));
@@ -303,7 +344,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetActive_DeactivateWithCircuits_Throws()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         var manager = await AddManagerAsync();
         await AddCircuitAsync("دائرة مصياف", _damascusId, section.Id, manager.Id);
 
@@ -315,7 +356,7 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SetActive_DeactivateEmpty_Succeeds()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
         var off = await _service.SetActiveAsync(section.Id, false, "admin");
 
@@ -337,39 +378,40 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_WithCircuits_Throws()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         var manager = await AddManagerAsync();
         await AddCircuitAsync("دائرة مصياف", _damascusId, section.Id, manager.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DeleteSectionAsync(section.Id, "admin"));
+            DeleteSectionAsync(section.Id, "admin"));
         Assert.Contains("انقل دوائرها", ex.Message);
     }
 
     [PostgresFact]
     public async Task Delete_WithUsers_Throws()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
         await AddHeadAsync("sub_masyaf", _damascusId, section.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DeleteSectionAsync(section.Id, "admin"));
+            DeleteSectionAsync(section.Id, "admin"));
         Assert.Contains("حساباتها", ex.Message);
     }
 
     [PostgresFact]
     public async Task Delete_Empty_Succeeds()
     {
-        var section = await _service.CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
+        var section = await CreateSectionAsync(_damascusId, "شعبة مصياف", "admin");
 
-        Assert.True(await _service.DeleteSectionAsync(section.Id, "admin"));
+        Assert.True(await DeleteSectionAsync(section.Id, "admin"));
         Assert.Null(await _db.Sections.FindAsync(section.Id));
         Assert.Contains("delete_section", _audit.Actions);
+        Assert.Contains(_audit.Details, d => d == "حذف الشعبة «شعبة مصياف»");
     }
 
     [PostgresFact]
     public async Task Delete_Missing_ReturnsFalse()
     {
-        Assert.False(await _service.DeleteSectionAsync(999999, "admin"));
+        Assert.False(await DeleteSectionAsync(999999, "admin"));
     }
 }
