@@ -20,6 +20,8 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;
+    private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
+    private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateAction;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -56,7 +58,39 @@ public class DocumentServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<DeleteExecutionActionCommand, bool>(tx),
             });
+        _addAction = new AddExecutionActionCommandHandler(
+            actions,
+            documents,
+            uow,
+            _audit,
+            TestClock.Provider,
+            TestClock.TimeZone,
+            new IPipelineBehavior<AddExecutionActionCommand, ExecutionActionDto>[]
+            {
+                new TransactionBehavior<AddExecutionActionCommand, ExecutionActionDto>(tx),
+            });
+        _updateAction = new UpdateExecutionActionCommandHandler(
+            actions,
+            documents,
+            uow,
+            _audit,
+            TestClock.Provider,
+            TestClock.TimeZone,
+            new IPipelineBehavior<UpdateExecutionActionCommand, ExecutionActionDto?>[]
+            {
+                new TransactionBehavior<UpdateExecutionActionCommand, ExecutionActionDto?>(tx),
+            });
     }
+
+    private Task<ExecutionActionDto> AddExecutionActionAsync(
+        int documentId, AddExecutionActionRequest request, int userId, string? actorName)
+        => _addAction.HandleAsync(
+            new AddExecutionActionCommand(documentId, request, userId, actorName));
+
+    private Task<ExecutionActionDto?> UpdateExecutionActionAsync(
+        int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName)
+        => _updateAction.HandleAsync(
+            new UpdateExecutionActionCommand(documentId, actionId, request, actorName));
 
     private Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName)
         => _deleteAction.HandleAsync(new DeleteExecutionActionCommand(documentId, actionId, actorName));
@@ -2662,7 +2696,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "تم إشعار المنفذ عليه", ActionDate = "1/8/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -2673,6 +2707,8 @@ public class DocumentServiceTests : PostgresDbTest
         var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Single(list);
         Assert.Contains("action", _audit.Actions);
+        Assert.Contains(_audit.Details,
+            d => d == "أضاف إجراء: تم إشعار المنفذ عليه — المنفذ عليه: أحمد خالد الخطيب");
     }
 
     [PostgresFact]
@@ -2680,7 +2716,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "متابعة مع المحكمة",
@@ -2705,7 +2741,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2722,7 +2758,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2739,7 +2775,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2755,7 +2791,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Type = "xyz",
@@ -2770,7 +2806,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "إجراء مع مدة فقط",
@@ -2791,7 +2827,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateAction_KeepsReminder_AndSetReminderChangesIt()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "إجراء",
@@ -2801,7 +2837,7 @@ public class DocumentServiceTests : PostgresDbTest
             },
             userId: 1, actorName: "lawyer1");
 
-        var updated = await _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
+        var updated = await UpdateExecutionActionAsync(doc.Id, action.Id,
             new UpdateExecutionActionRequest
             {
                 Type = "action",
@@ -2816,6 +2852,8 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Equal("أصفر", updated.ReminderColor);
         Assert.Equal(new DateTime(2026, 1, 1),
             (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
+        Assert.Contains(_audit.Details,
+            d => d == "عدّل إجراء: إجراء محدث — المنفذ عليه: أحمد خالد الخطيب");
 
         var reminded = await _actions.SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "شهر", ReminderColor = "بنفسجي" }, "lawyer1");
@@ -2836,7 +2874,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SetReminder_InitializesBaseOnce_AndClearNullsAllThree()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "إجراء بلا تذكير", ActionDate = "10-11-2026" },
             userId: 1, actorName: "lawyer1");
         Assert.Null((await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
@@ -2899,7 +2937,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SetReminder_MissingActionOrMismatchedDocument_ThrowsKeyNotFound()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
         var other = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2918,7 +2956,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id, new AddExecutionActionRequest { Text = "  " },
+            AddExecutionActionAsync(doc.Id, new AddExecutionActionRequest { Text = "  " },
                 userId: 1, actorName: "lawyer1"));
     }
 
@@ -2926,9 +2964,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task GetActions_OrdersNewestFirst()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _actions.AddExecutionActionAsync(doc.Id,
+        await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "أول", ActionDate = "1/1/2026" }, 1, "lawyer1");
-        await _actions.AddExecutionActionAsync(doc.Id,
+        await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "ثان", ActionDate = "2/2/2026" }, 1, "lawyer1");
 
         var list = await _actions.GetExecutionActionsAsync(doc.Id);
@@ -2941,7 +2979,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task AddAction_MissingDocument_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _actions.AddExecutionActionAsync(9999,
+            AddExecutionActionAsync(9999,
                 new AddExecutionActionRequest { Text = "إجراء" }, userId: 1, actorName: "lawyer1"));
     }
 
@@ -2950,7 +2988,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var note = await _actions.AddExecutionActionAsync(doc.Id,
+        var note = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة بلا تاريخ" },
             userId: 1, actorName: "lawyer1");
 
@@ -2966,7 +3004,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest { Type = "action", Text = "إجراء بلا تاريخ" },
                 userId: 1, actorName: "lawyer1"));
     }
@@ -2977,7 +3015,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.AddExecutionActionAsync(doc.Id,
+            AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest { Type = "other", Text = "نص" },
                 userId: 1, actorName: "lawyer1"));
     }
@@ -2986,11 +3024,11 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateAction_ChangesTextAndType()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء قديم", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var updated = await _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
+        var updated = await UpdateExecutionActionAsync(doc.Id, action.Id,
             new UpdateExecutionActionRequest { Type = "note", Text = "ملاحظة محدثة" }, "lawyer1");
 
         Assert.NotNull(updated);
@@ -3003,12 +3041,12 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateAction_WrongDocument_ThrowsKeyNotFound()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _actions.UpdateExecutionActionAsync(doc.Id + 9999, action.Id,
+            UpdateExecutionActionAsync(doc.Id + 9999, action.Id,
                 new UpdateExecutionActionRequest { Type = "note", Text = "x" }, "lawyer1"));
     }
 
@@ -3016,12 +3054,12 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateAction_WithoutDate_WhenAction_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة" },
             userId: 1, actorName: "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
+            UpdateExecutionActionAsync(doc.Id, action.Id,
                 new UpdateExecutionActionRequest { Type = "action", Text = "تحويل إلى إجراء بلا تاريخ" }, "lawyer1"));
     }
 
@@ -3029,7 +3067,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task DeleteAction_RemovesAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -3046,7 +3084,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task DeleteAction_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -3058,7 +3096,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ClearReminder_ClearsReminderFieldsKeepsAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Type = "action",
@@ -3084,7 +3122,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ClearReminder_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _actions.AddExecutionActionAsync(doc.Id,
+        var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -3185,7 +3223,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task Update_WithNewInitialAction_AddsPreservingExisting()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _actions.AddExecutionActionAsync(doc.Id,
+        await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء قائم", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 

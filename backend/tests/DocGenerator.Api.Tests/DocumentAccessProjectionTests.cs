@@ -133,6 +133,8 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             deleteIntervention!,
+            null!,
+            null!,
             ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {

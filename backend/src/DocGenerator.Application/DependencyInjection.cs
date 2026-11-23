@@ -99,6 +99,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteSectionCommand, bool>, DeleteSectionCommandHandler>();
         services.AddScoped<ICommandHandler<RenameSectionCommand, SectionDto?>, RenameSectionCommandHandler>();
         services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
+        services.AddScoped<ICommandHandler<AddExecutionActionCommand, ExecutionActionDto>, AddExecutionActionCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?>, UpdateExecutionActionCommandHandler>();
         return services;
     }
 }

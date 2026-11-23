@@ -53,6 +53,8 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
+    private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addExecutionAction;
+    private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateExecutionAction;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -75,6 +77,8 @@ public class DocumentsController : ControllerBase
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
+        ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> addExecutionAction,
+        ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> updateExecutionAction,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -96,6 +100,8 @@ public class DocumentsController : ControllerBase
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
+        _addExecutionAction = addExecutionAction;
+        _updateExecutionAction = updateExecutionAction;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -890,7 +896,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
+        var action = await _addExecutionAction.HandleAsync(new AddExecutionActionCommand(
+            id, request, User.GetUserId(), ActorName), ct);
         return Ok(action);
     }
 
@@ -901,7 +908,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
+        var action = await _updateExecutionAction.HandleAsync(new UpdateExecutionActionCommand(
+            id, actionId, request, ActorName), ct);
         if (action is null) return NotFound();
         return Ok(action);
     }
