@@ -88,6 +88,9 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto>, CreateAppSuggestionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteForumMessageCommand, bool>, DeleteForumMessageCommandHandler>();
         services.AddScoped<ICommandHandler<ToggleForumPinCommand, ForumMessageDto>, ToggleForumPinCommandHandler>();
+        services.AddScoped<ICommandHandler<PostForumMessageCommand, ForumMessageDto>, PostForumMessageCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateForumMessageCommand, ForumMessageDto>, UpdateForumMessageCommandHandler>();
+        services.AddScoped<ICommandHandler<MarkForumReadCommand, int>, MarkForumReadCommandHandler>();
         services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteExecutionActionCommand, bool>, DeleteExecutionActionCommandHandler>();

@@ -3,7 +3,6 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using System.Text.RegularExpressions;
 
 namespace DocGenerator.Application.Services;
 
@@ -25,17 +24,14 @@ public interface IForumService
     Task<ForumMessageDto?> GetPinnedAsync(int actorUserId, CancellationToken ct = default);
 
     /// <summary>نشر رسالة: تحقق + لقط هوية الكاتب خلفيًا من `User+Branch+Section`.</summary>
-    Task<ForumMessageDto> PostAsync(PostForumMessageRequest request, int actorUserId, CancellationToken ct = default);
 
     /// <summary>تعديل رسالة — الكاتب فقط (يختم «عُدّل»).</summary>
-    Task<ForumMessageDto> UpdateAsync(int id, UpdateForumMessageRequest request, int actorUserId, CancellationToken ct = default);
 
     /// <summary>حذف صلب — الكاتب لرسالته والمشرف لأي رسالة (مع إيصالاتها).</summary>
 
     /// <summary>تبديل التثبيت — المشرف فقط (الجديد يُسقط السابق).</summary>
 
     /// <summary>تعليم القراءة حتى رسالة — عدّادي (`max` فقط بلا تراجع)؛ يُعيد العلامة الجديدة.</summary>
-    Task<int> MarkReadAsync(int actorUserId, string? actorName, int upToMessageId, CancellationToken ct = default);
 
     /// <summary>نافذة «شوهدت بواسطة» — الكاتب فقط.</summary>
     Task<List<ForumReaderDto>> GetReadersAsync(int id, int actorUserId, CancellationToken ct = default);
@@ -51,6 +47,7 @@ public interface IForumService
 /// منتدى المحامين: تيار واحد مسطّح عابر للفروع عمدًا — نص عادي فقط، والهوية لقطات
 /// تُجمَع من المستخدم وفرعه وشعبته لحظة الإرسال (لا من مدخلات العميل إطلاقًا)،
 /// والحذف صلب دائمًا. بلا سجل تدقيق (خارج النطاق بقرار المالك).
+/// الخدمة للقراءة والبحث فقط؛ النشر/التعديل/الحذف/التثبيت/القراءة عبر أوامر `P4-01`.
 /// </summary>
 public sealed class ForumService : IForumService
 {
@@ -65,37 +62,15 @@ public sealed class ForumService : IForumService
     /// <summary>سقف مرشحي منتقي الذِكر المعروضين.</summary>
     public const int MentionLookupLimit = 20;
 
-    /// <summary>
-    /// رمز الذِكر القانوني `@[id:الاسم]` — مولَّد من المنتقي، ويُعاد توليده من
-    /// الخادم عند الحفظ (فلا يُزوَّر اسم لمعرف). الشاذ منه نص حرفي بلا شريحة.
-    /// </summary>
-    private static readonly Regex MentionToken =
-        new(@"@\[(\d{1,9}):([^\[\]]{1,100})\]", RegexOptions.Compiled);
-
     private readonly IForumRepository _forum;
-    private readonly IRepository<ForumMessageRead> _reads;
     private readonly IUserRepository _users;
-    private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
-    private readonly IDbExceptionClassifier _errors;
-    private readonly TimeProvider _clock;
 
     public ForumService(
         IForumRepository forum,
-        IRepository<ForumMessageRead> reads,
-        IUserRepository users,
-        IUnitOfWork uow,
-        ITransactionRunner tx,
-        IDbExceptionClassifier errors,
-        TimeProvider clock)
+        IUserRepository users)
     {
         _forum = forum;
-        _reads = reads;
         _users = users;
-        _uow = uow;
-        _tx = tx;
-        _errors = errors;
-        _clock = clock;
     }
 
     public async Task<ForumMessagesPageDto> ListAsync(int actorUserId, int limit, int? before, int? after, CancellationToken ct = default)
@@ -132,114 +107,6 @@ public sealed class ForumService : IForumService
         return ToDto(pinned, counts.GetValueOrDefault(pinned.Id));
     }
 
-    public async Task<ForumMessageDto> PostAsync(PostForumMessageRequest request, int actorUserId, CancellationToken ct = default)
-    {
-        var body = await ResolveMentionsAsync(RequireBody(request.Body), ct);
-        var author = await RequireForumMemberAsync(actorUserId, ct);
-
-        string? quotedAuthor = null;
-        string? quotedExcerpt = null;
-        if (request.QuotedMessageId.HasValue)
-        {
-            var quoted = await _forum.GetByIdAsync(request.QuotedMessageId.Value, ct)
-                ?? throw new ArgumentException("الرسالة المقتبسة غير موجودة");
-            quotedAuthor = Truncate(quoted.AuthorName, MaxQuotedAuthorLength);
-            quotedExcerpt = Truncate(quoted.Body, MaxQuotedExcerptLength);
-        }
-
-        // مصدر الوقت الوحيد: الساعة المحقونة (قابلة للتجميد في الاختبارات).
-        var now = _clock.GetUtcNow().UtcDateTime;
-        var message = new ForumMessage
-        {
-            Body = body,
-            AuthorId = author.Id,
-            AuthorName = ForumIdentityParts.DisplayName(author),
-            AuthorRole = author.Role.ToString().ToLowerInvariant(),
-            AuthorLocation = ForumIdentityParts.ResolveLocation(author),
-            AuthorSection = ForumIdentityParts.ResolveSection(author),
-            QuotedMessageId = request.QuotedMessageId,
-            QuotedAuthorName = quotedAuthor,
-            QuotedExcerpt = quotedExcerpt,
-            CreatedAt = now,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _forum.AddAsync(message, token);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-
-        return ToDto(message, 0);
-    }
-
-    public async Task<ForumMessageDto> UpdateAsync(int id, UpdateForumMessageRequest request, int actorUserId, CancellationToken ct = default)
-    {
-        var body = await ResolveMentionsAsync(RequireBody(request.Body), ct);
-        var message = await _forum.GetTrackedByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException("الرسالة غير موجودة");
-        if (message.AuthorId != actorUserId)
-            throw new UnauthorizedAccessException("تعديل الرسالة متاح لكاتبها فقط");
-
-        OptimisticConcurrencyGuard.EnsureCurrent(message, request.Version, "رسالة المنتدى");
-
-        var now = _clock.GetUtcNow().UtcDateTime;
-        await _tx.RunAsync(async token =>
-        {
-            message.Body = body;
-            message.EditedById = actorUserId;
-            message.EditedAtUtc = now;
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-
-        var counts = await _forum.CountReadsAsync(new[] { message.Id }, ct);
-        return ToDto(message, counts.GetValueOrDefault(message.Id));
-    }
-
-
-    public async Task<int> MarkReadAsync(int actorUserId, string? actorName, int upToMessageId, CancellationToken ct = default)
-    {
-        if (upToMessageId < 1)
-            throw new ArgumentException("معرف الرسالة غير صالح");
-        var member = await RequireForumMemberAsync(actorUserId, ct);
-
-        var currentMax = await _forum.MaxReadMessageIdAsync(actorUserId, ct);
-        if (upToMessageId <= currentMax)
-            return currentMax;
-
-        // رسائل الغير فقط — قراءة الذات لا توثَّق (تُستثنى في المستودع).
-        var existing = await _forum.ExistingIdsInRangeAsync(actorUserId, currentMax, upToMessageId, ct);
-        var already = await _forum.ReadIdsAsync(actorUserId, existing, ct);
-        var missing = existing.Except(already).ToList();
-        if (missing.Count == 0)
-            return upToMessageId;
-
-        var name = string.IsNullOrWhiteSpace(actorName) ? ForumIdentityParts.DisplayName(member) : actorName.Trim();
-        var now = _clock.GetUtcNow().UtcDateTime;
-        try
-        {
-            await _tx.RunAsync(async token =>
-            {
-                foreach (var messageId in missing)
-                    await _reads.AddAsync(new ForumMessageRead
-                    {
-                        MessageId = messageId,
-                        UserId = actorUserId,
-                        UserName = name,
-                        ReadAtUtc = now,
-                    }, token);
-                await _uow.SaveChangesAsync(token);
-            }, ct);
-        }
-        catch (Exception ex) when (_errors.IsUniqueViolation(ex))
-        {
-            // سباق توثيق متزامن (فتح مزدوج/إعادة إرسال): فحص التفرّد خارج المعاملة
-            // قد يتجاوزه إدراج متزامن بالصف نفسه — والقيد الفريد هو الحارس الأخير،
-            // والصف المطلوب موجود فعلًا فالنتيجة متحققة (نجاح لا 500).
-        }
-
-        return upToMessageId;
-    }
-
     public async Task<List<ForumReaderDto>> GetReadersAsync(int id, int actorUserId, CancellationToken ct = default)
     {
         var message = await _forum.GetByIdAsync(id, ct)
@@ -264,16 +131,6 @@ public sealed class ForumService : IForumService
     private Task<User> RequireForumMemberAsync(int actorUserId, CancellationToken ct)
         => ForumMembership.RequireAsync(_users, actorUserId, ct);
 
-    private static string RequireBody(string? body)
-    {
-        var trimmed = body?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(trimmed))
-            throw new ArgumentException("نص الرسالة مطلوب");
-        if (trimmed.Length > MaxBodyLength)
-            throw new ArgumentException($"نص الرسالة يتجاوز الحد الأقصى ({MaxBodyLength} حرفًا)");
-        return trimmed;
-    }
-
     public async Task<List<ForumUserLookupDto>> SearchUsersAsync(string? q, int actorUserId, CancellationToken ct = default)
     {
         await RequireForumMemberAsync(actorUserId, ct);
@@ -285,52 +142,6 @@ public sealed class ForumService : IForumService
             ForumIdentityParts.ResolveLocation(u),
             ForumIdentityParts.ResolveSection(u))).ToList();
     }
-
-    /// <summary>
-    /// تحقق الذِكر وإعادة صياغته القانونية: كل رمز `@[id:…]` يُطابَق مع حساب
-    /// قائم نشط (والا `400`)، والسقف عشرة مميزين، ثم يُعاد توليد الرموز بالاسم
-    /// الرسمي الحالي (فلا يُزوَّر اسم لمعرف ولا يُحقَن `HTML` — النص عادي).
-    /// الشاذ من الصيغة يبقى نصًا حرفيًا بلا شريحة.
-    /// </summary>
-    private async Task<string> ResolveMentionsAsync(string body, CancellationToken ct)
-    {
-        var matches = MentionToken.Matches(body);
-        if (matches.Count == 0)
-            return body;
-
-        var ids = new HashSet<int>();
-        foreach (Match match in matches)
-        {
-            if (int.TryParse(match.Groups[1].Value, out var id))
-                ids.Add(id);
-        }
-        if (ids.Count > MaxMentionsPerMessage)
-            throw new ArgumentException(
-                $"الذِكر محدود بـ ({MaxMentionsPerMessage}) أشخاص في الرسالة الواحدة");
-
-        var canonical = new Dictionary<int, string>();
-        foreach (var id in ids)
-        {
-            // رسالة موحدة للغائب والمعطّل والمندوب عمدًا: التفريق بينها يكشف
-            // وجود حسابات معطّلة وأسماءها لمن يخمن المعرفات (البحث يعرض
-            // النشطين الداخليين فقط)، والمندوب مستبعد من المنتدى كله.
-            var user = await _users.GetByIdAsync(id, ct);
-            if (user is null || !user.IsActive || user.Role == UserRole.EntityManager)
-                throw new ArgumentException("مستخدم مذكور غير صالح");
-            canonical[id] = ForumIdentityParts.DisplayName(user);
-        }
-
-        var rewritten = MentionToken.Replace(body, match =>
-            int.TryParse(match.Groups[1].Value, out var id) && canonical.TryGetValue(id, out var name)
-                ? "@[" + id + ":" + name + "]"
-                : match.Value);
-        if (rewritten.Length > MaxBodyLength)
-            throw new ArgumentException($"نص الرسالة يتجاوز الحد الأقصى ({MaxBodyLength} حرفًا) بعد صياغة الذِكر");
-        return rewritten;
-    }
-
-    private static string Truncate(string value, int max)
-        => value.Length <= max ? value : value.Substring(0, max);
 
     internal static ForumMessageDto ToDto(ForumMessage m, int readCount) => new(
         m.Id,

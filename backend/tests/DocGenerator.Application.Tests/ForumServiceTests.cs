@@ -23,6 +23,9 @@ public class ForumServiceTests : PostgresDbTest
     private readonly IForumService _service;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
     private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
+    private readonly ICommandHandler<PostForumMessageCommand, ForumMessageDto> _post;
+    private readonly ICommandHandler<UpdateForumMessageCommand, ForumMessageDto> _update;
+    private readonly ICommandHandler<MarkForumReadCommand, int> _markRead;
     private readonly int _branchId;
     private readonly int _otherBranchId;
     private readonly int _sectionId;
@@ -71,6 +74,35 @@ public class ForumServiceTests : PostgresDbTest
             new UserRepository(_db),
             Array.Empty<IPipelineBehavior<DeleteForumMessageCommand, bool>>());
         _togglePin = BuildTogglePin(new UnitOfWork(_db));
+        _post = new PostForumMessageCommandHandler(
+            new ForumRepository(_db),
+            new UserRepository(_db),
+            new UnitOfWork(_db),
+            _clock,
+            new IPipelineBehavior<PostForumMessageCommand, ForumMessageDto>[]
+            {
+                new TransactionBehavior<PostForumMessageCommand, ForumMessageDto>(
+                    new TransactionRunner(_db)),
+            });
+        _update = new UpdateForumMessageCommandHandler(
+            new ForumRepository(_db),
+            new UserRepository(_db),
+            new UnitOfWork(_db),
+            _clock,
+            new IPipelineBehavior<UpdateForumMessageCommand, ForumMessageDto>[]
+            {
+                new TransactionBehavior<UpdateForumMessageCommand, ForumMessageDto>(
+                    new TransactionRunner(_db)),
+            });
+        _markRead = new MarkForumReadCommandHandler(
+            new ForumRepository(_db),
+            new Repository<ForumMessageRead>(_db),
+            new UserRepository(_db),
+            new UnitOfWork(_db),
+            new TransactionRunner(_db),
+            _clock,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<MarkForumReadCommand, int>>());
     }
 
     private ToggleForumPinCommandHandler BuildTogglePin(IUnitOfWork uow)
@@ -94,15 +126,9 @@ public class ForumServiceTests : PostgresDbTest
 
     private ForumService BuildService(TimeProvider? clock = null)
     {
-        var uow = new UnitOfWork(_db);
         return new ForumService(
             new ForumRepository(_db),
-            new Repository<ForumMessageRead>(_db),
-            new UserRepository(_db),
-            uow,
-            new TransactionRunner(_db),
-            new DbExceptionClassifier(),
-            clock ?? _clock);
+            new UserRepository(_db));
     }
 
     private ForumRetentionService BuildRetention(int months, TimeProvider? clock = null)
@@ -123,7 +149,15 @@ public class ForumServiceTests : PostgresDbTest
         };
 
     private Task<ForumMessageDto> PostAsync(User author, string body = "رسالة اختبار", int? quotedId = null)
-        => _service.PostAsync(new PostForumMessageRequest(body, quotedId), author.Id);
+        => _post.HandleAsync(new PostForumMessageCommand(
+            new PostForumMessageRequest(body, quotedId), author.Id));
+
+    private Task<ForumMessageDto> UpdateAsync(
+        int id, UpdateForumMessageRequest request, int actorUserId)
+        => _update.HandleAsync(new UpdateForumMessageCommand(id, request, actorUserId));
+
+    private Task<int> MarkReadAsync(int actorUserId, string? actorName, int upToMessageId)
+        => _markRead.HandleAsync(new MarkForumReadCommand(actorUserId, actorName, upToMessageId));
 
     // ---------- النشر والهوية ----------
 
@@ -289,7 +323,7 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1, "قبل");
         _clock.Advance(TimeSpan.FromMinutes(5));
 
-        var updated = await _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest("بعد"), _lawyer1.Id);
+        var updated = await UpdateAsync(posted.Id, new UpdateForumMessageRequest("بعد"), _lawyer1.Id);
 
         Assert.Equal("بعد", updated.Body);
         Assert.Equal(_lawyer1.Id, updated.EditedById);
@@ -302,23 +336,23 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest("x"), _lawyer2.Id));
+            () => UpdateAsync(posted.Id, new UpdateForumMessageRequest("x"), _lawyer2.Id));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest("x"), _admin.Id));
+            () => UpdateAsync(posted.Id, new UpdateForumMessageRequest("x"), _admin.Id));
     }
 
     [PostgresFact]
     public async Task Update_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.UpdateAsync(9999, new UpdateForumMessageRequest("x"), _lawyer1.Id));
+            () => UpdateAsync(9999, new UpdateForumMessageRequest("x"), _lawyer1.Id));
     }
 
     [PostgresFact]
     public async Task Delete_OwnMessage_RemovesItWithReads()
     {
         var posted = await PostAsync(_lawyer1);
-        await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
+        await MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
 
         await DeleteMessageAsync(posted.Id, _lawyer1.Id);
 
@@ -503,12 +537,12 @@ public class ForumServiceTests : PostgresDbTest
         var first = await PostAsync(_lawyer1, "1");
         var second = await PostAsync(_lawyer1, "2");
 
-        var max = await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
+        var max = await MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
 
         Assert.Equal(second.Id, max);
         Assert.Equal(2, _db.ForumMessageReads.Count(r => r.UserId == _lawyer2.Id));
 
-        var same = await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", first.Id);
+        var same = await MarkReadAsync(_lawyer2.Id, "محامي دمشق", first.Id);
         Assert.Equal(second.Id, same);
         Assert.Equal(2, _db.ForumMessageReads.Count(r => r.UserId == _lawyer2.Id));
     }
@@ -519,7 +553,7 @@ public class ForumServiceTests : PostgresDbTest
         await PostAsync(_lawyer1, "1");
         var second = await PostAsync(_lawyer1, "2");
 
-        var max = await _service.MarkReadAsync(_lawyer1.Id, "المحامي الأول", second.Id);
+        var max = await MarkReadAsync(_lawyer1.Id, "المحامي الأول", second.Id);
 
         Assert.Equal(second.Id, max);
         Assert.Empty(_db.ForumMessageReads.Where(r => r.UserId == _lawyer1.Id));
@@ -538,7 +572,7 @@ public class ForumServiceTests : PostgresDbTest
     public async Task Readers_NeverIncludeAuthorThemselves()
     {
         var posted = await PostAsync(_lawyer1);
-        await _service.MarkReadAsync(_lawyer1.Id, "المحامي الأول", posted.Id);
+        await MarkReadAsync(_lawyer1.Id, "المحامي الأول", posted.Id);
 
         var readers = await _service.GetReadersAsync(posted.Id, _lawyer1.Id);
 
@@ -559,16 +593,18 @@ public class ForumServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var racing = new ForumService(
+        var racing = new MarkForumReadCommandHandler(
             new StaleReadForumRepository(_db),
             new Repository<ForumMessageRead>(_db),
             new UserRepository(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
+            _clock,
             new DbExceptionClassifier(),
-            _clock);
+            Array.Empty<IPipelineBehavior<MarkForumReadCommand, int>>());
 
-        var max = await racing.MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
+        var max = await racing.HandleAsync(
+            new MarkForumReadCommand(_lawyer2.Id, "محامي دمشق", posted.Id));
 
         Assert.Equal(posted.Id, max);
         Assert.Single(_db.ForumMessageReads.Where(r => r.UserId == _lawyer2.Id));
@@ -591,7 +627,7 @@ public class ForumServiceTests : PostgresDbTest
         var second = await PostAsync(_lawyer1, "2");
         await DeleteMessageAsync(first.Id, _admin.Id);
 
-        var max = await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
+        var max = await MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
 
         Assert.Equal(second.Id, max);
         Assert.Equal(new[] { second.Id },
@@ -606,7 +642,7 @@ public class ForumServiceTests : PostgresDbTest
 
         Assert.Equal(2, await _service.CountUnreadAsync(_lawyer2.Id));
 
-        await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
+        await MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
 
         Assert.Equal(0, await _service.CountUnreadAsync(_lawyer2.Id));
     }
@@ -615,7 +651,7 @@ public class ForumServiceTests : PostgresDbTest
     public async Task Readers_VisibleToAuthorOnly_WithSnapshotName()
     {
         var posted = await PostAsync(_lawyer1);
-        await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
+        await MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
 
         var readers = await _service.GetReadersAsync(posted.Id, _lawyer1.Id);
 
@@ -631,7 +667,7 @@ public class ForumServiceTests : PostgresDbTest
     public async Task Readers_KeepSnapshotAfterRename()
     {
         var posted = await PostAsync(_lawyer1);
-        await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
+        await MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
 
         _lawyer2.FullName = "اسم جديد";
         await _db.SaveChangesAsync();
@@ -652,7 +688,7 @@ public class ForumServiceTests : PostgresDbTest
         await PostAsync(_lawyer1, "لي");
         await PostAsync(_lawyer2, "له");
         // اطلاع الغير على رسالتي (لا اطلاعي أنا — قراءة الذات لا توثَّق).
-        await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", 100);
+        await MarkReadAsync(_lawyer2.Id, "محامي دمشق", 100);
 
         var page = await _service.ListAsync(_lawyer1.Id, 30, null, null);
 
@@ -737,7 +773,7 @@ public class ForumServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest($"أضيف @[{_lawyer2.Id}:س]"), _lawyer1.Id));
+            () => UpdateAsync(posted.Id, new UpdateForumMessageRequest($"أضيف @[{_lawyer2.Id}:س]"), _lawyer1.Id));
     }
 
     [PostgresFact]
