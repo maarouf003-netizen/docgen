@@ -265,7 +265,7 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
 
             // تدقيق حقلي لكل ملف محال (S5) — داخل المعاملة بعد الحفظ الرئيسي.
             foreach (var (doc, before) in referredAudit)
-                await LogCircuitDocumentChangeAsync(doc, actorName, "refer_circuit_files",
+                await ExecutionCircuitRules.LogDocumentChangeAsync(_audit, doc, actorName, "refer_circuit_files",
                     $"أحال الملف ({doc.Id}) من دائرة «{sourceName}» إلى دائرة «{targetName}» للمحامي {targetFullName}", before, token);
 
             await _audit.LogAsync(actorName, "refer_circuit_files", null, null,

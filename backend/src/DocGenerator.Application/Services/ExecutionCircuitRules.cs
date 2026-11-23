@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -106,5 +107,28 @@ internal static class ExecutionCircuitRules
             sectionName = (await sections.GetByIdAsync(c.SectionId.Value, token))?.Name;
         return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version,
             c.SectionId, sectionName, v.DeletedCount);
+    }
+
+    /// <summary>
+    /// تدقيق حقلي لملف في المسارات الجماعية (S5) — مرآة `LogDocumentChangesAsync` في المسار
+    /// المفرد: صفوف «حقل/قبل/بعد» تُكتب داخل المعاملة، وإلا يبقى التسجيل نصيًا.
+    /// </summary>
+    internal static async Task LogDocumentChangeAsync(
+        IAuditLogger audit,
+        Document doc,
+        string? actorName,
+        string actionType,
+        string detail,
+        Dictionary<string, string?> before,
+        CancellationToken token)
+    {
+        var changes = DocumentChangeTracker.Diff(before, doc);
+        if (changes.Count == 0)
+        {
+            await audit.LogAsync(actorName, actionType, doc.Id, doc.DocumentType, detail, token);
+            return;
+        }
+        await audit.LogDocumentChangeAsync(actorName, actionType, doc.Id, doc.DocumentType,
+            $"{detail} — غيّر {changes.Count} حقلًا", changes, token);
     }
 }

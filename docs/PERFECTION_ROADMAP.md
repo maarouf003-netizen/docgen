@@ -845,6 +845,9 @@
   **`P4-01af/ag`:** `CreateExecutionCircuitCommand` و`SetExecutionCircuitActiveCommand`
   يملكان المعاملة والتدقيق وإبطال الكاش، مع `ExecutionCircuitRules` مشتركًا؛
   وتسمية الدائرة (`RenameAsync`) بقيت لمرحلة مستقلة لثقلها الجماعي.
+  **`P4-01ah`:** `RenameExecutionCircuitCommand` يملك معاملة الجماعية كاملة (ملفات +
+  وقوعات + إنابات + ترحيل `Outbox` + تدقيق حقلي)، مع `ExecutionCircuitRules.LogDocumentChangeAsync`
+  مشتركة بين التسمية وإعادة القيد والإحالة.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -860,7 +863,8 @@
   `docs/audit/139-p4-01xyz-forum-reminder-intervention-20261123.md` و
   `docs/audit/140-p4-01aaab-restore-reminder-commands-20261123.md` و
   `docs/audit/141-p4-01acadae-forum-writes-20261123.md` و
-  `docs/audit/142-p4-01afag-circuit-create-active-20261123.md`.
+  `docs/audit/142-p4-01afag-circuit-create-active-20261123.md` و
+  `docs/audit/143-p4-01ah-circuit-rename-20261123.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
