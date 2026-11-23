@@ -141,6 +141,9 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            null!,
             ApiTestClock.Provider,
             TimeZoneInfo.Utc)
         {
@@ -178,8 +181,6 @@ public sealed class DocumentAccessProjectionTests
         public Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<bool> RestoreAsync(int documentId, string? actorName, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null)
             => throw new NotSupportedException();

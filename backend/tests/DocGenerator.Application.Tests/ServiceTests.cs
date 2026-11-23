@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -23,6 +24,8 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
     private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateAction;
     private readonly ICommandHandler<ClearActionReminderCommand, bool> _clearReminder;
+    private readonly ICommandHandler<SetActionReminderCommand, ExecutionActionDto> _setReminder;
+    private readonly ICommandHandler<RestoreDocumentCommand, bool> _restore;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -90,6 +93,30 @@ public class DocumentServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<ClearActionReminderCommand, bool>(tx),
             });
+        _setReminder = new SetActionReminderCommandHandler(
+            actions,
+            documents,
+            uow,
+            _audit,
+            new IPipelineBehavior<SetActionReminderCommand, ExecutionActionDto>[]
+            {
+                new TransactionBehavior<SetActionReminderCommand, ExecutionActionDto>(tx),
+            });
+        _restore = new RestoreDocumentCommandHandler(
+            documents,
+            new Repository<ExecutionCircuit>(_db),
+            new DocumentWriteGuard(
+                documents,
+                new DbExceptionClassifier(),
+                _audit,
+                occurrences,
+                uow),
+            uow,
+            _audit,
+            new IPipelineBehavior<RestoreDocumentCommand, bool>[]
+            {
+                new TransactionBehavior<RestoreDocumentCommand, bool>(tx),
+            });
     }
 
     private Task<ExecutionActionDto> AddExecutionActionAsync(
@@ -105,6 +132,13 @@ public class DocumentServiceTests : PostgresDbTest
     private Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName)
         => _clearReminder.HandleAsync(
             new ClearActionReminderCommand(documentId, actionId, actorName));
+
+    private Task<ExecutionActionDto> SetReminderAsync(
+        int documentId, int actionId, SetActionReminderRequest request, string? actorName)
+        => _setReminder.HandleAsync(new SetActionReminderCommand(documentId, actionId, request, actorName));
+
+    private Task<bool> RestoreAsync(int documentId, string? actorName)
+        => _restore.HandleAsync(new RestoreDocumentCommand(documentId, actorName));
 
     private Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName)
         => _deleteAction.HandleAsync(new DeleteExecutionActionCommand(documentId, actionId, actorName));
@@ -2613,10 +2647,12 @@ public class DocumentServiceTests : PostgresDbTest
         await _service.DeleteAsync(doc.Id, "head1");
         Assert.Null(await _service.GetAsync(doc.Id));
 
-        var restored = await _service.RestoreAsync(doc.Id, "head1");
+        var restored = await RestoreAsync(doc.Id, "head1");
         Assert.True(restored);
         Assert.NotNull(await _service.GetAsync(doc.Id));
         Assert.Contains("restore", _audit.Actions);
+        Assert.Contains(_audit.Details,
+            d => d == $"استعادة المستند (رقم {doc.Id}) — المنفذ عليه: أحمد خالد الخطيب");
 
         var row = _db.Documents.IgnoreQueryFilters().First(d => d.Id == doc.Id);
         Assert.False(row.IsDeleted);
@@ -2627,8 +2663,8 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task Restore_NonDeletedOrUnknownDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        Assert.False(await _service.RestoreAsync(doc.Id, "head1"));
-        Assert.False(await _service.RestoreAsync(99_999, "head1"));
+        Assert.False(await RestoreAsync(doc.Id, "head1"));
+        Assert.False(await RestoreAsync(99_999, "head1"));
     }
 
     [PostgresFact]
@@ -2651,7 +2687,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.DeleteAsync(deleted.Id, "head1");
-        await _service.RestoreAsync(deleted.Id, "head1");
+        await RestoreAsync(deleted.Id, "head1");
 
         var result = await _search.SearchDeletedAsync(null, 1, 20);
 
@@ -2869,7 +2905,7 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Contains(_audit.Details,
             d => d == "عدّل إجراء: إجراء محدث — المنفذ عليه: أحمد خالد الخطيب");
 
-        var reminded = await _actions.SetReminderAsync(doc.Id, action.Id,
+        var reminded = await SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "شهر", ReminderColor = "بنفسجي" }, "lawyer1");
 
         Assert.Equal("شهر", reminded.ReminderDuration);
@@ -2878,6 +2914,8 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Equal("2/2/2026", reminded.ActionDate);
         Assert.Equal(new DateTime(2026, 1, 1),
             (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
+        Assert.Contains(_audit.Details,
+            d => d == "ضبط تذكير إجراء: إجراء محدث (شهر — بنفسجي) — المنفذ عليه: أحمد خالد الخطيب");
     }
 
     /// <summary>
@@ -2893,14 +2931,14 @@ public class DocumentServiceTests : PostgresDbTest
             userId: 1, actorName: "lawyer1");
         Assert.Null((await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
 
-        await _actions.SetReminderAsync(doc.Id, action.Id,
+        await SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
         var stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
-        await _actions.SetReminderAsync(doc.Id, action.Id,
+        await SetReminderAsync(doc.Id, action.Id,
             new SetActionReminderRequest { ReminderDuration = "أسبوع", ReminderColor = "أحمر" }, "lawyer1");
         stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
@@ -2908,7 +2946,7 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // الإلغاء بالحقلين الفارغين = تصفير الثلاثة (نقطة قرار واحدة مع DELETE).
-        await _actions.SetReminderAsync(doc.Id, action.Id, new SetActionReminderRequest(), "lawyer1");
+        await SetReminderAsync(doc.Id, action.Id, new SetActionReminderRequest(), "lawyer1");
         stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Null(stored.ReminderDuration);
         Assert.Null(stored.ReminderColor);
@@ -2936,7 +2974,7 @@ public class DocumentServiceTests : PostgresDbTest
         _db.ExecutionActions.Add(legacy);
         await _db.SaveChangesAsync();
 
-        await _actions.SetReminderAsync(doc.Id, legacy.Id,
+        await SetReminderAsync(doc.Id, legacy.Id,
             new SetActionReminderRequest { ReminderDuration = "3 أيام", ReminderColor = "أحمر" }, "lawyer1");
 
         var stored = (await _db.ExecutionActions.AsNoTracking().FirstAsync(a => a.Id == legacy.Id))!;
@@ -2957,10 +2995,10 @@ public class DocumentServiceTests : PostgresDbTest
         var other = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _actions.SetReminderAsync(doc.Id, 999999,
+            SetReminderAsync(doc.Id, 999999,
                 new SetActionReminderRequest { ReminderDuration = "أسبوع" }, "lawyer1"));
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _actions.SetReminderAsync(other.Id, action.Id,
+            SetReminderAsync(other.Id, action.Id,
                 new SetActionReminderRequest { ReminderDuration = "أسبوع" }, "lawyer1"));
     }
 

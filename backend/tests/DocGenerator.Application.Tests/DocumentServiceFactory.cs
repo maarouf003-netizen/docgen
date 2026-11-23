@@ -61,7 +61,6 @@ public static class DocumentServiceFactory
             actionsValue,
             documentsValue,
             uowValue,
-            txValue,
             audit,
             clockValue,
             timeZoneValue);

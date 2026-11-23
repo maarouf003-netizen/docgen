@@ -57,6 +57,9 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addExecutionAction;
     private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateExecutionAction;
     private readonly ICommandHandler<ClearActionReminderCommand, bool> _clearReminder;
+    private readonly ICommandHandler<SetActionReminderCommand, ExecutionActionDto> _setActionReminder;
+    private readonly ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> _rescheduleActionReminder;
+    private readonly ICommandHandler<RestoreDocumentCommand, bool> _restoreDocument;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -83,6 +86,9 @@ public class DocumentsController : ControllerBase
         ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> addExecutionAction,
         ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> updateExecutionAction,
         ICommandHandler<ClearActionReminderCommand, bool> clearReminder,
+        ICommandHandler<SetActionReminderCommand, ExecutionActionDto> setActionReminder,
+        ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> rescheduleActionReminder,
+        ICommandHandler<RestoreDocumentCommand, bool> restoreDocument,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -108,6 +114,9 @@ public class DocumentsController : ControllerBase
         _addExecutionAction = addExecutionAction;
         _updateExecutionAction = updateExecutionAction;
         _clearReminder = clearReminder;
+        _setActionReminder = setActionReminder;
+        _rescheduleActionReminder = rescheduleActionReminder;
+        _restoreDocument = restoreDocument;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -657,7 +666,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Restore, ct);
         if (denied is not null) return denied;
 
-        return await _documents.RestoreAsync(id, ActorName, ct)
+        return await _restoreDocument.HandleAsync(
+            new RestoreDocumentCommand(id, ActorName), ct)
             ? Ok(new { message = "تمت استعادة المستند" })
             : NotFound();
     }
@@ -933,7 +943,9 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, request?.Version, ct);
+        var action = await _rescheduleActionReminder.HandleAsync(
+            new RescheduleActionReminderCommand(
+                id, actionId, request?.NewDueDate, ActorName, request?.Version), ct);
         return Ok(action);
     }
 
@@ -962,7 +974,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ManageActions, ct);
         if (denied is not null) return denied;
 
-        var action = await _executionActions.SetReminderAsync(id, actionId, request, ActorName, ct);
+        var action = await _setActionReminder.HandleAsync(
+            new SetActionReminderCommand(id, actionId, request, ActorName), ct);
         return Ok(action);
     }
 
