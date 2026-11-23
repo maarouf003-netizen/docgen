@@ -29,6 +29,7 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
     private readonly ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> _renameCircuit;
+    private readonly ICommandHandler<DeleteExecutionCircuitCommand, bool> _deleteCircuit;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
@@ -39,7 +40,8 @@ public class ExecutionCircuitsController : ControllerBase
         IUserCapabilities capabilities,
         ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> createCircuit,
         ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> setCircuitActive,
-        ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> renameCircuit)
+        ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto> renameCircuit,
+        ICommandHandler<DeleteExecutionCircuitCommand, bool> deleteCircuit)
     {
         _circuits = circuits;
         _branches = branches;
@@ -50,6 +52,7 @@ public class ExecutionCircuitsController : ControllerBase
         _createCircuit = createCircuit;
         _setCircuitActive = setCircuitActive;
         _renameCircuit = renameCircuit;
+        _deleteCircuit = deleteCircuit;
     }
 
     private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
@@ -176,7 +179,8 @@ public class ExecutionCircuitsController : ControllerBase
         if (error is not null) return error;
         try
         {
-            await _circuits.DeleteAsync(id, branchId, ownerSectionId, ActorName, ct);
+            await _deleteCircuit.HandleAsync(
+                new DeleteExecutionCircuitCommand(id, branchId, ownerSectionId, ActorName), ct);
             return NoContent();
         }
         catch (DocumentConflictException e)
