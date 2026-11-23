@@ -72,30 +72,6 @@ public sealed partial class ReviewLetterService : IReviewLetterService
     public Task<int> CountUnseenRepliesForLawyerAsync(int actorUserId, CancellationToken ct = default)
         => _letters.CountUnseenReplyLettersForLawyerAsync(actorUserId, ct);
 
-    public async Task<bool> MarkRepliesSeenAsync(int letterId, int actorUserId,
-        CancellationToken ct = default)
-    {
-        var letter = await _letters.GetTrackedWithMessagesAsync(letterId, ct)
-            ?? throw new KeyNotFoundException("كتاب المطالعة غير موجود");
-
-        if (letter.CreatedById != actorUserId)
-            throw new UnauthorizedAccessException("تعليم الإطلاع متاح لمحامي الكتاب نفسه");
-
-        var changed = false;
-        foreach (var m in letter.Messages.Where(
-                     m => m.Kind == ReviewLetterMessage.KindReply && !m.IsSeenByLawyer))
-        {
-            m.IsSeenByLawyer = true;
-            changed = true;
-        }
-
-        if (!changed)
-            return true;
-
-        await _tx.RunAsync(async token => { await _uow.SaveChangesAsync(token); }, ct);
-        return true;
-    }
-
     public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, CancellationToken ct = default)
         => _letters.CountPendingForScopeAsync(branchId, ownerSectionId, ct);
 

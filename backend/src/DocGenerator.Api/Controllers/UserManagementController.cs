@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,12 +17,16 @@ public class UserManagementController : ControllerBase
 {
     private readonly IUserManagementService _users;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
 
     public UserManagementController(
-        IUserManagementService users, IUserCapabilities capabilities)
+        IUserManagementService users,
+        IUserCapabilities capabilities,
+        ICommandHandler<SetLawyerActiveCommand, bool> setLawyerActive)
     {
         _users = users;
         _capabilities = capabilities;
+        _setLawyerActive = setLawyerActive;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -152,7 +158,8 @@ public class UserManagementController : ControllerBase
         if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
 
-        var ok = await _users.SetLawyerActiveAsync(id, request.IsActive, scopeBranchId, ActorName, ct);
+        var ok = await _setLawyerActive.HandleAsync(
+            new SetLawyerActiveCommand(id, request.IsActive, scopeBranchId, ActorName), ct);
         if (!ok)
             return NotFound();
         return Ok(new { message = "تم تحديث حالة المحامي" });

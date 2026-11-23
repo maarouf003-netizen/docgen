@@ -1,8 +1,10 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -13,6 +15,7 @@ namespace DocGenerator.Application.Tests;
 public class ReviewLetterServiceTests : PostgresDbTest
 {
     private readonly IReviewLetterService _service;
+    private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _otherBranchId;
@@ -40,6 +43,13 @@ public class ReviewLetterServiceTests : PostgresDbTest
         _db.SaveChanges();
 
         _service = BuildService();
+        _markRepliesSeen = new MarkReviewRepliesSeenCommandHandler(
+            new ReviewLetterRepository(_db),
+            new UnitOfWork(_db),
+            new IPipelineBehavior<MarkReviewRepliesSeenCommand, bool>[]
+            {
+                new TransactionBehavior<MarkReviewRepliesSeenCommand, bool>(new TransactionRunner(_db)),
+            });
     }
 
     /// <summary>
@@ -448,9 +458,9 @@ public class ReviewLetterServiceTests : PostgresDbTest
 
         // محامٍ آخر لا يستطيع التعليم على كتاب غيره
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.MarkRepliesSeenAsync(letter.Id, _lawyer2.Id));
+            () => _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer2.Id)));
 
-        await _service.MarkRepliesSeenAsync(letter.Id, _lawyer1.Id);
+        await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer1.Id));
 
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
         var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
@@ -468,7 +478,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             _lawyer1.Id, "المحامي الأول", _branchId);
         await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>ج</p>"),
             _head.Id, "رئيس القسم", _branchId);
-        await _service.MarkRepliesSeenAsync(letter.Id, _lawyer1.Id);
+        await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer1.Id));
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
 
         await _service.AddAddendumAsync(letter.Id,

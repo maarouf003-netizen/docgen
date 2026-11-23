@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,11 +23,16 @@ public class ReviewLettersController : ControllerBase
 {
     private readonly IReviewLetterService _letters;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
 
-    public ReviewLettersController(IReviewLetterService letters, IUserCapabilities capabilities)
+    public ReviewLettersController(
+        IReviewLetterService letters,
+        IUserCapabilities capabilities,
+        ICommandHandler<MarkReviewRepliesSeenCommand, bool> markRepliesSeen)
     {
         _letters = letters;
         _capabilities = capabilities;
+        _markRepliesSeen = markRepliesSeen;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -101,7 +108,7 @@ public class ReviewLettersController : ControllerBase
         if (!IsLawyer)
             return Forbid();
 
-        await _letters.MarkRepliesSeenAsync(id, UserId, ct);
+        await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(id, UserId), ct);
         return NoContent();
     }
 
