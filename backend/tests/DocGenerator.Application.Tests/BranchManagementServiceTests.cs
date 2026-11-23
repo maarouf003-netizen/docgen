@@ -17,6 +17,7 @@ public class BranchManagementServiceTests : PostgresDbTest
 {
     private readonly IBranchManagementService _service;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
+    private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
@@ -37,7 +38,12 @@ public class BranchManagementServiceTests : PostgresDbTest
         _service = new BranchManagementService(branches, uow, tx, _audit);
         _deleteBranch = new DeleteBranchCommandHandler(
             branches, uow, _audit, Array.Empty<IPipelineBehavior<DeleteBranchCommand, bool>>());
+        _createBranch = new CreateBranchCommandHandler(
+            branches, uow, _audit, Array.Empty<IPipelineBehavior<CreateBranchCommand, BranchDto>>());
     }
+
+    private Task<BranchDto> CreateBranchAsync(CreateBranchRequest request, string? actorName)
+        => _createBranch.HandleAsync(new CreateBranchCommand(request, actorName));
 
     [PostgresFact]
     public async Task ListBranches_CacheInvalidatedAfterCreate()
@@ -48,9 +54,13 @@ public class BranchManagementServiceTests : PostgresDbTest
         var cachedService = new BranchManagementService(
             new BranchRepository(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit, cache);
 
+        var cachedCreate = new CreateBranchCommandHandler(
+            new BranchRepository(_db), new UnitOfWork(_db), _audit,
+            Array.Empty<IPipelineBehavior<CreateBranchCommand, BranchDto>>(), cache);
+
         _ = await cachedService.ListBranchesAsync();
-        var created = await cachedService.CreateBranchAsync(
-            new CreateBranchRequest("طرطوس", "TRT", null, null, "طرطوس"), "admin");
+        var created = await cachedCreate.HandleAsync(new CreateBranchCommand(
+            new CreateBranchRequest("طرطوس", "TRT", null, null, "طرطوس"), "admin"));
         var after = await cachedService.ListBranchesAsync();
 
         Assert.Contains(after, b => b.Id == created.Id);
@@ -63,7 +73,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_AddsActiveBranch_WithCounts()
     {
-        var branch = await _service.CreateBranchAsync(
+        var branch = await CreateBranchAsync(
             new CreateBranchRequest("حمص", "HMS", "شارع الساعة", "031111111", "حمص"), "admin");
 
         Assert.True(branch.Id > 0);
@@ -80,7 +90,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     public async Task Create_EmptyGovernorate_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "BXX", null, null, "  "), "admin"));
+            CreateBranchAsync(new CreateBranchRequest("فرع جديد", "BXX", null, null, "  "), "admin"));
 
         Assert.Contains("المحافظة مطلوبة", ex.Message);
         Assert.Null(await _db.Branches.FirstOrDefaultAsync(b => b.Code == "BXX"));
@@ -90,28 +100,28 @@ public class BranchManagementServiceTests : PostgresDbTest
     public async Task Create_EmptyName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("  ", "X1", null, null), "admin"));
+            CreateBranchAsync(new CreateBranchRequest("  ", "X1", null, null), "admin"));
     }
 
     [PostgresFact]
     public async Task Create_EmptyCode_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", " ", null, null), "admin"));
+            CreateBranchAsync(new CreateBranchRequest("فرع جديد", " ", null, null), "admin"));
     }
 
     [PostgresFact]
     public async Task Create_DuplicateName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("دمشق", "NEW", null, null, "دمشق"), "admin"));
+            CreateBranchAsync(new CreateBranchRequest("دمشق", "NEW", null, null, "دمشق"), "admin"));
     }
 
     [PostgresFact]
     public async Task Create_DuplicateCode_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "DAM", null, null, "حلب"), "admin"));
+            CreateBranchAsync(new CreateBranchRequest("فرع جديد", "DAM", null, null, "حلب"), "admin"));
     }
 
     [PostgresFact]

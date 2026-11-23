@@ -12,7 +12,6 @@ public interface IPersonalReminderService
     Task<PersonalReminderDto?> GetByIdAsync(int id, int userId, CancellationToken ct = default);
     Task<PersonalReminderDto> CreateAsync(CreatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
     Task<PersonalReminderDto?> UpdateAsync(int id, UpdatePersonalReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<PersonalReminderDto?> SetOccurrenceAsync(int id, string occurrenceDate, bool done, int userId, long? version = null, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -163,39 +162,6 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return ToDto(reminder);
     }
 
-    public async Task<PersonalReminderDto?> SetOccurrenceAsync(
-        int id, string occurrenceDate, bool done, int userId, long? version = null, CancellationToken ct = default)
-    {
-        var reminder = await _reminders.GetByIdAsync(id, ct);
-        if (reminder is null || reminder.LawyerId != userId)
-            return null;
-        OptimisticConcurrencyGuard.EnsureCurrent(reminder, version, "التذكير الشخصي");
-        if (reminder.IsArchived)
-            throw new ArgumentException("التذكير مؤرشف — أعد تفعيله أولًا");
-
-        // مفتاح التكرار يُطبَّع لصيغة اليوم (`yyyy-MM-dd`) عبر عقد التواريخ المعتمد.
-        var key = PersonalReminderDates.Format(PersonalReminderDates.ParseDay(occurrenceDate, "تاريخ التكرار"));
-        var keys = reminder.CompletedOccurrenceKeys
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(k => k.Length > 0)
-            .ToHashSet(StringComparer.Ordinal);
-        var mutated = done ? keys.Add(key) : keys.Remove(key);
-        if (!mutated)
-            return ToDto(reminder);
-
-        reminder.CompletedOccurrenceKeys = string.Join(',', keys.OrderBy(k => k, StringComparer.Ordinal));
-        if (reminder.CompletedOccurrenceKeys.Length > PersonalReminderCatalog.CompletedKeysMaxLength)
-            throw new ArgumentException("تجاوز سجل التكرارات المنجزة حده — حدّد تاريخ انتهاء للتكرار أو احذف التذكير");
-
-        await _tx.RunAsync(async token =>
-        {
-            _reminders.Update(reminder);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-
-        return ToDto(reminder);
-    }
-
     private static string ValidateTitle(string? title)
     {
         var trimmed = title?.Trim() ?? string.Empty;
@@ -234,7 +200,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
         return trimmed;
     }
 
-    private static PersonalReminderDto ToDto(PersonalReminder r) => new(
+    internal static PersonalReminderDto ToDto(PersonalReminder r) => new(
         r.Id,
         r.Title,
         r.Notes,

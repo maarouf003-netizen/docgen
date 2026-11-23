@@ -18,15 +18,18 @@ public class PersonalRemindersController : ControllerBase
     private readonly IPersonalReminderService _reminders;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
+    private readonly ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> _setOccurrence;
 
     public PersonalRemindersController(
         IPersonalReminderService reminders,
         IUserCapabilities capabilities,
-        ICommandHandler<DeletePersonalReminderCommand, bool> deleteReminder)
+        ICommandHandler<DeletePersonalReminderCommand, bool> deleteReminder,
+        ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> setOccurrence)
     {
         _reminders = reminders;
         _capabilities = capabilities;
         _deleteReminder = deleteReminder;
+        _setOccurrence = setOccurrence;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -80,7 +83,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var reminder = await _reminders.SetOccurrenceAsync(id, request.OccurrenceDate, request.Done, User.GetUserId(), request.Version, ct);
+        var reminder = await _setOccurrence.HandleAsync(new SetPersonalReminderOccurrenceCommand(
+            id, request.OccurrenceDate, request.Done, User.GetUserId(), request.Version), ct);
         return reminder is null ? NotFound() : Ok(reminder);
     }
 

@@ -85,6 +85,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteBranchCommand, bool>, DeleteBranchCommandHandler>();
         services.AddScoped<ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto>, CreateAppSuggestionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteForumMessageCommand, bool>, DeleteForumMessageCommandHandler>();
+        services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
         return services;
     }
 }
