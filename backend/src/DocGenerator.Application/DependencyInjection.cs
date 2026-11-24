@@ -72,7 +72,9 @@ public static class DependencyInjection
         services.AddScoped<EntityDelegateService>();
         services.AddScoped<IEntityDelegateService>(sp => sp.GetRequiredService<EntityDelegateService>());
         services.AddScoped<IEntityDelegateWriteRules>(sp => sp.GetRequiredService<EntityDelegateService>());
-        services.AddScoped<IReviewLetterService, ReviewLetterService>();
+        services.AddScoped<ReviewLetterService>();
+        services.AddScoped<IReviewLetterService>(sp => sp.GetRequiredService<ReviewLetterService>());
+        services.AddScoped<IReviewLetterReplyWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<ICorrespondenceService, CorrespondenceService>();
         services.AddScoped<IForumService, ForumService>();
         services.AddScoped<IForumRetentionService, ForumRetentionService>();
