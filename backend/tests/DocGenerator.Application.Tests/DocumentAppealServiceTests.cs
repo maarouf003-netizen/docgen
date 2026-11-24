@@ -34,6 +34,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<AddAppealActionCommand, AppealActionDto> _appealAddAction;
     private readonly ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> _appealUpdateAction;
     private readonly ICommandHandler<DeleteAppealActionCommand, bool> _appealDeleteAction;
+    private readonly ICommandHandler<SetAppealReminderCommand, AppealActionDto> _appealSetReminder;
+    private readonly ICommandHandler<ClearAppealReminderCommand, bool> _appealClearReminder;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -132,6 +134,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         _appealDeleteAction = new DeleteAppealActionCommandHandler(
             new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteAppealActionCommand, bool>>());
+        _appealSetReminder = new SetAppealReminderCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<SetAppealReminderCommand, AppealActionDto>>());
+        _appealClearReminder = new ClearAppealReminderCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<ClearAppealReminderCommand, bool>>());
     }
 
 
@@ -1128,11 +1136,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Contains(_audit.Details,
             d => d == $"عدّل إجراءً على الاستئناف (رقم {created.Id})");
 
-        var reminded = await _service.SetReminderAsync(created.Id, action.Id,
+        var reminded = await _appealSetReminder.SetReminderAsync(created.Id, action.Id,
             new SetAppealReminderRequest("شهر", "أصفر"), _lawyer2.Id, "lawyer2");
         Assert.Equal("أصفر", reminded.ReminderColor);
         Assert.Equal("شهر", reminded.ReminderDuration);
         Assert.Equal("4/8/2026", reminded.ActionDate);
+        // تثبيت نص تدقيق ضبط التذكير حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"ضبط تذكير إجراء على الاستئناف (رقم {created.Id}) (شهر — أصفر)");
 
         // تذكير يظهر للمتابع فقط.
         var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
@@ -1140,11 +1151,17 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var otherReminders = await _service.GetRemindersAsync(_lawyer1.Id);
         Assert.DoesNotContain(otherReminders, r => r.ActionId == action.Id);
 
-        Assert.True(await _service.ClearReminderAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
+        Assert.True(await _appealClearReminder.ClearReminderAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
         Assert.DoesNotContain(await _service.GetRemindersAsync(_lawyer2.Id), r => r.ActionId == action.Id);
+        // تثبيت نص تدقيق الإلغاء حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"ألغى تذكير إجراء على الاستئناف (رقم {created.Id})");
 
         Assert.True(await _appealDeleteAction.DeleteActionAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
         Assert.Empty(await _service.GetActionsAsync(created.Id));
+        // تثبيت نص تدقيق حذف الإجراء حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"حذف إجراءً من الاستئناف (رقم {created.Id})");
     }
 
     [PostgresFact]
@@ -1247,7 +1264,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SetReminderAsync(appealId, action.Id,
+            _appealSetReminder.SetReminderAsync(appealId, action.Id,
                 new SetAppealReminderRequest("سنة", "أحمر"), _lawyer2.Id, "lawyer2"));
     }
 
@@ -1260,21 +1277,21 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
         Assert.Null((await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
 
-        await _service.SetReminderAsync(appealId, action.Id,
+        await _appealSetReminder.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest("3 أيام", "أحمر"), _lawyer2.Id, "lawyer2");
         var stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("10-11-2026", stored.ActionDate);
 
         // تعديل المدة لا يعيد تأسيس الأساس ولا يمسّ تاريخ الإجراء.
-        await _service.SetReminderAsync(appealId, action.Id,
+        await _appealSetReminder.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer2.Id, "lawyer2");
         stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Equal(new DateTime(2026, 11, 10), stored.ReminderBaseDate);
         Assert.Equal("أسبوع", stored.ReminderDuration);
 
         // الإلغاء بالحقلين الفارغين = تصفير الكل.
-        await _service.SetReminderAsync(appealId, action.Id,
+        await _appealSetReminder.SetReminderAsync(appealId, action.Id,
             new SetAppealReminderRequest(null, null), _lawyer2.Id, "lawyer2");
         stored = (await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!;
         Assert.Null(stored.ReminderDuration);
@@ -1292,7 +1309,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SetReminderAsync(appealId, action.Id,
+            _appealSetReminder.SetReminderAsync(appealId, action.Id,
                 new SetAppealReminderRequest("أسبوع", "أحمر"), _lawyer1.Id, "lawyer1"));
     }
 

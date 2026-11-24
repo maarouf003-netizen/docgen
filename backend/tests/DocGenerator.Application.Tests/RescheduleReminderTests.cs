@@ -389,7 +389,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
-        var rescheduled = await _service.RescheduleAppealReminderAsync(
+        var rescheduled = await AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(
             appealId, action.Id, "15/8/2026", _lawyer2.Id, "lawyer2");
 
         Assert.Equal(action.ActionDate, rescheduled.ActionDate);
@@ -420,7 +420,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             new AddAppealActionRequest("action", "إجراء", "10-11-2026", "3 أيام", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
-        var rescheduled = await _service.RescheduleAppealReminderAsync(
+        var rescheduled = await AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(
             appealId, action.Id, "14-11-2026", _lawyer2.Id, "lawyer2");
 
         Assert.Equal("10-11-2026", rescheduled.ActionDate);
@@ -438,7 +438,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RescheduleAppealReminderAsync(appealId, action.Id, newDueDate, _lawyer2.Id, "lawyer2"));
+            AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(appealId, action.Id, newDueDate, _lawyer2.Id, "lawyer2"));
         Assert.Contains("اليوم الجديد", ex.Message);
     }
 
@@ -451,7 +451,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RescheduleAppealReminderAsync(appealId, note.Id, "10/8/2026", _lawyer2.Id, "lawyer2"));
+            AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(appealId, note.Id, "10/8/2026", _lawyer2.Id, "lawyer2"));
         Assert.Equal("لا يوجد تذكير لإعادة جدولته", ex.Message);
     }
 
@@ -464,7 +464,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.RescheduleAppealReminderAsync(appealId, action.Id, "15/8/2026", _lawyer1.Id, "lawyer1"));
+            AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(appealId, action.Id, "15/8/2026", _lawyer1.Id, "lawyer1"));
         Assert.Contains("ليس مسندًا إليك", ex.Message);
     }
 
@@ -477,11 +477,11 @@ public class RescheduleAppealReminderTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         var missingAppeal = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RescheduleAppealReminderAsync(999999, action.Id, "15/8/2026", _lawyer2.Id, "lawyer2"));
+            AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(999999, action.Id, "15/8/2026", _lawyer2.Id, "lawyer2"));
         Assert.Equal("الاستئناف غير موجود", missingAppeal.Message);
 
         var missingAction = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RescheduleAppealReminderAsync(appealId, 999999, "15/8/2026", _lawyer2.Id, "lawyer2"));
+            AppealWriteHandlerFactory.Reschedule(_db, _audit).RescheduleAppealReminderAsync(appealId, 999999, "15/8/2026", _lawyer2.Id, "lawyer2"));
         Assert.Equal("الإجراء غير موجود", missingAction.Message);
     }
 }

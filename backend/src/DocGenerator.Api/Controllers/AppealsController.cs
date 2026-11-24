@@ -37,6 +37,9 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<AddAppealActionCommand, AppealActionDto> _addAppealAction;
     private readonly ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> _updateAppealAction;
     private readonly ICommandHandler<DeleteAppealActionCommand, bool> _deleteAppealAction;
+    private readonly ICommandHandler<SetAppealReminderCommand, AppealActionDto> _setAppealReminder;
+    private readonly ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> _rescheduleAppealReminder;
+    private readonly ICommandHandler<ClearAppealReminderCommand, bool> _clearAppealReminder;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -55,7 +58,10 @@ public class AppealsController : ControllerBase
         ICommandHandler<RecallAppealForwardCommand, AppealDto?> recallForward,
         ICommandHandler<AddAppealActionCommand, AppealActionDto> addAppealAction,
         ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> updateAppealAction,
-        ICommandHandler<DeleteAppealActionCommand, bool> deleteAppealAction)
+        ICommandHandler<DeleteAppealActionCommand, bool> deleteAppealAction,
+        ICommandHandler<SetAppealReminderCommand, AppealActionDto> setAppealReminder,
+        ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> rescheduleAppealReminder,
+        ICommandHandler<ClearAppealReminderCommand, bool> clearAppealReminder)
     {
         _appeals = appeals;
         _documents = documents;
@@ -74,6 +80,9 @@ public class AppealsController : ControllerBase
         _addAppealAction = addAppealAction;
         _updateAppealAction = updateAppealAction;
         _deleteAppealAction = deleteAppealAction;
+        _setAppealReminder = setAppealReminder;
+        _rescheduleAppealReminder = rescheduleAppealReminder;
+        _clearAppealReminder = clearAppealReminder;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -535,7 +544,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var action = await _appeals.SetReminderAsync(id, actionId, request, User.GetUserId(), ActorName, ct);
+        var action = await _setAppealReminder.HandleAsync(
+            new SetAppealReminderCommand(id, actionId, request, User.GetUserId(), ActorName), ct);
         return Ok(action);
     }
 
@@ -545,7 +555,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var rescheduled = await _appeals.RescheduleAppealReminderAsync(id, actionId, request?.NewDueDate, User.GetUserId(), ActorName, ct);
+        var rescheduled = await _rescheduleAppealReminder.HandleAsync(
+            new RescheduleAppealReminderCommand(id, actionId, request?.NewDueDate, User.GetUserId(), ActorName), ct);
         return Ok(rescheduled);
     }
 
@@ -566,7 +577,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var ok = await _appeals.ClearReminderAsync(id, actionId, User.GetUserId(), ActorName, ct);
+        var ok = await _clearAppealReminder.HandleAsync(
+            new ClearAppealReminderCommand(id, actionId, User.GetUserId(), ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 

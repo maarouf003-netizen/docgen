@@ -214,4 +214,34 @@ internal static class DocumentAppealRules
             occurredAt,
             ct);
     }
+
+    /// <summary>
+    /// تفريغ حالة التذكير كلها (المدة/اللون/الأساس) — نقطة واحدة للإلغاء المباشر
+    /// وللـ`PUT` بالحقلين الفارغين، فلا ينحرف أحد المسارين عن الآخر.
+    /// </summary>
+    internal static void ClearReminderFields(AppealAction action)
+    {
+        action.ReminderDuration = null;
+        action.ReminderColor = null;
+        action.ReminderBaseDate = null;
+    }
+
+    /// <summary>
+    /// تفريغ حالة التذكير وتدوينه — التنفيذ الوحيد للإلغاء (يستدعيه أمر الإلغاء
+    /// وأمر الضبط بالحقلين الفارغين) فلا تختلف رسالة التدقيق بين المسارين.
+    /// </summary>
+    internal static async Task ClearReminderCoreAsync(
+        DocumentAppeal appeal, AppealAction action, string? actorName,
+        IUnitOfWork uow, ITransactionRunner tx, IAuditLogger audit, CancellationToken ct)
+    {
+        ClearReminderFields(action);
+
+        await tx.RunAsync(async token =>
+        {
+            await uow.SaveChangesAsync(token);
+            await audit.LogAsync(actorName, "clear_appeal_reminder",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"ألغى تذكير إجراء على الاستئناف (رقم {appeal.Id})", token);
+        }, ct);
+    }
 }

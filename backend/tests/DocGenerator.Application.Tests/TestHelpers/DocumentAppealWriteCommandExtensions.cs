@@ -113,4 +113,19 @@ public static class DocumentAppealWriteCommandExtensions
         this ICommandHandler<DeleteAppealActionCommand, bool> handler,
         int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default)
         => handler.HandleAsync(new DeleteAppealActionCommand(appealId, actionId, userId, actorName), ct);
+
+    public static Task<AppealActionDto> SetReminderAsync(
+        this ICommandHandler<SetAppealReminderCommand, AppealActionDto> handler,
+        int appealId, int actionId, SetAppealReminderRequest request, int userId, string? actorName, CancellationToken ct = default)
+        => handler.HandleAsync(new SetAppealReminderCommand(appealId, actionId, request, userId, actorName), ct);
+
+    public static Task<bool> ClearReminderAsync(
+        this ICommandHandler<ClearAppealReminderCommand, bool> handler,
+        int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default)
+        => handler.HandleAsync(new ClearAppealReminderCommand(appealId, actionId, userId, actorName), ct);
+
+    public static Task<AppealActionDto> RescheduleAppealReminderAsync(
+        this ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> handler,
+        int appealId, int actionId, string? newDueDate, int userId, string? actorName, CancellationToken ct = default)
+        => handler.HandleAsync(new RescheduleAppealReminderCommand(appealId, actionId, newDueDate, userId, actorName), ct);
 }
