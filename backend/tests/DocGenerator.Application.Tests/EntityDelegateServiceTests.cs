@@ -1,8 +1,10 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -16,6 +18,8 @@ namespace DocGenerator.Application.Tests;
 public class EntityDelegateServiceTests : PostgresDbTest
 {
     private readonly IEntityDelegateService _service;
+    private readonly ICommandHandler<CreateEntityDelegateCommand, DelegateDto> _createDelegate;
+    private readonly ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> _updateDelegate;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupId;
     private readonly int _entryId;
@@ -41,6 +45,18 @@ public class EntityDelegateServiceTests : PostgresDbTest
             new TransactionRunner(_db),
             _audit,
             new Repository<Branch>(_db));
+
+        var rules = (IEntityDelegateWriteRules)_service;
+        var users = new UserRepository(_db);
+        var hasher = new PasswordHasher();
+        var uow = new UnitOfWork(_db);
+        var tx = new TransactionRunner(_db);
+        _createDelegate = new CreateEntityDelegateCommandHandler(
+            rules, users, hasher, uow, tx, _audit,
+            Array.Empty<IPipelineBehavior<CreateEntityDelegateCommand, DelegateDto>>());
+        _updateDelegate = new UpdateEntityDelegateCommandHandler(
+            rules, users, hasher, uow, tx, _audit,
+            Array.Empty<IPipelineBehavior<UpdateEntityDelegateCommand, DelegateDto?>>());
     }
 
 
@@ -65,7 +81,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_HashesPassword_BindsScope_AndAudits()
     {
-        var dto = await _service.CreateAsync(
+        var dto = await _createDelegate.CreateAsync(
             new CreateDelegateRequest("delegate.one", "مندوب الوزارة", "TestPass1234", _groupId, null), "المدير");
 
         Assert.True(dto.IsActive);
@@ -83,10 +99,10 @@ public class EntityDelegateServiceTests : PostgresDbTest
     public async Task Create_RequiresExactlyOneScope()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", null, null), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", null, null), "مدير"));
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", _groupId, _entryId), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", _groupId, _entryId), "مدير"));
 
         Assert.Empty(_audit.Actions);
     }
@@ -94,10 +110,10 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_DuplicateUsername_FailsFriendly()
     {
-        await _service.CreateAsync(new CreateDelegateRequest("delegate.dup", "أول", "TestPass1234", _groupId, null), "مدير");
+        await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.dup", "أول", "TestPass1234", _groupId, null), "مدير");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("DELEGATE.DUP", "ثانٍ", "TestPass1234", _groupId, null), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("DELEGATE.DUP", "ثانٍ", "TestPass1234", _groupId, null), "مدير"));
 
         // التطبيع يوحّد حالة الأحرف فيكشف التكرار.
         Assert.Contains("بنفس اسم الدخول", ex.Message);
@@ -108,7 +124,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
     public async Task Create_UnknownEntry_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "TestPass1234", null, 999), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "TestPass1234", null, 999), "مدير"));
     }
 
     [PostgresFact]
@@ -117,7 +133,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "TestPass1234", null, pendingId), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "TestPass1234", null, pendingId), "مدير"));
 
         Assert.Contains("بانتظار الاعتماد", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -130,7 +146,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         var reviewId = await AddEntryAsync("فرع مراجعة", needsReview: true);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "TestPass1234", null, reviewId), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "TestPass1234", null, reviewId), "مدير"));
 
         Assert.Contains("بانتظار المراجعة", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -142,7 +158,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         var offId = await AddEntryAsync("فرع موقوف", isActive: false);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "TestPass1234", null, offId), "مدير"));
+            _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "TestPass1234", null, offId), "مدير"));
 
         Assert.Contains("غير نشط", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -157,7 +173,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         // في BuildDtoWithScopeAsync قبل الإصلاح (سطر entryLabel).
         _db.ChangeTracker.Clear();
 
-        var dto = await _service.CreateAsync(
+        var dto = await _createDelegate.CreateAsync(
             new CreateDelegateRequest("delegate.entry", "مندوب القيد", "TestPass1234", null, _entryId), "مدير");
 
         Assert.Null(dto.PortalGroupId);
@@ -168,10 +184,10 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_ToEntryScope_AfterDetach_ResolvesLabel()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "TestPass1234", _groupId, null), "مدير");
+        var created = await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "TestPass1234", _groupId, null), "مدير");
         _db.ChangeTracker.Clear();
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _updateDelegate.UpdateAsync(created.Id,
             new UpdateDelegateRequest(null, null, null, PortalGroupId: null, PortalEntryId: _entryId),
             "المدير");
 
@@ -184,11 +200,11 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_ToIneligibleEntry_Rejected()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "TestPass1234", _groupId, null), "مدير");
+        var created = await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(created.Id,
+            _updateDelegate.UpdateAsync(created.Id,
                 new UpdateDelegateRequest(null, null, null, PortalGroupId: null, PortalEntryId: pendingId),
                 "المدير"));
 
@@ -203,10 +219,10 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_RebindsScope_ResetsPassword_AndBumpsTokenVersion()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.re", "مندوب", "TestPass1234", _groupId, null), "مدير");
+        var created = await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.re", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var hashBefore = (await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).PasswordHash;
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _updateDelegate.UpdateAsync(created.Id,
             new UpdateDelegateRequest("الاسم الجديد", IsActive: false, NewPassword: "TestPass5678", PortalGroupId: null, PortalEntryId: _entryId),
             "المدير");
 
@@ -232,17 +248,17 @@ public class EntityDelegateServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var lawyerId = _db.Users.Single(u => u.Username == "plain").Id;
 
-        Assert.Null(await _service.UpdateAsync(lawyerId,
+        Assert.Null(await _updateDelegate.UpdateAsync(lawyerId,
             new UpdateDelegateRequest(null, false, null, _groupId, null), "مدير"));
     }
 
     [PostgresFact]
     public async Task Update_ShortPassword_Rejected()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.pw", "مندوب", "TestPass1234", _groupId, null), "مدير");
+        var created = await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.pw", "مندوب", "TestPass1234", _groupId, null), "مدير");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(created.Id,
+            _updateDelegate.UpdateAsync(created.Id,
                 new UpdateDelegateRequest(null, null, "123", _groupId, null), "مدير"));
 
         Assert.Contains("10 أحرف", ex.Message);
@@ -251,10 +267,10 @@ public class EntityDelegateServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Deactivate_WithoutPasswordChange_BumpsTokenVersion_ToRevokeSessions()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "TestPass1234", _groupId, null), "مدير");
+        var created = await _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var before = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
 
-        await _service.UpdateAsync(created.Id,
+        await _updateDelegate.UpdateAsync(created.Id,
             new UpdateDelegateRequest(null, IsActive: false, null, _groupId, null), "المدير");
 
         var after = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
@@ -280,11 +296,11 @@ public class EntityDelegateServiceTests : PostgresDbTest
         var actor = new EntityRegistryActor(sub.Id, "رئيس شعبة", UserRole.SubHead, branch.Id);
 
         // خارج محافظة فرعه مرفوض إنشاءً...
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createDelegate.CreateAsync(
             new CreateDelegateRequest("delegate.alp", "مندوب حلب", "TestPass1234", null, aleppoEntryId), "رئيس شعبة", default, actor));
 
         // ...وداخلها مسموح.
-        var dto = await _service.CreateAsync(
+        var dto = await _createDelegate.CreateAsync(
             new CreateDelegateRequest("delegate.dam", "مندوب دمشق", "TestPass1234", null, _entryId), "رئيس شعبة", default, actor);
         Assert.Equal("delegate.dam", dto.Username);
 

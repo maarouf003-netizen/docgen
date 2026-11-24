@@ -23,6 +23,7 @@ public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
+    private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
 
     /// <summary>
     /// رسالة 404 الموحّدة لمسارات التنبيهات (قرار المالك 2026-11-03): جسم عربي واحد
@@ -34,10 +35,12 @@ public class AlertsController : ControllerBase
 
     public AlertsController(
         IHeadAlertService alerts,
-        ICommandHandler<MarkHeadAlertReadCommand, bool> markRead)
+        ICommandHandler<MarkHeadAlertReadCommand, bool> markRead,
+        ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> createManual)
     {
         _alerts = alerts;
         _markRead = markRead;
+        _createManual = createManual;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -137,7 +140,8 @@ public class AlertsController : ControllerBase
     {
         try
         {
-            var alert = await _alerts.CreateAsync(request, Actor, ActorName, ct);
+            var alert = await _createManual.HandleAsync(
+                new CreateManualHeadAlertCommand(request, Actor, ActorName), ct);
             return CreatedAtAction(nameof(Get), new { id = alert.Id }, alert);
         }
         catch (UnauthorizedAccessException)

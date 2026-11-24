@@ -17,11 +17,7 @@ public interface IUserManagementService
         bool callerIsHeadOrSubHead,
         bool includeInactive,
         CancellationToken ct = default);
-    Task<LawyerListItemDto> CreateLawyerAsync(int branchId, CreateLawyerRequest request, string? actorName, CancellationToken ct = default, int? actorUserId = null);
-    Task<LawyerListItemDto?> UpdateLawyerAsync(int userId, UpdateLawyerRequest request, int? scopeBranchId, string? actorName, CancellationToken ct = default);
     Task<List<UserListItemDto>> ListUsersAsync(CancellationToken ct = default);
-    Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default, int? actorUserId = null);
-    Task<UserListItemDto?> UpdateUserAsync(int userId, UpdateUserRequest request, int actorUserId, string? actorName, CancellationToken ct = default);
     Task<List<HeadSuccessionDto>> ListSuccessionAsync(int? branchId, CancellationToken ct = default);
 }
 
@@ -29,7 +25,7 @@ public interface IUserManagementService
 /// إدارة محامي الفرع (رئيس القسم/مشرف) وإدارة المستخدمين الكاملة (مشرف).
 /// التحقق من الصلاحية/النطاق في المتحكم، والتحقق المنطقي والكتابة هنا.
 /// </summary>
-public sealed partial class UserManagementService : IUserManagementService
+public sealed partial class UserManagementService : IUserManagementService, IUserManagementLawyerWriteRules, IUserManagementUserWriteRules
 {
     private static readonly UserRole[] BranchRoles = { UserRole.Lawyer, UserRole.Head, UserRole.SubHead };
 
@@ -76,4 +72,63 @@ public sealed partial class UserManagementService : IUserManagementService
         _tx = tx;
         _audit = audit;
     }
+
+    // ── تنفيذ عقد مساعدات كتابة المحامين المشتركة (P4-01bg) ───────────────
+
+    string IUserManagementLawyerWriteRules.NormalizeUsername(string username)
+        => NormalizeUsername(username);
+
+    void IUserManagementLawyerWriteRules.ValidateUsername(string username)
+        => ValidateUsername(username);
+
+    string IUserManagementLawyerWriteRules.NormalizePassword(string? password, string? username)
+        => NormalizePassword(password, username);
+
+    string IUserManagementLawyerWriteRules.DuplicateUsernameMessage(int? branchId)
+        => DuplicateUsernameMessage(branchId);
+
+    LawyerListItemDto IUserManagementLawyerWriteRules.ToLawyerDto(User user)
+        => ToLawyerDto(user);
+
+    // ── تنفيذ عقد مساعدات كتابة المستخدمين المشتركة (P4-01bh) ─────────────
+
+    string IUserManagementUserWriteRules.NormalizeUsername(string username)
+        => NormalizeUsername(username);
+
+    void IUserManagementUserWriteRules.ValidateUsername(string username)
+        => ValidateUsername(username);
+
+    string IUserManagementUserWriteRules.NormalizePassword(string? password, string? username)
+        => NormalizePassword(password, username);
+
+    string IUserManagementUserWriteRules.DuplicateUsernameMessage(int? branchId)
+        => DuplicateUsernameMessage(branchId);
+
+    UserRole IUserManagementUserWriteRules.ParseRole(string? role)
+        => ParseRole(role);
+
+    Task IUserManagementUserWriteRules.GuardManagerAdminBoundaryAsync(
+        int actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct)
+        => GuardManagerAdminBoundaryAsync(actorUserId, requestedIsAdmin, targetIsAdmin, ct);
+
+    Task<int?> IUserManagementUserWriteRules.ResolveBranchAsync(int? branchId, UserRole role, CancellationToken ct)
+        => ResolveBranchAsync(branchId, role, ct);
+
+    Task<int?> IUserManagementUserWriteRules.ResolveSectionAsync(
+        UserRole role, int? branchId, int? sectionId, CancellationToken ct)
+        => ResolveSectionAsync(role, branchId, sectionId, ct);
+
+    Task IUserManagementUserWriteRules.GuardSingleActiveHeadAsync(
+        UserRole role, int? branchId, int? sectionId, int? excludeUserId, CancellationToken ct)
+        => GuardSingleActiveHeadAsync(role, branchId, sectionId, excludeUserId, ct);
+
+    Task<User> IUserManagementUserWriteRules.ResolveSuccessorAsync(User user, int successorId, CancellationToken ct)
+        => ResolveSuccessorAsync(user, successorId, ct);
+
+    Task IUserManagementUserWriteRules.ApplySuccessionAsync(
+        User predecessor, User successor, string? actorName, CancellationToken ct)
+        => ApplySuccessionAsync(predecessor, successor, actorName, ct);
+
+    Task<UserListItemDto> IUserManagementUserWriteRules.ToUserDtoAsync(User user, CancellationToken ct)
+        => ToUserDtoAsync(user, ct);
 }

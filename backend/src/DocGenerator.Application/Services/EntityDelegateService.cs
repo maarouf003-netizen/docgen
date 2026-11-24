@@ -10,12 +10,6 @@ namespace DocGenerator.Application.Services;
 public interface IEntityDelegateService
 {
     Task<List<DelegateDto>> ListAsync(CancellationToken ct = default, EntityRegistryActor? actor = null);
-
-    /// <summary>إنشاء حساب مندوب مربوط بنطاقه — يجب تحديد هوية أو قيدًا واحدًا حصرًا (د11).</summary>
-    Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null);
-
-    /// <summary>تعديل حساب مندوب قائم (الاسم/التفعيل/كلمة المرور/نطاقه) — null إن لم يوجد.</summary>
-    Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null);
 }
 
 /// <summary>
@@ -23,7 +17,7 @@ public interface IEntityDelegateService
 /// المشرف/رئيس القسم ويربط كل حساب بنطاقه (هوية أم أو قيد بعينه) — والتحقق
 /// من الصلاحية في المتحكم عبر RolePermissions.CanManageDelegates.
 /// </summary>
-public sealed class EntityDelegateService : IEntityDelegateService
+public sealed class EntityDelegateService : IEntityDelegateService, IEntityDelegateWriteRules
 {
     private const int MaxUsernameLength = 50;
 
@@ -67,95 +61,6 @@ public sealed class EntityDelegateService : IEntityDelegateService
             result.Add(await BuildDtoWithScopeAsync(d, ct));
         }
         return result;
-    }
-
-    public async Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null)
-    {
-        var username = NormalizeUsername(request.Username);
-        // M-02: ما يُفحَص هو ما يُخزَّن — نقصّ قبل التحقق والتخزين معًا.
-        var candidatePassword = request.Password?.Trim() ?? string.Empty;
-        ValidateCredentials(username, candidatePassword, request.FullName);
-        var (groupId, entryId) = await ResolveScopeAsync(request.PortalGroupId, request.PortalEntryId, ct);
-        await EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
-
-        if (await _users.UsernameExistsAsync(username, branchId: null, excludeUserId: null, ct))
-            throw new ArgumentException("يوجد مستخدم بنفس اسم الدخول، يرجى اختيار اسم مختلف");
-
-        return await _tx.RunAsync(async token =>
-        {
-            var user = new User
-            {
-                Username = username,
-                FullName = request.FullName.Trim(),
-                Role = UserRole.EntityManager,
-                BranchId = null,
-                IsActive = true,
-                PortalGroupId = groupId,
-                PortalEntryId = entryId,
-                PasswordHash = _hasher.Hash(candidatePassword),
-            };
-            await _users.AddAsync(user, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "create_delegate",
-                details: $"أضاف مندوب جهة: {username} ({DescribeScope(groupId, entryId)})", ct: token);
-            return await BuildDtoWithScopeAsync(user, ct);
-        }, ct);
-    }
-
-    public async Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null)
-    {
-        var user = await _users.GetByIdAsync(delegateUserId, ct);
-        if (user is null || user.Role != UserRole.EntityManager)
-            return null;
-
-        OptimisticConcurrencyGuard.EnsureCurrent(user, request.Version, "حساب المندوب");
-
-        // `BQ-002`: الرئيس لا يمس مندوبًا خارج محافظته — الحالي أولًا.
-        await EnsureHeadGovernorateAsync(actor, user.PortalGroupId, user.PortalEntryId, ct);
-
-        int? groupId = user.PortalGroupId;
-        int? entryId = user.PortalEntryId;
-        bool scopeChanged = request.PortalGroupId.HasValue || request.PortalEntryId.HasValue;
-        if (scopeChanged)
-        {
-            // القيم المرسلة تحل محل النطاق كليًا (null يعني إزالة ذلك الطرف).
-            groupId = request.PortalGroupId;
-            entryId = request.PortalEntryId;
-            (groupId, entryId) = await ResolveScopeAsync(groupId, entryId, ct);
-            // ... ولا ينقله خارجها.
-            await EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.NewPassword))
-        {
-            // M-02: ما يُفحَص هو ما يُخزَّن — نقصّ قبل التحقق والتخزين معًا.
-            var candidatePassword = request.NewPassword.Trim();
-            PasswordPolicy.EnsureValid(candidatePassword, user.Username);
-            user.PasswordHash = _hasher.Hash(candidatePassword);
-            // إبطال الجلسات القائمة بعد تغيير كلمة المرور.
-            user.TokenVersion++;
-        }
-        if (!string.IsNullOrWhiteSpace(request.FullName))
-            user.FullName = request.FullName.Trim();
-        if (request.IsActive.HasValue && user.IsActive != request.IsActive.Value)
-        {
-            user.IsActive = request.IsActive.Value;
-            // إيقاف الحساب يبطل رموزه الصادرة سابقًا (مطابق لسلوك إدارة المستخدمين).
-            if (!user.IsActive)
-                user.TokenVersion++;
-        }
-        user.PortalGroupId = groupId;
-        user.PortalEntryId = entryId;
-
-        await _tx.RunAsync(async token =>
-        {
-            _users.Update(user);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "update_delegate",
-                details: $"عدّل مندوب الجهة: {user.Username} ({DescribeScope(user.PortalGroupId, user.PortalEntryId)})", ct: token);
-        }, ct);
-
-        return await BuildDtoWithScopeAsync(user, ct);
     }
 
     /// <summary>
@@ -284,4 +189,26 @@ public sealed class EntityDelegateService : IEntityDelegateService
 
     private static string DescribeScope(int? groupId, int? entryId)
         => entryId.HasValue ? $"قيد #{entryId}" : $"هوية #{groupId}";
+
+    // ── تنفيذ عقد مساعدات الكتابة المشتركة (P4-01bf) ─────────────────────
+
+    Task<(int? GroupId, int? EntryId)> IEntityDelegateWriteRules.ResolveScopeAsync(
+        int? groupId, int? entryId, CancellationToken ct)
+        => ResolveScopeAsync(groupId, entryId, ct);
+
+    Task IEntityDelegateWriteRules.EnsureHeadGovernorateAsync(
+        EntityRegistryActor? actor, int? groupId, int? entryId, CancellationToken ct)
+        => EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
+
+    Task<DelegateDto> IEntityDelegateWriteRules.BuildDtoWithScopeAsync(User user, CancellationToken ct)
+        => BuildDtoWithScopeAsync(user, ct);
+
+    string IEntityDelegateWriteRules.NormalizeUsername(string? value)
+        => NormalizeUsername(value);
+
+    void IEntityDelegateWriteRules.ValidateCredentials(string username, string password, string? fullName)
+        => ValidateCredentials(username, password, fullName);
+
+    string IEntityDelegateWriteRules.DescribeScope(int? groupId, int? entryId)
+        => DescribeScope(groupId, entryId);
 }

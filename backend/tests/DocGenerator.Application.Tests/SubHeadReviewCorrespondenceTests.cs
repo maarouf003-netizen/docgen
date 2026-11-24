@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class SubHeadReviewCorrespondenceTests : PostgresDbTest
 {
     private readonly IReviewLetterService _letters;
+    private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly ICorrespondenceService _correspondences;
     private readonly FakeAuditLogger _audit = new();
 
@@ -60,6 +63,9 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new UserRepository(_db),
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db));
+        _reply = new ReplyReviewLetterCommandHandler(
+            (IReviewLetterReplyWriteRules)_letters, new ReviewLetterRepository(_db), uow, tx, _audit,
+            Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
         _correspondences = new CorrespondenceService(
             new CorrespondenceRepository(_db),
             new DocumentRepository(_db),
@@ -418,20 +424,20 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"), _lawyer1.Id, "lawyer1", _branch.Id);
 
         // رئيس الشعبة يرد كتبها بصفته، ورئيس القسم مرفوض عليها.
-        var reply = await _letters.ReplyAsync(sectionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
+        var reply = await _reply.ReplyAsync(sectionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
             sub.Id, "sub", _branch.Id, default, UserRole.SubHead, sectionId);
         Assert.Equal("subhead", reply.AuthorRole);
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _letters.ReplyAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _reply.ReplyAsync(
             sectionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
             _head1.Id, "head1", _branch.Id, default, UserRole.Head, null));
 
         // ورئيس القسم يرد كتبه.
-        var headReply = await _letters.ReplyAsync(divisionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
+        var headReply = await _reply.ReplyAsync(divisionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
             _head1.Id, "head1", _branch.Id);
         Assert.Equal("head", headReply.AuthorRole);
 
         // بلا شعبة مرفوض.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _letters.ReplyAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _reply.ReplyAsync(
             sectionLetter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
             sub.Id, "sub", _branch.Id, default, UserRole.SubHead, null));
     }

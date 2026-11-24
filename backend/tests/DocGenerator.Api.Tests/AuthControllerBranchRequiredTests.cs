@@ -72,7 +72,8 @@ public sealed class AuthControllerBranchRequiredTests
             Options.Create(new RateLimitOptions()),
             new JwtOptions(),
             new TestEnvironment(),
-            new NoopAuditLogger());
+            new NoopAuditLogger(),
+            null!);
         var http = new DefaultHttpContext();
         http.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
         controller.ControllerContext = new ControllerContext { HttpContext = http };

@@ -26,15 +26,6 @@ public interface IReviewLetterService
     Task<ReviewLetterDto> CreateAsync(CreateReviewLetterRequest request, int actorUserId,
         string? actorName, int actorBranchId, CancellationToken ct = default);
 
-    /// <summary>إضافة لاحق إلى كتاب — محامي الكتاب فقط؛ يعيد الكتاب إلى بانتظار الرد.</summary>
-    Task<ReviewLetterMessageDto> AddAddendumAsync(int letterId, AddReviewLetterAddendumRequest request,
-        int actorUserId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>رد مالك الكتاب على كتاب المطالعة — يولّد رقم الرد وتاريخه ويعلّم الكتاب «تم الرد».</summary>
-    Task<ReviewLetterMessageDto> ReplyAsync(int letterId, ReplyReviewLetterRequest request,
-        int actorUserId, string? actorName, int actorBranchId, CancellationToken ct = default,
-        UserRole role = UserRole.Head, int? actorSectionId = null);
-
     /// <summary>عدد كتب النطاق بانتظار الرد (جرس المالك الأحمر §10).</summary>
     Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, CancellationToken ct = default);
 
@@ -58,7 +49,7 @@ public interface IReviewLetterService
 /// كتب المطالعة: مراسلات رسمية بين المحامي ورئيس القسم. النص المرسل غير قابل للتعديل أو الحذف،
 /// والتسلسل الزمني للرسائل هو المرجع، والكتابة ضمن معاملات مع سجل التدقيق.
 /// </summary>
-public sealed partial class ReviewLetterService : IReviewLetterService
+public sealed partial class ReviewLetterService : IReviewLetterService, IReviewLetterReplyWriteRules
 {
     private const int NumberRandomDigits = 4;
     private const int MaxNumberGenerationAttempts = 20;
@@ -115,4 +106,25 @@ public sealed partial class ReviewLetterService : IReviewLetterService
         _timeZone = timeZone;
         _entropy = entropy ?? SystemEntropySource.Instance;
     }
+
+    // ── تنفيذ عقد مساعدات الرد/اللاحق المشتركة (P4-01bl) ─────────────────
+
+    void IReviewLetterReplyWriteRules.EnsureLetterOwner(UserRole role, int? actorSectionId, int? ownerSectionId)
+        => EnsureLetterOwner(role, actorSectionId, ownerSectionId);
+
+    Task<int?> IReviewLetterReplyWriteRules.OwnerSectionOfAsync(ReviewLetter letter, CancellationToken ct)
+        => OwnerSectionOfAsync(letter, ct);
+
+    Task<string> IReviewLetterReplyWriteRules.ResolveBranchCodeAsync(int branchId, CancellationToken ct)
+        => ResolveBranchCodeAsync(branchId, ct);
+
+    Task<string> IReviewLetterReplyWriteRules.GenerateUniqueNumberAsync(string branchCode, DateTime at, CancellationToken ct)
+        => GenerateUniqueNumberAsync(branchCode, at, ct);
+
+    Task IReviewLetterReplyWriteRules.StageReplyAlertAsync(
+        ReviewLetter letter, ReviewLetterMessage reply, int headUserId, string? headName, CancellationToken token)
+        => StageReplyAlertAsync(letter, reply, headUserId, headName, token);
+
+    ReviewLetterMessageDto IReviewLetterReplyWriteRules.ToMessageDto(ReviewLetterMessage message)
+        => ToMessageDto(message);
 }

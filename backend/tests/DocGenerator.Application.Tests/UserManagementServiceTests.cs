@@ -16,6 +16,10 @@ public class UserManagementServiceTests : PostgresDbTest
 {
     private readonly IUserManagementService _service;
     private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
+    private readonly ICommandHandler<CreateLawyerCommand, LawyerListItemDto> _createLawyer;
+    private readonly ICommandHandler<UpdateLawyerCommand, LawyerListItemDto?> _updateLawyer;
+    private readonly ICommandHandler<CreateUserCommand, UserListItemDto> _createUser;
+    private readonly ICommandHandler<UpdateUserCommand, UserListItemDto?> _updateUser;
     private readonly FakeAuditLogger _audit = new();
     private readonly PasswordHasher _hasher = new();
 
@@ -52,6 +56,20 @@ public class UserManagementServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<SetLawyerActiveCommand, bool>(tx),
             });
+        var rules = (IUserManagementLawyerWriteRules)_service;
+        _createLawyer = new CreateLawyerCommandHandler(
+            rules, users, branches, uow, _hasher, tx, _audit,
+            Array.Empty<IPipelineBehavior<CreateLawyerCommand, LawyerListItemDto>>());
+        _updateLawyer = new UpdateLawyerCommandHandler(
+            rules, users, uow, _hasher, tx, _audit,
+            Array.Empty<IPipelineBehavior<UpdateLawyerCommand, LawyerListItemDto?>>());
+        var userRules = (IUserManagementUserWriteRules)_service;
+        _createUser = new CreateUserCommandHandler(
+            userRules, users, new Repository<HeadSuccession>(_db), uow, _hasher, tx, _audit,
+            Array.Empty<IPipelineBehavior<CreateUserCommand, UserListItemDto>>());
+        _updateUser = new UpdateUserCommandHandler(
+            userRules, users, uow, _hasher, tx, _audit,
+            Array.Empty<IPipelineBehavior<UpdateUserCommand, UserListItemDto?>>());
     }
 
 
@@ -77,7 +95,7 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateLawyer_AddsActiveLawyerToBranch()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("lawyer_x", "محامي جديد", "TestPass1234"), "head1");
 
         Assert.Equal("lawyer_x", lawyer.Username);
@@ -93,14 +111,14 @@ public class UserManagementServiceTests : PostgresDbTest
         await AddUserAsync("duplicate", "محامي موجود", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("duplicate", "محامي", "TestPass1234"), "head1"));
+            _createLawyer.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("duplicate", "محامي", "TestPass1234"), "head1"));
     }
 
     [PostgresFact]
     public async Task CreateLawyer_WeakPassword_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("lawyer_short", "محامي", "123"), "head1"));
+            _createLawyer.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("lawyer_short", "محامي", "123"), "head1"));
     }
 
     [PostgresFact]
@@ -152,7 +170,7 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateUser_WithManagerRole_NoBranchRequired()
     {
-        var user = await _service.CreateUserAsync(
+        var user = await _createUser.CreateUserAsync(
             new CreateUserRequest("mgr_new", "مدير جديد", "manager", null, "TestPass1234"), "admin");
 
         Assert.Equal("manager", user.Role);
@@ -164,14 +182,14 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task CreateUser_LawyerWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("law", "محامي", "lawyer", null, "TestPass1234"), "admin"));
+            _createUser.CreateUserAsync(new CreateUserRequest("law", "محامي", "lawyer", null, "TestPass1234"), "admin"));
     }
 
     [PostgresFact]
     public async Task CreateUser_HeadWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "TestPass1234"), "admin"));
+            _createUser.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "TestPass1234"), "admin"));
     }
 
     [PostgresFact]
@@ -183,14 +201,14 @@ public class UserManagementServiceTests : PostgresDbTest
         var user = await AddUserAsync("delegate_x", "مندوب", UserRole.EntityManager, null);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(user.Id, new UpdateUserRequest("مندوب", "lawyer", null, true, null), 999, "admin"));
+            _updateUser.UpdateUserAsync(user.Id, new UpdateUserRequest("مندوب", "lawyer", null, true, null), 999, "admin"));
     }
 
     [PostgresFact]
     public async Task CreateUser_InvalidRole_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", "مشرف", null, "TestPass1234"), "admin"));
+            _createUser.CreateUserAsync(new CreateUserRequest("x", "مستخدم", "مشرف", null, "TestPass1234"), "admin"));
     }
 
     [PostgresFact]
@@ -199,7 +217,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var admin = await AddUserAsync("admin_x", "مشرف", UserRole.Admin, null);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(admin.Id, new UpdateUserRequest("مشرف", "admin", null, false, null), admin.Id, "admin_x"));
+            _updateUser.UpdateUserAsync(admin.Id, new UpdateUserRequest("مشرف", "admin", null, false, null), admin.Id, "admin_x"));
     }
 
     [PostgresFact]
@@ -207,7 +225,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var user = await AddUserAsync("reset", "مستخدم", UserRole.Lawyer, DamascusId);
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             user.Id, new UpdateUserRequest("مستخدم", "lawyer", DamascusId, true, "TestPass5678"), 999, "admin");
 
         Assert.NotNull(updated);
@@ -220,7 +238,7 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateUser_NotFound_ReturnsNull()
     {
-        var result = await _service.UpdateUserAsync(
+        var result = await _updateUser.UpdateUserAsync(
             999, new UpdateUserRequest("مستخدم", "lawyer", DamascusId, true, null), 1, "admin");
 
         Assert.Null(result);
@@ -229,10 +247,10 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_Rename_SyncsUsernameAndFullName()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("محمود علي", "محمود علي", "TestPass1234"), "head1");
 
-        var updated = await _service.UpdateLawyerAsync(
+        var updated = await _updateLawyer.UpdateLawyerAsync(
             lawyer.Id, new UpdateLawyerRequest("محمود علي حسن"), DamascusId, "head1");
 
         Assert.NotNull(updated);
@@ -246,10 +264,10 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_ResetPassword_IncrementsTokenVersion()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("lawyer_pw", "محامي كلمة المرور", "TestPass1234"), "head1");
 
-        var updated = await _service.UpdateLawyerAsync(
+        var updated = await _updateLawyer.UpdateLawyerAsync(
             lawyer.Id, new UpdateLawyerRequest(null, "TestPass5678"), DamascusId, "head1");
 
         Assert.NotNull(updated);
@@ -264,7 +282,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var aleppoLawyer = await AddUserAsync("alep_edit", "محامي حلب", UserRole.Lawyer, AleppoId);
 
-        var result = await _service.UpdateLawyerAsync(
+        var result = await _updateLawyer.UpdateLawyerAsync(
             aleppoLawyer.Id, new UpdateLawyerRequest("اسم جديد"), DamascusId, "head1");
 
         Assert.Null(result);
@@ -275,7 +293,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var headUser = await AddUserAsync("head_edit", "رئيس قسم", UserRole.Head, DamascusId);
 
-        var result = await _service.UpdateLawyerAsync(
+        var result = await _updateLawyer.UpdateLawyerAsync(
             headUser.Id, new UpdateLawyerRequest("اسم جديد"), null, "admin");
 
         Assert.Null(result);
@@ -284,7 +302,7 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_NotFound_ReturnsNull()
     {
-        var result = await _service.UpdateLawyerAsync(
+        var result = await _updateLawyer.UpdateLawyerAsync(
             999, new UpdateLawyerRequest("اسم جديد"), null, "head1");
 
         Assert.Null(result);
@@ -293,13 +311,13 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_DuplicateNameSameBranch_Throws()
     {
-        await _service.CreateLawyerAsync(DamascusId,
+        await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "TestPass1234"), "head1");
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("قاسم علي", "قاسم علي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest("مروان سعيد"), DamascusId, "head1"));
+            _updateLawyer.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest("مروان سعيد"), DamascusId, "head1"));
 
         Assert.Contains("نفس الفرع", ex.Message);
     }
@@ -307,17 +325,17 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_WeakPassword_Throws()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("lawyer_wp", "محامي", "TestPass1234"), "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, "123"), DamascusId, "head1"));
+            _updateLawyer.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, "123"), DamascusId, "head1"));
     }
 
     [PostgresFact]
     public async Task CreateLawyer_PaddedPassword_StoresTrimmedValue()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("lawyer_trim", "محامي القص", "  TestPass1234  "), "head1");
 
         var reloaded = await _db.Users.FindAsync(lawyer.Id);
@@ -328,11 +346,11 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_NoChanges_Throws()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("lawyer_nc", "محامي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, null), DamascusId, "head1"));
+            _updateLawyer.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, null), DamascusId, "head1"));
 
         Assert.Contains("لا يوجد تغيير", ex.Message);
     }
@@ -340,11 +358,11 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateLawyer_EquivalentSpelling_PresentationChange_Allowed()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("محمد احمد علي", "محمد احمد علي", "TestPass1234"), "head1");
 
         // النسخة ذات الهمزة تُطبَّع إلى اسم الدخول نفسه فلا تكون تكراراً — يُحدَّث العرض فقط.
-        var updated = await _service.UpdateLawyerAsync(
+        var updated = await _updateLawyer.UpdateLawyerAsync(
             lawyer.Id, new UpdateLawyerRequest("محمد أحمد علي"), DamascusId, "head1");
 
         Assert.NotNull(updated);
@@ -357,7 +375,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         await AddUserAsync("محمد احمد علي", "محمد أحمد علي", UserRole.Lawyer, DamascusId);
 
-        var lawyer = await _service.CreateLawyerAsync(AleppoId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(AleppoId,
             new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "admin");
 
         Assert.Equal("محمد احمد علي", lawyer.Username);
@@ -367,7 +385,7 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateLawyer_ArabicNameWithSpaces_AcceptedAndNormalized()
     {
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "head1");
 
         // تُخزَّن النسخة المطبّعة (أ/إ/آ → ا) لتكون معياراً موحداً للدخول والتفرد.
@@ -378,11 +396,11 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateLawyer_EquivalentArabicSpelling_SameBranch_Throws()
     {
-        await _service.CreateLawyerAsync(DamascusId,
+        await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateLawyerAsync(DamascusId,
+            _createLawyer.CreateLawyerAsync(DamascusId,
                 new CreateLawyerRequest("محمد احمد علي", "محمد أحمد علي", "TestPass1234"), "head1"));
 
         Assert.Contains("نفس الفرع", ex.Message);
@@ -391,11 +409,11 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateUser_SameNameSameBranch_Throws()
     {
-        await _service.CreateUserAsync(
+        await _createUser.CreateUserAsync(
             new CreateUserRequest("خالد حسن", "خالد حسن", "head", DamascusId, "TestPass1234"), "admin");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("خالد حسن", "خالد حسن", "lawyer", DamascusId, "TestPass1234"), "admin"));
     }
 
@@ -403,18 +421,18 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task UpdateUser_Rename_SyncsUsernameAndBlocksDuplicates()
     {
         var user = await AddUserAsync("قاسم علي", "قاسم علي", UserRole.Lawyer, DamascusId);
-        await _service.CreateLawyerAsync(DamascusId,
+        await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "TestPass1234"), "head1");
 
         // تغيير الاسم يحدّث اسم الدخول ليبقى مساوياً للاسم الثلاثي.
-        var renamed = await _service.UpdateUserAsync(
+        var renamed = await _updateUser.UpdateUserAsync(
             user.Id, new UpdateUserRequest("قاسم علي محمد", "lawyer", DamascusId, true, null), 999, "admin");
         Assert.NotNull(renamed);
         Assert.Equal("قاسم علي محمد", renamed.Username);
 
         // اسم مطابق لمستخدم آخر في نفس الفرع مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 user.Id, new UpdateUserRequest("مروان سعيد", "lawyer", DamascusId, true, null), 999, "admin"));
     }
 
@@ -431,7 +449,7 @@ public class UserManagementServiceTests : PostgresDbTest
         delegateUser.PortalGroupId = group.Id;
         await _db.SaveChangesAsync();
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             delegateUser.Id, new UpdateUserRequest(delegateUser.FullName, "manager", null, true, null), 999, "admin");
 
         Assert.NotNull(updated);
@@ -444,11 +462,11 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateUser_SecondActiveHeadSameBranch_ThrowsWithApprovedMessage()
     {
-        await _service.CreateUserAsync(
+        await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس أول", "رئيس أول", "head", DamascusId, "TestPass1234"), "admin");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("رئيس ثان", "رئيس ثان", "head", DamascusId, "TestPass1234"), "admin"));
         Assert.Equal("الفرع لا يقبل رئيسي قسم", ex.Message);
     }
@@ -456,9 +474,9 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateUser_HeadDifferentBranch_Allowed()
     {
-        await _service.CreateUserAsync(
+        await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس دمشق", "رئيس دمشق", "head", DamascusId, "TestPass1234"), "admin");
-        var other = await _service.CreateUserAsync(
+        var other = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس حلب", "رئيس حلب", "head", AleppoId, "TestPass1234"), "admin");
 
         Assert.Equal(AleppoId, other.BranchId);
@@ -467,13 +485,13 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateUser_SecondHeadAfterDeactivation_Allowed()
     {
-        var first = await _service.CreateUserAsync(
+        var first = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس سابق", "رئيس سابق", "head", DamascusId, "TestPass1234"), "admin");
         var stored = await _db.Users.SingleAsync(u => u.Id == first.Id);
         stored.IsActive = false;
         await _db.SaveChangesAsync();
 
-        var second = await _service.CreateUserAsync(
+        var second = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس لاحق", "رئيس لاحق", "head", DamascusId, "TestPass1234"), "admin");
         Assert.NotNull(second);
     }
@@ -481,23 +499,23 @@ public class UserManagementServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateUser_PromoteLawyerToHeadWithExistingHead_Throws()
     {
-        await _service.CreateUserAsync(
+        await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس قائم", "رئيس قائم", "head", DamascusId, "TestPass1234"), "admin");
         var lawyer = await AddUserAsync("محام مرشح", "محام مرشح", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 lawyer.Id, new UpdateUserRequest(lawyer.FullName, "head", DamascusId, true, null), 999, "admin"));
     }
 
     [PostgresFact]
     public async Task UpdateUser_SelfHeadUpdate_Allowed()
     {
-        var head = await _service.CreateUserAsync(
+        var head = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس ذاتي", "رئيس ذاتي", "head", DamascusId, "TestPass1234"), "admin");
         var stored = await _db.Users.SingleAsync(u => u.Id == head.Id);
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             stored.Id, new UpdateUserRequest("رئيس ذاتي معدل", "head", DamascusId, true, null), 999, "admin");
 
         Assert.NotNull(updated);
@@ -663,7 +681,7 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task CreateUser_SubHeadWithoutSection_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("شعبة بلا", "شعبة بلا", "subhead", DamascusId, "TestPass1234"), "admin"));
         Assert.Contains("الشعبة إلزامية", ex.Message);
     }
@@ -673,14 +691,14 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
 
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", sectionId), "admin");
 
         Assert.Equal(sectionId, created.SectionId);
         Assert.Equal("شعبة مصياف", created.SectionName);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("شعبة ثان", "شعبة ثان", "subhead", DamascusId, "TestPass1234", sectionId), "admin"));
         Assert.Equal("الشعبة مشغولة برئيس مفعّل", ex.Message);
     }
@@ -691,7 +709,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var foreignSection = await AddSectionAsync("شعبة حلب", AleppoId);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("شعبة خطأ", "شعبة خطأ", "subhead", DamascusId, "TestPass1234", foreignSection), "admin"));
         Assert.Contains("ليست ضمن فرع الحساب", ex.Message);
     }
@@ -702,7 +720,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("رئيس قسم", "رئيس قسم", "head", DamascusId, "TestPass1234", sectionId), "admin"));
         Assert.Contains("مخصصة لرئيس الشعبة", ex.Message);
     }
@@ -712,7 +730,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
 
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest("محام جديد", "محام جديد", "lawyer", DamascusId, "TestPass1234"), "admin", ct: default, actorUserId: creator.Id);
 
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Id == created.Id)).CreatedById);
@@ -723,7 +741,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
 
-        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+        var lawyer = await _createLawyer.CreateLawyerAsync(DamascusId,
             new CreateLawyerRequest("محام ميداني", "محام ميداني", "TestPass1234"), "head1", ct: default, actorUserId: creator.Id);
 
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Username == lawyer.Username)).CreatedById);
@@ -734,11 +752,11 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         var first = await AddSectionAsync("شعبة أولى", DamascusId);
         var second = await AddSectionAsync("شعبة ثانية", DamascusId);
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", first), "admin");
         var before = (await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).TokenVersion;
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             created.Id, new UpdateUserRequest(null, null, null, true, null, second), 999, "admin");
 
         Assert.NotNull(updated);
@@ -750,10 +768,10 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task UpdateUser_SubHeadLosesRole_ClearsSection()
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", sectionId), "admin");
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             created.Id, new UpdateUserRequest(null, "lawyer", null, true, null), 999, "admin");
 
         Assert.NotNull(updated);
@@ -768,20 +786,20 @@ public class UserManagementServiceTests : PostgresDbTest
         var lawyer = await AddUserAsync("محام", "محام", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 lawyer.Id, new UpdateUserRequest(null, null, null, true, null, sectionId), 999, "admin"));
     }
 
     private async Task<User> AddHeadWithSectionAsync(string username, int branchId, int sectionId)
     {
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest(username, username, "subhead", branchId, "TestPass1234", sectionId), "admin");
         return await _db.Users.SingleAsync(u => u.Id == created.Id);
     }
 
     private async Task<User> AddLawyerViaServiceAsync(string username, int branchId, int? creatorId)
     {
-        var created = await _service.CreateUserAsync(
+        var created = await _createUser.CreateUserAsync(
             new CreateUserRequest(username, username, "lawyer", branchId, "TestPass1234"), "admin",
             ct: default, actorUserId: creatorId);
         return await _db.Users.SingleAsync(u => u.Id == created.Id);
@@ -794,7 +812,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var head = await AddHeadWithSectionAsync("رئيس شعبة", DamascusId, sectionId);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 head.Id, new UpdateUserRequest(null, null, null, false, null), 999, "admin"));
         Assert.Contains("خلفًا إجباريًا", ex.Message);
     }
@@ -844,7 +862,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         Assert.NotNull(updated);
@@ -893,7 +911,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
 
-        await _service.UpdateUserAsync(
+        await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         Assert.Equal(head.Id, (await _db.HeadAlertRecipients.AsNoTracking().SingleAsync()).UserId);
@@ -906,7 +924,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var head = await AddUserAsync("رئيس قسم", "رئيس قسم", UserRole.Head, DamascusId);
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
 
-        var updated = await _service.UpdateUserAsync(
+        var updated = await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         Assert.NotNull(updated);
@@ -949,7 +967,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
 
-        await _service.UpdateUserAsync(
+        await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         // المجابة بقيت موجهة للسلف (تاريخ ثابت).
@@ -967,7 +985,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var bad = await AddUserAsync("خلف سيئ", "خلف سيئ", successorRole, successorRole == UserRole.EntityManager ? null : DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, bad.Id), 999, "admin"));
     }
 
@@ -982,7 +1000,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, off.Id), 999, "admin"));
     }
 
@@ -994,7 +1012,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var foreign = await AddUserAsync("خلف أجنبي", "خلف أجنبي", UserRole.Lawyer, AleppoId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 head.Id, new UpdateUserRequest(null, null, null, false, null, null, foreign.Id), 999, "admin"));
     }
 
@@ -1005,7 +1023,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var other = await AddUserAsync("آخر", "آخر", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 lawyer.Id, new UpdateUserRequest(null, null, null, false, null, null, other.Id), 999, "admin"));
     }
 
@@ -1015,12 +1033,12 @@ public class UserManagementServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
         var head = await AddHeadWithSectionAsync("رئيس شعبة", DamascusId, sectionId);
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
-        await _service.UpdateUserAsync(
+        await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         // إعادة تفعيل القديم مع خلف مفعّل — رفض برسالة (§9.4) لا خطأ قاعدة.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateUserAsync(
+            _updateUser.UpdateUserAsync(
                 head.Id, new UpdateUserRequest(null, null, null, true, null), 999, "admin"));
         Assert.Equal("الشعبة مشغولة برئيس مفعّل", ex.Message);
     }
@@ -1031,7 +1049,7 @@ public class UserManagementServiceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
         var head = await AddHeadWithSectionAsync("رئيس شعبة", DamascusId, sectionId);
         var successor = await AddLawyerViaServiceAsync("الخلف", DamascusId, head.Id);
-        await _service.UpdateUserAsync(
+        await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
         var rows = await _service.ListSuccessionAsync(null);

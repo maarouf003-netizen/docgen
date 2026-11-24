@@ -83,18 +83,4 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
                 lastReferred?.Year?.ToString(CultureInfo.InvariantCulture) ?? d.FileYear);
         }).ToList();
     }
-
-    public async Task<bool> DeleteByPendingRegistrationAsync(int lawyerId, CancellationToken ct = default)
-    {
-        var removed = false;
-        await _tx.RunAsync(async token =>
-        {
-            removed = await ExecutionCircuitRules.CleanupPendingAlertsAsync(
-                lawyerId, _documents, _users, _alerts, token);
-            if (removed)
-                await _uow.SaveChangesAsync(token);
-            _cache?.Invalidate(ReferenceDataGroups.Circuits);
-        }, ct);
-        return removed;
-    }
 }

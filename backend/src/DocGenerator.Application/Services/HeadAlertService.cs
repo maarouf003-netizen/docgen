@@ -93,23 +93,8 @@ public interface IHeadAlertService
     Task<int> CountUnreadAsync(
         HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
 
-    /// <summary>
-    /// إصدار يدوي (رئيس/شعبة لفرعه) — يعيد ملخص الصف المنشأ (D3: جسم 201).
-    /// الدور والفرع قرار الخدمة: غير المخوّل <c>403</c>، ورئيس بلا فرع <c>400</c>.
-    /// </summary>
-    Task<HeadAlertSummaryDto> CreateAsync(
-        CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default);
-
-    /// <summary>
-    /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
-    /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
-    /// </summary>
-    Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default);
-
     // ── المسار النظامي (الخطة §8.1) ──
-
-    /// <summary>
-    /// معالجة تنبيه نظامي — **معالج داخلي يعمل داخل معاملة مشغّل Outbox فقط**.
+    /// <summary>    /// معالجة تنبيه نظامي — **معالج داخلي يعمل داخل معاملة مشغّل Outbox فقط**.
     ///
     /// ينشئ/يحدّث التنبيه بمفتاح منع التكرار المركزي، ويعيد ضبط القراءة عند تغيّر النص
     /// فقط، ولا يعدّل <c>CreatedAt</c> أبدًا. يرفض العمل بلا معاملة نشطة.
@@ -148,7 +133,7 @@ public interface IHeadAlertService
 /// تنبيهات رئيس القسم: الإصدار لفرعه فقط (رئيس القسم)، والاستلام بحسب الدور.
 /// الحذف النهائي للفرع/المستخدم مقيد بالعلاقات، والكتابة ضمن معاملة مع سجل التدقيق.
 /// </summary>
-public sealed partial class HeadAlertService : IHeadAlertService
+public sealed partial class HeadAlertService : IHeadAlertService, IHeadAlertManualWriteRules
 {
     private readonly IHeadAlertRepository _alerts;
     private readonly IDocumentRepository _documents;
@@ -184,4 +169,47 @@ public sealed partial class HeadAlertService : IHeadAlertService
         // فتح معاملة متداخلة عند الأرشفة داخل معاملة العمل.
         _transactions = transactions ?? tx as ITransactionContext ?? NullTransactionContext.Instance;
     }
+
+    // ── تنفيذ عقد مساعدات الإصدار اليدوي (P4-01bi) ───────────────────────
+
+    int IHeadAlertManualWriteRules.RequireBranchForWrite(HeadAlertActor actor)
+        => RequireBranchForWrite(actor);
+
+    Task<List<User>> IHeadAlertManualWriteRules.ResolveRecipientsAsync(
+        DocGenerator.Domain.Enums.HeadAlertTargetType targetType,
+        CreateHeadAlertRequest request, int branchId, CancellationToken ct)
+        => ResolveRecipientsAsync(targetType, request, branchId, ct);
+
+    DocGenerator.Domain.Enums.HeadAlertTargetType IHeadAlertManualWriteRules.ParseManualTargetType(string? value)
+        => ParseManualTargetType(value);
+
+    string IHeadAlertManualWriteRules.ManualKindFor(DocGenerator.Domain.Enums.HeadAlertTargetType targetType)
+        => ManualKindFor(targetType);
+
+    HeadAlert IHeadAlertManualWriteRules.BuildManualAlert(
+        CreateHeadAlertRequest request,
+        HeadAlertActor actor,
+        int branchId,
+        DocGenerator.Domain.Enums.HeadAlertTargetType targetType,
+        string kind,
+        string message,
+        IReadOnlyList<User> recipients,
+        DateTime now)
+        => new()
+        {
+            BranchId = branchId,
+            CreatedById = actor.UserId,
+            TargetType = targetType,
+            Kind = kind,
+            DedupeKey = null,
+            DocumentId = targetType == DocGenerator.Domain.Enums.HeadAlertTargetType.Document ? request.DocumentId : null,
+            TargetLawyerId = targetType == DocGenerator.Domain.Enums.HeadAlertTargetType.Lawyer ? request.TargetLawyerId : null,
+            Message = message,
+            CreatedAt = now,
+            LastContentChangedAt = now,
+            Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
+        };
+
+    Task IHeadAlertManualWriteRules.AddManualAlertAsync(HeadAlert alert, CancellationToken ct)
+        => _alerts.AddAsync(alert, ct);
 }

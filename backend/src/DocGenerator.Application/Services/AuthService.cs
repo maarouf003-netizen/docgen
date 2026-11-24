@@ -10,7 +10,6 @@ namespace DocGenerator.Application.Services;
 public interface IAuthService
 {
     Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken ct = default);
-    Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken ct = default);
     Task<UserDto?> GetUserAsync(int userId, CancellationToken ct = default);
 }
 
@@ -187,32 +186,6 @@ public sealed class AuthService : IAuthService
             }
             return new LoginResult(LoginStatus.Success,
                 new LoginResponse(_tokenService.CreateToken(user), ToDto(user)));
-        }, ct);
-    }
-
-    public async Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken ct = default)
-    {
-        // M-02: القاعدة المعيارية — ما يُفحَص هو ما يُخزَّن. نقصّ أولًا ثم نتحقق ثم نخزّن
-        // المقصوص نفسه، وبنفس ترتيب الأخطاء السابق (400 قبل فشل التحقق من القديمة).
-        var candidate = newPassword?.Trim() ?? string.Empty;
-        PasswordPolicy.EnsureValid(candidate);
-
-        var user = await _users.GetByIdAsync(userId, ct);
-        if (user is null || !_hasher.Verify(oldPassword, user.PasswordHash))
-            return false;
-
-        if (PasswordPolicy.Validate(candidate, user.Username) is { } usernameError)
-            throw new ArgumentException(usernameError);
-
-        return await _tx.RunAsync(async token =>
-        {
-            user.PasswordHash = _hasher.Hash(candidate);
-            user.TokenVersion++;
-            user.UpdatedAt = DateTime.UtcNow;
-            _users.Update(user);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(user.Username, "change_password", details: "تغيير كلمة المرور", ct: token);
-            return true;
         }, ct);
     }
 

@@ -18,15 +18,27 @@ public class UserManagementController : ControllerBase
     private readonly IUserManagementService _users;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
+    private readonly ICommandHandler<CreateLawyerCommand, LawyerListItemDto> _createLawyer;
+    private readonly ICommandHandler<UpdateLawyerCommand, LawyerListItemDto?> _updateLawyer;
+    private readonly ICommandHandler<CreateUserCommand, UserListItemDto> _createUser;
+    private readonly ICommandHandler<UpdateUserCommand, UserListItemDto?> _updateUser;
 
     public UserManagementController(
         IUserManagementService users,
         IUserCapabilities capabilities,
-        ICommandHandler<SetLawyerActiveCommand, bool> setLawyerActive)
+        ICommandHandler<SetLawyerActiveCommand, bool> setLawyerActive,
+        ICommandHandler<CreateLawyerCommand, LawyerListItemDto> createLawyer,
+        ICommandHandler<UpdateLawyerCommand, LawyerListItemDto?> updateLawyer,
+        ICommandHandler<CreateUserCommand, UserListItemDto> createUser,
+        ICommandHandler<UpdateUserCommand, UserListItemDto?> updateUser)
     {
         _users = users;
         _capabilities = capabilities;
         _setLawyerActive = setLawyerActive;
+        _createLawyer = createLawyer;
+        _updateLawyer = updateLawyer;
+        _createUser = createUser;
+        _updateUser = updateUser;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -51,7 +63,8 @@ public class UserManagementController : ControllerBase
         if (!CanManageUsers)
             return Forbid();
         // حد المشرف يُفرَض في الخدمة بمعرفة الفاعل (`BQ-001د`).
-        var user = await _users.CreateUserAsync(request, ActorName, ct, User.GetUserId());
+        var user = await _createUser.HandleAsync(
+            new CreateUserCommand(request, ActorName, User.GetUserId()), ct);
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
     }
 
@@ -69,7 +82,8 @@ public class UserManagementController : ControllerBase
     {
         if (!CanManageUsers)
             return Forbid();
-        var user = await _users.UpdateUserAsync(id, request, User.GetUserId(), ActorName, ct);
+        var user = await _updateUser.HandleAsync(
+            new UpdateUserCommand(id, request, User.GetUserId(), ActorName), ct);
         return user is null ? NotFound() : Ok(user);
     }
 
@@ -128,7 +142,8 @@ public class UserManagementController : ControllerBase
                     field: "branchId");
         }
 
-        var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct, User.GetUserId());
+        var lawyer = await _createLawyer.HandleAsync(
+            new CreateLawyerCommand(effectiveBranchId.Value, request, ActorName, User.GetUserId()), ct);
         return Ok(lawyer);
     }
 
@@ -143,7 +158,8 @@ public class UserManagementController : ControllerBase
         if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
 
-        var lawyer = await _users.UpdateLawyerAsync(id, request, scopeBranchId, ActorName, ct);
+        var lawyer = await _updateLawyer.HandleAsync(
+            new UpdateLawyerCommand(id, request, scopeBranchId, ActorName), ct);
         return lawyer is null ? NotFound() : Ok(lawyer);
     }
 
