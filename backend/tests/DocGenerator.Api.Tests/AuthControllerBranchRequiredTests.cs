@@ -3,8 +3,10 @@ using System.Text.Json;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -16,19 +18,22 @@ namespace DocGenerator.Api.Tests;
 
 /// <summary>
 /// ترجمة <c>LoginStatus.BranchRequired</c> في المتحكم: 400 بالرسالة العامة (تشمل
-/// رئيس القسم والمحامي) بلا جلسة. تُختبر هنا بخدمة مصادقة مزيفة، لأن الصف الشاذ
+/// رئيس القسم والمحامي) بلا جلسة. تُختبر هنا بمعالج دخول مزيف، لأن الصف الشاذ
 /// غير قابل للتجسيد في القاعدة (قيد <c>CK_Users_BranchRequiredForBranchRoles</c>).
 /// </summary>
 public sealed class AuthControllerBranchRequiredTests
 {
-    private sealed class BranchRequiredAuthService : IAuthService
+    private sealed class BranchRequiredLoginHandler : ICommandHandler<LoginCommand, DocGenerator.Application.DTOs.LoginResult>
     {
-        // `LoginResult` هنا مؤهلة صراحة: الاسم نفسه معرّف في نطاق الاختبارات
+        // النوع مؤهَّل صراحة: الاسم نفسه معرّف في نطاق الاختبارات
         // (`ApiFactory.LoginResult`) لغرض مختلف تمامًا.
-        public Task<DocGenerator.Application.DTOs.LoginResult> LoginAsync(LoginRequest request, CancellationToken ct = default)
+        public Task<DocGenerator.Application.DTOs.LoginResult> HandleAsync(
+            LoginCommand command, CancellationToken ct = default)
             => Task.FromResult(new DocGenerator.Application.DTOs.LoginResult(LoginStatus.BranchRequired, null));
-        public Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken ct = default)
-            => Task.FromResult(false);
+    }
+
+    private sealed class StubAuthService : IAuthService
+    {
         public Task<UserDto?> GetUserAsync(int userId, CancellationToken ct = default)
             => Task.FromResult<UserDto?>(null);
     }
@@ -67,12 +72,13 @@ public sealed class AuthControllerBranchRequiredTests
     public async Task Login_BranchRequired_ReturnsBadRequestWithGeneralMessage()
     {
         var controller = new AuthController(
-            new BranchRequiredAuthService(),
+            new StubAuthService(),
             new AllowAllRateLimiter(),
             Options.Create(new RateLimitOptions()),
             new JwtOptions(),
             new TestEnvironment(),
             new NoopAuditLogger(),
+            new BranchRequiredLoginHandler(),
             null!);
         var http = new DefaultHttpContext();
         http.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;

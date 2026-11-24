@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -13,7 +15,7 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// بوابة الدخول للحساب الفرعي بلا فرع (رئيس قسم/رئيس شعبة/محامٍ): حالة محرّمة تُرفض بلا
 /// جلسة أصلًا. تُختبر هنا بمستودع مزيف لأن قيد القاعدة يجعل تجسيد الحالة عبر
-/// EF مستحيلًا — وهذا مقصود: الخدمة تحرس منطق القرار، والقاعدة تحرس التخزين.
+/// EF مستحيلًا — وهذا مقصود: معالج الدخول يحرس منطق القرار، والقاعدة تحرس التخزين.
 /// </summary>
 public class AuthServiceBranchGateTests
 {
@@ -81,14 +83,15 @@ public class AuthServiceBranchGateTests
     private readonly FakeAuditLogger _audit = new();
     private readonly FakeTokenService _tokens = new();
 
-    private AuthService CreateService(List<User> users) => new(
+    private ICommandHandler<LoginCommand, LoginResult> CreateService(List<User> users) => new LoginCommandHandler(
         new CannedUserRepository(users),
         new FakeUnitOfWork(),
         _hasher,
         _tokens,
         new FakeTransactionRunner(),
         _audit,
-        Options.Create(new LockoutOptions()));
+        Options.Create(new LockoutOptions()),
+        Array.Empty<IPipelineBehavior<LoginCommand, LoginResult>>());
 
     private User BranchlessUser(int id, string username, UserRole role) => new()
     {

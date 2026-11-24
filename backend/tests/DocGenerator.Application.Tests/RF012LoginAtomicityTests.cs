@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -51,14 +53,15 @@ public class RF012LoginAtomicityTests : PostgresDbTest
     }
 
 
-    private AuthService CreateService(IAuditLogger audit) => new(
+    private ICommandHandler<LoginCommand, LoginResult> CreateService(IAuditLogger audit) => new LoginCommandHandler(
         new UserRepository(_db),
         new UnitOfWork(_db),
         _hasher,
         new FakeTokenService(),
         new TransactionRunner(_db),
         audit,
-        Options.Create(new LockoutOptions()));
+        Options.Create(new LockoutOptions()),
+        Array.Empty<IPipelineBehavior<LoginCommand, LoginResult>>());
 
     [PostgresFact]
     public async Task WrongPassword_WithFailingAudit_RollsBackFailureCounter()
