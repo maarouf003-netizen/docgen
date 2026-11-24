@@ -38,6 +38,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
     private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
+    private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -51,7 +52,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion,
         ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch,
         ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches,
-        ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch)
+        ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch,
+        ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> unifyBranches)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -65,6 +67,7 @@ public class EntityRegistryController : ControllerBase
         _renameBranch = renameBranch;
         _mergeBranches = mergeBranches;
         _abolishBranch = abolishBranch;
+        _unifyBranches = unifyBranches;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -480,7 +483,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.UnifyBranchesAsync(groupId, request, Actor, ct));
+        return Ok(await _unifyBranches.HandleAsync(
+            new UnifyPublicEntityBranchesCommand(groupId, request, Actor), ct));
     }
 
     // ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──

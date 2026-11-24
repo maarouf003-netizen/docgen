@@ -92,9 +92,6 @@ public interface IPublicEntityService
     /// <summary>معاينة موحدة لأي عملية فرع (تعديل تسمية/دمج/إلغاء/توحيد) قبل الاعتماد — بلا كتابة.</summary>
     Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
-    /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
-    Task<UnifyBranchesResponse> UnifyBranchesAsync(int groupId, UnifyBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>اقتراح تعديل بيانات الجهة الأم من رئيس القسم (بلا أي كتابة على القيد).</summary>
     Task<ParentEditSuggestionDto> SuggestParentEditAsync(int entryId, SuggestParentEditRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
