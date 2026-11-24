@@ -173,6 +173,6 @@ public sealed partial class PublicEntityService
         => value is null ? null : DocumentSearchTextBuilder.Truncate(value);
 
     /// <summary>سقف لاحقة المرجع — يفوّض إلى <see cref="EntityChangeMessages.DecreeSuffix"/> (المصدر الموحّد).</summary>
-    private static string BuildDecreeSuffix(string decreeKind, string decreeNumber, DateTime? decreeDate)
+    internal static string BuildDecreeSuffix(string decreeKind, string decreeNumber, DateTime? decreeDate)
         => EntityChangeMessages.DecreeSuffix(decreeKind, decreeNumber, decreeDate);
 }

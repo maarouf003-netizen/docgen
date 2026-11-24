@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,6 +22,7 @@ public class PortalScopingTests : PostgresDbTest
 {
     private readonly IPortalService _portal;
     private readonly IPublicEntityService _entities;
+    private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
     private readonly int _entryAId;
@@ -80,6 +83,10 @@ public class PortalScopingTests : PostgresDbTest
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));
+        _renameGroup = new RenamePublicEntityGroupCommandHandler(
+            (IPublicEntityWriteRules)_entities, new PublicEntityRepository(_db),
+            new Repository<DocumentOccurrence>(_db), new UnitOfWork(_db), tx, _audit,
+            Array.Empty<IPipelineBehavior<RenamePublicEntityGroupCommand, RenameGroupResponse>>());
     }
 
 
@@ -393,7 +400,7 @@ public class PortalScopingTests : PostgresDbTest
         var doc = await SeedDocumentAsync("ملف وزارة التعليم", applicantRegistryId: _entryAId);
 
         // إعادة تسمية جماعية ناجحة عبر خدمة السجل (ريّن يُنتج قيودًا نهائية غير NeedsReview).
-        var rename = await _entities.RenameGroupAsync(
+        var rename = await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(_groupAId, "وزارة التربية", "قرار", "88", "1/8/2026"),
             new EntityRegistryActor(_managerId, "مدير السجل", UserRole.Manager, null));
 

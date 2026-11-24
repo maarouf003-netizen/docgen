@@ -50,9 +50,6 @@ public interface IPublicEntityService
     /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
     Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default);
 
-    /// <summary>تنفيذ دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
-    Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default, string? idempotencyKey = null);
-
     /// <summary>قائمة المجموعات (الهويات الأم) مع ترقيم وبحث — للعرض المستقل وتوحيد التسمية/إدارة الفروع.</summary>
     Task<PagedResult<PublicEntityGroupDto>> ListGroupsAsync(EntityGroupListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
@@ -73,9 +70,6 @@ public interface IPublicEntityService
 
     /// <summary>معاينة إعادة تسمية هوية أم على مستوى المجموعة (المدير/المشرف — قبل التنفيذ).</summary>
     Task<RenameGroupPreviewResponse> PreviewRenameGroupAsync(RenameGroupPreviewRequest request, CancellationToken ct = default);
-
-    /// <summary>إعادة تسمية هوية أم واحدة على مستوى المجموعة بمرسوم إلزامي (المدير/المشرف).</summary>
-    Task<RenameGroupResponse> RenameGroupAsync(RenameGroupRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>معاينة إلغاء عدة هويات أم واستبدالها بهوية جديدة (المدير/المشرف — قبل التنفيذ).</summary>
     Task<AbolishReplacePreviewResponse> PreviewAbolishAndReplaceAsync(AbolishReplacePreviewRequest request, CancellationToken ct = default);

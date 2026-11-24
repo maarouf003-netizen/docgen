@@ -42,4 +42,14 @@ internal interface IPublicEntityWriteRules
     Task InsertBranchChangeAlertAsync(PublicEntity entry, string message, string actionKind, EntityRegistryActor actor, CancellationToken ct);
     void RepointEntryLinks(Document document, int sourceEntryId, int targetEntryId);
     void AddFoldAliases(PublicEntity target, string canonical, PublicEntity absorbed, ref int aliasesAdded);
+    Task<int> MigrateDelegatesAsync(
+        HashSet<int> absorbedIds,
+        int targetGroupId,
+        int? defaultTargetEntryId,
+        IReadOnlyDictionary<int, int>? entryTargetByAbsorbedEntry,
+        CancellationToken token);
+    Task BroadcastEntityChangeToAllLawyersAsync(
+        string kind, string message, string entityOperation, string entityGroupKey, int actorUserId, CancellationToken token);
+    Task BroadcastToAllHeadsAsync(
+        string kind, string message, string entityOperation, string entityGroupKey, int actorUserId, CancellationToken token);
 }

@@ -139,7 +139,7 @@ public static class EntityChangeLogSummary
         IReadOnlyDictionary<string, JsonElement> fields,
         string? decreeKind, string? decreeNumber, DateTime? decreeDate)
     {
-        // شكل الهوية الأم (RenameGroupAsync) يخزّن القديم جمعًا بلا مفرد.
+        // شكل الهوية الأم (`RenamePublicEntityGroupCommand`) يخزّن القديم جمعًا بلا مفرد.
         var oldName = Text(fields, "oldCanonical")
             ?? Texts(fields, "oldCanonicalNames").FirstOrDefault();
         var newName = Text(fields, "newCanonical");
