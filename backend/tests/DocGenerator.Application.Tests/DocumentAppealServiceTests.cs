@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Appeals;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -18,6 +20,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly TransactionRunner _tx;
     private readonly HeadAlertOutbox _outbox;
     private readonly FakeAuditLogger _audit = new();
+    private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _appealDelete;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -64,6 +67,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _outbox,
             TestClock.Provider,
             TestClock.TimeZone);
+        _appealDelete = new DeleteDocumentAppealCommandHandler(
+            new AppealRepository(_db), _alertService, new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<DeleteDocumentAppealCommand, bool>>());
     }
 
 
@@ -296,8 +302,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
         Assert.NotNull(updated);
 
-        Assert.True(await _service.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
+        Assert.True(await _appealDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
         Assert.Null(await _service.GetAsync(created.Id));
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"حذف الاستئناف (رقم {created.Id}) من الملف (رقم {doc.Id})");
     }
 
     [PostgresFact]

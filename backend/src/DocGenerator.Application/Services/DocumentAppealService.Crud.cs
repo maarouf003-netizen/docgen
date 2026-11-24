@@ -95,31 +95,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         return ToDto(appeal, currentYear);
     }
 
-    public async Task<bool> DeleteAsync(int appealId, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
-            ?? throw new KeyNotFoundException("الاستئناف غير موجود");
-
-        EnsurePendingByCreator(appeal, userId);
-        var source = appeal.Document;
-
-        await _tx.RunAsync(async token =>
-        {
-            await _alerts.ArchiveByAppealAsync(
-                appeal.Id,
-                HeadAlertKindCatalog.AppealKinds,
-                "appeal_deleted",
-                token);
-            _appeals.Remove(appeal);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "delete_appeal",
-                source.Id, source.DocumentType,
-                $"حذف الاستئناف (رقم {appeal.Id}) من الملف (رقم {source.Id})", token);
-        }, ct);
-
-        return true;
-    }
-
     // ── القراءة والقوائم ───────────────────────────────────────────────────
 
     public async Task<List<AppealDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default)

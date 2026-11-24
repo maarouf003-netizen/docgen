@@ -22,13 +22,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
     }
 
     private static void EnsurePendingByCreator(DocumentAppeal appeal, int userId)
-    {
-        // P2-02f: الصلاحية أولًا (403)، ثم حالة الاستئناف (400) — لا كشف لحالة استئناف الغير.
-        if (appeal.CreatedById != userId)
-            throw new UnauthorizedAccessException("لا يمكنك تعديل أو حذف استئناف لم تسطّره");
-        if (appeal.AssignedLawyerId is not null || appeal.Status != AppealStatusCatalog.Pending)
-            throw new ArgumentException("لا يمكن تعديل أو حذف استئناف بعد إسناده");
-    }
+        => DocumentAppealRules.EnsurePendingByCreator(appeal, userId);
 
     private static void EnsureAssignedFollower(DocumentAppeal appeal, int userId)
     {
