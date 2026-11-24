@@ -93,8 +93,6 @@ public interface IPublicEntityService
     Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
-    Task<RenameBranchResponse> RenameBranchAsync(int groupId, int entryId, RenameBranchRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>
     Task<MergeBranchesResponse> MergeBranchesAsync(int groupId, MergeBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 

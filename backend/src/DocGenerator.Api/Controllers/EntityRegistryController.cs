@@ -35,6 +35,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
+    private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -45,7 +46,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview,
         ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport,
         ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion,
-        ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion)
+        ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion,
+        ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -56,6 +58,7 @@ public class EntityRegistryController : ControllerBase
         _commitImport = commitImport;
         _withdrawSuggestion = withdrawSuggestion;
         _reviewSuggestion = reviewSuggestion;
+        _renameBranch = renameBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -441,7 +444,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
+        return Ok(await _renameBranch.HandleAsync(
+            new RenamePublicEntityBranchCommand(groupId, entryId, request, Actor), ct));
     }
 
     /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>

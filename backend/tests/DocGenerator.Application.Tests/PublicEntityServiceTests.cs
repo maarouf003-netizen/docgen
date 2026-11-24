@@ -28,6 +28,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
+    private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -103,6 +104,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _reviewSuggestion = new ReviewParentEditSuggestionCommandHandler(
             rules, entityRepository, new Repository<ParentEditSuggestion>(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?>>());
+        _renameBranch = new RenamePublicEntityBranchCommandHandler(
+            rules, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<RenamePublicEntityBranchCommand, RenameBranchResponse>>());
     }
 
 
@@ -3442,7 +3446,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
-        var result = await _service.RenameBranchAsync(
+        var result = await _renameBranch.RenameBranchAsync(
             a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي الجديد"), HeadDamascusActor());
 
         Assert.Equal("الفرع الرئيسي", result.OldBranchName);
@@ -3472,7 +3476,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("اسم آخر"), HeadAleppoActor()));
+            _renameBranch.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("اسم آخر"), HeadAleppoActor()));
     }
 
     [PostgresFact]
@@ -3480,7 +3484,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
+            _renameBranch.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
 
     [PostgresFact]
@@ -3489,7 +3493,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var a1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var a2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RenameBranchAsync(a1.GroupId, a2.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
+            _renameBranch.RenameBranchAsync(a1.GroupId, a2.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
 
     [PostgresFact]
@@ -4021,7 +4025,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var dam = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        await _service.RenameBranchAsync(dam.GroupId, dam.Id, new RenameBranchRequest("فرع دمشق المحدث"), HeadDamascusActor());
+        await _renameBranch.RenameBranchAsync(dam.GroupId, dam.Id, new RenameBranchRequest("فرع دمشق المحدث"), HeadDamascusActor());
 
         var aleppo = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
         Assert.DoesNotContain(aleppo.Items, e => e.ActionKind == ActionKindCatalog.Rename && e.GroupId == dam.GroupId);

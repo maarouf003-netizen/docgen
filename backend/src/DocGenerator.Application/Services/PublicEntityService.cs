@@ -136,4 +136,26 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
 
     ParentEditSuggestionDto IPublicEntityWriteRules.ToParentEditSuggestionDto(ParentEditSuggestion suggestion)
         => ToParentEditSuggestionDto(suggestion);
+
+    Task<PublicEntity> IPublicEntityWriteRules.GetActiveGroupEntryAsync(
+        int groupId, int entryId, EntityRegistryActor actor, CancellationToken ct)
+        => GetActiveGroupEntryAsync(groupId, entryId, actor, ct);
+
+    Task<List<Document>> IPublicEntityWriteRules.SyncBranchLabelsAsync(
+        PublicEntity entry, string newBranch, CancellationToken ct)
+        => SyncBranchLabelsAsync(entry, newBranch, ct);
+
+    void IPublicEntityWriteRules.AddEachExtraAlias(PublicEntity entry, string text, ref int aliasesAdded)
+        => AddEachExtraAlias(entry, text, ref aliasesAdded);
+
+    string IPublicEntityWriteRules.FullEntryName(string canonical, string governorate, string branchName)
+        => FullEntryName(canonical, governorate, branchName);
+
+    Task IPublicEntityWriteRules.InsertBranchOccurrencesAsync(
+        List<Document> docs, string message, EntityRegistryActor actor, CancellationToken ct)
+        => InsertBranchOccurrencesAsync(docs, message, actor, ct);
+
+    Task IPublicEntityWriteRules.InsertBranchChangeAlertAsync(
+        PublicEntity entry, string message, string actionKind, EntityRegistryActor actor, CancellationToken ct)
+        => InsertBranchChangeAlertAsync(entry, message, actionKind, actor, ct);
 }

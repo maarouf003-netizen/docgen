@@ -32,4 +32,10 @@ internal interface IPublicEntityWriteRules
     Task<List<ImportPreviewItemDto>> BuildImportCandidatesAsync(CancellationToken ct);
     Task<PublicEntityGroup?> FindGroupByNormAsync(string norm, CancellationToken token);
     ParentEditSuggestionDto ToParentEditSuggestionDto(ParentEditSuggestion suggestion);
+    Task<PublicEntity> GetActiveGroupEntryAsync(int groupId, int entryId, EntityRegistryActor actor, CancellationToken ct);
+    Task<List<Document>> SyncBranchLabelsAsync(PublicEntity entry, string newBranch, CancellationToken ct);
+    void AddEachExtraAlias(PublicEntity entry, string text, ref int aliasesAdded);
+    string FullEntryName(string canonical, string governorate, string branchName);
+    Task InsertBranchOccurrencesAsync(List<Document> docs, string message, EntityRegistryActor actor, CancellationToken ct);
+    Task InsertBranchChangeAlertAsync(PublicEntity entry, string message, string actionKind, EntityRegistryActor actor, CancellationToken ct);
 }
