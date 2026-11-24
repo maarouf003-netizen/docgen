@@ -15,7 +15,6 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentDelegationService : IDocumentDelegationService
 {
     private readonly IDelegationRepository _delegations;
-    private readonly IDelegationReservationRepository _reservations;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
@@ -30,12 +29,10 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IRepository<ExecutionCircuit> _circuits;
-    private readonly IRepository<Section> _sections;
     private readonly IDocumentNumberRegistry? _numberRegistry;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
-        IDelegationReservationRepository reservations,
         IDbExceptionClassifier dbErrors,
         IDocumentRepository documents,
         IUserRepository users,
@@ -50,11 +47,9 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IRepository<ExecutionCircuit>? circuits = null,
-        IRepository<Section>? sections = null,
         IDocumentNumberRegistry? numberRegistry = null)
     {
         _delegations = delegations;
-        _reservations = reservations;
         _dbErrors = dbErrors;
         _documents = documents;
         _users = users;
@@ -69,17 +64,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         _clock = clock;
         _timeZone = timeZone;
         _circuits = circuits ?? new UnconfiguredCircuitRepository();
-        _sections = sections ?? new UnconfiguredSectionRepository();
         _numberRegistry = numberRegistry;
-    }
-
-    private sealed class UnconfiguredSectionRepository : IRepository<Section>
-    {
-        public Task AddAsync(Section entity, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<Section?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<Section?>(null);
-        public Task<List<Section>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<Section>());
-        public Task<List<Section>> ListNoTrackingAsync(CancellationToken ct = default) => ListAsync(ct);
-        public void Remove(Section entity) { }
-        public void Update(Section entity) { }
     }
 }

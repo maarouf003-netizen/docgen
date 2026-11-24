@@ -61,7 +61,6 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            new DelegationReservationRepository(_db),
             new DbExceptionClassifier(),
             documents,
             users,

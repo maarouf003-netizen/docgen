@@ -49,7 +49,6 @@ public static class PortalServiceFactory
 
         var delegations = new DocumentDelegationService(
             new DelegationRepository(db),
-            new DelegationReservationRepository(db),
             new DbExceptionClassifier(),
             documents,
             users,

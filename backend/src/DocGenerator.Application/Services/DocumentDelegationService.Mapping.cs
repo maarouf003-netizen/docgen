@@ -109,7 +109,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// اسم دائرة للعرض مع بادئة «دائرة تنفيذ» مرة واحدة فقط، ويمنع «دائرة دائرة تنفيذ»
     /// أو «دائرة تنفيذ تنفيذ …» حين يكون المخزَّن يحمل البادئة أصلًا.
     /// </summary>
-    private static string CourtWithExecutionPrefix(string? court)
+    internal static string CourtWithExecutionPrefix(string? court)
     {
         var value = Normalize(court);
         if (value is null)

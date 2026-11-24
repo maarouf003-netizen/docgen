@@ -46,7 +46,6 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             uow, new TransactionRunner(db), audit);
         return new DocumentDelegationService(
             new DelegationRepository(db),
-            new DelegationReservationRepository(db),
             new DbExceptionClassifier(),
             documents,
             users,
@@ -242,7 +241,6 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             uow, tx, audit);
         var delegations = new DocumentDelegationService(
             new DelegationRepository(db),
-            new DelegationReservationRepository(db),
             new DbExceptionClassifier(),
             documents,
             users,

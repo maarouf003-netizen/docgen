@@ -142,6 +142,68 @@ internal static class DocumentDelegationRules
         Document source, IDelegationReservationRepository reservations, CancellationToken ct)
         => reservations.DeleteStaleAsync(source.Id, ct);
 
+    /// <summary>
+    /// نطاق الاعتماد المحسوب (§7.1): فرع الاعتماد + شعبته (null للقسم).
+    /// داخلية بدائرة → فرع الدائرة وشعبتها؛ داخلية بلا دائرة (قديمة/انتقالية/
+    /// مفكوكة) → فرع المنيب بلا شعبة (قاعدته القديمة)؛ خارجية → الفرع المناب
+    /// مع الشعبة الموجَّه لها (null قبل التوجيه).
+    /// </summary>
+    internal static async Task<(int BranchId, int? SectionId)> ResolveApprovalScopeAsync(
+        DocumentDelegation delegation, IRepository<ExecutionCircuit> circuits, CancellationToken ct)
+    {
+        if (!delegation.IsExternal && delegation.DelegatedCircuitId is not null)
+        {
+            var circuit = delegation.DelegatedCircuit
+                ?? await circuits.GetByIdAsync(delegation.DelegatedCircuitId.Value, ct);
+            if (circuit is null)
+                throw new ArgumentException("الدائرة المنابة غير موجودة — أعد ربط الإنابة بدائرة نشطة");
+            return (circuit.BranchId, circuit.SectionId);
+        }
+        if (!delegation.IsExternal)
+        {
+            return (delegation.SourceDocument.BranchId
+                ?? throw new ArgumentException("لا يمكن اعتماد هذه الإنابة — الملف المنيب بلا فرع"), null);
+        }
+        return (delegation.ExternalBranchId
+            ?? throw new ArgumentException("الإنابة الخارجية بلا فرع مناب — تعذّر الاعتماد"),
+            delegation.RedirectedToSectionId);
+    }
+
+    /// <summary>
+    /// حارس المعتمد (§7.1): رئيس القسم لنطاق القسم (بلا شعبة)، ورئيس الشعبة
+    /// لشعبتها حصرًا — رمز بلا شعبة مرفوض بلا تدهور لنطاق القسم.
+    /// </summary>
+    internal static void EnsureApprover(User caller, int callerBranch, int approvalBranch, int? approvalSection)
+    {
+        if (caller.Role != UserRole.Head && caller.Role != UserRole.SubHead)
+            throw new ArgumentException("اعتماد الإنابات للرؤساء فقط");
+        if (callerBranch != approvalBranch)
+            throw new ArgumentException("لا يمكنك اعتماد هذه الإنابة — ليست ضمن فرعك");
+        if (caller.Role == UserRole.Head)
+        {
+            if (approvalSection.HasValue)
+                throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+        }
+        else if (caller.SectionId is null || approvalSection != caller.SectionId)
+        {
+            throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+        }
+    }
+
+    internal static async Task<User> LoadHeadCallerAsync(
+        int userId, int? headBranchId, IUserRepository users, CancellationToken ct)
+    {
+        var caller = await users.GetByIdAsync(userId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        if (caller.Role != UserRole.Head && caller.Role != UserRole.SubHead)
+            throw new ArgumentException("اعتماد الإنابات للرؤساء فقط");
+        if (caller.Role == UserRole.SubHead && caller.SectionId is null)
+            throw new ArgumentException("حسابك بلا شعبة — أعد الدخول");
+        if (caller.BranchId is null && headBranchId is null)
+            throw new ArgumentException("الرئيس دون فرع لا يمكنه اعتماد الإنابات");
+        return caller;
+    }
+
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
