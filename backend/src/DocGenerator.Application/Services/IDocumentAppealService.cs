@@ -31,12 +31,6 @@ public interface IDocumentAppealService
     /// <summary>عدد استئنافات محامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
     Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default);
 
-    /// <summary>إحالة استئناف من رئيس الشعبة لرئيس قسم فرعه (اتجاه واحد — §6.2).</summary>
-    Task<AppealDto?> ForwardAsync(int appealId, ForwardAppealRequest request, int callerUserId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>التراجع عن الإحالة قبل الإسناد (استرجاع المحيل / إعادة المستلم — §6.5).</summary>
-    Task<AppealDto?> RecallForwardAsync(int appealId, int callerUserId, string? actorName, CancellationToken ct = default);
-
     /// <summary>تاريخ أرقام الأساس الاستئنافية لكل السنوات.</summary>
     Task<List<AppealBaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int appealId, CancellationToken ct = default);
 
