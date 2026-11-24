@@ -15,7 +15,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
     private static void EnsurePendingByCreator(DocumentAppeal appeal, int userId)
         => DocumentAppealRules.EnsurePendingByCreator(appeal, userId);
 
-    private static void EnsureAssignedFollower(DocumentAppeal appeal, int userId)
+    internal static void EnsureAssignedFollower(DocumentAppeal appeal, int userId)
     {
         if (appeal.AssignedLawyerId != userId)
             throw new UnauthorizedAccessException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");

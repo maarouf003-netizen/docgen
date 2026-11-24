@@ -27,4 +27,13 @@ public static class DocumentAppealWriteCommandExtensions
         string? actorName,
         CancellationToken ct = default)
         => handler.HandleAsync(new UpdateDocumentAppealCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<AppealDto?> UpdateRegistrationAsync(
+        this ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> handler,
+        int appealId,
+        UpdateAppealRegistrationRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new UpdateAppealRegistrationCommand(appealId, request, userId, actorName), ct);
 }
