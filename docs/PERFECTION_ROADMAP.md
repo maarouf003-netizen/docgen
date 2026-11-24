@@ -879,6 +879,8 @@
   **`P4-01ar`:** `DeleteDocumentDelegationCommand` يملك حذف الإنابة (الملكية قبل الحالة،
   أرشفة التنبيهات، والتدقيق)؛ ونُقل `EnsurePendingByOwner` إلى `DocumentDelegationRules`.
   (قُسّمت مرحلة الإنابة عمدًا: `⁦01as⁩` للإنشاء/التعديل.)
+  **`P4-01as`:** `DeleteDocumentAppealCommand` يملك حذف الاستئناف بنفس بنية الحرّاس
+  والأرشفة والتدقيق، مع `DocumentAppealRules.EnsurePendingByCreator` المشتركة.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -905,7 +907,8 @@
   `docs/audit/150-p4-01ao-document-transfer-20261124.md` و
   `docs/audit/151-p4-01ap-document-transfer-all-20261124.md` و
   `docs/audit/152-p4-01aq-document-base-numbers-20261124.md` و
-  `docs/audit/153-p4-01ar-delegation-delete-20261124.md`.
+  `docs/audit/153-p4-01ar-delegation-delete-20261124.md` و
+  `docs/audit/154-p4-01as-appeal-delete-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

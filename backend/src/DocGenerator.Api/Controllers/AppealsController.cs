@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Appeals;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,15 +23,18 @@ public class AppealsController : ControllerBase
     private readonly IDocumentAppealService _appeals;
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _deleteAppeal;
 
     public AppealsController(
         IDocumentAppealService appeals,
         IDocumentService documents,
-        IUserCapabilities capabilities)
+        IUserCapabilities capabilities,
+        ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal)
     {
         _appeals = appeals;
         _documents = documents;
         _capabilities = capabilities;
+        _deleteAppeal = deleteAppeal;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -198,7 +203,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var ok = await _appeals.DeleteAsync(id, User.GetUserId(), ActorName, ct);
+        var ok = await _deleteAppeal.HandleAsync(
+            new DeleteDocumentAppealCommand(id, User.GetUserId(), ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 

@@ -20,9 +20,6 @@ public interface IDocumentAppealService
     /// <summary>تعديل استئناف قبل الإسناد — المنشئ فقط.</summary>
     Task<AppealDto?> UpdateAsync(int appealId, UpsertAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>حذف استئناف قبل الإسناد — المنشئ فقط.</summary>
-    Task<bool> DeleteAsync(int appealId, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>استئنافات ملف (بطاقة «الاستئنافات» في وقوعات الملف).</summary>
     Task<List<AppealDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
