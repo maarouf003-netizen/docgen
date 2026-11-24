@@ -18,6 +18,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
     private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
+    private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _otherBranchId;
@@ -63,6 +64,11 @@ public class ReviewLetterServiceTests : PostgresDbTest
         _reply = new ReplyReviewLetterCommandHandler(
             replyRules, lettersRepo, unitOfWork, runner, _audit,
             Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
+        _createLetter = new CreateReviewLetterCommandHandler(
+            (IReviewLetterCreateWriteRules)_service, new BranchRepository(_db), new DocumentRepository(_db),
+            new ReviewLetterRepository(_db), new Repository<Section>(_db), new UnitOfWork(_db), runner, _audit,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
     }
 
     /// <summary>
@@ -140,7 +146,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_GeneralLetter_GeneratesNumberDateAndOriginalMessage()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>نطلب التوجيه في الأمر</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -163,8 +169,13 @@ public class ReviewLetterServiceTests : PostgresDbTest
     {
         // P1-02b: نفس عقد الحقن في كتاب المطالعة — بلا Random.Shared.
         var service = BuildService(new DeterministicEntropy(4321));
+        var createHandler = new CreateReviewLetterCommandHandler(
+            (IReviewLetterCreateWriteRules)service, new BranchRepository(_db), new DocumentRepository(_db),
+            new ReviewLetterRepository(_db), new Repository<Section>(_db), new UnitOfWork(_db),
+            new TransactionRunner(_db), _audit, new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
 
-        var letter = await service.CreateAsync(
+        var letter = await createHandler.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -174,7 +185,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_EmptyBody_IsRejected()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<ArgumentException>(() => _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p></p>"),
             _lawyer1.Id, "المحامي الأول", _branchId));
     }
@@ -184,7 +195,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     {
         var doc = await AddDocumentAsync(_lawyer1, "77/2026");
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(doc.Id, "<p>مطالعة بملف</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -210,7 +221,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(doc.Id, "<p>مطالعة بملف مدوَّر</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
         Assert.NotNull(letter.FileContext);
@@ -235,7 +246,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     {
         var doc = await AddDocumentAsync(_lawyer2);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createLetter.CreateAsync(
             new CreateReviewLetterRequest(doc.Id, "<p>x</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId));
     }
@@ -243,7 +254,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Reply_BySameBranchHead_MarksAnsweredWithGeneratedReplyNumber()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>نطلب التوجيه</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -263,7 +274,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Reply_ByOtherBranchHead_IsDenied()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>سؤال</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -275,7 +286,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AddAddendum_ByOwnerResetsAnswered_AndOthersAreDenied()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
         await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>الرد</p>"),
@@ -302,11 +313,11 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Search_ScopesByRole()
     {
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب الأول</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب الأول</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب الثاني</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب الثاني</p>"),
             _lawyer2.Id, "المحامي الثاني", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب فرع آخر</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب فرع آخر</p>"),
             _otherBranchHead.Id is not 0 ? _otherBranchHead.Id : 1, "رئيس حلب", _otherBranchId);
 
         var lawyerView = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
@@ -331,9 +342,9 @@ public class ReviewLetterServiceTests : PostgresDbTest
     public async Task Search_ByExecutedNameFindsLinkedLetters()
     {
         var doc = await AddDocumentAsync(_lawyer1);
-        await _service.CreateAsync(new CreateReviewLetterRequest(doc.Id, "<p>مطالعة ملف أحمد</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(doc.Id, "<p>مطالعة ملف أحمد</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
         var hit = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "أحمد", 1, 20, null);
@@ -355,7 +366,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var linkedLetter = await _service.CreateAsync(
+        var linkedLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(sourceDoc.Id, "<p>مطالعة الملف المنيب</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -388,7 +399,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await _service.CreateAsync(
+        await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(doc.Id, "<p>مطالعة الملف المستأنف</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -402,7 +413,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         var numbers = new HashSet<string>();
         for (var i = 0; i < 5; i++)
         {
-            var letter = await _service.CreateAsync(
+            var letter = await _createLetter.CreateAsync(
                 new CreateReviewLetterRequest(null, $"<p>كتاب رقم {i}</p>"),
                 _lawyer1.Id, "المحامي الأول", _branchId);
             Assert.True(numbers.Add(letter.LetterNumber));
@@ -412,7 +423,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Reply_CreatesAlertForAuthorLawyer_AndCoalescesConsecutiveReplies()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
@@ -446,7 +457,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Reply_AlertCarriesFullBody_WithoutTruncation()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
         var fullReply = string.Concat(Enumerable.Repeat("تفصيل الرد الكامل ", 20)).Trim();
@@ -463,7 +474,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRepliesSeen_ByOwnerClearsBadge_OthersDenied()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>سؤال</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
         await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب</p>"),
@@ -486,7 +497,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AddAddendum_AfterSeenReply_ReactivatesUnseenFlowOnNextReply()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>س</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
         await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>ج</p>"),
@@ -505,7 +516,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Search_AdminUnknownOrBlankBranch_ReturnsEmpty()
     {
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
         var unknown = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "فرع وهمي");
@@ -521,7 +532,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchAll_BlankBranch_ReturnsEmptyWithoutQuerying()
     {
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
         // العقد ذاتي الحماية على مستوى المستودع: الفراغ/البياض/العدم تُعيد فارغًا
@@ -544,11 +555,11 @@ public class ReviewLetterServiceTests : PostgresDbTest
     public async Task Search_AdminBranchCombinedWithQuery()
     {
         var doc = await AddDocumentAsync(_lawyer1);
-        await _service.CreateAsync(new CreateReviewLetterRequest(doc.Id, "<p>مطالعة ملف أحمد</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(doc.Id, "<p>مطالعة ملف أحمد</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام أحمد</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام أحمد</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام حلب</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام حلب</p>"),
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
 
         // "أحمد" يطابق كتابين فرع دمشق — فلتر الفرع يقصرهما عليه ولا يُمرّر كتاب حلب.
@@ -561,11 +572,11 @@ public class ReviewLetterServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task GetAdministrativeBranches_ReturnsDistinctSortedNames()
     {
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ١</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ١</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ٢</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ٢</p>"),
             _lawyer2.Id, "المحامي الثاني", _branchId);
-        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب حلب</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب حلب</p>"),
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
 
         var branches = await _service.GetAdministrativeBranchesAsync();

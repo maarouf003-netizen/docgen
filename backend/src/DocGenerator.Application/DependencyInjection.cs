@@ -75,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<ReviewLetterService>();
         services.AddScoped<IReviewLetterService>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<IReviewLetterReplyWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
+        services.AddScoped<IReviewLetterCreateWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<ICorrespondenceService, CorrespondenceService>();
         services.AddScoped<IForumService, ForumService>();
         services.AddScoped<IForumRetentionService, ForumRetentionService>();
@@ -123,6 +124,13 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeletePendingRegistrationAlertsCommand, bool>, DeletePendingRegistrationAlertsCommandHandler>();
         services.AddScoped<ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto>, AddReviewLetterAddendumCommandHandler>();
         services.AddScoped<ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto>, ReplyReviewLetterCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto>, CreateReviewLetterCommandHandler>();
+        services.AddScoped<ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto>, CommitPublicEntityImportCommandHandler>();
+        services.AddScoped<ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?>, WithdrawParentEditSuggestionCommandHandler>();
+        services.AddScoped<ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?>, ReviewParentEditSuggestionCommandHandler>();
+        services.AddScoped<ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse>, RenamePublicEntityBranchCommandHandler>();
+        services.AddScoped<ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse>, MergePublicEntityBranchesCommandHandler>();
+        services.AddScoped<ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse>, AbolishPublicEntityBranchCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

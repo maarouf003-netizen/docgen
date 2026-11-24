@@ -26,19 +26,22 @@ public class ReviewLettersController : ControllerBase
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
     private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
+    private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
 
     public ReviewLettersController(
         IReviewLetterService letters,
         IUserCapabilities capabilities,
         ICommandHandler<MarkReviewRepliesSeenCommand, bool> markRepliesSeen,
         ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> addAddendum,
-        ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> reply)
+        ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> reply,
+        ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> createLetter)
     {
         _letters = letters;
         _capabilities = capabilities;
         _markRepliesSeen = markRepliesSeen;
         _addAddendum = addAddendum;
         _reply = reply;
+        _createLetter = createLetter;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -140,7 +143,8 @@ public class ReviewLettersController : ControllerBase
                 ApiErrorCodes.BranchRequired,
                 "المحامي دون فرع لا يمكنه تسطير مطالعات");
 
-        var letter = await _letters.CreateAsync(request, UserId, ActorName, BranchId.Value, ct);
+        var letter = await _createLetter.HandleAsync(
+            new CreateReviewLetterCommand(request, UserId, ActorName, BranchId.Value), ct);
         return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
     }
 

@@ -22,10 +22,6 @@ public interface IReviewLetterService
     Task<ReviewLetterDto> GetByIdAsync(int id, int actorUserId, UserRole role, int? actorBranchId,
         CancellationToken ct = default, int? actorSectionId = null);
 
-    /// <summary>تسطير كتاب مطالعة (مربوط بملف أو عام) وتوليد رقمه وتاريخه تلقائيًا.</summary>
-    Task<ReviewLetterDto> CreateAsync(CreateReviewLetterRequest request, int actorUserId,
-        string? actorName, int actorBranchId, CancellationToken ct = default);
-
     /// <summary>عدد كتب النطاق بانتظار الرد (جرس المالك الأحمر §10).</summary>
     Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, CancellationToken ct = default);
 
@@ -49,7 +45,7 @@ public interface IReviewLetterService
 /// كتب المطالعة: مراسلات رسمية بين المحامي ورئيس القسم. النص المرسل غير قابل للتعديل أو الحذف،
 /// والتسلسل الزمني للرسائل هو المرجع، والكتابة ضمن معاملات مع سجل التدقيق.
 /// </summary>
-public sealed partial class ReviewLetterService : IReviewLetterService, IReviewLetterReplyWriteRules
+public sealed partial class ReviewLetterService : IReviewLetterService, IReviewLetterReplyWriteRules, IReviewLetterCreateWriteRules
 {
     private const int NumberRandomDigits = 4;
     private const int MaxNumberGenerationAttempts = 20;
@@ -127,4 +123,23 @@ public sealed partial class ReviewLetterService : IReviewLetterService, IReviewL
 
     ReviewLetterMessageDto IReviewLetterReplyWriteRules.ToMessageDto(ReviewLetterMessage message)
         => ToMessageDto(message);
+
+    // ── تنفيذ عقد مساعدات تسطير الكتاب (P4-01bm) ──────────────────────────
+
+    Task<bool> IReviewLetterCreateWriteRules.FollowsDocumentAsync(int documentId, int userId, CancellationToken ct)
+        => FollowsDocumentAsync(documentId, userId, ct);
+
+    Task<int?> IReviewLetterCreateWriteRules.FileOwnerSectionAsync(Document document, CancellationToken ct)
+        => FileOwnerSectionAsync(document, ct);
+
+    Task<Section?> IReviewLetterCreateWriteRules.ResolveGeneralRecipientSectionAsync(
+        int? recipientSectionId, int actorBranchId, CancellationToken ct)
+        => ResolveGeneralRecipientSectionAsync(recipientSectionId, actorBranchId, ct);
+
+    Task<string> IReviewLetterCreateWriteRules.GenerateUniqueNumberAsync(
+        string branchCode, DateTime at, CancellationToken ct)
+        => GenerateUniqueNumberAsync(branchCode, at, ct);
+
+    ReviewLetterDto IReviewLetterCreateWriteRules.ToDto(ReviewLetter letter)
+        => ToDto(letter);
 }

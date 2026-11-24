@@ -46,7 +46,6 @@ public interface IPublicEntityService
     Task<Stream> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
     Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default);
-    Task<ImportCommitResultDto> CommitImportAsync(ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null);
 
     /// <summary>نقل قيد من هوية أم إلى أخرى أو طيّه في قيد مطابق (د3).</summary>
     Task<MoveEntryResponse> MoveEntryAsync(int entryId, MoveEntryRequest request, EntityRegistryActor actor, CancellationToken ct = default);
@@ -94,14 +93,8 @@ public interface IPublicEntityService
     Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
-    Task<RenameBranchResponse> RenameBranchAsync(int groupId, int entryId, RenameBranchRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>
-    Task<MergeBranchesResponse> MergeBranchesAsync(int groupId, MergeBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>إلغاء فرع: بلا هدف لصفر روابط، أو دمج ضمني مع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
-    Task<AbolishBranchResponse> AbolishBranchAsync(int groupId, int entryId, AbolishBranchRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
     Task<UnifyBranchesResponse> UnifyBranchesAsync(int groupId, UnifyBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
@@ -110,10 +103,4 @@ public interface IPublicEntityService
 
     /// <summary>قائمة اقتراحات تعديل الجهة الأم (تبويب الإدارة / حالة المعلّق في نافذة الفروع).</summary>
     Task<PagedResult<ParentEditSuggestionDto>> ListParentEditSuggestionsAsync(ParentEditSuggestionListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>قبول/رفض اقتراح تعديل الجهة الأم (المدير/المشرف فقط).</summary>
-    Task<ParentEditSuggestionDto?> ReviewParentEditSuggestionAsync(int suggestionId, ReviewParentEditSuggestionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>سحب ذاتي لاقتراح معلّق (الرئيس المُنشئ نفسه فقط) — يبقى بلا مساس بالقيد.</summary>
-    Task<ParentEditSuggestionDto?> WithdrawParentEditSuggestionAsync(int suggestionId, EntityRegistryActor actor, CancellationToken ct = default);
 }

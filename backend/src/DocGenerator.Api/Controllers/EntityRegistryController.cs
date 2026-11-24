@@ -32,6 +32,12 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
+    private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
+    private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
+    private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
+    private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
+    private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
+    private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -39,7 +45,13 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> createEntity,
         ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> updateEntity,
         ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> addAlias,
-        ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview)
+        ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview,
+        ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport,
+        ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion,
+        ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion,
+        ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch,
+        ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches,
+        ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -47,6 +59,12 @@ public class EntityRegistryController : ControllerBase
         _updateEntity = updateEntity;
         _addAlias = addAlias;
         _approveReview = approveReview;
+        _commitImport = commitImport;
+        _withdrawSuggestion = withdrawSuggestion;
+        _reviewSuggestion = reviewSuggestion;
+        _renameBranch = renameBranch;
+        _mergeBranches = mergeBranches;
+        _abolishBranch = abolishBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -191,8 +209,9 @@ public class EntityRegistryController : ControllerBase
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
-            return Ok(await _registry.CommitImportAsync(request, User.GetUserId(), ActorName, ct,
-                IdempotencyKeyHeader()));
+            return Ok(await _commitImport.HandleAsync(
+                new CommitPublicEntityImportCommand(request, User.GetUserId(), ActorName,
+                    IdempotencyKeyHeader()), ct));
         }
         catch (IdempotentReplayException r)
         {
@@ -431,7 +450,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
+        return Ok(await _renameBranch.HandleAsync(
+            new RenamePublicEntityBranchCommand(groupId, entryId, request, Actor), ct));
     }
 
     /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>
@@ -440,7 +460,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
+        return Ok(await _mergeBranches.HandleAsync(
+            new MergePublicEntityBranchesCommand(groupId, request, Actor), ct));
     }
 
     /// <summary>إلغاء فرع: تعطيل مباشر لصفر روابط أو دمج ضمني مع فرع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
@@ -449,7 +470,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
+        return Ok(await _abolishBranch.HandleAsync(
+            new AbolishPublicEntityBranchCommand(groupId, entryId, request, Actor), ct));
     }
 
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
@@ -494,7 +516,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
+        var dto = await _reviewSuggestion.HandleAsync(
+            new ReviewParentEditSuggestionCommand(suggestionId, request, Actor), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 
@@ -504,7 +527,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.IsHeadOrSubHead))
             return Forbid();
-        var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
+        var dto = await _withdrawSuggestion.HandleAsync(
+            new WithdrawParentEditSuggestionCommand(suggestionId, Actor), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 }
