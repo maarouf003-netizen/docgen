@@ -35,19 +35,6 @@ public interface IDocumentDelegationService
     Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
     /// <summary>
-    /// تسجيل الإنابة أصولًا من محامي الفرع المناب: إدخال رقم أساس الإنابة وتاريخ قيدها
-    /// (بيانات الملف المناب) فيُصبح الملف المناب مقيدًا. محامي الملف المناب فقط.
-    /// </summary>
-    Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>
-    /// إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني
-    /// (بدل المبيع لكل أصل بالليرة) وتاريخ إعادة الملف للدائرة المنيبة، فيُصبح الملف المناب
-    /// «منفذ إنابة» (حالة نهائية تُعامل منفذًا في القوائم والإحصاءات).
-    /// </summary>
-    Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>
     /// حارس تعديل الملف المناب («الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية في الحقول
     /// المقفولة، ويرصد الإضافات المحلية المسموحة (وريث جديد/ممثل جديد) تقريرًا للتنبيه العكسي.
     /// حارس قرائي قبل الكتابة — خارج المعاملة كسائر حراس التعديل.

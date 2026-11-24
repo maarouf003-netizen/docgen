@@ -73,19 +73,14 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            new DbExceptionClassifier(),
             documents,
-            users,
-            registrationDates,
-            occurrences,
             uow,
             _tx,
             _audit,
             _headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TestClock.Provider,
-            TestClock.TimeZone,
-            circuits: new Repository<ExecutionCircuit>(_db));
+            TestClock.TimeZone);
 
         var delegations = new DelegationRepository(_db);
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);

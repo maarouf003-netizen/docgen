@@ -89,4 +89,59 @@ public static class DelegationWriteHandlerFactory
             TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<AssignDocumentDelegationCommand, DelegationDto?>>());
     }
+
+    public static RegisterDocumentDelegationCommandHandler Register(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null,
+        DocGenerator.Application.Services.IDocumentNumberRegistry? numberRegistry = null)
+    {
+        var documents = new DocumentRepository(db);
+        var users = new UserRepository(db);
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        var auditValue = audit ?? new FakeAuditLogger();
+        var delegations = new DelegationRepository(db);
+        return new RegisterDocumentDelegationCommandHandler(
+            delegations,
+            documents,
+            users,
+            new Repository<ExecutionCircuit>(db),
+            new Repository<DocumentRegistrationDate>(db),
+            numberRegistry,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            new HeadAlertService(
+                new HeadAlertRepository(db), documents, users, new Repository<Branch>(db),
+                new DelegationRepository(db), uow, tx, auditValue),
+            uow,
+            tx,
+            auditValue,
+            new DbExceptionClassifier(),
+            TestClock.Provider,
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<RegisterDocumentDelegationCommand, DelegationDto?>>());
+    }
+
+    public static CompleteDocumentDelegationCommandHandler Complete(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var documents = new DocumentRepository(db);
+        var users = new UserRepository(db);
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        var auditValue = audit ?? new FakeAuditLogger();
+        var delegations = new DelegationRepository(db);
+        return new CompleteDocumentDelegationCommandHandler(
+            delegations,
+            documents,
+            new Repository<DocumentOccurrence>(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            new HeadAlertService(
+                new HeadAlertRepository(db), documents, users, new Repository<Branch>(db),
+                new DelegationRepository(db), uow, tx, auditValue),
+            uow,
+            tx,
+            auditValue,
+            TestClock.Provider,
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<CompleteDocumentDelegationCommand, DelegationDto?>>());
+    }
 }

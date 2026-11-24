@@ -46,11 +46,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             uow, new TransactionRunner(db), audit);
         return new DocumentDelegationService(
             new DelegationRepository(db),
-            new DbExceptionClassifier(),
             documents,
-            users,
-            new Repository<DocumentRegistrationDate>(db),
-            new Repository<DocumentOccurrence>(db),
             uow,
             tx,
             audit,
@@ -240,11 +236,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             uow, tx, audit);
         var delegations = new DocumentDelegationService(
             new DelegationRepository(db),
-            new DbExceptionClassifier(),
             documents,
-            users,
-            registrationDates,
-            occurrences,
             uow,
             tx,
             audit,
@@ -347,11 +339,10 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         });
         await db.SaveChangesAsync();
 
-        var (delegations, _, _) = BuildServices(db);
         var created = await DelegationWriteHandlerFactory.Create(db).CreateAsync(source.Id, Request(asset.Id), owner.Id, "owner");
         var assigned = await DelegationWriteHandlerFactory.Assign(db).AssignAsync(
             created.Id, new AssignDelegationRequest(assignee.Id), head.Id, branch.Id, "head");
-        await delegations.RegisterAsync(
+        await DelegationWriteHandlerFactory.Register(db).RegisterAsync(
             created.Id, new RegisterDelegationRequest($"89{suffix}", "2026", "5/8/2026"), assignee.Id, "assignee");
 
         return new MirrorSeed(source.Id, created.Id, assigned!.TargetDocumentId!.Value, assignee.Id);

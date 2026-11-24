@@ -22,8 +22,6 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId, string? actorName, int? actorUserId = null, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public TargetEditReport ValidateTargetEdit(Document doc, DocumentUpsertRequest request) => throw new NotImplementedException();
         public Task ValidateSeizureLockAsync(Document doc, DocumentUpsertRequest request, CancellationToken ct) => throw new NotImplementedException();
         public Task SyncSnapshotsAsync(Document doc, CancellationToken ct) => throw new NotImplementedException();
@@ -40,7 +38,7 @@ public sealed class DelegationPendingCountBranchGuardTests
         // اعتماد `_documents` غير مستخدم في هذا المسار فيُمرَّر `null!` صراحة.
         var controller = new DelegationsController(
             new FakeDelegationService(), null!, new DocGenerator.Api.Authorization.UserCapabilities(),
-            null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

@@ -110,19 +110,14 @@ public static class DocumentServiceFactory
             circuits);
         var delegationService = new DocumentDelegationService(
             delegationsValue,
-            dbErrorsValue,
             documentsValue,
-            usersValue,
-            registrationDatesValue,
-            occurrencesValue,
             uowValue,
             txValue,
             audit,
             alertServiceValue,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), txContext),
             clockValue,
-            timeZoneValue,
-            numberRegistry: numberRegistry);
+            timeZoneValue);
 
         var statusService = new DocumentStatusService(
             occurrencesValue,

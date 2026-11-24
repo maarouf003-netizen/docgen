@@ -61,19 +61,14 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            new DbExceptionClassifier(),
             documents,
-            users,
-            registrationDates,
-            occurrences,
             uow,
             tx,
             _audit,
             headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             TestClock.Provider,
-            TestClock.TimeZone,
-            circuits: new Repository<ExecutionCircuit>(_db));
+            TestClock.TimeZone);
     }
 
 

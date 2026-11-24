@@ -214,27 +214,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RepresentativeAddress = h.RepresentativeAddress,
     };
 
-    /// <summary>
-    /// يُسجَّل تاريخ قيد الملف المناب (DocumentRegistrationDate 1:1 بمفتاح DocumentId):
-    /// يُضاف عند غيابه ويُحدَّث إن وُجد.
-    /// </summary>
-    private async Task ApplyRegistrationDateAsync(Document doc, DateTime parsed, CancellationToken token)
-    {
-        var dateText = parsed.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        if (doc.RegistrationDate is null)
-            await _registrationDates.AddAsync(new DocumentRegistrationDate
-            {
-                DocumentId = doc.Id,
-                Date = dateText,
-                DateParsed = parsed,
-            }, token);
-        else
-        {
-            doc.RegistrationDate.Date = dateText;
-            doc.RegistrationDate.DateParsed = parsed;
-        }
-    }
-
     private async Task<List<DocumentDelegation>> ListOfTargetAsync(int targetDocumentId, CancellationToken ct)
     {
         var delegation = await _delegations.FindByTargetAsync(targetDocumentId, ct);
@@ -248,7 +227,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// تطهير حقول «التريث» و«كتاب السير بالملف» عند التفعيل التلقائي «منفذ جبريا (منفذ جزئيا)»
     /// — بنفس معاملة مسار «تغيير الحالة» اليدوية (منفذ جبريا ينظف حقول التريث والسير).
     /// </summary>
-    private static void ClearTarithAndSayerFields(Document source)
+    internal static void ClearTarithAndSayerFields(Document source)
     {
         source.TarithNumber = null;
         source.TarithDate = null;
@@ -260,14 +239,14 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         source.SayerRegDate = null;
     }
 
-    private static string SerializeDetails(Dictionary<string, string> details) =>
+    internal static string SerializeDetails(Dictionary<string, string> details) =>
         JsonSerializer.Serialize(details);
 
     /// <summary>
     /// RF-017 (INT-005): بدلات المبيع قبل/بعد لكل أصل — تُلحَق بتفاصيل تدقيق الإتمام
     /// (المتتبع الحقلي يغطي كيان المستند لا أصول الإنابة). نفس تنسيق المتتبع الثابت.
     /// </summary>
-    private static string FormatSalePrices(
+    internal static string FormatSalePrices(
         DocumentDelegation delegation, Dictionary<int, decimal?> oldPrices)
         => string.Join("؛ ", delegation.Assets
             .OrderBy(a => a.Id)

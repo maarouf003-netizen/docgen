@@ -1,22 +1,82 @@
-using System.Globalization;
-using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.Delegations;
 
-public sealed partial class DocumentDelegationService : IDocumentDelegationService
+/// <summary>
+/// تسجيل الإنابة أصولًا من محامي الفرع المناب: إدخال رقم أساس الإنابة وتاريخ قيدها
+/// (بيانات الملف المناب) فيُصبح الملف المناب مقيدًا. محامي الملف المناب فقط.
+/// </summary>
+public sealed record RegisterDocumentDelegationCommand(
+    int DelegationId,
+    RegisterDelegationRequest Request,
+    int UserId,
+    string? ActorName) : ICommand<DelegationDto?>;
+
+public sealed class RegisterDocumentDelegationCommandHandler
+    : CommandHandlerBase<RegisterDocumentDelegationCommand, DelegationDto?>
 {
-    public async Task<DelegationDto?> RegisterAsync(
-        int delegationId,
-        RegisterDelegationRequest request,
-        int userId,
-        string? actorName,
-        CancellationToken ct = default)
+    private readonly IDelegationRepository _delegations;
+    private readonly IDocumentRepository _documents;
+    private readonly IUserRepository _users;
+    private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IRepository<DocumentRegistrationDate> _registrationDates;
+    private readonly IDocumentNumberRegistry? _numberRegistry;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IHeadAlertService _alerts;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public RegisterDocumentDelegationCommandHandler(
+        IDelegationRepository delegations,
+        IDocumentRepository documents,
+        IUserRepository users,
+        IRepository<ExecutionCircuit> circuits,
+        IRepository<DocumentRegistrationDate> registrationDates,
+        IDocumentNumberRegistry? numberRegistry,
+        IHeadAlertOutbox alertOutbox,
+        IHeadAlertService alerts,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IDbExceptionClassifier dbErrors,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<RegisterDocumentDelegationCommand, DelegationDto?>> behaviors)
+        : base(behaviors)
     {
+        _delegations = delegations;
+        _documents = documents;
+        _users = users;
+        _circuits = circuits;
+        _registrationDates = registrationDates;
+        _numberRegistry = numberRegistry;
+        _alertOutbox = alertOutbox;
+        _alerts = alerts;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _dbErrors = dbErrors;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<DelegationDto?> HandleCoreAsync(
+        RegisterDocumentDelegationCommand command, CancellationToken ct)
+    {
+        var delegationId = command.DelegationId;
+        var request = command.Request;
+        var userId = command.UserId;
+        var actorName = command.ActorName;
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
             ?? throw new ArgumentException("الإنابة غير موجودة");
 
@@ -36,13 +96,13 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 throw new ArgumentException("لا يمكن تسجيل الانابة لورود كتاب تريث في الملف المنيب");
             if (source.ExecStatus == ExecutionStatusCatalog.ReferredToStart)
                 throw new ArgumentException("لا يمكن تسجيل الانابة لكون الملف المنيب «محال الى البداية»");
-            ValidateSourceForDelegation(source);
+            DocumentDelegationService.ValidateSourceForDelegation(source);
         }
 
-        var fileNumber = DigitNormalizer.NormalizeDigitsOrNull(Normalize(request.FileNumber));
+        var fileNumber = DigitNormalizer.NormalizeDigitsOrNull(DocumentDelegationService.Normalize(request.FileNumber));
         if (string.IsNullOrWhiteSpace(fileNumber))
             throw new ArgumentException("رقم أساس الإنابة مطلوب");
-        var fileYear = DigitNormalizer.NormalizeDigitsOrNull(Normalize(request.FileYear));
+        var fileYear = DigitNormalizer.NormalizeDigitsOrNull(DocumentDelegationService.Normalize(request.FileYear));
         if (string.IsNullOrWhiteSpace(fileYear))
             throw new ArgumentException("سنة قيد الإنابة مطلوبة");
         DocumentValidator.ValidateFileYearNotFuture(fileYear, ServerClock.CurrentYear(_clock, _timeZone));
@@ -115,7 +175,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 target.IsDraft = false;
                 target.UpdatedAt = DateTime.UtcNow;
                 target.Version++;
-                await ApplyRegistrationDateAsync(target, registrationDate.Value, token);
+                await DocumentDelegationRules.ApplyRegistrationDateAsync(target, registrationDate.Value, _registrationDates, token);
                 _documents.Update(target);
                 if (_numberRegistry is not null)
                     await _numberRegistry.SyncRegistrationAsync(
@@ -133,7 +193,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                         new CreateSystemHeadAlertRequest(
                             HeadAlertKindCatalog.DelegationPendingCompletion,
                             HeadAlertMessages.DelegationPendingCompletion(new(
-                                delegation.Id, SourceLabel(delegation.SourceDocument))),
+                                delegation.Id, DocumentDelegationService.SourceLabel(delegation.SourceDocument))),
                             HeadAlertAudience.SingleHead,
                             completionOwnerBranch,
                             userId,
@@ -171,17 +231,69 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         }
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            ? DocumentDelegationService.ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
+}
 
-    public async Task<DelegationDto?> CompleteAsync(
-        int delegationId,
-        CompleteDelegationRequest request,
-        int userId,
-        string? actorName,
-        CancellationToken ct = default)
+/// <summary>
+/// إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني
+/// (بدل المبيع لكل أصل بالليرة) وتاريخ إعادة الملف للدائرة المنيبة، فيُصبح الملف المناب
+/// «منفذ إنابة» (حالة نهائية تُعامل منفذًا في القوائم والإحصاءات).
+/// </summary>
+public sealed record CompleteDocumentDelegationCommand(
+    int DelegationId,
+    CompleteDelegationRequest Request,
+    int UserId,
+    string? ActorName) : ICommand<DelegationDto?>;
+
+public sealed class CompleteDocumentDelegationCommandHandler
+    : CommandHandlerBase<CompleteDocumentDelegationCommand, DelegationDto?>
+{
+    private readonly IDelegationRepository _delegations;
+    private readonly IDocumentRepository _documents;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IHeadAlertService _alerts;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public CompleteDocumentDelegationCommandHandler(
+        IDelegationRepository delegations,
+        IDocumentRepository documents,
+        IRepository<DocumentOccurrence> occurrences,
+        IHeadAlertOutbox alertOutbox,
+        IHeadAlertService alerts,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<CompleteDocumentDelegationCommand, DelegationDto?>> behaviors)
+        : base(behaviors)
     {
+        _delegations = delegations;
+        _documents = documents;
+        _occurrences = occurrences;
+        _alertOutbox = alertOutbox;
+        _alerts = alerts;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<DelegationDto?> HandleCoreAsync(
+        CompleteDocumentDelegationCommand command, CancellationToken ct)
+    {
+        var delegationId = command.DelegationId;
+        var request = command.Request;
+        var userId = command.UserId;
+        var actorName = command.ActorName;
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
             ?? throw new ArgumentException("الإنابة غير موجودة");
 
@@ -268,7 +380,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     source.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
                     source.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
                     source.ForcedExecutionDate = forcedExecutionDate;
-                    ClearTarithAndSayerFields(source);
+                    DocumentDelegationService.ClearTarithAndSayerFields(source);
                     source.UpdatedAt = DateTime.UtcNow;
                     _documents.Update(source);
                     markApplied = true;
@@ -277,20 +389,20 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
             if (sourceBranchId is not null)
             {
-                var targetLabel = TargetFileLabel(target, ServerClock.CurrentYear(_clock, _timeZone));
+                var targetLabel = DocumentDelegationService.TargetFileLabel(target, ServerClock.CurrentYear(_clock, _timeZone));
                 var assetsLine = string.Join(" و", delegation.Assets.Select(a => $"للتنفيذ على {a.AssetLabel}"));
                 var coverageText = delegation.SaleCoversFullDebt == true
                     ? "غطى كامل المديونية"
                     : delegation.SaleCoversFullDebt == false
                         ? "لم يغطِ كامل المديونية"
                         : "—";
-                var court = TargetCourt(target, delegation.DelegatedCourt) ?? "الدائرة المنابة";
+                var court = DocumentDelegationService.TargetCourt(target, delegation.DelegatedCourt) ?? "الدائرة المنابة";
 
                 await _alertOutbox.EnqueueSystemAsync(
                     new CreateSystemHeadAlertRequest(
                         HeadAlertKindCatalog.DelegationCompletedReturned,
                         HeadAlertMessages.DelegationCompletedReturned(new(
-                            AlertCourtAfterDaira(court), SourceLabel(delegation.SourceDocument),
+                            DocumentDelegationService.AlertCourtAfterDaira(court), DocumentDelegationService.SourceLabel(delegation.SourceDocument),
                             coverageText, targetLabel, assetsLine)),
                         HeadAlertAudience.DocumentCreator,
                         sourceBranchId.Value,
@@ -326,7 +438,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.Forcible,
                     EventDate = DateTime.UtcNow,
-                    Details = SerializeDetails(new Dictionary<string, string>
+                    Details = DocumentDelegationService.SerializeDetails(new Dictionary<string, string>
                     {
                         ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
                         ["forcedExecutionDate"] = source.ForcedExecutionDate ?? string.Empty,
@@ -340,11 +452,11 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
             await _audit.LogAsync(actorName, "complete_delegation",
                 delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة — اعتُبر الملف المنيب «منفذ جبريا (منفذ جزئيا)» تلقائيًا حتى اعتباره منفذًا كاملًا بهذا البيع — بدلات المبيع: {FormatSalePrices(delegation, oldPrices)} — التغطية: {(request.SaleCoversFullDebt.Value ? "غطّى كامل المديونية" : "لم يغطِّ كامل المديونية")}", token);
+                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة — اعتُبر الملف المنيب «منفذ جبريا (منفذ جزئيا)» تلقائيًا حتى اعتباره منفذًا كاملًا بهذا البيع — بدلات المبيع: {DocumentDelegationService.FormatSalePrices(delegation, oldPrices)} — التغطية: {(request.SaleCoversFullDebt.Value ? "غطّى كامل المديونية" : "لم يغطِّ كامل المديونية")}", token);
         }, ct);
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            ? DocumentDelegationService.ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
 }

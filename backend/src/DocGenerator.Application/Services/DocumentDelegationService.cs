@@ -15,11 +15,7 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentDelegationService : IDocumentDelegationService
 {
     private readonly IDelegationRepository _delegations;
-    private readonly IDbExceptionClassifier _dbErrors;
     private readonly IDocumentRepository _documents;
-    private readonly IUserRepository _users;
-    private readonly IRepository<DocumentRegistrationDate> _registrationDates;
-    private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -27,32 +23,20 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     private readonly IHeadAlertOutbox _alertOutbox;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
-    private readonly IRepository<ExecutionCircuit> _circuits;
-    private readonly IDocumentNumberRegistry? _numberRegistry;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
-        IDbExceptionClassifier dbErrors,
         IDocumentRepository documents,
-        IUserRepository users,
-        IRepository<DocumentRegistrationDate> registrationDates,
-        IRepository<DocumentOccurrence> occurrences,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
         IHeadAlertService alerts,
         IHeadAlertOutbox alertOutbox,
         TimeProvider clock,
-        TimeZoneInfo timeZone,
-        IRepository<ExecutionCircuit>? circuits = null,
-        IDocumentNumberRegistry? numberRegistry = null)
+        TimeZoneInfo timeZone)
     {
         _delegations = delegations;
-        _dbErrors = dbErrors;
         _documents = documents;
-        _users = users;
-        _registrationDates = registrationDates;
-        _occurrences = occurrences;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -60,7 +44,5 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         _alertOutbox = alertOutbox;
         _clock = clock;
         _timeZone = timeZone;
-        _circuits = circuits ?? new UnconfiguredCircuitRepository();
-        _numberRegistry = numberRegistry;
     }
 }
