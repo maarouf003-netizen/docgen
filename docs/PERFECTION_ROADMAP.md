@@ -897,6 +897,9 @@
   `TransferAllDocumentAppealsCommand` تملك الإسناد والنقل المفرد والجماعي، مع نقل
   `LoadForHeadActionAsync`/`ResolveTargetLawyerAsync`/`EnqueueAppealAssignedAsync`
   إلى `DocumentAppealRules` وإزالة الكود الميت.
+  **`P4-01ay`:** `DecideDocumentAppealCommand`/`StrikeDocumentAppealCommand` يملكان
+  إغلاق الاستئناف (الحسم/الشطب، تنبيه صاحب الملف، والتدقيق)، مع
+  `DocumentAppealRules.EnqueueAppealFinalAsync` وحذف `Registration.cs` بعد إفراغه.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -929,7 +932,8 @@
   `docs/audit/156-p4-01au-delegation-write-commands-20261124.md` و
   `docs/audit/157-p4-01av-appeal-write-commands-20261124.md` و
   `docs/audit/158-p4-01aw-appeal-registration-20261124.md` و
-  `docs/audit/159-p4-01ax-appeal-assignment-20261124.md`.
+  `docs/audit/159-p4-01ax-appeal-assignment-20261124.md` و
+  `docs/audit/160-p4-01ay-appeal-decision-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

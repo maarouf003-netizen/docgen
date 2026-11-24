@@ -116,4 +116,38 @@ internal static class DocumentAppealRules
             occurredAt,
             ct);
     }
+
+    /// <summary>
+    /// تنبيه صاحب الملف الأساس بنتيجة الحسم/الشطب — منقول حرفيًا من
+    /// `DocumentAppealService.Alerts.cs` (بلا إشعار ذاتي عندما المتابع هو صاحب الملف).
+    /// </summary>
+    internal static Task EnqueueAppealFinalAsync(
+        DocumentAppeal appeal, bool decided, int actorUserId, DateTime occurredAt,
+        int currentYear, IHeadAlertOutbox alertOutbox, CancellationToken ct)
+    {
+        var source = appeal.Document;
+        if (source.BranchId is null || source.CreatedById == appeal.AssignedLawyerId)
+            return Task.CompletedTask; // لا إشعار ذاتيًا عندما المتابع هو نفسه محامي الملف الأساس.
+
+        var outcomePart = decided && appeal.Outcome is not null
+            ? $" — النتيجة: {AppealOutcomeCatalog.ToLabel(appeal.Outcome)}"
+            : string.Empty;
+
+        return alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealFinalToBaseLawyer,
+                Message: HeadAlertMessages.AppealFinalToBaseLawyer(new(
+                    DocumentAppealService.DocumentTitle(source),
+                    DocumentAppealService.AppealDocumentNumberText(source, currentYear),
+                    decided ? "محسومًا" : "مشطوبًا",
+                    outcomePart)),
+                Audience: HeadAlertAudience.DocumentCreator,
+                BranchId: source.BranchId.Value,
+                CreatedById: actorUserId,
+                DocumentId: source.Id,
+                AppealId: appeal.Id),
+            supersedePlan: null,
+            occurredAt,
+            ct);
+    }
 }

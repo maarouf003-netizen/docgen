@@ -28,12 +28,6 @@ public interface IDocumentAppealService
     /// <summary>كيان الاستئناف بروابطه (للتحقق من صلاحية العرض في المتحكم).</summary>
     Task<DocGenerator.Domain.Entities.DocumentAppeal?> GetEntityAsync(int appealId, CancellationToken ct = default);
 
-    /// <summary>حسم الاستئناف برقم قرار الحسم وتاريخه ومنطوقه ونتيجته — المحامي المتابع.</summary>
-    Task<AppealDto?> DecideAsync(int appealId, DecideAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>شطب الاستئناف بتاريخ الشطب ورقم قرار الشطب — المحامي المتابع.</summary>
-    Task<AppealDto?> StrikeAsync(int appealId, StrikeAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>عدد استئنافات محامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
     Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default);
 

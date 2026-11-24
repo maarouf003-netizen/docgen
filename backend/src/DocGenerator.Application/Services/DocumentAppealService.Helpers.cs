@@ -36,7 +36,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         return normalized;
     }
 
-    private static string RequireText(string? value, string fieldName, int maxLength = 2000)
+    internal static string RequireText(string? value, string fieldName, int maxLength = 2000)
     {
         var normalized = Bounded(value, maxLength, fieldName)
             ?? throw new ArgumentException($"{fieldName} مطلوب");

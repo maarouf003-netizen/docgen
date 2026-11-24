@@ -92,4 +92,28 @@ public static class AppealWriteHandlerFactory
             audit ?? new FakeAuditLogger(),
             Array.Empty<IPipelineBehavior<TransferAllDocumentAppealsCommand, int>>());
     }
+
+    public static DecideDocumentAppealCommandHandler Decide(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        return new DecideDocumentAppealCommandHandler(
+            new AppealRepository(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            uow, tx, audit ?? new FakeAuditLogger(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<DecideDocumentAppealCommand, AppealDto?>>());
+    }
+
+    public static StrikeDocumentAppealCommandHandler Strike(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        return new StrikeDocumentAppealCommandHandler(
+            new AppealRepository(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            uow, tx, audit ?? new FakeAuditLogger(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<StrikeDocumentAppealCommand, AppealDto?>>());
+    }
 }
