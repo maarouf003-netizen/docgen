@@ -92,9 +92,6 @@ public interface IPublicEntityService
     /// <summary>معاينة موحدة لأي عملية فرع (تعديل تسمية/دمج/إلغاء/توحيد) قبل الاعتماد — بلا كتابة.</summary>
     Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
-    /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
-
-    /// <summary>إلغاء فرع: بلا هدف لصفر روابط، أو دمج ضمني مع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
     Task<UnifyBranchesResponse> UnifyBranchesAsync(int groupId, UnifyBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 

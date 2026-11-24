@@ -59,7 +59,6 @@ public sealed partial class ReviewLetterService : IReviewLetterService, IReviewL
     private readonly IAppealRepository _appeals;
     private readonly IDelegationRepository _delegations;
     private readonly IHeadAlertOutbox _alertOutbox;
-    private readonly IDbExceptionClassifier _dbErrors;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -74,7 +73,6 @@ public sealed partial class ReviewLetterService : IReviewLetterService, IReviewL
         IAppealRepository appeals,
         IDelegationRepository delegations,
         IHeadAlertOutbox alertOutbox,
-        IDbExceptionClassifier dbErrors,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -94,7 +92,6 @@ public sealed partial class ReviewLetterService : IReviewLetterService, IReviewL
         _appeals = appeals;
         _delegations = delegations;
         _alertOutbox = alertOutbox;
-        _dbErrors = dbErrors;
         _uow = uow;
         _tx = tx;
         _audit = audit;
