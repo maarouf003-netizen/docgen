@@ -204,6 +204,24 @@ internal static class DocumentDelegationRules
         return caller;
     }
 
+    internal static async Task ApplyRegistrationDateAsync(
+        Document doc, DateTime parsed, IRepository<DocumentRegistrationDate> registrationDates, CancellationToken token)
+    {
+        var dateText = parsed.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        if (doc.RegistrationDate is null)
+            await registrationDates.AddAsync(new DocumentRegistrationDate
+            {
+                DocumentId = doc.Id,
+                Date = dateText,
+                DateParsed = parsed,
+            }, token);
+        else
+        {
+            doc.RegistrationDate.Date = dateText;
+            doc.RegistrationDate.DateParsed = parsed;
+        }
+    }
+
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

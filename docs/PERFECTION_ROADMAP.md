@@ -963,6 +963,12 @@
   الاعتماد، المحامي المختص بفرع الدائرة، إنشاء الملف المناب ونسخ الأطراف/السند،
   تنبيه الإسناد، الوثيقة، والتدقيق) مع ترجمة سباق `SourceDelegationId` إلى 409؛
   وحُذف `DocumentDelegationService.Approval.cs` بعد إفراغه وحقل `_branches` الميت.
+  **`P4-01bz`:** `RegisterDocumentDelegationCommand` يملك تسجيل الإنابة أصولًا
+  (فحص المنيب، الرقم/السنة/الدائرة، التفرّد، لقطة القيد، استهداف رئيس الإتمام،
+  التنبيه، والتدقيق) مع ترجمة سباق الرقم إلى 409.
+  **`P4-01ca`:** `CompleteDocumentDelegationCommand` يملك إتمام الإنابة (بدلات البيع،
+  تحويل المنيب إلى «منفذ جبريا/جزئيا»، الملف المناب «منفذ إنابة»، الوقعة، التنبيه،
+  والتدقيق)؛ وحُذف `DocumentDelegationService.Lifecycle.cs` بعد إفراغه.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -1031,10 +1037,12 @@
   `docs/audit/190-p4-01bx-delegation-approval-20261125.md` و
   `docs/audit/191-p4-01bx-followup-review-20261125.md` و
   `docs/audit/192-p4-01by-assign-delegation-20261125.md` و
-  `docs/audit/193-p4-01by-followup-review-20261125.md`.
+  `docs/audit/193-p4-01by-followup-review-20261125.md` و
+  `docs/audit/194-p4-01bz-register-delegation-20261125.md` و
+  `docs/audit/195-p4-01bz-complete-delegation-20261125.md` و
+  `docs/audit/196-p4-01bz-ca-followup-review-20261125.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (دورة حياة الإنابة `Register`/`Complete`، وملكية `CreateDocumentCommand`،
-  وبقايا كتابات الجهات العامة).
+  (ملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

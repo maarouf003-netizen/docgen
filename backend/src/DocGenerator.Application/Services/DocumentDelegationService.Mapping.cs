@@ -13,7 +13,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// <summary>التسمية المعروضة للملف المناب في إشعار الإتمام: «ملف الرقم/السنة» عبر قاعدة
     /// DisplayFileNumber نفسها (رقم أساس سنة التدوير الحالية إن وُجد، وإلا رقم ملفه الأصلي)،
     /// وإلا رقمه الداخلي.</summary>
-    private static string TargetFileLabel(Document? target, int currentYear)
+    internal static string TargetFileLabel(Document? target, int currentYear)
     {
         if (target is null) return "الملف المناب";
         var number = TargetFileNumber(target, currentYear);
@@ -102,7 +102,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
     /// <summary>الدائرة المنابة المعروضة: دائرة المناب الحيّة عند وجوده (حقيقته المسجَّلة
     /// والقابلة للتعديل)، وإلا نيّة التسطير المحفوظة على السجل (قبل الاعتماد).</summary>
-    private static string? TargetCourt(Document? target, string? recorded) =>
+    internal static string? TargetCourt(Document? target, string? recorded) =>
         Normalize(target?.Court) ?? Normalize(recorded);
 
     /// <summary>

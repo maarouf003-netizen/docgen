@@ -31,6 +31,8 @@ public class DelegationsController : ControllerBase
     private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
     private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
     private readonly ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> _assignDelegation;
+    private readonly ICommandHandler<RegisterDocumentDelegationCommand, DelegationDto?> _registerDelegation;
+    private readonly ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> _completeDelegation;
 
     public DelegationsController(
         IDocumentDelegationService delegations,
@@ -42,7 +44,9 @@ public class DelegationsController : ControllerBase
         ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> redirectDelegation,
         ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> recallRedirect,
         ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> rejectDelegation,
-        ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> assignDelegation)
+        ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> assignDelegation,
+        ICommandHandler<RegisterDocumentDelegationCommand, DelegationDto?> registerDelegation,
+        ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> completeDelegation)
     {
         _delegations = delegations;
         _documents = documents;
@@ -54,6 +58,8 @@ public class DelegationsController : ControllerBase
         _recallRedirect = recallRedirect;
         _rejectDelegation = rejectDelegation;
         _assignDelegation = assignDelegation;
+        _registerDelegation = registerDelegation;
+        _completeDelegation = completeDelegation;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -321,7 +327,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var registered = await _delegations.RegisterAsync(id, request, User.GetUserId(), ActorName, ct);
+        var registered = await _registerDelegation.HandleAsync(
+            new RegisterDocumentDelegationCommand(id, request, User.GetUserId(), ActorName), ct);
         return registered is null ? NotFound() : Ok(registered);
     }
 
@@ -335,7 +342,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var completed = await _delegations.CompleteAsync(id, request, User.GetUserId(), ActorName, ct);
+        var completed = await _completeDelegation.HandleAsync(
+            new CompleteDocumentDelegationCommand(id, request, User.GetUserId(), ActorName), ct);
         return completed is null ? NotFound() : Ok(completed);
     }
 }
