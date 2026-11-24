@@ -134,4 +134,22 @@ public static class AppealWriteHandlerFactory
         => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
             audit ?? new FakeAuditLogger(),
             Array.Empty<IPipelineBehavior<DeleteAppealActionCommand, bool>>());
+
+    public static SetAppealReminderCommandHandler SetReminder(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<SetAppealReminderCommand, AppealActionDto>>());
+
+    public static ClearAppealReminderCommandHandler ClearReminder(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<ClearAppealReminderCommand, bool>>());
+
+    public static RescheduleAppealReminderCommandHandler Reschedule(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<RescheduleAppealReminderCommand, AppealActionDto>>());
 }

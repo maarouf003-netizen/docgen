@@ -49,11 +49,6 @@ public interface IDocumentAppealService
     // ── الإجراءات والملاحظات المستقلة للاستئناف ────────────────────────────
 
     Task<List<AppealActionDto>> GetActionsAsync(int appealId, CancellationToken ct = default);
-    Task<bool> ClearReminderAsync(int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default);
-    /// <summary>إنشاء/تعديل تذكير إجراء استئناف قائم (مدة/لون) مستقلاً عن تعديل الإجراء؛ الفارغان = إلغاء.</summary>
-    Task<AppealActionDto> SetReminderAsync(int appealId, int actionId, SetAppealReminderRequest request, int userId, string? actorName, CancellationToken ct = default);
-    /// <summary>نقل تذكير إجراء استئناف إلى يوم استحقاق جديد — يكتب `ReminderBaseDate` وحده، ولا يمسّ `ActionDate`.</summary>
-    Task<AppealActionDto> RescheduleAppealReminderAsync(int appealId, int actionId, string? newDueDate, int userId, string? actorName, CancellationToken ct = default);
 
     /// <summary>تذكيرات إجراءات الاستئنافات التي يتابعها المحامي (بطاقة التذكيرات).</summary>
     Task<List<AppealReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default);
