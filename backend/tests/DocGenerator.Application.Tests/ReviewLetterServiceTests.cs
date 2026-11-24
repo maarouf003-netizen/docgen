@@ -107,7 +107,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         return new ReviewLetterService(
             letters, documents, branches, appeals, delegations,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
-            new DbExceptionClassifier(), uow, _tx, _audit,
+            uow, _tx, _audit,
             TestClock.Provider, TestClock.TimeZone,
             users,
             new Repository<Section>(_db),

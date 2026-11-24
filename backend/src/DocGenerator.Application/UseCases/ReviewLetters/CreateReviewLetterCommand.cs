@@ -19,6 +19,8 @@ public sealed record CreateReviewLetterCommand(
 internal sealed class CreateReviewLetterCommandHandler
     : CommandHandlerBase<CreateReviewLetterCommand, ReviewLetterDto>
 {
+    private const int MaxNumberGenerationAttempts = 20;
+
     private readonly IReviewLetterCreateWriteRules _rules;
     private readonly IBranchRepository _branches;
     private readonly IDocumentRepository _documents;
@@ -129,7 +131,7 @@ internal sealed class CreateReviewLetterCommandHandler
         // بعد فشل سباق تُكرّر الإدراج الوحيد المعلّق لا غير، والتدقيق لا يُسجَّل
         // إلا داخل المحاولة الناجحة (مرآة نمط المراسلات).
         var candidate = await _rules.GenerateUniqueNumberAsync(branch.Code, now, ct);
-        for (var attempt = 0; attempt < 20; attempt++)
+        for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
             letter.LetterNumber = candidate;
             letter.Messages.Single(m => m.Kind == ReviewLetterMessage.KindLetter).MessageNumber = candidate;
@@ -147,7 +149,7 @@ internal sealed class CreateReviewLetterCommandHandler
             }
             catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
             {
-                if (attempt + 1 >= 20)
+                if (attempt + 1 >= MaxNumberGenerationAttempts)
                     throw new DocumentConflictException("تعذر توليد رقم فريد لكتاب المطالعة، حاول مجدداً", ex);
                 candidate = await _rules.GenerateUniqueNumberAsync(branch.Code, now, ct);
             }
