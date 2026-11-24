@@ -24,17 +24,23 @@ public class AppealsController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _deleteAppeal;
+    private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _createAppeal;
+    private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _updateAppeal;
 
     public AppealsController(
         IDocumentAppealService appeals,
         IDocumentService documents,
         IUserCapabilities capabilities,
-        ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal)
+        ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal,
+        ICommandHandler<CreateDocumentAppealCommand, AppealDto> createAppeal,
+        ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> updateAppeal)
     {
         _appeals = appeals;
         _documents = documents;
         _capabilities = capabilities;
         _deleteAppeal = deleteAppeal;
+        _createAppeal = createAppeal;
+        _updateAppeal = updateAppeal;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -137,7 +143,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var created = await _appeals.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
+        var created = await _createAppeal.HandleAsync(
+            new CreateDocumentAppealCommand(documentId, request, User.GetUserId(), ActorName), ct);
         return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
     }
 
@@ -193,7 +200,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var updated = await _appeals.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        var updated = await _updateAppeal.HandleAsync(
+            new UpdateDocumentAppealCommand(id, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 

@@ -11,10 +11,15 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentAppealService : IDocumentAppealService
 {
     private string AppealDocumentNumber(Document source) =>
-        EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone)) ?? "—";
+        AppealDocumentNumberText(source, ServerClock.CurrentYear(_clock, _timeZone));
+
+    /// <summary>رقم الملف الفعّال للعرض في نص التنبيه (أو «—» عند غيابه) — مشترك بين
+    /// مسار التنبيه داخل الخدمة ومعالج التسطير.</summary>
+    internal static string AppealDocumentNumberText(Document source, int currentYear) =>
+        EffectiveFileIdentity.Number(source, currentYear) ?? "—";
 
     /// <summary>يجهّز اسم الدائرة للقالب الذي يضيف «دائرة تنفيذ » قبل الحقل.</summary>
-    private static string AppealCourtBare(string? court)
+    internal static string AppealCourtBare(string? court)
     {
         var value = Normalize(court);
         if (value is null)
@@ -31,7 +36,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
     }
 
     /// <summary>اسم عرض للملف — مصدره الموحّد `DocumentDisplayName`.</summary>
-    private static string DocumentTitle(Document doc) => DocumentDisplayName.Build(doc);
+    internal static string DocumentTitle(Document doc) => DocumentDisplayName.Build(doc);
 
     /// <summary>عنوان موجز للاستئناف في التذكيرات.</summary>
     private static string AppealTitleOf(DocumentAppeal appeal)
@@ -47,7 +52,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         action.CreatedBy?.FullName,
         action.CreatedAt);
 
-    private static AppealDto ToDto(DocumentAppeal a, int asOfYear)
+    internal static AppealDto ToDto(DocumentAppeal a, int asOfYear)
     {
         var d = a.Document;
         var currentYear = asOfYear;

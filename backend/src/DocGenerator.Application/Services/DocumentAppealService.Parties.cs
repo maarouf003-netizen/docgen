@@ -12,7 +12,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
 {
     // ── بناء لقطات الأطراف ────────────────────────────────────────────────
 
-    private static string ParseDirection(string? value)
+    internal static string ParseDirection(string? value)
     {
         var direction = value?.Trim() ?? string.Empty;
         if (!AppealDirectionCatalog.ValidDirections.Contains(direction))
@@ -95,7 +95,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         return parties;
     }
 
-    private static (string AppellantsJson, string AppelleesJson) BuildSnapshots(
+    internal static (string AppellantsJson, string AppelleesJson) BuildSnapshots(
         Document doc, string direction, List<AppealPartySelectionDto>? selections)
     {
         var options = BuildOptions(doc, direction);

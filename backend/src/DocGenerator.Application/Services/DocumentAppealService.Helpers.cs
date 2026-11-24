@@ -12,15 +12,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
 {
     // ── أدوات التحقق ──────────────────────────────────────────────────────
 
-    /// <summary>شروط الاستئناف على الملف: مقيد (ليس تحت الرفع). الشطب لا يمنع الاستئناف.</summary>
-    private static void ValidateSourceForAppeal(Document source)
-    {
-        if (source.NeedsRegistration)
-            throw new ArgumentException("لا يمكن تسطير استئناف على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
-        if (source.IsDraft)
-            throw new ArgumentException("لا يمكن الاستئناف على ملف تحت الرفع");
-    }
-
     private static void EnsurePendingByCreator(DocumentAppeal appeal, int userId)
         => DocumentAppealRules.EnsurePendingByCreator(appeal, userId);
 
@@ -32,12 +23,12 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
 
     // ── أدوات مساعدة ──────────────────────────────────────────────────────
 
-    private static string? Normalize(string? value) =>
+    internal static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>تطبيع نص اختياري مع رفض تجاوز الحد الأقصى برسالة عربية واضحة
     /// (بدل استثناء قاعدة البيانات الخام عند Postgres).</summary>
-    private static string? Bounded(string? value, int maxLength, string fieldName)
+    internal static string? Bounded(string? value, int maxLength, string fieldName)
     {
         var normalized = Normalize(value);
         if (normalized is not null && normalized.Length > maxLength)

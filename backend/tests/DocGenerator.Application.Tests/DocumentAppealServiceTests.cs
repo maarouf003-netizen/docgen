@@ -21,6 +21,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly HeadAlertOutbox _outbox;
     private readonly FakeAuditLogger _audit = new();
     private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _appealDelete;
+    private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _appealCreate;
+    private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _appealUpdate;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -70,6 +72,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         _appealDelete = new DeleteDocumentAppealCommandHandler(
             new AppealRepository(_db), _alertService, new UnitOfWork(_db), _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteDocumentAppealCommand, bool>>());
+        _appealCreate = new CreateDocumentAppealCommandHandler(
+            new DocumentRepository(_db), new AppealRepository(_db), new UserRepository(_db),
+            _outbox, new UnitOfWork(_db), _tx, _audit, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<CreateDocumentAppealCommand, AppealDto>>());
+        _appealUpdate = new UpdateDocumentAppealCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<UpdateDocumentAppealCommand, AppealDto?>>());
     }
 
 
@@ -165,7 +175,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var entities = await _db.ApplicantPublicEntities
             .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
 
-        var dto = await _service.CreateAsync(doc.Id,
+        var dto = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -185,6 +195,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await FlushAlertsAsync();
         var headAlerts = (await ReceivedAlertsAsync(_head1)).Items;
         Assert.Contains(headAlerts, a => a.TargetType == "head" && a.MessagePreview.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"تسطير الاستئناف (مستأنِفين) على الملف (رقم {doc.Id})");
     }
 
     [PostgresFact]
@@ -195,7 +208,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
 
         // مسار «مستأنِفين»: قيم الإيداع المرسلة تُصفَّر (R1).
-        var appellants = await _service.CreateAsync(doc.Id,
+        var appellants = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) })
             with
@@ -205,7 +218,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Null(appellants.DepositBookDate);
 
         // مسار «مستأنف علينا»: القيم تُحفظ كما هي.
-        var againstUs = await _service.CreateAsync(doc.Id,
+        var againstUs = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("borrower", doc.Id) })
             with
@@ -221,7 +234,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(doc.Id,
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer2.Id, "lawyer2"));
@@ -233,7 +246,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync(isDraft: true);
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(doc.Id,
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1"));
@@ -245,7 +258,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(doc.Id, Request(AppealDirectionCatalog.Appellants, null), _lawyer1.Id, "lawyer1"));
+            _appealCreate.CreateAsync(doc.Id, Request(AppealDirectionCatalog.Appellants, null), _lawyer1.Id, "lawyer1"));
     }
     [PostgresFact]
     public async Task Create_AgainstUsDirection_SelectsFromExecutedParties()
@@ -254,7 +267,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var persons = await _db.ExecutedNaturalPersons
             .Where(p => p.DocumentId == doc.Id).OrderBy(p => p.Id).ToListAsync();
 
-        var dto = await _service.CreateAsync(doc.Id,
+        var dto = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("executed-natural", persons[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -268,7 +281,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Create_AgainstUs_OnApplicantFile_IncludesPublicEntityInAppellees()
     {
         var doc = await CreateApplicantDocAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("borrower", doc.Id) }),
             _lawyer1.Id, "lawyer1");
@@ -282,7 +295,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Create_WithForeignPartySelection_Throws()
     {
         var doc = await CreateApplicantDocAsync();
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(doc.Id,
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", 99999) }),
             _lawyer1.Id, "lawyer1"));
@@ -295,12 +308,15 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
         var selections = new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) };
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _appealUpdate.UpdateAsync(created.Id,
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
         Assert.NotNull(updated);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"عدّل الاستئناف (رقم {created.Id}) على الملف (رقم {doc.Id})");
 
         Assert.True(await _appealDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
         Assert.Null(await _service.GetAsync(created.Id));
@@ -315,12 +331,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
         var selections = new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) };
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(created.Id, Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1"));
+            _appealUpdate.UpdateAsync(created.Id, Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
@@ -328,7 +344,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -342,7 +358,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -367,7 +383,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -399,7 +415,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -419,7 +435,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -441,7 +457,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -465,7 +481,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -530,7 +546,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -567,7 +583,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -586,7 +602,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -618,7 +634,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -654,7 +670,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -681,7 +697,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -708,7 +724,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -729,7 +745,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(doc.Id,
+            _appealCreate.CreateAsync(doc.Id,
                 Request(AppealDirectionCatalog.Appellants,
                     new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
                 {
@@ -747,7 +763,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
             {
@@ -767,7 +783,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -790,7 +806,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -806,7 +822,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -833,7 +849,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -857,7 +873,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -888,7 +904,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -921,7 +937,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         // ← يحتاج تدويرًا، ويبقى الرقم الفعّال المعروض هو رقم السنة السابقة.
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -960,7 +976,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -986,7 +1002,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Contains("لم يبق منظورًا", exDecided.Message);
 
         // المشطوب: مرفوض أيضًا.
-        var second = await _service.CreateAsync(doc.Id,
+        var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1004,7 +1020,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         // Request() بلا AppealBaseNumber/AppealYear — المسند المنظور بلا أي رقم يحتاج تدويرًا (R3).
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1027,7 +1043,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1080,7 +1096,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var entity = await _db.ExecutedPublicEntities.SingleAsync(e => e.DocumentId == doc.Id);
 
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("executed-public", entity.Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1133,7 +1149,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1288,12 +1304,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
         // استئنافان: الأول أُسند إلى lawyer2، والثاني لم يُسند بعد.
-        var first = await _service.CreateAsync(doc.Id,
+        var first = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        var second = await _service.CreateAsync(doc.Id,
+        var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1320,12 +1336,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var first = await _service.CreateAsync(doc.Id,
+        var first = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        var second = await _service.CreateAsync(doc.Id,
+        var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1356,7 +1372,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         { AppealedDecisionText = new string('م', 2001) };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(doc.Id, request, _lawyer1.Id, "lawyer1"));
+            () => _appealCreate.CreateAsync(doc.Id, request, _lawyer1.Id, "lawyer1"));
         Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
     }
 
@@ -1365,11 +1381,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
-        var first = await _service.CreateAsync(doc.Id,
+        var first = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        var second = await _service.CreateAsync(doc.Id,
+        var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1397,7 +1413,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities
             .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
-        var first = await _service.CreateAsync(doc.Id,
+        var first = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1425,7 +1441,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var entities = await _db.ApplicantPublicEntities
             .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
 
-        var dto = await _service.CreateAsync(doc.Id,
+        var dto = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1455,7 +1471,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var entities = await _db.ApplicantPublicEntities
             .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
 
-        var dto = await _service.CreateAsync(doc.Id,
+        var dto = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
@@ -1529,7 +1545,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
         }
         var creator = creatorId ?? _lawyer1.Id;
-        var dto = await _service.CreateAsync(doc.Id,
+        var dto = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             creator, "lawyer");

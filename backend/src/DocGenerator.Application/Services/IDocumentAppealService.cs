@@ -14,12 +14,6 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public interface IDocumentAppealService
 {
-    /// <summary>تسطير استئناف جديد على ملف يملکه المحامي (ليس تحت الرفع).</summary>
-    Task<AppealDto> CreateAsync(int documentId, UpsertAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>تعديل استئناف قبل الإسناد — المنشئ فقط.</summary>
-    Task<AppealDto?> UpdateAsync(int appealId, UpsertAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>استئنافات ملف (بطاقة «الاستئنافات» في وقوعات الملف).</summary>
     Task<List<AppealDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 

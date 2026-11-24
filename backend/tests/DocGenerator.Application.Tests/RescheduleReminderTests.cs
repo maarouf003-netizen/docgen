@@ -356,7 +356,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
 
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await AppealWriteHandlerFactory.Create(_db).CreateAsync(doc.Id,
             new UpsertAppealRequest(
                 Direction: AppealDirectionCatalog.Appellants,
                 Appellants: new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) },

@@ -887,6 +887,10 @@
   **`P4-01au`:** `CreateDocumentDelegationCommand`/`UpdateDocumentDelegationCommand`
   يملكان أوركسترا الإنابة كاملة (الحرّاس، الاستهداف، الحجوزات، `Outbox`، التدقيق)،
   مع تصحيح خطأ حذف `SyncTargetsTransferredAsync` الذي كشفه البناء وإعادته حرفيًا.
+  **`P4-01av`:** `CreateDocumentAppealCommand`/`UpdateDocumentAppealCommand` يملكان
+  تسطير الاستئناف وتعديله (الحرّاس، اللقطات، الحقول، تنبيه المالك، التدقيق)، مع
+  `DocumentAppealRules.ValidateSourceForAppeal` و`AppealDocumentNumberText` المشتركتين
+  وإزالة `EnqueueAppealPendingAsync` الميتة.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -916,7 +920,8 @@
   `docs/audit/153-p4-01ar-delegation-delete-20261124.md` و
   `docs/audit/154-p4-01as-appeal-delete-20261124.md` و
   `docs/audit/155-p4-01at-delegation-rules-extraction-20261124.md` و
-  `docs/audit/156-p4-01au-delegation-write-commands-20261124.md`.
+  `docs/audit/156-p4-01au-delegation-write-commands-20261124.md` و
+  `docs/audit/157-p4-01av-appeal-write-commands-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
