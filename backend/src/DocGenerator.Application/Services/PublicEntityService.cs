@@ -133,4 +133,7 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
 
     Task<PublicEntityGroup?> IPublicEntityWriteRules.FindGroupByNormAsync(string norm, CancellationToken token)
         => FindGroupByNormAsync(norm, token);
+
+    ParentEditSuggestionDto IPublicEntityWriteRules.ToParentEditSuggestionDto(ParentEditSuggestion suggestion)
+        => ToParentEditSuggestionDto(suggestion);
 }

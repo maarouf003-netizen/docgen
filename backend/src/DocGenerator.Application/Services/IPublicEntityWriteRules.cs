@@ -31,4 +31,5 @@ internal interface IPublicEntityWriteRules
     void GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry);
     Task<List<ImportPreviewItemDto>> BuildImportCandidatesAsync(CancellationToken ct);
     Task<PublicEntityGroup?> FindGroupByNormAsync(string norm, CancellationToken token);
+    ParentEditSuggestionDto ToParentEditSuggestionDto(ParentEditSuggestion suggestion);
 }

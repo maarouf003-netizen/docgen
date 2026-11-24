@@ -26,6 +26,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
+    private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -95,6 +96,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _commitImport = new CommitPublicEntityImportCommandHandler(
             rules, entityRepository, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<CommitPublicEntityImportCommand, ImportCommitResultDto>>());
+        _withdrawSuggestion = new WithdrawParentEditSuggestionCommandHandler(
+            rules, new Repository<ParentEditSuggestion>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?>>());
     }
 
 
@@ -3799,12 +3803,12 @@ public class PublicEntityServiceTests : PostgresDbTest
         var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
         var sub = await SubHeadDamascusActorAsync();
         var own = await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest(Reason: "سبب"), sub);
-        var withdrawn = await _service.WithdrawParentEditSuggestionAsync(own.Id, sub);
+        var withdrawn = await _withdrawSuggestion.WithdrawParentEditSuggestionAsync(own.Id, sub);
         Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn!.Status);
 
         var headSuggestion = await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
+            _withdrawSuggestion.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
     }
 
     [PostgresFact]
@@ -3919,7 +3923,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("اسم مقترح", Reason: "سبب"), HeadDamascusActor());
 
-        var withdrawn = await _service.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor());
+        var withdrawn = await _withdrawSuggestion.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor());
 
         Assert.NotNull(withdrawn);
         Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn.Status);
@@ -3936,7 +3940,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
         var damSuggestion = await _service.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.WithdrawParentEditSuggestionAsync(damSuggestion.Id, HeadAleppoActor()));
+            _withdrawSuggestion.WithdrawParentEditSuggestionAsync(damSuggestion.Id, HeadAleppoActor()));
     }
 
     [PostgresFact]
@@ -3947,7 +3951,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _service.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor()));
+            _withdrawSuggestion.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor()));
     }
 
     // ── إصلاحات حوكمة الجهة الأم (PARENT_GOVERNANCE_FIX_PLAN.md) ──

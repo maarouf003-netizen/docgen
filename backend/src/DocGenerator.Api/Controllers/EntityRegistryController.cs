@@ -33,6 +33,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
+    private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -41,7 +42,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> updateEntity,
         ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> addAlias,
         ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview,
-        ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport)
+        ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport,
+        ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -50,6 +52,7 @@ public class EntityRegistryController : ControllerBase
         _addAlias = addAlias;
         _approveReview = approveReview;
         _commitImport = commitImport;
+        _withdrawSuggestion = withdrawSuggestion;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -508,7 +511,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.IsHeadOrSubHead))
             return Forbid();
-        var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
+        var dto = await _withdrawSuggestion.HandleAsync(
+            new WithdrawParentEditSuggestionCommand(suggestionId, Actor), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 }

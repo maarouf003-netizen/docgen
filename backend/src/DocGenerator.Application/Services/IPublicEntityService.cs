@@ -112,7 +112,4 @@ public interface IPublicEntityService
 
     /// <summary>قبول/رفض اقتراح تعديل الجهة الأم (المدير/المشرف فقط).</summary>
     Task<ParentEditSuggestionDto?> ReviewParentEditSuggestionAsync(int suggestionId, ReviewParentEditSuggestionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>سحب ذاتي لاقتراح معلّق (الرئيس المُنشئ نفسه فقط) — يبقى بلا مساس بالقيد.</summary>
-    Task<ParentEditSuggestionDto?> WithdrawParentEditSuggestionAsync(int suggestionId, EntityRegistryActor actor, CancellationToken ct = default);
 }

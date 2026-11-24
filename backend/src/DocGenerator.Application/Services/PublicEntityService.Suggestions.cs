@@ -181,35 +181,6 @@ public sealed partial class PublicEntityService
 
         return ToParentEditSuggestionDto(suggestion);
     }
-    /// <inheritdoc/>
-    public async Task<ParentEditSuggestionDto?> WithdrawParentEditSuggestionAsync(
-        int suggestionId,
-        EntityRegistryActor actor,
-        CancellationToken ct = default)
-    {
-        if (actor.Role is not (UserRole.Head or UserRole.SubHead))
-            throw new UnauthorizedAccessException("سحب اقتراح الجهة الأم متاح لمنشئه رئيس القسم أو الشعبة فقط");
-
-        var suggestion = await _suggestions.GetByIdAsync(suggestionId, ct);
-        if (suggestion is null)
-            return null;
-        if (suggestion.CreatedById != actor.UserId)
-            throw new UnauthorizedAccessException("لا يمكنك سحب اقتراح منشأ من رئيس آخر");
-        if (suggestion.Status != ParentEditSuggestionStatusCatalog.Pending)
-            throw new ArgumentException("الاقتراح لم يعد معلّقًا فلا يُسحب");
-
-        suggestion.Status = ParentEditSuggestionStatusCatalog.Withdrawn;
-
-        await _tx.RunAsync(async token =>
-        {
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actor.Name, "withdraw_parent_edit_suggestion",
-                details: $"سحب اقتراحه لتعديل الجهة الأم «{suggestion.Group?.CanonicalName ?? suggestion.Entry?.Group?.CanonicalName}»",
-                ct: token);
-        }, ct);
-
-        return ToParentEditSuggestionDto(suggestion);
-    }
     private static ParentEditSuggestionDto ToParentEditSuggestionDto(ParentEditSuggestion s)
     {
         var canonical = s.Entry?.Group?.CanonicalName ?? s.Group?.CanonicalName ?? string.Empty;
