@@ -198,7 +198,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
         var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         // رئيس القسم لا يملك اعتماد دائرة الشعبة.
         var headEx = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -222,7 +222,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         var subEx = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), sub.Id, _branch.Id, "sub"));
@@ -239,7 +239,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         // دائرة فرع آخر بنفس المحافظة: الاعتماد لمالك الدائرة والمحامي من فرعها.
         var circuitId = await AddCircuitAsync("دائرة اللاذقية", _otherBranch.Id, null, _otherHead.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         // رئيس فرع المنيب لا يملكها رغم أن الملف له.
         var sourceHeadEx = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -290,7 +290,7 @@ public class SubHeadDelegationTests : PostgresDbTest
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id, 9999), _head1.Id, _branch.Id, "head1"));
@@ -302,7 +302,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
         var sub = await AddSubHeadAsync("sub_lat", _otherBranch.Id, sectionId);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
 
@@ -336,7 +336,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
         await AddSubHeadAsync("sub_lat", _otherBranch.Id, sectionId);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
         await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
@@ -353,7 +353,7 @@ public class SubHeadDelegationTests : PostgresDbTest
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         // السبب إلزامي.
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -384,7 +384,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         // بطاقة الملف تُظهر السبب للمحامي، وتصحيحه يحرّرها للاعتماد.
         var card = await _service.ListForDocumentAsync(doc.Id);
         Assert.Equal("الدائرة غير مختصة مكانيًا", Assert.Single(card).RejectReason);
-        var updated = await _service.UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         Assert.Null(updated!.RejectReason);
         Assert.Contains(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
     }
@@ -394,7 +394,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         // تنبيه التسطير العابر للفروع يُنشأ في فرع الدائرة (لا المنيب) لمالكه.
         var circuitId = await AddCircuitAsync("دائرة اللاذقية", _otherBranch.Id, null, _otherHead.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(a => a.Recipients)
@@ -409,7 +409,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
         await AddSubHeadAsync("sub_lat", _otherBranch.Id, sectionId);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
         await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
@@ -429,12 +429,12 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
         await AddSubHeadAsync("sub_lat", _otherBranch.Id, sectionId);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
         await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص معدّل", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
@@ -451,10 +451,10 @@ public class SubHeadDelegationTests : PostgresDbTest
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         await _service.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة"), _head1.Id, "head1");
 
-        var updated = await _service.UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
 
         Assert.Null(updated!.RejectReason);
@@ -471,7 +471,7 @@ public class SubHeadDelegationTests : PostgresDbTest
     {
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         await _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب أول"), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -484,7 +484,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة اللاذقية", _otherBranch.Id);
         await AddSubHeadAsync("sub_lat", _otherBranch.Id, sectionId);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id,
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
 
@@ -500,9 +500,9 @@ public class SubHeadDelegationTests : PostgresDbTest
         // كل كتابة ترفع الرمز — حماية ثنائية الاتجاه للسباق.
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
-        var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         Assert.Equal(created.Version + 1, updated!.Version);
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
         Assert.Equal(updated.Version + 1, assigned!.Version);
@@ -517,8 +517,8 @@ public class SubHeadDelegationTests : PostgresDbTest
         var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
         var (docA, assetA) = await CreateSourceAsync();
         var (docB, assetB) = await CreateSourceAsync();
-        var appealA = await _service.CreateAsync(docA.Id, CircuitRequest(divisionCircuit, assetA), _lawyer1.Id, "lawyer1");
-        var appealB = await _service.CreateAsync(docB.Id, CircuitRequest(sectionCircuit, assetB), _lawyer1.Id, "lawyer1");
+        var appealA = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(docA.Id, CircuitRequest(divisionCircuit, assetA), _lawyer1.Id, "lawyer1");
+        var appealB = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(docB.Id, CircuitRequest(sectionCircuit, assetB), _lawyer1.Id, "lawyer1");
 
         var headPending = await _service.ListPendingForHeadAsync(_branch.Id);
         Assert.Contains(headPending, d => d.Id == appealA.Id);

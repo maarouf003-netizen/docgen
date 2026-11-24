@@ -153,7 +153,7 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
         var foreignId = CreateCircuit("دائرة اللاذقية الأولى", _branchB.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(doc.Id, DraftRequest(assetId, foreignId), _lawyer.Id, "المحامي"));
+            DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, DraftRequest(assetId, foreignId), _lawyer.Id, "المحامي"));
         Assert.Contains("محافظة", ex.Message);
     }
 
@@ -163,7 +163,7 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
         var (doc, assetId) = await CreateSourceAsync();
         var sameId = CreateCircuit("دائرة دمشق الأولى", _branchA.Id);
 
-        var dto = await _service.CreateAsync(doc.Id, DraftRequest(assetId, sameId), _lawyer.Id, "المحامي");
+        var dto = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, DraftRequest(assetId, sameId), _lawyer.Id, "المحامي");
 
         Assert.Equal("دائرة دمشق الأولى", dto.DelegatedCourt);
         Assert.Equal(sameId, _db.DocumentDelegations.Single(d => d.Id == dto.Id).DelegatedCircuitId);
@@ -179,7 +179,7 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
         var (doc, assetId) = await CreateSourceAsync();
         var foreignId = CreateCircuit("دائرة اللاذقية الأولى", _branchB.Id);
 
-        var dto = await _service.CreateAsync(doc.Id, DraftRequest(assetId, foreignId), _lawyer.Id, "المحامي");
+        var dto = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, DraftRequest(assetId, foreignId), _lawyer.Id, "المحامي");
 
         Assert.Equal(foreignId, _db.DocumentDelegations.Single(d => d.Id == dto.Id).DelegatedCircuitId);
     }

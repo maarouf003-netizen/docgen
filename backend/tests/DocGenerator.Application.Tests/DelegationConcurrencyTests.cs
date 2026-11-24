@@ -2,6 +2,7 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -140,7 +141,8 @@ public class DelegationConcurrencyTests : IAsyncLifetime
     {
         var (sourceId, assetIds, lawyerId) = await SeedAsync();
 
-        async Task<RaceOutcome> RunAsync(IDocumentDelegationService service, int assetId)
+        async Task<RaceOutcome> RunAsync(
+            ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> service, int assetId)
         {
             try
             {
@@ -159,8 +161,8 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             // ترجمة اصطدام الفهرس يبقى متتبَّعًا للكيان الفاشل — فلا يُعاد استعماله.
             await using var dbA = _pg.CreateContext();
             await using var dbB = _pg.CreateContext();
-            var serviceA = BuildService(dbA);
-            var serviceB = BuildService(dbB);
+            var serviceA = DelegationWriteHandlerFactory.Create(dbA);
+            var serviceB = DelegationWriteHandlerFactory.Create(dbB);
 
             var outcomes = await Task.WhenAll(
                 Task.Run(() => RunAsync(serviceA, assetId)),
@@ -202,7 +204,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
         await using (var seed = _pg.CreateContext())
         {
-            var service = BuildService(seed);
+            var service = DelegationWriteHandlerFactory.Create(seed);
             liveId = (await service.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race")).Id;
             executedId = (await service.CreateAsync(sourceId, Request(assetIds[1]), lawyerId, "race")).Id;
 
@@ -213,7 +215,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
         // جولة تسطير جديدة على أصل ثالث تُشغّل المواءمة داخل معاملتها.
         await using (var create = _pg.CreateContext())
-            await BuildService(create).CreateAsync(sourceId, Request(assetIds[2]), lawyerId, "race");
+            await DelegationWriteHandlerFactory.Create(create).CreateAsync(sourceId, Request(assetIds[2]), lawyerId, "race");
 
         await using var verify = _pg.CreateContext();
         var rows = await verify.DelegationAssetReservations.AsNoTracking()
@@ -350,7 +352,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         await db.SaveChangesAsync();
 
         var (delegations, _, _) = BuildServices(db);
-        var created = await delegations.CreateAsync(source.Id, Request(asset.Id), owner.Id, "owner");
+        var created = await DelegationWriteHandlerFactory.Create(db).CreateAsync(source.Id, Request(asset.Id), owner.Id, "owner");
         var assigned = await delegations.AssignAsync(
             created.Id, new AssignDelegationRequest(assignee.Id), head.Id, branch.Id, "head");
         await delegations.RegisterAsync(

@@ -10,12 +10,6 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public interface IDocumentDelegationService
 {
-    /// <summary>تسطير إنابة جديدة على ملف منيب (المحامي المالك للملف فقط).</summary>
-    Task<DelegationDto> CreateAsync(int sourceDocumentId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>تعديل إنابة معلّقة (قبل اعتماد رئيس القسم) — محامي الملف المنيب فقط.</summary>
-    Task<DelegationDto?> UpdateAsync(int delegationId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>إنابات ملف (المنيب: المصدر؛ أو المناب: إنابته) — بطاقة «تشعبات الملف».</summary>
     Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
