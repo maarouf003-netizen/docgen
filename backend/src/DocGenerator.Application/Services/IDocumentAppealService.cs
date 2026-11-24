@@ -49,9 +49,6 @@ public interface IDocumentAppealService
     // ── الإجراءات والملاحظات المستقلة للاستئناف ────────────────────────────
 
     Task<List<AppealActionDto>> GetActionsAsync(int appealId, CancellationToken ct = default);
-    Task<AppealActionDto> AddActionAsync(int appealId, AddAppealActionRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<AppealActionDto?> UpdateActionAsync(int appealId, int actionId, UpdateAppealActionRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<bool> DeleteActionAsync(int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default);
     Task<bool> ClearReminderAsync(int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default);
     /// <summary>إنشاء/تعديل تذكير إجراء استئناف قائم (مدة/لون) مستقلاً عن تعديل الإجراء؛ الفارغان = إلغاء.</summary>
     Task<AppealActionDto> SetReminderAsync(int appealId, int actionId, SetAppealReminderRequest request, int userId, string? actorName, CancellationToken ct = default);

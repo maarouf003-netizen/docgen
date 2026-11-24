@@ -39,7 +39,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
     private static string AppealTitleOf(DocumentAppeal appeal)
         => $"استئناف قرار رئيس التنفيذ — {AppealDirectionCatalog.ToLabel(appeal.Direction)}";
 
-    private static AppealActionDto ToActionDto(AppealAction action) => new(
+    internal static AppealActionDto ToActionDto(AppealAction action) => new(
         action.Id,
         action.Type,
         action.Text,

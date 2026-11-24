@@ -116,4 +116,22 @@ public static class AppealWriteHandlerFactory
             uow, tx, audit ?? new FakeAuditLogger(), TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<StrikeDocumentAppealCommand, AppealDto?>>());
     }
+
+    public static AddAppealActionCommandHandler AddAction(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<AddAppealActionCommand, AppealActionDto>>());
+
+    public static UpdateAppealActionCommandHandler UpdateAction(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<UpdateAppealActionCommand, AppealActionDto?>>());
+
+    public static DeleteAppealActionCommandHandler DeleteAction(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<DeleteAppealActionCommand, bool>>());
 }

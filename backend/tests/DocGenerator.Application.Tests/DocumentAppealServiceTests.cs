@@ -31,6 +31,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _appealStrike;
     private readonly ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> _appealForward;
     private readonly ICommandHandler<RecallAppealForwardCommand, AppealDto?> _appealRecall;
+    private readonly ICommandHandler<AddAppealActionCommand, AppealActionDto> _appealAddAction;
+    private readonly ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> _appealUpdateAction;
+    private readonly ICommandHandler<DeleteAppealActionCommand, bool> _appealDeleteAction;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -120,6 +123,15 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new UnitOfWork(_db), _tx, _audit, new DbExceptionClassifier(),
             TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<RecallAppealForwardCommand, AppealDto?>>());
+        _appealAddAction = new AddAppealActionCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<AddAppealActionCommand, AppealActionDto>>());
+        _appealUpdateAction = new UpdateAppealActionCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<UpdateAppealActionCommand, AppealActionDto?>>());
+        _appealDeleteAction = new DeleteAppealActionCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<DeleteAppealActionCommand, bool>>());
     }
 
 
@@ -1098,18 +1110,23 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var action = await _service.AddActionAsync(created.Id,
+        var action = await _appealAddAction.AddActionAsync(created.Id,
             new AddAppealActionRequest("action", "إيداع موجبات الاستئناف", "3/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
         Assert.True(action.Id > 0);
 
-        var updatedAction = await _service.UpdateActionAsync(created.Id, action.Id,
+        var updatedAction = await _appealUpdateAction.UpdateActionAsync(created.Id, action.Id,
             new UpdateAppealActionRequest("action", "نص معدّل", "4/8/2026"),
             _lawyer2.Id, "lawyer2");
         Assert.Equal("نص معدّل", updatedAction!.Text);
         Assert.Equal("4/8/2026", updatedAction!.ActionDate);
         // تعديل الإجراء لا يمسّ التذكير (يُدار من مساره المستقل).
         Assert.Equal("أحمر", updatedAction!.ReminderColor);
+        // تثبيت نصَّي تدقيق الإضافة والتعديل حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"أضاف إجراءً على الاستئناف (رقم {created.Id})");
+        Assert.Contains(_audit.Details,
+            d => d == $"عدّل إجراءً على الاستئناف (رقم {created.Id})");
 
         var reminded = await _service.SetReminderAsync(created.Id, action.Id,
             new SetAppealReminderRequest("شهر", "أصفر"), _lawyer2.Id, "lawyer2");
@@ -1126,7 +1143,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.True(await _service.ClearReminderAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
         Assert.DoesNotContain(await _service.GetRemindersAsync(_lawyer2.Id), r => r.ActionId == action.Id);
 
-        Assert.True(await _service.DeleteActionAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
+        Assert.True(await _appealDeleteAction.DeleteActionAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
         Assert.Empty(await _service.GetActionsAsync(created.Id));
     }
 
@@ -1150,7 +1167,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 new List<AppealPartySelectionDto> { new("executed-public", entity.Id) }),
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        var action = await _service.AddActionAsync(created.Id,
+        var action = await _appealAddAction.AddActionAsync(created.Id,
             new AddAppealActionRequest("action", "متابعة", "3/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -1167,7 +1184,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         // FR-009: نص الإجراء يُعرض كـ HTML فيُخزَّن معقّمًا خادميًا (القائمة البيضاء المركزية).
         var appealId = await CreateAppealWithAssigneeAsync();
 
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "<b>نص</b><script>alert(1)</script>", "3/8/2026", null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -1183,7 +1200,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         try
         {
-            var action = await _service.AddActionAsync(appealId,
+            var action = await _appealAddAction.AddActionAsync(appealId,
                 new AddAppealActionRequest("action", "<script>alert(1)</script>", "3/8/2026", null, null),
                 _lawyer2.Id, "lawyer2");
             Assert.DoesNotContain("<", action.Text);
@@ -1216,7 +1233,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appealId = await CreateAppealWithAssigneeAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddActionAsync(appealId,
+            _appealAddAction.AddActionAsync(appealId,
                 new AddAppealActionRequest("action", "إجراء بتذكير ميت", date, duration, color),
                 _lawyer2.Id, "lawyer2"));
     }
@@ -1225,7 +1242,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Actions_SetReminderWithInvalidDuration_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -1238,7 +1255,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Actions_SetReminder_InitializesBaseOnce_AndClearNullsFields()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء بلا تذكير", "10-11-2026", null, null),
             _lawyer2.Id, "lawyer2");
         Assert.Null((await _db.AppealActions.AsNoTracking().FirstAsync(a => a.Id == action.Id))!.ReminderBaseDate);
@@ -1270,7 +1287,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Actions_SetReminder_NonFollower_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -1283,7 +1300,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     public async Task Reminders_IncludeAppealActionWithExplicitBaseOnly()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "1/11/2026", null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -1305,16 +1322,16 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appealId = await CreateAppealWithAssigneeAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddActionAsync(appealId,
+            _appealAddAction.AddActionAsync(appealId,
                 new AddAppealActionRequest("xyz", "إجراء بنوع ميت", "3/8/2026", null, null),
                 _lawyer2.Id, "lawyer2"));
 
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", null, null),
             _lawyer2.Id, "lawyer2");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateActionAsync(appealId, action.Id,
+            _appealUpdateAction.UpdateActionAsync(appealId, action.Id,
                 new UpdateAppealActionRequest("xyz", "إجراء سليم", "3/8/2026"),
                 _lawyer2.Id, "lawyer2"));
     }
@@ -1326,21 +1343,21 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appealId = await CreateAppealWithAssigneeAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddActionAsync(appealId,
+            _appealAddAction.AddActionAsync(appealId,
                 new AddAppealActionRequest("action", "إجراء بلا تاريخ", null, null, null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("تاريخ الإجراء", ex.Message);
 
-        var note = await _service.AddActionAsync(appealId,
+        var note = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("note", "ملاحظة بلا تاريخ", null, null, null),
             _lawyer2.Id, "lawyer2");
         Assert.Null(note.ActionDate);
 
-        var action = await _service.AddActionAsync(appealId,
+        var action = await _appealAddAction.AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء مؤرخ", "5/8/2026", null, null),
             _lawyer2.Id, "lawyer2");
         var exUpdate = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateActionAsync(appealId, action.Id,
+            _appealUpdateAction.UpdateActionAsync(appealId, action.Id,
                 new UpdateAppealActionRequest("action", "إجراء مؤرخ", null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("تاريخ الإجراء", exUpdate.Message);
