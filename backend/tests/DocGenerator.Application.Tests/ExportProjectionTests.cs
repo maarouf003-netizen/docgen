@@ -26,7 +26,7 @@ public class ExportProjectionTests : PostgresDbTest
     private int _userId;
 
 
-    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Build()
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Build()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User

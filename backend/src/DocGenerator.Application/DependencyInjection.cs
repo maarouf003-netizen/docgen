@@ -88,6 +88,12 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SaveDocumentBaseNumbersCommand, bool>, SaveDocumentBaseNumbersCommandHandler>();
         services.AddScoped<ICommandHandler<CorrectDocumentBaseNumberCommand, bool>, CorrectDocumentBaseNumberCommandHandler>();
         services.AddScoped<ICommandHandler<UndoDocumentRotationCommand, bool>, UndoDocumentRotationCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateDocumentStatusCommand, bool>, UpdateDocumentStatusCommandHandler>();
+        services.AddScoped<ICommandHandler<RevertDocumentStatusCommand, bool>, RevertDocumentStatusCommandHandler>();
+        services.AddScoped<ICommandHandler<ReturnFromReferredToStartCommand, bool>, ReturnFromReferredToStartCommandHandler>();
+        services.AddScoped<ICommandHandler<ConsiderExecutedByDelegationCommand, bool>, ConsiderExecutedByDelegationCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateExecutedStatusCommand, bool>, UpdateExecutedStatusCommandHandler>();
+        services.AddScoped<ICommandHandler<RestoreStruckOffDocumentCommand, bool>, RestoreStruckOffDocumentCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

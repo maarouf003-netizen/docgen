@@ -24,7 +24,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
-    private readonly IDocumentStatusService _status;
+    private readonly DocumentStatusHandlers _statusCommands;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
     private readonly ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?> _updateAction;
@@ -62,7 +62,7 @@ public class DocumentServiceTests : PostgresDbTest
         _saveBaseNumbers = bundle.SaveBaseNumbers;
         _actions = bundle.Actions;
         _search = bundle.Search;
-        _status = bundle.Status;
+        _statusCommands = bundle.StatusCommands;
         _deleteAction = new DeleteExecutionActionCommandHandler(
             actions,
             documents,
@@ -483,7 +483,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchStruckOffList_ProjectsStruckOffCardFields()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var result = await _search.SearchStruckOffListAsync(null, 1, 20);
 
@@ -499,7 +499,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchExecutedList_ProjectsExecutedCardFields()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1");
 
         var result = await _search.SearchExecutedListAsync(null, 1, 20);
 
@@ -517,7 +517,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchReferredToStartList_ProjectsReferralCardFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var result = await _search.SearchReferredToStartListAsync(null, 1, 20);
 
@@ -1597,7 +1597,7 @@ public class DocumentServiceTests : PostgresDbTest
         var otherAssetId = (await _service.GetAsync(other.Id))!.Assets[0].Id;
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(first.Id, "منفذ جبريا",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(first.Id, "منفذ جبريا",
                 new Dictionary<string, string?>
                 {
                     ["execSubStatus"] = "منفذ جزئيا",
@@ -1642,7 +1642,7 @@ public class DocumentServiceTests : PostgresDbTest
         var salaryId = loaded.Assets[2].Id;
 
         // بيع العقار والمركبة مقبول (معرّفا أموال قابلة للمزاد).
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = "منفذ كاملا",
@@ -1653,7 +1653,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         // كفالة الرواتب لا تُقبل في «منفذ جبريا» لأنها ليست من الأموال القابلة للمزاد.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
                 new Dictionary<string, string?>
                 {
                     ["execSubStatus"] = "منفذ كاملا",
@@ -1688,7 +1688,7 @@ public class DocumentServiceTests : PostgresDbTest
         var loaded = await _service.GetAsync(doc.Id);
         var ids = string.Join(",", loaded!.Assets.Select(a => a.Id));
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = "منفذ كاملا",
@@ -1759,7 +1759,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
             new Dictionary<string, string?>
             {
                 ["baraetNumber"] = "77",
@@ -1782,7 +1782,7 @@ public class DocumentServiceTests : PostgresDbTest
         var created = await _service.GetAsync(doc.Id);
         var estateId = created!.Assets[0].Id;
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = "منفذ جزئيا",
@@ -1805,7 +1805,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
                 new Dictionary<string, string?> { ["collectedAmount"] = "abc" }, "lawyer1"));
     }
 
@@ -1816,7 +1816,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
             new Dictionary<string, string?>
             {
                 ["baraetNumber"] = "77",
@@ -1836,7 +1836,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
                 new Dictionary<string, string?> { ["collectedAmount"] = "-100" }, "lawyer1"));
     }
 
@@ -1846,7 +1846,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
                 new Dictionary<string, string?> { ["execSubStatus"] = "غير معروف" }, "lawyer1"));
     }
 
@@ -1856,7 +1856,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "تريث",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "تريث",
                 new Dictionary<string, string?> { ["tarithNumber"] = "5" }, "lawyer1"));
     }
 
@@ -1866,7 +1866,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
                 new Dictionary<string, string?> { ["baraetNumber"] = "77" }, "lawyer1"));
     }
 
@@ -1877,7 +1877,7 @@ public class DocumentServiceTests : PostgresDbTest
         var created = await _service.GetAsync(doc.Id);
         var estateId = created!.Assets[0].Id;
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = "منفذ كاملا",
@@ -1900,17 +1900,17 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "حالة-غير-صالحة", new Dictionary<string, string?>(), "lawyer1"));
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "حالة-غير-صالحة", new Dictionary<string, string?>(), "lawyer1"));
     }
 
     [PostgresFact]
     public async Task RevertStatus_ClearsFieldsAndRecordsOccurrence()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
             new Dictionary<string, string?> { ["baraetNumber"] = "77", ["baraetDate"] = "1/1/2024" }, "lawyer1");
 
-        await _status.RevertStatusAsync(doc.Id, new Dictionary<string, string?>
+        await _statusCommands.RevertStatus.RevertStatusAsync(doc.Id, new Dictionary<string, string?>
         {
             ["sayerNumber"] = "8",
             ["sayerDate"] = "2/2/2024",
@@ -1932,7 +1932,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
                 new Dictionary<string, string?> { ["execSubStatus"] = "منفذ كاملا" }, "lawyer1"));
     }
 
@@ -1944,7 +1944,7 @@ public class DocumentServiceTests : PostgresDbTest
         req.FileYear = "";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, "تريث",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "تريث",
             new Dictionary<string, string?> { ["tarithNumber"] = "5", ["tarithDate"] = "1/1/2024" }, "lawyer1"));
     }
 
@@ -1953,7 +1953,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, "مشطوب",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "مشطوب",
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1"));
 
         var updated = await _service.GetAsync(doc.Id);
@@ -2020,7 +2020,7 @@ public class DocumentServiceTests : PostgresDbTest
         req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
         await AddAppealSnapshotAsync(doc.Id, "مستأنف مشطوب فريد", "مستأنف عليه مشطوب");
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, "مشطوب",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "مشطوب",
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1"));
 
         foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف مشطوب فريد" })
@@ -2042,7 +2042,10 @@ public class DocumentServiceTests : PostgresDbTest
         applicantRow.DeceasedFamily = "الغائب";
         await _db.SaveChangesAsync();
         await AddAppealSnapshotAsync(doc.Id, "مستأنف منفذ مشطوب", "ضد مشطوب");
-        Assert.True(await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+        Assert.True(await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+        // تثبيت نص تدقيق انتقال «منفذ عليه» حرفيًا (P4-01bd).
+        Assert.Contains(_audit.Details,
+            d => d == "حالة وضع «الجهة العامة منفذ عليها»: مشطوب");
 
         foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ مشطوب" })
         {
@@ -2063,7 +2066,7 @@ public class DocumentServiceTests : PostgresDbTest
         applicantRow.DeceasedFamily = "الغائب";
         await _db.SaveChangesAsync();
         await AddAppealSnapshotAsync(doc.Id, "مستأنف منفذ فريد", "ضد منفذ");
-        Assert.True(await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
+        Assert.True(await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
 
         foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ فريد" })
         {
@@ -2082,7 +2085,7 @@ public class DocumentServiceTests : PostgresDbTest
         req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
         await AddAppealSnapshotAsync(doc.Id, "مستأنف تسوية فريد", "ضد تسوية");
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
             new Dictionary<string, string?> { ["baraetNumber"] = "77", ["baraetDate"] = "1/1/2024" }, "lawyer1"));
 
         foreach (var term in new[] { "أحمد خالد الخطيب", "غريب عن المقترض", "مستأنف تسوية فريد" })
@@ -2127,14 +2130,14 @@ public class DocumentServiceTests : PostgresDbTest
         // ثبات سلبي: القائمة بلا نص بحث تخفي المنفذة/المشطوبة/المحالة/المحذوفة
         // رغم توسيع الكتلة الموحدة (العقد القائم لا يُكسر).
         var struck = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        Assert.True(await _status.UpdateStatusAsync(struck.Id, "مشطوب",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(struck.Id, "مشطوب",
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1"));
 
         var executed = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
-        Assert.True(await _status.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
+        Assert.True(await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
 
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        Assert.True(await _status.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -2157,7 +2160,7 @@ public class DocumentServiceTests : PostgresDbTest
         req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
         await AddAppealSnapshotAsync(doc.Id, "مستأنف محال فريد", "ضد محال");
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف محال فريد" })
@@ -2177,7 +2180,7 @@ public class DocumentServiceTests : PostgresDbTest
         // منضبط كما في لقطة المحذوفة) تجده القائمة ولا تجده صفحة المحالة، والصفحة
         // ما زالت تجد الملف نفسه بفرع أصيل (الكفيل) — فالتضييق جراحي لا كسر.
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
         _db.ExecutedPublicEntities.Add(new ExecutedPublicEntity
         {
@@ -2198,13 +2201,13 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RevertStatus_FromDeferred_RequiresSayerFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, "تريث",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "تريث",
             new Dictionary<string, string?> { ["tarithNumber"] = "5", ["tarithDate"] = "1/1/2024" }, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.RevertStatusAsync(doc.Id, new Dictionary<string, string?>(), "lawyer1"));
+            _statusCommands.RevertStatus.RevertStatusAsync(doc.Id, new Dictionary<string, string?>(), "lawyer1"));
 
-        Assert.True(await _status.RevertStatusAsync(doc.Id, new Dictionary<string, string?>
+        Assert.True(await _statusCommands.RevertStatus.RevertStatusAsync(doc.Id, new Dictionary<string, string?>
         {
             ["sayerNumber"] = "8",
             ["sayerDate"] = "2/2/2024",
@@ -2212,6 +2215,8 @@ public class DocumentServiceTests : PostgresDbTest
             ["sayerRegDate"] = "3/3/2024",
         }, "lawyer1"));
 
+        // تثبيت نص تدقيق «التراجع» حرفيًا (P4-01bd).
+        Assert.Contains(_audit.Details, d => d == "تراجع عن الحالة وعاد الملف إلى المتداول");
         var updated = await _service.GetAsync(doc.Id);
         Assert.Equal(string.Empty, updated!.ExecStatus);
         Assert.Equal("8", updated.SayerNumber);
@@ -2222,7 +2227,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
             new Dictionary<string, string?>
             {
                 ["baraetNumber"] = "77",
@@ -2250,7 +2255,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, "منفذ جبريا",
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "منفذ جبريا",
                 new Dictionary<string, string?>
                 {
                     ["execSubStatus"] = "منفذ كاملا",
@@ -2263,7 +2268,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        await _status.UpdateStatusAsync(doc.Id, "تريث",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "تريث",
             new Dictionary<string, string?>
             {
                 ["tarithNumber"] = "5",
@@ -2286,7 +2291,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
@@ -2303,7 +2308,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             new Dictionary<string, string?>
             {
                 ["noFundsDemandNumber"] = "55",
@@ -2322,7 +2327,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             new Dictionary<string, string?>
             {
                 ["noFundsDemandNumber"] = "55",
@@ -2337,14 +2342,14 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateStatus_ReferredToStart_FromDeferred_ClearsOtherFamilies()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.Deferred,
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.Deferred,
             new Dictionary<string, string?>
             {
                 ["tarithNumber"] = "5",
                 ["tarithDate"] = "1/6/2026",
             }, "lawyer1");
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
@@ -2367,7 +2372,7 @@ public class DocumentServiceTests : PostgresDbTest
         _db.Documents.Update(persisted);
         await _db.SaveChangesAsync();
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
@@ -2383,7 +2388,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var created = await _service.GetAsync(doc.Id);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ExecutedForcibly,
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ExecutedForcibly,
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
@@ -2393,7 +2398,7 @@ public class DocumentServiceTests : PostgresDbTest
             }, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
         Assert.Equal("الإحالة إلى البداية من «منفذ جبريا» متاحة فقط للملف المنفذ جزئيًا", ex.Message);
     }
 
@@ -2403,12 +2408,12 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var exNumber = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
                 new Dictionary<string, string?> { ["noFundsDemandDate"] = "1/5/2026" }, "lawyer1"));
         Assert.Contains("رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها", exNumber.Message);
 
         var exDate = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
                 new Dictionary<string, string?> { ["noFundsDemandNumber"] = "55" }, "lawyer1"));
         Assert.Contains("تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها", exDate.Message);
     }
@@ -2419,7 +2424,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
                 new Dictionary<string, string?>
                 {
                     ["noFundsDemandNumber"] = "55",
@@ -2437,18 +2442,18 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
     }
 
     [PostgresFact]
     public async Task UpdateStatus_ReferredToStart_FromStruckOff_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+            _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
     }
 
     [PostgresFact]
@@ -2456,7 +2461,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        Assert.True(await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
@@ -2480,9 +2485,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ReturnFromReferredToStart_FromCirculatingSourceReturnsToCirculating()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        Assert.True(await _status.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+        Assert.True(await _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
 
         var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
         Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
@@ -2511,9 +2516,9 @@ public class DocumentServiceTests : PostgresDbTest
         persisted.SoldAssetIds = null;
         _db.Documents.Update(persisted);
         await _db.SaveChangesAsync();
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        Assert.True(await _status.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+        Assert.True(await _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest(), "lawyer1"));
 
         var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
         Assert.Equal(ExecutionStatusCatalog.ExecutedForcibly, loaded.ExecStatus);
@@ -2531,9 +2536,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ReturnFromReferredToStart_WithRenewal_RecordsBaseNumberAndTwoOccurrences()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        Assert.True(await _status.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+        Assert.True(await _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
         {
             RenewalFileNumber = "999",
             RenewalYear = 2026,
@@ -2567,10 +2572,10 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ReturnFromReferredToStart_InvalidRenewalYear_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+            _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
             {
                 RenewalFileNumber = "999",
                 RenewalYear = 1800,
@@ -2582,9 +2587,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task ReturnFromReferredToStart_StruckOffDate_AppliedOnCirculatingResultOnly()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        Assert.True(await _status.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+        Assert.True(await _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
         {
             StruckOffDate = "5/5/2026",
         }, "lawyer1"));
@@ -2602,9 +2607,9 @@ public class DocumentServiceTests : PostgresDbTest
         persisted.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
         _db.Documents.Update(persisted);
         await _db.SaveChangesAsync();
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        Assert.True(await _status.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest
+        Assert.True(await _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest
         {
             StruckOffDate = "5/5/2026",
         }, "lawyer1"));
@@ -2620,7 +2625,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+            _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
         Assert.Contains("لا يمكن العودة إلى السير بالملف من الحالة الحالية", ex.Message);
     }
 
@@ -2628,10 +2633,10 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RestoreStruckOff_ApplicantSide_ReinstatesWithNumberAndYear()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, "مشطوب",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "مشطوب",
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
 
-        Assert.True(await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest
+        Assert.True(await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest
         {
             RenewalFileNumber = "999",
             RenewalYear = 2024,
@@ -4447,7 +4452,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var updated = await _service.GetAsync(doc.Id);
@@ -4460,10 +4465,10 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RestoreStruckOff_KeepsStruckOffDateButClearsStatus()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         var struckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate;
 
-        var ok = await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest
+        var ok = await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest
         {
             RenewalFileNumber = "2026/55",
             RenewalFileType = "قضية تنفيذ",
@@ -4489,12 +4494,12 @@ public class DocumentServiceTests : PostgresDbTest
         // شطب ثم فكّ الشطب (يُبقي تاريخ الشطب السابق للعرض بعد الإعادة) ثم شطب جديد:
         // يجب أن يحمل الشطبُ الجديد تاريخَه الخاص وأن يُسجَّل وقعتا شطب في السجل الزمني.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         var firstStruckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate!.Value;
 
-        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         var reStruck = await _service.GetAsync(doc.Id);
         Assert.Equal(ExecutedStatusCatalog.StruckOff, reStruck!.ExecutedStatus);
         Assert.NotNull(reStruck.StruckOffDate);
@@ -4509,9 +4514,9 @@ public class DocumentServiceTests : PostgresDbTest
         // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط: أي سنة
         // مخالفة تُرفض دفاعيًا بدل تجاهلها بصمت (لا اشتقاق من تاريخ التجديد).
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _status.RestoreStruckOffAsync(doc.Id,
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id,
             new RenewalRequest { RenewalFileNumber = "2026/55", RenewalYear = TestClock.Today.Year - 1 }, "lawyer1"));
         Assert.Contains("سنة اليوم", ex.Message);
     }
@@ -4520,9 +4525,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RestoreStruckOff_ExecutedLike_WithoutRenewalYear_StoresCurrentYear()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ok = await _status.RestoreStruckOffAsync(doc.Id,
+        var ok = await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id,
             new RenewalRequest { RenewalFileNumber = "2026/55", RenewalDate = "15/3/2026" }, "lawyer1");
         Assert.True(ok);
 
@@ -4541,12 +4546,12 @@ public class DocumentServiceTests : PostgresDbTest
         var year = TestClock.Today.Year;
 
         // شطب ثم إعادة → سجل رقم أساس أول.
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
-        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
         // شطب مرة أخرى ثم إعادة ثانية بنفس السنة برقم مختلف → سجلان لنفس السنة.
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
-        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/60" }, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/60" }, "lawyer1");
 
         var rows = await _db.BaseNumbers.Where(b => b.DocumentId == doc.Id && b.Year == year).OrderBy(b => b.Id).ToListAsync();
         Assert.Equal(2, rows.Count);
@@ -4568,10 +4573,10 @@ public class DocumentServiceTests : PostgresDbTest
     {
         // نظام «طالبة تنفيذ»: سنة الإعادة المصرّحة يجب أن تطابق سنة تاريخ التجديد إذا أُرسلا معًا.
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(doc.Id, "مشطوب",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, "مشطوب",
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _status.RestoreStruckOffAsync(doc.Id,
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id,
             new RenewalRequest { RenewalFileNumber = "999", RenewalYear = 2024, RenewalDate = "1/8/2025" }, "lawyer1"));
         Assert.Contains("سنة الإعادة لا تطابق", ex.Message);
     }
@@ -4583,9 +4588,9 @@ public class DocumentServiceTests : PostgresDbTest
         // التعديل بلا تاريخ صريح: يجب أن يُحسب تاريخُ الآن لا إعادةُ استخدام تاريخِ الشطب
         // الأول (كانت قاعدة المسار السابق تُعيد استخدامه خلافًا لمسار أمر الحالة).
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         var firstStruckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate!.Value;
-        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -4602,10 +4607,10 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RestoreStruckOff_WithoutRenewalFileNumber_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest(), "lawyer1"));
+            () => _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest(), "lawyer1"));
     }
 
     [PostgresFact]
@@ -4614,7 +4619,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
     }
 
     [PostgresFact]
@@ -4623,7 +4628,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, "حالة-غير-صالحة", "lawyer1"));
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, "حالة-غير-صالحة", "lawyer1"));
     }
 
     [PostgresFact]
@@ -4633,7 +4638,7 @@ public class DocumentServiceTests : PostgresDbTest
         // ولا تُمسّ المحفوظة سابقًا في سواها.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4655,7 +4660,7 @@ public class DocumentServiceTests : PostgresDbTest
         // المبلغ المدفوع حتى ثلاثة بعملاتها (منهج «كل مبلغ له عملة»): تُحفظ كل خانة بعملتها.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4683,7 +4688,7 @@ public class DocumentServiceTests : PostgresDbTest
         // الإعادة إلى «منفذ» بحقول فارغة تُبقي ما سبق تسجيله: عند تحديث خانة أولى فقط
         // لا تُمسّ الثانية والثالثة المحفوظتان سابقًا.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4693,7 +4698,7 @@ public class DocumentServiceTests : PostgresDbTest
                 ExecutedPaidCurrency2 = "يورو",
             }, "lawyer1");
 
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4713,7 +4718,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         // الإعادة إلى «منفذ» بوصف وتاريخ تنفيذ فارغين تُبقي ما سبق تسجيله (مبدأ عدم المساس).
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4722,7 +4727,7 @@ public class DocumentServiceTests : PostgresDbTest
                 ExecutedExecutionDate = "1/6/2026",
             }, "lawyer1");
 
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4742,7 +4747,7 @@ public class DocumentServiceTests : PostgresDbTest
         // علامة «سبق تنفيذه»، ويبقى الوصف فارغًا (الصفة لا تحمله).
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4765,7 +4770,7 @@ public class DocumentServiceTests : PostgresDbTest
         // عند الدخول إلى «مشطوب» يُحدَّث تاريخ الشطب بتاريخه المُرسَل إن وُجد وإلا للآن.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.StruckOff,
@@ -4783,9 +4788,9 @@ public class DocumentServiceTests : PostgresDbTest
     {
         // العودة من «مشطوب» إلى متداول تستلزم تجديد الملف برقم ملف جديد لسنة الإعادة.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.None,
@@ -4809,10 +4814,10 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task UpdateExecutedStatus_FromStruckOffToCirculating_WithoutRenewalNumber_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
     }
 
@@ -4822,7 +4827,7 @@ public class DocumentServiceTests : PostgresDbTest
         // حالة «منفذ» في صفة «الجهة العامة منفذ عليها» نهائية: لا تُغيَّر إلى متداول ولا إلى مشطوب
         // (ويبقى الدخول مجددًا إلى «منفذ» ذاتها مسموحًا لتحديث حقول الحالة).
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4830,9 +4835,9 @@ public class DocumentServiceTests : PostgresDbTest
             }, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None, "lawyer1"));
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None, "lawyer1"));
     }
 
     [PostgresFact]
@@ -4840,7 +4845,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         // «عرض وايداع» المنفذ لا يُشطب؛ يمكن إرجاعه إلى متداول بكتاب الجهة العامة بالسير بالملف.
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4848,7 +4853,7 @@ public class DocumentServiceTests : PostgresDbTest
             }, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
     }
 
     [PostgresFact]
@@ -4857,15 +4862,15 @@ public class DocumentServiceTests : PostgresDbTest
         // «مشطوب → منفذ» مباشرة عبر النافذة ممنوع في العائلتين: يجب المرور بالتجديد
         // إلى «متداول» أولًا (المبدأ 5) — وإلا حُفظت «منفذ» بلا تجديد وبلا رقم أساس وبلا وقعة.
         var executed = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed,
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed,
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1"));
 
         var deposit = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.Executed,
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.Executed,
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1"));
     }
 
@@ -4875,7 +4880,7 @@ public class DocumentServiceTests : PostgresDbTest
         // الإرجاع من «منفذ» إلى «متداول» في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف
         // إلزامي (رقم وتاريخ الكتاب وورودهما)، ويُحفظ مع بقاء المبالغ المودعة.
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.Executed,
@@ -4885,11 +4890,11 @@ public class DocumentServiceTests : PostgresDbTest
 
         // دون كتاب السير: يرفض الإرجاع.
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+            () => _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
                 new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
 
         // مع كتاب السير: يُرجع مع بقاء المبلغ المودع وتاريخ الإيداع.
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
             new ExecutedStatusRequest
             {
                 Status = ExecutedStatusCatalog.None,
@@ -4935,7 +4940,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchStruckOff_ReturnsOnlyStruckOffExecutedFiles()
     {
         var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1); // منفذ عليه متداول
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);          // طالبة تنفيذ
 
@@ -5055,7 +5060,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var updated = await _service.GetAsync(doc.Id);
@@ -5066,9 +5071,9 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task RestoreStruckOff_OnDepositSideFile_Works()
     {
         var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ok = await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest
+        var ok = await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest
         {
             RenewalFileNumber = "2026/77",
         }, "lawyer1");
@@ -5081,7 +5086,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchStruckOff_IncludesStruckOffDepositFiles()
     {
         var struck = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1); // عرض وايداع متداول
 
         var result = await _search.SearchStruckOffAsync(null, 1, 20);
@@ -5094,7 +5099,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchAsync_ExcludesStruckOffDepositFiles()
     {
         var struck = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
 
@@ -5105,7 +5110,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchAsync_ExcludesStruckOffFiles()
     {
         var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
@@ -5119,11 +5124,11 @@ public class DocumentServiceTests : PostgresDbTest
         // «جميع المحالة» في صفحة «محال الى البداية»: من المتداول ومن «منفذ جبريا» المنفذ
         // جزئيًا الذي يُحال بجزئيته (ExecStatus=ReferredToStart ويُبقي ExecSubStatus خاصته).
         var fromCirculating = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(fromCirculating.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(fromCirculating.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var fromPartial = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var partialCreated = await _service.GetAsync(fromPartial.Id);
-        await _status.UpdateStatusAsync(fromPartial.Id, "منفذ جبريا",
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(fromPartial.Id, "منفذ جبريا",
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
@@ -5131,7 +5136,7 @@ public class DocumentServiceTests : PostgresDbTest
                 ["soldAssetIds"] = partialCreated!.Assets[0].Id.ToString(),
                 ["forcedExecutionDate"] = "1/1/2024",
             }, "lawyer1");
-        await _status.UpdateStatusAsync(fromPartial.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(fromPartial.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var page = await _search.SearchReferredToStartAsync(null, page: 1, perPage: 20);
         Assert.Equal(2, page.TotalCount);
@@ -5146,7 +5151,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchAsync_HidesReferredToStart_UnlessTextQuery()
     {
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var plain = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(plain.Items, d => d.Id == referred.Id);
@@ -5159,7 +5164,7 @@ public class DocumentServiceTests : PostgresDbTest
     public async Task SearchAsync_WithQuery_ShowsApplicantSideStruckOff()
     {
         var struck = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(struck.Id, ExecutionStatusCatalog.StateStruckOff,
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(struck.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
 
         var searched = await _search.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
@@ -5214,7 +5219,7 @@ public class DocumentServiceTests : PostgresDbTest
         // كفيل العينة «سمير حسن علي»: SearchText يضم الاسم الأول فقط، فيثبت هذا الاختبار
         // تكافؤ تغطية اسم عائلة الكفيل بين صفحة المحالين والقائمة الرئيسية.
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var page = await _search.SearchReferredToStartAsync("علي", page: 1, perPage: 20);
         Assert.Contains(page.Items, d => d.Id == referred.Id);
@@ -5231,7 +5236,7 @@ public class DocumentServiceTests : PostgresDbTest
         var req = Sample();
         req.BorrowerHeirs.Add(new HeirDto(null, "غريب", "عن", "المقترض", null, null, null));
         var referred = await _service.CreateAsync(req, 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var page = await _search.SearchReferredToStartAsync("غريب المقترض", page: 1, perPage: 20);
         Assert.Contains(page.Items, d => d.Id == referred.Id);
@@ -5243,7 +5248,7 @@ public class DocumentServiceTests : PostgresDbTest
         // لقطة الاستئناف ليست جزءًا من SearchText، فيثبت هذا الاختبار تغطيتها المباشرة
         // في صفحة المحالين كما في القائمة الرئيسية.
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
         _db.DocumentAppeals.Add(new DocumentAppeal
         {
             DocumentId = referred.Id,
@@ -5265,13 +5270,13 @@ public class DocumentServiceTests : PostgresDbTest
         // تاريخ الإحالة اختياري: الغائب يُرتَّب آخرًا حتميًا في كل المزودات (بلا اعتماد
         // على سلوك NULL الافتراضي المختلف بين SQLite وPostgreSQL).
         var dated = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _status.UpdateStatusAsync(dated.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(dated.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
         var undated = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         var fields = ReferredToStartFields();
         fields["startReferralNumber"] = null;
         fields["startReferralDate"] = null;
-        await _status.UpdateStatusAsync(undated.Id, ExecutionStatusCatalog.ReferredToStart, fields, "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(undated.Id, ExecutionStatusCatalog.ReferredToStart, fields, "lawyer1");
 
         var page = await _search.SearchReferredToStartAsync(null, page: 1, perPage: 20);
         Assert.Equal(2, page.TotalCount);
@@ -5589,7 +5594,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
     private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
-    private readonly IDocumentStatusService _status;
+    private readonly DocumentStatusHandlers _statusCommands;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -5616,7 +5621,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _transfer = considerBundle.TransferDocument;
         _transferAll = considerBundle.TransferAllDocuments;
         _saveBaseNumbers = considerBundle.SaveBaseNumbers;
-        _status = considerBundle.Status;
+        _statusCommands = considerBundle.StatusCommands;
     }
 
 
@@ -5685,7 +5690,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await SourceInPartialForciblyAsync();
         await AddExecutedDelegationAsync(source.Id);
 
-        var ok = await _status.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+        var ok = await _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
         {
             ["forcedTransferDate"] = "١٥/٨/٢٠٢٦",
             ["forcedTransferNoticeNumber"] = "77/2026",
@@ -5712,7 +5717,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await SourceInPartialForciblyAsync();
         await AddExecutedDelegationAsync(source.Id);
 
-        var ok = await _status.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+        var ok = await _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
         {
             ["forcedTransferDate"] = "15/8/2026",
             ["forcedTransferNoticeNumber"] = "   ",
@@ -5730,7 +5735,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await SourceInPartialForciblyAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+            _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
             {
                 ["forcedTransferDate"] = "15/8/2026",
             }, "lawyer1"));
@@ -5745,7 +5750,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await AddExecutedDelegationAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+            _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
             {
                 ["forcedTransferDate"] = "15/8/2026",
             }, "lawyer1"));
@@ -5760,7 +5765,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await AddExecutedDelegationAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>(), "lawyer1"));
+            _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>(), "lawyer1"));
 
         Assert.Contains("تاريخ تحويل بدل المبيع للجهة العامة", ex.Message);
     }
@@ -5768,7 +5773,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     [PostgresFact]
     public async Task ConsiderExecuted_UnknownDocument_ReturnsFalse()
     {
-        var ok = await _status.ConsiderExecutedByDelegationAsync(999_999, new Dictionary<string, string?>(), "lawyer1");
+        var ok = await _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(999_999, new Dictionary<string, string?>(), "lawyer1");
         Assert.False(ok);
     }
 
@@ -5927,7 +5932,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.Deferred, loaded.ExecStatus);
@@ -5956,7 +5961,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _db.Documents.UpdateRange(struckOff, recovered, final);
         await _db.SaveChangesAsync();
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
 
         var eligibleLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == eligible.Id);
         Assert.Equal(ExecutionStatusCatalog.Deferred, eligibleLoaded.ExecStatus);
@@ -5988,7 +5993,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _db.Documents.Update(target);
         await _db.SaveChangesAsync();
 
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.Deferred, loaded.ExecStatus);
@@ -6010,7 +6015,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _db.Documents.Update(target);
         await _db.SaveChangesAsync();
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal("5", loaded.TarithNumber);
@@ -6023,7 +6028,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
@@ -6046,8 +6051,8 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
 
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
@@ -6061,9 +6066,9 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
 
-        Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        Assert.True(await _statusCommands.RevertStatus.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
@@ -6080,9 +6085,9 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
 
-        Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        Assert.True(await _statusCommands.RevertStatus.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
         Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
@@ -6096,7 +6101,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
         var asset = await _db.Assets.SingleAsync(a => a.DocumentId == source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
@@ -6117,7 +6122,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await AddExecutedDelegationAsync(source.Id);
         var target = await AddDelegatedTargetForAsync(source.Id);
 
-        Assert.True(await _status.ConsiderExecutedByDelegationAsync(source.Id,
+        Assert.True(await _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id,
             new Dictionary<string, string?>
             {
                 ["forcedTransferDate"] = "15/8/2026",
@@ -6146,7 +6151,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+            _statusCommands.UpdateStatus.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
         Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
     }
 
@@ -6157,7 +6162,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.RevertStatusAsync(target.Id, SayerFields(), "lawyer1"));
+            _statusCommands.RevertStatus.RevertStatusAsync(target.Id, SayerFields(), "lawyer1"));
         Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
     }
 
@@ -6167,7 +6172,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.StateStruckOff,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
@@ -6190,7 +6195,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
                 new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
@@ -6203,7 +6208,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         Assert.NotNull(target);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
                 new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
@@ -6221,7 +6226,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
@@ -6244,7 +6249,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
                 ReferredToStartFields(), "lawyer1"));
         Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
     }
@@ -6257,7 +6262,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         Assert.NotNull(target);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
                 ReferredToStartFields(), "lawyer1"));
         Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
     }
@@ -6269,7 +6274,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.ReferredToStart,
+            _statusCommands.UpdateStatus.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.ReferredToStart,
                 ReferredToStartFields(), "lawyer1"));
         Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
     }
@@ -6281,7 +6286,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ReturnFromReferredToStartAsync(target.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+            _statusCommands.ReturnFromReferredToStart.ReturnFromReferredToStartAsync(target.Id, new ReturnReferredToStartRequest(), "lawyer1"));
         Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
     }
 
@@ -6292,7 +6297,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await SourceInPartialForciblyAsync();
         await AddExecutedDelegationAsync(source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
@@ -6311,7 +6316,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.RestoreStruckOffAsync(target.Id, new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1"));
+            _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(target.Id, new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1"));
         Assert.Equal("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة", ex.Message);
     }
 
@@ -6323,7 +6328,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _db.Documents.Update(source);
         await _db.SaveChangesAsync();
 
-        Assert.True(await _status.RestoreStruckOffAsync(source.Id,
+        Assert.True(await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(source.Id,
             new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1"));
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
@@ -6340,7 +6345,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _status.ConsiderExecutedByDelegationAsync(target.Id,
+            _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(target.Id,
                 new Dictionary<string, string?> { ["forcedTransferDate"] = "15/8/2026" }, "lawyer1"));
         Assert.Equal("اعتبار الملف منفذًا كاملًا بهذا البيع إجراء خاص بالملف المنيب، ولا يُطبَّق على ملف الإنابة", ex.Message);
     }
@@ -6354,7 +6359,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         await AddExecutedDelegationAsync(source.Id);
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
 
         await FlushAlertsAsync();
@@ -6372,12 +6377,12 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id);
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
         await FlushAlertsAsync();
         var before = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
         Assert.Contains("منفذًا بالتسوية", before.Message);
 
-        Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        Assert.True(await _statusCommands.RevertStatus.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
@@ -6394,7 +6399,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
@@ -6410,7 +6415,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
-        Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+        Assert.True(await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
@@ -6424,10 +6429,10 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
         await FlushAlertsAsync();
 
-        Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        Assert.True(await _statusCommands.RevertStatus.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
         await FlushAlertsAsync();
 
         // الاستبدال (upsert) يُبدّل آخر رسالة للإنابة والمستلم ذاته — فتعود T3 محل T2.
@@ -6445,7 +6450,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
         var asset = await _db.Assets.SingleAsync(a => a.DocumentId == source.Id);
 
-        await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+        await _statusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
@@ -6466,7 +6471,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
-        Assert.True(await _status.ConsiderExecutedByDelegationAsync(source.Id,
+        Assert.True(await _statusCommands.ConsiderExecutedByDelegation.ConsiderExecutedByDelegationAsync(source.Id,
             new Dictionary<string, string?>
             {
                 ["forcedTransferDate"] = "15/8/2026",
