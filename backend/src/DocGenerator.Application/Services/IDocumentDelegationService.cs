@@ -35,16 +35,6 @@ public interface IDocumentDelegationService
     Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
     /// <summary>
-    /// اعتماد الإنابة (§7.1): الاعتماد لمالك الدائرة المنابة لا المنيب — داخلية
-    /// بدائرة ذات شعبة لرئيس شعبته، وبدائرة قسم (أو بلا دائرة انتقاليًا) لرئيس
-    /// قسم فرع الدائرة، وخارجية غير موجَّهة لرئيس قسم الفرع المناب، وخارجية
-    /// موجَّهة لرئيس الشعبة الموجَّه لها. المحامي المختص من فرع الدائرة المنابة،
-    /// والملف المناب بفرع الدائرة ودائرتها (قرار §2.25). يُنشأ الملف المناب
-    /// تلقائيًا (وحدانية `SourceDelegationId` تحمي التوأم برسالة ودية).
-    /// </summary>
-    Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>
     /// تسجيل الإنابة أصولًا من محامي الفرع المناب: إدخال رقم أساس الإنابة وتاريخ قيدها
     /// (بيانات الملف المناب) فيُصبح الملف المناب مقيدًا. محامي الملف المناب فقط.
     /// </summary>

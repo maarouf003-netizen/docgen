@@ -63,7 +63,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// على الملف المناب رغم وجوده على الملف المنيب. الإنابة تخص ملفات «طالبة تنفيذ» فقط
     /// (ValidateSourceForDelegation)، فأطرافها هي: المقترض والكفلاء والورثة والجهات العامة.
     /// </summary>
-    private static void CopySourcePartiesAndBond(Document source, Document target)
+    internal static void CopySourcePartiesAndBond(Document source, Document target)
     {
         CopyBorrower(source, target);
         CopyBond(source, target);

@@ -113,7 +113,6 @@ public static class DocumentServiceFactory
             dbErrorsValue,
             documentsValue,
             usersValue,
-            branches ?? new Repository<Branch>(db),
             registrationDatesValue,
             occurrencesValue,
             uowValue,

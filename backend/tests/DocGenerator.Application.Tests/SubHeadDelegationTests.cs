@@ -25,6 +25,7 @@ public class SubHeadDelegationTests : PostgresDbTest
     private readonly ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> _redirectDelegation;
     private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
     private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
+    private readonly ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> _delegationAssign;
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -75,7 +76,6 @@ public class SubHeadDelegationTests : PostgresDbTest
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             registrationDates,
             occurrences,
             uow,
@@ -102,6 +102,7 @@ public class SubHeadDelegationTests : PostgresDbTest
             delegations, users, new Repository<ExecutionCircuit>(_db), outbox, _headAlerts,
             uow, _tx, _audit, dbErrors, TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<RejectDocumentDelegationCommand, DelegationDto?>>());
+        _delegationAssign = DelegationWriteHandlerFactory.Assign(_db, _audit);
     }
 
 
@@ -221,11 +222,11 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         // رئيس القسم لا يملك اعتماد دائرة الشعبة.
         var headEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
         Assert.Contains("نطاقك", headEx.Message);
 
         // رئيس الشعبة يعتمد بمحامٍ من فرعه، والمناب بفرع الدائرة ودائرتها.
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), sub.Id, _branch.Id, "sub");
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), sub.Id, _branch.Id, "sub");
         Assert.NotNull(assigned);
         Assert.Equal(DelegationStatusCatalog.Assigned, assigned!.Status);
         var target = await _db.Documents.SingleAsync(d => d.Id == assigned.TargetDocumentId!.Value);
@@ -244,10 +245,10 @@ public class SubHeadDelegationTests : PostgresDbTest
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         var subEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), sub.Id, _branch.Id, "sub"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), sub.Id, _branch.Id, "sub"));
         Assert.Contains("نطاقك", subEx.Message);
 
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
         Assert.NotNull(assigned);
         Assert.Equal(circuitId, (await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value)).ExecutionCircuitId);
     }
@@ -262,14 +263,14 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         // رئيس فرع المنيب لا يملكها رغم أن الملف له.
         var sourceHeadEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
         Assert.Contains("فرعك", sourceHeadEx.Message);
         // ومحامي فرع المنيب مرفوض (قاعدة 375-378): المختص من فرع الدائرة.
         var lawyerEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _otherHead.Id, _otherBranch.Id, "head2"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _otherHead.Id, _otherBranch.Id, "head2"));
         Assert.Contains("الدائرة المنابة", lawyerEx.Message);
 
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), _otherHead.Id, _otherBranch.Id, "head2");
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), _otherHead.Id, _otherBranch.Id, "head2");
         Assert.NotNull(assigned);
         var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
         Assert.Equal(_otherBranch.Id, target.BranchId);
@@ -297,7 +298,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         _db.DocumentDelegations.Add(delegation);
         await _db.SaveChangesAsync();
 
-        var assigned = await _service.AssignAsync(delegation.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        var assigned = await _delegationAssign.AssignAsync(delegation.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
         Assert.NotNull(assigned);
         var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
         Assert.Equal(_branch.Id, target.BranchId);
@@ -312,7 +313,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id, 9999), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id, 9999), _head1.Id, _branch.Id, "head1"));
     }
 
     [PostgresFact]
@@ -342,9 +343,9 @@ public class SubHeadDelegationTests : PostgresDbTest
         Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
         Assert.Contains(await _service.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
         var headAssignEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), _otherHead.Id, _otherBranch.Id, "head2"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), _otherHead.Id, _otherBranch.Id, "head2"));
         Assert.Contains("نطاقك", headAssignEx.Message);
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), sub.Id, _otherBranch.Id, "sub");
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), sub.Id, _otherBranch.Id, "sub");
         Assert.NotNull(assigned);
         Assert.Equal(_otherBranch.Id, (await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value)).BranchId);
     }
@@ -398,7 +399,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         Assert.Contains(rejectedOnly, d => d.Id == created.Id);
         Assert.Equal(1, await _service.CountPendingForHeadAsync(_branch.Id, null, true));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
 
         // بطاقة الملف تُظهر السبب للمحامي، وتصحيحه يحرّرها للاعتماد.
         var card = await _service.ListForDocumentAsync(doc.Id);
@@ -523,7 +524,7 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         Assert.Equal(created.Version + 1, updated!.Version);
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
         Assert.Equal(updated.Version + 1, assigned!.Version);
     }
 

@@ -64,4 +64,29 @@ public static class DelegationWriteHandlerFactory
             TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<UpdateDocumentDelegationCommand, DelegationDto?>>());
     }
+
+    public static AssignDocumentDelegationCommandHandler Assign(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var documents = new DocumentRepository(db);
+        var users = new UserRepository(db);
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        var branches = new Repository<Branch>(db);
+        var delegations = new DelegationRepository(db);
+        return new AssignDocumentDelegationCommandHandler(
+            delegations,
+            users,
+            branches,
+            new Repository<ExecutionCircuit>(db),
+            documents,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            uow,
+            tx,
+            audit ?? new FakeAuditLogger(),
+            new DbExceptionClassifier(),
+            TestClock.Provider,
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<AssignDocumentDelegationCommand, DelegationDto?>>());
+    }
 }

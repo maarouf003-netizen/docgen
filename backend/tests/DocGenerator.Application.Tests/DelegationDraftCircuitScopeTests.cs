@@ -64,7 +64,6 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             registrationDates,
             occurrences,
             uow,

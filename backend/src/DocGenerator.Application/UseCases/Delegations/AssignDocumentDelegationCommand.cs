@@ -1,23 +1,82 @@
-using System.Globalization;
-using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.Delegations;
 
-public sealed partial class DocumentDelegationService : IDocumentDelegationService
+/// <summary>
+/// اعتماد الإنابة (§7.1): الاعتماد لمالك الدائرة المنابة لا المنيب — داخلية
+/// بدائرة ذات شعبة لرئيس شعبته، وبدائرة قسم (أو بلا دائرة انتقاليًا) لرئيس
+/// قسم فرع الدائرة، وخارجية غير موجَّهة لرئيس قسم الفرع المناب، وخارجية
+/// موجَّهة لرئيس الشعبة الموجَّه لها. المحامي المختص من فرع الدائرة المنابة،
+/// والملف المناب بفرع الدائرة ودائرتها (قرار §2.25). يُنشأ الملف المناب
+/// تلقائيًا (وحدانية `SourceDelegationId` تحمي التوأم برسالة ودية).
+/// </summary>
+public sealed record AssignDocumentDelegationCommand(
+    int DelegationId,
+    AssignDelegationRequest Request,
+    int UserId,
+    int? HeadBranchId,
+    string? ActorName) : ICommand<DelegationDto?>;
+
+public sealed class AssignDocumentDelegationCommandHandler
+    : CommandHandlerBase<AssignDocumentDelegationCommand, DelegationDto?>
 {
-    public async Task<DelegationDto?> AssignAsync(
-        int delegationId,
-        AssignDelegationRequest request,
-        int userId,
-        int? headBranchId,
-        string? actorName,
-        CancellationToken ct = default)
+    private readonly IDelegationRepository _delegations;
+    private readonly IUserRepository _users;
+    private readonly IRepository<Branch> _branches;
+    private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IDocumentRepository _documents;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public AssignDocumentDelegationCommandHandler(
+        IDelegationRepository delegations,
+        IUserRepository users,
+        IRepository<Branch> branches,
+        IRepository<ExecutionCircuit> circuits,
+        IDocumentRepository documents,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IDbExceptionClassifier dbErrors,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<AssignDocumentDelegationCommand, DelegationDto?>> behaviors)
+        : base(behaviors)
     {
+        _delegations = delegations;
+        _users = users;
+        _branches = branches;
+        _circuits = circuits;
+        _documents = documents;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _dbErrors = dbErrors;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<DelegationDto?> HandleCoreAsync(
+        AssignDocumentDelegationCommand command, CancellationToken ct)
+    {
+        var delegationId = command.DelegationId;
+        var request = command.Request;
+        var userId = command.UserId;
+        var headBranchId = command.HeadBranchId;
+        var actorName = command.ActorName;
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
             ?? throw new ArgumentException("الإنابة غير موجودة");
 
@@ -71,7 +130,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         string? targetBranchName;
         if (isExternal)
         {
-            targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+            targetCourt = DocumentDelegationService.Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
             targetBranchName = delegation.ExternalBranch?.Name;
         }
         else
@@ -81,7 +140,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             if (approvalCircuit is null)
             {
                 targetCircuitId = null;
-                targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+                targetCourt = DocumentDelegationService.Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
                 targetBranchName = source.BranchName;
             }
             else
@@ -139,7 +198,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                 };
-                CopySourcePartiesAndBond(source, target);
+                DocumentDelegationService.CopySourcePartiesAndBond(source, target);
 
                 delegation.AssignedLawyerId = lawyer.Id;
                 delegation.Status = DelegationStatusCatalog.Assigned;
@@ -153,7 +212,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     new CreateSystemHeadAlertRequest(
                         HeadAlertKindCatalog.DelegationAssignedToLawyer,
                         HeadAlertMessages.DelegationAssignedToLawyer(new(
-                            delegation.DelegatedCourt ?? string.Empty, SourceLabel(source))),
+                            delegation.DelegatedCourt ?? string.Empty, DocumentDelegationService.SourceLabel(source))),
                         HeadAlertAudience.DocumentCreator,
                         targetBranch,
                         userId,
@@ -185,7 +244,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         }
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            ? DocumentDelegationService.ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
 }

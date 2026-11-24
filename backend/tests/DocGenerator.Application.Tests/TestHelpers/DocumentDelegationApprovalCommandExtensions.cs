@@ -10,6 +10,17 @@ namespace DocGenerator.Application.Tests.TestHelpers;
 /// </summary>
 public static class DocumentDelegationApprovalCommandExtensions
 {
+    public static Task<DelegationDto?> AssignAsync(
+        this ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> handler,
+        int delegationId,
+        AssignDelegationRequest request,
+        int userId,
+        int? headBranchId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(
+            new AssignDocumentDelegationCommand(delegationId, request, userId, headBranchId, actorName), ct);
+
     public static Task<DelegationDto?> RedirectToSectionAsync(
         this ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> handler,
         int delegationId,

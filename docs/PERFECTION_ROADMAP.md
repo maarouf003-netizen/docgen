@@ -959,6 +959,10 @@
   ورفض الدائرة الخطأ (الحرّاس والنطاق والتنبيهات والتدقيق)؛ ونُقلت حرّاس الاعتماد
   المشتركة إلى `DocumentDelegationRules`، وحُذف حقلان ميتان (`_reservations`/`_sections`)
   من الخدمة بعد نقل آخر مستخدميهما.
+  **`P4-01by`:** `AssignDocumentDelegationCommand` يملك اعتماد الإنابة كاملًا (نطاق
+  الاعتماد، المحامي المختص بفرع الدائرة، إنشاء الملف المناب ونسخ الأطراف/السند،
+  تنبيه الإسناد، الوثيقة، والتدقيق) مع ترجمة سباق `SourceDelegationId` إلى 409؛
+  وحُذف `DocumentDelegationService.Approval.cs` بعد إفراغه وحقل `_branches` الميت.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -1025,10 +1029,12 @@
   `docs/audit/188-p4-01bw-move-entries-20261125.md` و
   `docs/audit/189-p4-01bw-followup-review-20261125.md` و
   `docs/audit/190-p4-01bx-delegation-approval-20261125.md` و
-  `docs/audit/191-p4-01bx-followup-review-20261125.md`.
+  `docs/audit/191-p4-01bx-followup-review-20261125.md` و
+  `docs/audit/192-p4-01by-assign-delegation-20261125.md` و
+  `docs/audit/193-p4-01by-followup-review-20261125.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (اعتماد الإنابة `AssignAsync` ودورة الحياة `Register`/`Complete`، وملكية
-  `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
+  (دورة حياة الإنابة `Register`/`Complete`، وملكية `CreateDocumentCommand`،
+  وبقايا كتابات الجهات العامة).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.
