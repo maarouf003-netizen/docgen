@@ -100,6 +100,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<TransferAllDocumentAppealsCommand, int>, TransferAllDocumentAppealsCommandHandler>();
         services.AddScoped<ICommandHandler<DecideDocumentAppealCommand, AppealDto?>, DecideDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<StrikeDocumentAppealCommand, AppealDto?>, StrikeDocumentAppealCommandHandler>();
+        services.AddScoped<ICommandHandler<ForwardDocumentAppealCommand, AppealDto?>, ForwardDocumentAppealCommandHandler>();
+        services.AddScoped<ICommandHandler<RecallAppealForwardCommand, AppealDto?>, RecallAppealForwardCommandHandler>();
         services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         services.AddScoped<ICommandHandler<MarkReviewRepliesSeenCommand, bool>, MarkReviewRepliesSeenCommandHandler>();
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();

@@ -32,6 +32,8 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _transferAllAppeals;
     private readonly ICommandHandler<DecideDocumentAppealCommand, AppealDto?> _decideAppeal;
     private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _strikeAppeal;
+    private readonly ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> _forwardAppeal;
+    private readonly ICommandHandler<RecallAppealForwardCommand, AppealDto?> _recallForward;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -45,7 +47,9 @@ public class AppealsController : ControllerBase
         ICommandHandler<TransferDocumentAppealCommand, AppealDto?> transferAppeal,
         ICommandHandler<TransferAllDocumentAppealsCommand, int> transferAllAppeals,
         ICommandHandler<DecideDocumentAppealCommand, AppealDto?> decideAppeal,
-        ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> strikeAppeal)
+        ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> strikeAppeal,
+        ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> forwardAppeal,
+        ICommandHandler<RecallAppealForwardCommand, AppealDto?> recallForward)
     {
         _appeals = appeals;
         _documents = documents;
@@ -59,6 +63,8 @@ public class AppealsController : ControllerBase
         _transferAllAppeals = transferAllAppeals;
         _decideAppeal = decideAppeal;
         _strikeAppeal = strikeAppeal;
+        _forwardAppeal = forwardAppeal;
+        _recallForward = recallForward;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -371,7 +377,8 @@ public class AppealsController : ControllerBase
     {
         try
         {
-            var forwarded = await _appeals.ForwardAsync(id, request ?? new ForwardAppealRequest(), User.GetUserId(), ActorName, ct);
+            var forwarded = await _forwardAppeal.HandleAsync(
+                new ForwardDocumentAppealCommand(id, request ?? new ForwardAppealRequest(), User.GetUserId(), ActorName), ct);
             return forwarded is null ? NotFound() : Ok(forwarded);
         }
         catch (DocumentConflictException e)
@@ -390,7 +397,8 @@ public class AppealsController : ControllerBase
     {
         try
         {
-            var recalled = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
+            var recalled = await _recallForward.HandleAsync(
+                new RecallAppealForwardCommand(id, User.GetUserId(), ActorName), ct);
             return recalled is null ? NotFound() : Ok(recalled);
         }
         catch (DocumentConflictException e)
@@ -409,7 +417,8 @@ public class AppealsController : ControllerBase
     {
         try
         {
-            var returned = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
+            var returned = await _recallForward.HandleAsync(
+                new RecallAppealForwardCommand(id, User.GetUserId(), ActorName), ct);
             return returned is null ? NotFound() : Ok(returned);
         }
         catch (DocumentConflictException e)

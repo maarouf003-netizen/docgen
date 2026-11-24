@@ -150,4 +150,68 @@ internal static class DocumentAppealRules
             occurredAt,
             ct);
     }
+
+    /// <summary>تنبيه رئيس القسم بإحالة الاستئناف — منقول حرفيًا من خدمة الاستئناف.</summary>
+    internal static Task EnqueueAppealForwardedAsync(
+        DocumentAppeal appeal, Document source, User caller, User head,
+        DateTime occurredAt, int currentYear, IHeadAlertOutbox alertOutbox, CancellationToken ct)
+    {
+        return alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealReferralToHead,
+                Message: HeadAlertMessages.AppealReferralToHead(new(
+                    DocumentAppealService.DocumentTitle(source),
+                    DocumentAppealService.AppealDocumentNumberText(source, currentYear),
+                    caller.FullName)),
+                Audience: HeadAlertAudience.SingleHead,
+                BranchId: source.BranchId!.Value,
+                CreatedById: caller.Id,
+                DocumentId: source.Id,
+                AppealId: appeal.Id,
+                RecipientUserId: head.Id),
+            new HeadAlertSupersedePlan(
+                DelegationId: null,
+                AppealId: appeal.Id,
+                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
+                Reason: "appeal_forwarded"),
+            occurredAt,
+            ct);
+    }
+
+    /// <summary>تنبيه/أرشفة عند التراجع عن الإحالة — منقول حرفيًا.</summary>
+    internal static async Task EnqueueAppealRecalledAsync(
+        DocumentAppeal appeal, Document source, User caller, User? forwarder,
+        DateTime occurredAt, int currentYear, IHeadAlertOutbox alertOutbox,
+        IHeadAlertService alerts, CancellationToken ct)
+    {
+        if (forwarder is null || source.BranchId is null)
+        {
+            await alerts.ArchiveByAppealAsync(
+                appeal.Id,
+                HeadAlertKindCatalog.AppealKinds,
+                "appeal_recalled_no_recipient",
+                ct);
+            return;
+        }
+
+        await alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealReturnedToHead,
+                Message: HeadAlertMessages.AppealReturnedToHead(new(
+                    DocumentAppealService.DocumentTitle(source),
+                    DocumentAppealService.AppealDocumentNumberText(source, currentYear))),
+                Audience: HeadAlertAudience.SingleHead,
+                BranchId: source.BranchId.Value,
+                CreatedById: caller.Id,
+                DocumentId: source.Id,
+                AppealId: appeal.Id,
+                RecipientUserId: forwarder.Id),
+            new HeadAlertSupersedePlan(
+                DelegationId: null,
+                AppealId: appeal.Id,
+                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
+                Reason: "appeal_recalled"),
+            occurredAt,
+            ct);
+    }
 }

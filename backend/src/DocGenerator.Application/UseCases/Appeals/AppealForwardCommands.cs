@@ -1,29 +1,64 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.Appeals;
 
-public sealed partial class DocumentAppealService : IDocumentAppealService
+/// <summary>
+/// إحالة استئناف من رئيس الشعبة لرئيس قسم فرعه (§6.2) — استثناء لمرة واحدة يبقى حتى
+/// الحسم (قرار §2.22)، مع تنبيه الرئيس والتدقيق وترجمة سباق التزامن إلى 409 ودية.
+/// </summary>
+public sealed record ForwardDocumentAppealCommand(
+    int AppealId,
+    ForwardAppealRequest Request,
+    int CallerUserId,
+    string? ActorName) : ICommand<AppealDto?>;
+
+public sealed class ForwardDocumentAppealCommandHandler
+    : CommandHandlerBase<ForwardDocumentAppealCommand, AppealDto?>
 {
-    // ── الإحالة لرئيس القسم والتراجع عنها (شعبة → قسم، اتجاه واحد) ──────────
+    private readonly IAppealRepository _appeals;
+    private readonly IUserRepository _users;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
-    /// <summary>
-    /// إحالة استئناف من رئيس الشعبة لرئيس قسم فرعه (§6.2): استثناء لمرة واحدة
-    /// — القسم يسند رغم الدائرة، ويبقى الاستثناء حتى الحسم (قرار §2.22).
-    /// </summary>
-    public async Task<AppealDto?> ForwardAsync(
-        int appealId,
-        ForwardAppealRequest request,
-        int callerUserId,
-        string? actorName,
-        CancellationToken ct = default)
+    public ForwardDocumentAppealCommandHandler(
+        IAppealRepository appeals,
+        IUserRepository users,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IDbExceptionClassifier dbErrors,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<ForwardDocumentAppealCommand, AppealDto?>> behaviors)
+        : base(behaviors)
     {
-        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+        _appeals = appeals;
+        _users = users;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _dbErrors = dbErrors;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<AppealDto?> HandleCoreAsync(
+        ForwardDocumentAppealCommand command, CancellationToken ct)
+    {
+        var request = command.Request;
+        var appeal = await _appeals.GetByIdWithDetailsAsync(command.AppealId, ct)
             ?? throw new ArgumentException("الاستئناف غير موجود");
         if (appeal.Status != AppealStatusCatalog.Pending)
             throw new ArgumentException("لا يمكن إحالة استئناف لم يبق منظورًا");
@@ -34,7 +69,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         if (request.Version.HasValue && appeal.Version != request.Version.Value)
             throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
 
-        var caller = await _users.GetByIdAsync(callerUserId, ct)
+        var caller = await _users.GetByIdAsync(command.CallerUserId, ct)
             ?? throw new ArgumentException("المستخدم غير موجود");
         if (caller.Role != UserRole.SubHead)
             throw new ArgumentException("الإحالة لرئيس الشعبة فقط");
@@ -62,9 +97,11 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
                 appeal.UpdatedAt = now;
                 appeal.Version++;
                 _appeals.Update(appeal);
-                await EnqueueAppealForwardedAsync(appeal, doc, caller, head, now, token);
+                await DocumentAppealRules.EnqueueAppealForwardedAsync(
+                    appeal, doc, caller, head, now,
+                    ServerClock.CurrentYear(_clock, _timeZone), _alertOutbox, token);
                 await _uow.SaveChangesAsync(token);
-                await _audit.LogAsync(actorName, "forward_appeal",
+                await _audit.LogAsync(command.ActorName, "forward_appeal",
                     appeal.DocumentId, appeal.Document.DocumentType,
                     $"يرجى التفضل بإسناد الاستئناف (ملف {appeal.DocumentId} — محال من {caller.FullName})"
                     + (reason is null ? string.Empty : $" — السبب: {reason}"), token);
@@ -76,20 +113,63 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
             throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
         }
 
-        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+        return DocumentAppealService.ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+    }
+}
+
+/// <summary>
+/// التراجع عن الإحالة قبل الإسناد (§6.5): استرجاع المحيل أو إعادة المستلم —
+/// يُصفَّر الاستثناء وتُعاد البدائل للمحيل، مع تنبيه/أرشفة وتدقيق.
+/// </summary>
+public sealed record RecallAppealForwardCommand(
+    int AppealId,
+    int CallerUserId,
+    string? ActorName) : ICommand<AppealDto?>;
+
+public sealed class RecallAppealForwardCommandHandler
+    : CommandHandlerBase<RecallAppealForwardCommand, AppealDto?>
+{
+    private readonly IAppealRepository _appeals;
+    private readonly IUserRepository _users;
+    private readonly IHeadAlertService _alerts;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public RecallAppealForwardCommandHandler(
+        IAppealRepository appeals,
+        IUserRepository users,
+        IHeadAlertService alerts,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IDbExceptionClassifier dbErrors,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<RecallAppealForwardCommand, AppealDto?>> behaviors)
+        : base(behaviors)
+    {
+        _appeals = appeals;
+        _users = users;
+        _alerts = alerts;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _dbErrors = dbErrors;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
-    /// <summary>
-    /// التراجع عن الإحالة قبل الإسناد (§6.5): استرجاع المحيل أو إعادة المستلم —
-    /// يُصفَّر الاستثناء وتُعاد البدائل للمحيل. بعد الإسناد: نقل عادي.
-    /// </summary>
-    public async Task<AppealDto?> RecallForwardAsync(
-        int appealId,
-        int callerUserId,
-        string? actorName,
-        CancellationToken ct = default)
+    protected override async Task<AppealDto?> HandleCoreAsync(
+        RecallAppealForwardCommand command, CancellationToken ct)
     {
-        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+        var appeal = await _appeals.GetByIdWithDetailsAsync(command.AppealId, ct)
             ?? throw new ArgumentException("الاستئناف غير موجود");
         if (appeal.Status != AppealStatusCatalog.Pending)
             throw new ArgumentException("لا يمكن التراجع عن إحالة استئناف لم يبق منظورًا");
@@ -98,7 +178,7 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         if (appeal.ForwardState != AppealForwardCatalog.ForwardedToHead || appeal.ForwardedById is null)
             throw new ArgumentException("لا توجد إحالة مفتوحة لهذا الاستئناف");
 
-        var caller = await _users.GetByIdAsync(callerUserId, ct)
+        var caller = await _users.GetByIdAsync(command.CallerUserId, ct)
             ?? throw new ArgumentException("المستخدم غير موجود");
         var doc = appeal.Document;
         var isForwarder = appeal.ForwardedById == caller.Id;
@@ -121,9 +201,11 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
                 appeal.UpdatedAt = now;
                 appeal.Version++;
                 _appeals.Update(appeal);
-                await EnqueueAppealRecalledAsync(appeal, doc, caller, forwarder, now, token);
+                await DocumentAppealRules.EnqueueAppealRecalledAsync(
+                    appeal, doc, caller, forwarder, now,
+                    ServerClock.CurrentYear(_clock, _timeZone), _alertOutbox, _alerts, token);
                 await _uow.SaveChangesAsync(token);
-                await _audit.LogAsync(actorName, "recall_forward",
+                await _audit.LogAsync(command.ActorName, "recall_forward",
                     appeal.DocumentId, appeal.Document.DocumentType,
                     isForwarder
                         ? $"استرجع المحيل إحالته للاستئناف (رقم {appeal.Id})"
@@ -136,6 +218,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
             throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
         }
 
-        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+        return DocumentAppealService.ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 }

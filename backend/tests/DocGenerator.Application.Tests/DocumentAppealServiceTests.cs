@@ -29,6 +29,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _appealTransferAll;
     private readonly ICommandHandler<DecideDocumentAppealCommand, AppealDto?> _appealDecide;
     private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _appealStrike;
+    private readonly ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> _appealForward;
+    private readonly ICommandHandler<RecallAppealForwardCommand, AppealDto?> _appealRecall;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -109,6 +111,15 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new AppealRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
             TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<StrikeDocumentAppealCommand, AppealDto?>>());
+        _appealForward = new ForwardDocumentAppealCommandHandler(
+            new AppealRepository(_db), new UserRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
+            new DbExceptionClassifier(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<ForwardDocumentAppealCommand, AppealDto?>>());
+        _appealRecall = new RecallAppealForwardCommandHandler(
+            new AppealRepository(_db), new UserRepository(_db), _alertService, _outbox,
+            new UnitOfWork(_db), _tx, _audit, new DbExceptionClassifier(),
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<RecallAppealForwardCommand, AppealDto?>>());
     }
 
 
@@ -1614,13 +1625,16 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
 
-        var forwarded = await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest("سبب"), sub.Id, "sub_masyaf");
+        var forwarded = await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest("سبب"), sub.Id, "sub_masyaf");
 
         Assert.NotNull(forwarded);
         Assert.Equal(AppealForwardCatalog.ForwardedToHead, forwarded!.ForwardState);
         Assert.Equal(sectionId, forwarded.SectionId);
         Assert.Equal(circuitId, forwarded.ExecutionCircuitId);
         Assert.Contains("forward_appeal", _audit.Actions);
+        // تثبيت نص التدقيق حرفيًا (يشمل سبب الإحالة).
+        Assert.Contains(_audit.Details,
+            d => d == $"يرجى التفضل بإسناد الاستئناف (ملف {appeal.Id} — محال من {sub.FullName}) — السبب: سبب");
         await FlushAlertsAsync();
         var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
             .Where(a => a.AppealId == appeal.Id && a.ArchivedAt == null).ToListAsync();
@@ -1637,9 +1651,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _head1.Id, "head1"));
+            _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _head1.Id, "head1"));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _lawyer1.Id, "lawyer1"));
+            _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _lawyer1.Id, "lawyer1"));
     }
 
     [PostgresFact]
@@ -1654,11 +1668,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), stranger.Id, "stranger"));
+            _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), stranger.Id, "stranger"));
         // الإسناد (بمالك النطاق) يغلق باب الإحالة.
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
+            _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
     }
 
     [PostgresFact]
@@ -1683,7 +1697,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId, lawyer.Id);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
+            _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
     }
 
     [PostgresFact]
@@ -1696,14 +1710,19 @@ public class DocumentAppealServiceTests : PostgresDbTest
             var circuitId = await AddCircuitAsync($"دائرة {Guid.NewGuid():N}"[..12], _branch.Id, sectionId, _head1.Id);
             var doc = await CreateApplicantDocAsync();
             var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
-            await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+            await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
 
             var callerId = byHead ? _head1.Id : sub.Id;
-            var recalled = await _service.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
+            var recalled = await _appealRecall.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
 
             Assert.NotNull(recalled);
             Assert.Equal(AppealForwardCatalog.Owned, recalled!.ForwardState);
             Assert.Contains("recall_forward", _audit.Actions);
+            // تثبيت نص التدقيق حرفيًا حسب هوية المتراجع.
+            Assert.Contains(_audit.Details,
+                d => d == (byHead
+                    ? $"أعاد رئيس القسم الإحالة (رقم {appeal.Id}) لمحيلها"
+                    : $"استرجع المحيل إحالته للاستئناف (رقم {appeal.Id})"));
         }
     }
     [PostgresFact]
@@ -1718,10 +1737,10 @@ public class DocumentAppealServiceTests : PostgresDbTest
             var circuitId = await AddCircuitAsync($"دائرة {Guid.NewGuid():N}"[..12], _branch.Id, sectionId, _head1.Id);
             var doc = await CreateApplicantDocAsync();
             var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
-            await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+            await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
 
             var callerId = byHead ? _head1.Id : sub.Id;
-            await _service.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
+            await _appealRecall.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
 
             await FlushAlertsAsync();
             var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
@@ -1764,14 +1783,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
         var doc = await CreateApplicantDocAsync();
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
-        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RecallForwardAsync(appeal.Id, _lawyer2.Id, "lawyer2"));
+            _appealRecall.RecallForwardAsync(appeal.Id, _lawyer2.Id, "lawyer2"));
 
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RecallForwardAsync(appeal.Id, sub.Id, "sub"));
+            _appealRecall.RecallForwardAsync(appeal.Id, sub.Id, "sub"));
     }
 
     [PostgresFact]
@@ -1782,7 +1801,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
         var doc = await CreateApplicantDocAsync();
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
-        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
 
         var assigned = await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
@@ -1820,7 +1839,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc2 = await CreateApplicantDocAsync();
         await SetDocNumberAsync(doc2.Id, "521");
         var appeal2 = await CreatePendingAppealAsync(doc2.Id, circuitId);
-        await _service.ForwardAsync(appeal2.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appeal2.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _appealAssign.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub"));
     }
@@ -1900,7 +1919,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.DoesNotContain(subResults.Items, a => a.Id == appealDivision.Id);
 
         // الاستثناء القرائي (22′): المحال المنظور يظهر للقسم، وبعد الحسم يختفي.
-        await _service.ForwardAsync(appealSection.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appealSection.Id, new ForwardAppealRequest(), sub.Id, "sub");
         headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
         Assert.Contains(headResults.Items, a => a.Id == appealSection.Id);
 
@@ -1926,7 +1945,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         await SetDocCircuitAsync(doc.Id, sectionCircuit);
         var appeal = await CreatePendingAppealAsync(doc.Id);
-        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
 
         Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
@@ -1946,7 +1965,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         await SetDocCircuitAsync(doc.Id, sectionCircuit);
         var appeal = await CreatePendingAppealAsync(doc.Id);
-        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
         await _appealDecide.DecideAsync(appeal.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),

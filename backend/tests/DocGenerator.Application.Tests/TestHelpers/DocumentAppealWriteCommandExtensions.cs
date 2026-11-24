@@ -81,4 +81,21 @@ public static class DocumentAppealWriteCommandExtensions
         string? actorName,
         CancellationToken ct = default)
         => handler.HandleAsync(new StrikeDocumentAppealCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<AppealDto?> ForwardAsync(
+        this ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> handler,
+        int appealId,
+        ForwardAppealRequest request,
+        int callerUserId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new ForwardDocumentAppealCommand(appealId, request, callerUserId, actorName), ct);
+
+    public static Task<AppealDto?> RecallForwardAsync(
+        this ICommandHandler<RecallAppealForwardCommand, AppealDto?> handler,
+        int appealId,
+        int callerUserId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new RecallAppealForwardCommand(appealId, callerUserId, actorName), ct);
 }

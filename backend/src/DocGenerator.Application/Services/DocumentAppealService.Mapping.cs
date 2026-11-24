@@ -10,9 +10,6 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentAppealService : IDocumentAppealService
 {
-    private string AppealDocumentNumber(Document source) =>
-        AppealDocumentNumberText(source, ServerClock.CurrentYear(_clock, _timeZone));
-
     /// <summary>رقم الملف الفعّال للعرض في نص التنبيه (أو «—» عند غيابه) — مشترك بين
     /// مسار التنبيه داخل الخدمة ومعالج التسطير.</summary>
     internal static string AppealDocumentNumberText(Document source, int currentYear) =>
