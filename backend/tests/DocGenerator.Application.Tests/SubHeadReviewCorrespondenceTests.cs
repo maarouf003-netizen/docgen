@@ -22,6 +22,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
 {
     private readonly IReviewLetterService _letters;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
+    private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
     private readonly ICorrespondenceService _correspondences;
     private readonly FakeAuditLogger _audit = new();
 
@@ -66,6 +67,11 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         _reply = new ReplyReviewLetterCommandHandler(
             (IReviewLetterReplyWriteRules)_letters, new ReviewLetterRepository(_db), uow, tx, _audit,
             Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
+        _createLetter = new CreateReviewLetterCommandHandler(
+            (IReviewLetterCreateWriteRules)_letters, new BranchRepository(_db), new DocumentRepository(_db),
+            new ReviewLetterRepository(_db), new Repository<Section>(_db), uow, tx, _audit,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
         _correspondences = new CorrespondenceService(
             new CorrespondenceRepository(_db),
             new DocumentRepository(_db),
@@ -173,12 +179,12 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var divisionDoc = await AddDocumentAsync(_lawyer1.Id, divisionCircuit);
 
         // بلا منسدل: يُشتق من الدائرة ويُتجاهل المُرسَل (شعبة خاطئة مرسلة عمدًا).
-        var sectionLetter = await _letters.CreateAsync(
+        var sectionLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(sectionDoc.Id, "<p>مطالعة</p>", divisionCircuit),
             _lawyer1.Id, "lawyer1", _branch.Id);
         Assert.Equal(sectionId, sectionLetter.RecipientSectionId);
 
-        var divisionLetter = await _letters.CreateAsync(
+        var divisionLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(divisionDoc.Id, "<p>مطالعة</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
         Assert.Null(divisionLetter.RecipientSectionId);
@@ -195,10 +201,10 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         await AddSubHeadAsync("sub_off", _branch.Id, offId);
 
         // الافتراضي رئيس القسم، والاختيار الصحيح يُجمَّد.
-        var headLetter = await _letters.CreateAsync(
+        var headLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>عام</p>"), _lawyer1.Id, "lawyer1", _branch.Id);
         Assert.Null(headLetter.RecipientSectionId);
-        var sectionLetter = await _letters.CreateAsync(
+        var sectionLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>عام</p>", sectionId), _lawyer1.Id, "lawyer1", _branch.Id);
         Assert.Equal(sectionId, sectionLetter.RecipientSectionId);
         Assert.Equal("شعبة مصياف", sectionLetter.RecipientSectionName);
@@ -206,7 +212,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         // فرع آخر / معطلة / بلا رئيس مفعّل / وهمية → «يجب اختيار المستلم».
         foreach (var bad in new[] { otherSectionId, offId, idleId, 999_999 })
         {
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() => _letters.CreateAsync(
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createLetter.CreateAsync(
                 new CreateReviewLetterRequest(null, "<p>عام</p>", bad), _lawyer1.Id, "lawyer1", _branch.Id));
             Assert.Contains("يجب اختيار المستلم", ex.Message);
         }
@@ -235,7 +241,13 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db));
 
-        var letter = await service.CreateAsync(
+        var createHandler = new CreateReviewLetterCommandHandler(
+            (IReviewLetterCreateWriteRules)service, new BranchRepository(_db), new DocumentRepository(_db),
+            new ReviewLetterRepository(_db), new Repository<Section>(_db), uow, tx, _audit,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
+
+        var letter = await createHandler.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>سباق</p>"), _lawyer1.Id, "lawyer1", _branch.Id);
 
         Assert.NotNull(letter);
@@ -389,11 +401,11 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId);
         var sectionDoc = await AddDocumentAsync(_lawyer1.Id, sectionCircuit);
         var divisionDoc = await AddDocumentAsync(_lawyer1.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(null, "<p>عام للشعبة</p>", sectionId),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>عام للشعبة</p>", sectionId),
             _lawyer1.Id, "lawyer1", _branch.Id);
 
         var headView = await _letters.SearchAsync(_head1.Id, UserRole.Head, _branch.Id, null, 1, 20, null);
@@ -418,9 +430,9 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId);
         var sectionDoc = await AddDocumentAsync(_lawyer1.Id, sectionCircuit);
         var divisionDoc = await AddDocumentAsync(_lawyer1.Id);
-        var sectionLetter = await _letters.CreateAsync(
+        var sectionLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"), _lawyer1.Id, "lawyer1", _branch.Id);
-        var divisionLetter = await _letters.CreateAsync(
+        var divisionLetter = await _createLetter.CreateAsync(
             new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"), _lawyer1.Id, "lawyer1", _branch.Id);
 
         // رئيس الشعبة يرد كتبها بصفته، ورئيس القسم مرفوض عليها.
@@ -449,9 +461,9 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId);
         var sectionDoc = await AddDocumentAsync(_lawyer1.Id, sectionCircuit);
         var divisionDoc = await AddDocumentAsync(_lawyer1.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
 
         Assert.Equal(1, await _letters.CountPendingForHeadAsync(_branch.Id, null));
@@ -466,9 +478,9 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId);
         var sectionDoc = await AddDocumentAsync(_lawyer1.Id, sectionCircuit);
         var divisionDoc = await AddDocumentAsync(_lawyer1.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(sectionDoc.Id, "<p>شعبة</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
-        await _letters.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
+        await _createLetter.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
 
         // القسم يرى كتب ملف القسم دون ملف الشعبة، والشعبة عكسه.
