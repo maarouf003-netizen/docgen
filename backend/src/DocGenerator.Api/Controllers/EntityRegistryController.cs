@@ -37,6 +37,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
+    private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -49,7 +50,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion,
         ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion,
         ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch,
-        ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches)
+        ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches,
+        ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -62,6 +64,7 @@ public class EntityRegistryController : ControllerBase
         _reviewSuggestion = reviewSuggestion;
         _renameBranch = renameBranch;
         _mergeBranches = mergeBranches;
+        _abolishBranch = abolishBranch;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -467,7 +470,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
+        return Ok(await _abolishBranch.HandleAsync(
+            new AbolishPublicEntityBranchCommand(groupId, entryId, request, Actor), ct));
     }
 
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>

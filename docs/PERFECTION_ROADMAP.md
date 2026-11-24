@@ -930,6 +930,15 @@
   **`P4-01bk`:** `DeletePendingRegistrationAlertsCommand` يملك خطاف تنظيف تنبيه إعادة القيد.
   **`P4-01bl`:** `AddReviewLetterAddendumCommand`/`ReplyReviewLetterCommand` يملكان
   لاحق/رد كتاب المطالعة، مع `IReviewLetterReplyWriteRules`.
+  **`P4-01bm`:** `CreateReviewLetterCommand` يملك تسطير كتاب المطالعة، مع
+  `IReviewLetterCreateWriteRules` (المتابعة/المستلم/الترقيم).
+  **`P4-01bn`:** `CommitPublicEntityImportCommand` يملك اعتماد الاستيراد التاريخي
+  (مع مفتاح `RF-011`)، وبقيت المعاينة قراءة.
+  **`P4-01bo`/`P4-01bp`:** `WithdrawParentEditSuggestionCommand`/
+  `ReviewParentEditSuggestionCommand` يملكان سحب/مراجعة اقتراح الجهة الأم.
+  **`P4-01bq`/`P4-01br`/`P4-01bs`:** `RenamePublicEntityBranchCommand`/
+  `MergePublicEntityBranchesCommand`/`AbolishPublicEntityBranchCommand` تملك عمليات
+  الفروع الثلاث مع `IPublicEntityWriteRules` المشترك.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -976,7 +985,14 @@
   `docs/audit/170-p4-01bi-head-alert-manual-20261124.md` و
   `docs/audit/171-p4-01bj-change-password-20261124.md` و
   `docs/audit/172-p4-01bk-pending-registration-hook-20261124.md` و
-  `docs/audit/173-p4-01bl-review-letter-replies-20261124.md`.
+  `docs/audit/173-p4-01bl-review-letter-replies-20261124.md` و
+  `docs/audit/174-p4-01bm-review-letter-create-20261124.md` و
+  `docs/audit/175-p4-01bn-public-entity-import-20261124.md` و
+  `docs/audit/176-p4-01bo-withdraw-parent-suggestion-20261124.md` و
+  `docs/audit/177-p4-01bp-review-parent-suggestion-20261124.md` و
+  `docs/audit/178-p4-01bq-rename-branch-20261124.md` و
+  `docs/audit/179-p4-01br-merge-branches-20261124.md` و
+  `docs/audit/180-p4-01bs-abolish-branch-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

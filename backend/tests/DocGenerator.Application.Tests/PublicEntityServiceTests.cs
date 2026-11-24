@@ -30,6 +30,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
+    private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -111,6 +112,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _mergeBranches = new MergePublicEntityBranchesCommandHandler(
             rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<MergePublicEntityBranchesCommand, MergeBranchesResponse>>());
+        _abolishBranch = new AbolishPublicEntityBranchCommandHandler(
+            rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<AbolishPublicEntityBranchCommand, AbolishBranchResponse>>());
     }
 
 
@@ -3571,7 +3575,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
+            _abolishBranch.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
         Assert.Contains("فرع هدف بديل", ex.Message);
     }
 
@@ -3581,7 +3585,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
 
-        var result = await _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor());
+        var result = await _abolishBranch.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor());
 
         Assert.False(result.TargetEntryId.HasValue);
         Assert.Equal(0, result.AffectedDocuments);
@@ -3599,7 +3603,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
-        var result = await _service.AbolishBranchAsync(
+        var result = await _abolishBranch.AbolishBranchAsync(
             source.GroupId, source.Id, new AbolishBranchRequest(target.Id), HeadDamascusActor());
 
         Assert.Equal(target.Id, result.TargetEntryId);
@@ -3621,7 +3625,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
+            _abolishBranch.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
         Assert.Contains("آخر فرع نشط", ex.Message);
     }
 
@@ -4090,7 +4094,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AbolishBranchAsync(parent.GroupId, parentId, new AbolishBranchRequest(), ManagerActor()));
+            _abolishBranch.AbolishBranchAsync(parent.GroupId, parentId, new AbolishBranchRequest(), ManagerActor()));
         Assert.Contains("للفروع فقط", ex.Message);
     }
 

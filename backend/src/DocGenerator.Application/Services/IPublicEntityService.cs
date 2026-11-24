@@ -95,8 +95,6 @@ public interface IPublicEntityService
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
 
     /// <summary>إلغاء فرع: بلا هدف لصفر روابط، أو دمج ضمني مع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
-    Task<AbolishBranchResponse> AbolishBranchAsync(int groupId, int entryId, AbolishBranchRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
     Task<UnifyBranchesResponse> UnifyBranchesAsync(int groupId, UnifyBranchesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
