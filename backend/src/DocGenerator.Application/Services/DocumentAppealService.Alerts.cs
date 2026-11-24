@@ -12,42 +12,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
 {
     // ── تسجيل التنبيهات في صندوق الصادر داخل المعاملة ──────────────────────
 
-    private async Task EnqueueAppealPendingAsync(
-        DocumentAppeal appeal, Document source, int actorUserId, DateTime occurredAt, CancellationToken ct)
-    {
-        var branchId = source.BranchId;
-        if (branchId is null)
-            return;
-
-        // الإشعار الأولي لمالك واحد حسب دائرة الملف (§6.1): رئيس شعبته،
-        // وإلا رئيس القسم — لا بث لفرع (قرار §2 + §17/5).
-        var sectionId = source.ExecutionCircuit?.SectionId;
-        var owner = sectionId.HasValue
-            ? await _users.FindActiveHeadAsync(UserRole.SubHead, branchId, sectionId, ct)
-                ?? await _users.FindActiveHeadAsync(UserRole.Head, branchId, null, ct)
-            : await _users.FindActiveHeadAsync(UserRole.Head, branchId, null, ct);
-        if (owner is null)
-            return;
-
-        await _alertOutbox.EnqueueSystemAsync(
-            new CreateSystemHeadAlertRequest(
-                Kind: HeadAlertKindCatalog.AppealPendingToOwner,
-                Message: HeadAlertMessages.AppealPendingToOwner(new(
-                    DocumentTitle(source),
-                    AppealDocumentNumber(source),
-                    source.FileType ?? "—",
-                    AppealCourtBare(source.Court))),
-                Audience: HeadAlertAudience.SingleHead,
-                BranchId: branchId.Value,
-                CreatedById: actorUserId,
-                DocumentId: source.Id,
-                AppealId: appeal.Id,
-                RecipientUserId: owner.Id),
-            supersedePlan: null,
-            occurredAt,
-            ct);
-    }
-
     private Task EnqueueAppealForwardedAsync(
         DocumentAppeal appeal, Document source, User caller, User head,
         DateTime occurredAt, CancellationToken ct)

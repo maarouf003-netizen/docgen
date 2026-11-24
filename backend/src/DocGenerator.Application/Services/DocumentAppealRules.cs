@@ -9,6 +9,15 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 internal static class DocumentAppealRules
 {
+    /// <summary>شروط الاستئناف على الملف: مقيد (ليس تحت الرفع). الشطب لا يمنع الاستئناف.</summary>
+    internal static void ValidateSourceForAppeal(Document source)
+    {
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن تسطير استئناف على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
+        if (source.IsDraft)
+            throw new ArgumentException("لا يمكن الاستئناف على ملف تحت الرفع");
+    }
+
     /// <summary>
     /// الصلاحية أولًا (403)، ثم حالة الاستئناف (400) — لا كشف لحالة استئناف الغير
     /// (`P2-02f`).

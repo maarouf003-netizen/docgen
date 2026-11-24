@@ -287,7 +287,7 @@ public class PortalFileDetailTests : PostgresDbTest
         var entityId = await _db.ApplicantPublicEntities
             .Where(e => e.DocumentId == doc.Id).Select(e => e.Id).SingleAsync();
 
-        await _appealService.CreateAsync(doc.Id, Request(entityId), _lawyerId, "محامي دمشق");
+        await AppealWriteHandlerFactory.Create(_db).CreateAsync(doc.Id, Request(entityId), _lawyerId, "محامي دمشق");
 
         var appeals = await _portal.ListAppealDetailsAsync(_delegateGroupId, doc.Id);
 
