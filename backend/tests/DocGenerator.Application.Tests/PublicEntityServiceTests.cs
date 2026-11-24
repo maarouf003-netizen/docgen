@@ -31,6 +31,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
     private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
+    private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -115,6 +116,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _abolishBranch = new AbolishPublicEntityBranchCommandHandler(
             rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<AbolishPublicEntityBranchCommand, AbolishBranchResponse>>());
+        _unifyBranches = new UnifyPublicEntityBranchesCommandHandler(
+            rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse>>());
     }
 
 
@@ -3638,7 +3642,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var doc1 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع التجهيز", absorbed1.Id);
         var doc2 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع المعارض", absorbed2.Id);
 
-        var result = await _service.UnifyBranchesAsync(
+        var result = await _unifyBranches.UnifyBranchesAsync(
             target.GroupId,
             new UnifyBranchesRequest(target.Id, new[] { absorbed1.Id, absorbed2.Id }, CorrectedName: "الفرع الإداري"),
             HeadDamascusActor());
