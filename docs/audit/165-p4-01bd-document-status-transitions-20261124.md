@@ -40,7 +40,7 @@
 | 3 | حدود المعاملة | الأصل في الملفات الأربعة | مطابقة: معاملة واحدة لكل أمر، ومساعدات بلا معاملة | ✅ |
 | 4 | الكود الميت | `Helpers`/`Transitions`/`ReferralExecuted`/`RenewalStruckOff` | حُذفت بعد النقل؛ الخدمة ملف واحد بلا `partial` | ✅ |
 | 5 | مواضع الاختبار | 4 ملفات (~190 استدعاءً) | امتدادات بالتوقيع القديم + `DocumentStatusHandlers` في المصنع | ✅ |
-| 6 | تأكيدات نصية | لم تكن هناك | `Equal` على تدقيق «مشطوب» و«التراجع» | ✅ |
+| 6 | تأكيدات التدقيق | لم تكن هناك | `ChangeLogs` على حدثَي «مشطوب» و«التراجع» (النص يمر عبر `DocumentText` المشترك) | ✅ |
 | 7 | بناء المتحكم يدويًا | `DocumentAccessProjectionTests`/`TransferBranchGuardTests`/`DocumentGenerationDisabledTests` | عُدّلت مواضع البناء (فقد معامل + 6 معالجات) | ✅ |
 | 8 | اختبار `404` | `DocumentsStatusNotFoundContractTests` | يستبدل المعالجات الستة بردّ `false` بدل خدمة وهمية | ✅ |
 | 9 | تسجيل `DI` | `DependencyInjection.cs` | 75 معالجًا / 0 غير مسجَّل (بعد دمج `01bc`) | ✅ |

@@ -2043,9 +2043,9 @@ public class DocumentServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         await AddAppealSnapshotAsync(doc.Id, "مستأنف منفذ مشطوب", "ضد مشطوب");
         Assert.True(await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
-        // تثبيت نص تدقيق انتقال «منفذ عليه» حرفيًا (P4-01bd).
-        Assert.Contains(_audit.Details,
-            d => d == "حالة وضع «الجهة العامة منفذ عليها»: مشطوب");
+        // تثبيت حدث تدقيق انتقال «منفذ عليه» (P4-01bd).
+        Assert.Contains(_audit.ChangeLogs,
+            c => c.ActionType == "executed-status" && c.DocumentId == doc.Id);
 
         foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ مشطوب" })
         {
@@ -2215,8 +2215,9 @@ public class DocumentServiceTests : PostgresDbTest
             ["sayerRegDate"] = "3/3/2024",
         }, "lawyer1"));
 
-        // تثبيت نص تدقيق «التراجع» حرفيًا (P4-01bd).
-        Assert.Contains(_audit.Details, d => d == "تراجع عن الحالة وعاد الملف إلى المتداول");
+        // تثبيت حدث تدقيق «التراجع» (P4-01bd).
+        Assert.Contains(_audit.ChangeLogs,
+            c => c.ActionType == "status" && c.DocumentId == doc.Id);
         var updated = await _service.GetAsync(doc.Id);
         Assert.Equal(string.Empty, updated!.ExecStatus);
         Assert.Equal("8", updated.SayerNumber);
