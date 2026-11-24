@@ -26,6 +26,7 @@ public class AuthController : ControllerBase
     private readonly JwtOptions _jwt;
     private readonly IWebHostEnvironment _env;
     private readonly IAuditLogger _audit;
+    private readonly ICommandHandler<LoginCommand, LoginResult> _login;
     private readonly ICommandHandler<ChangePasswordCommand, bool> _changePassword;
 
     /// <summary>نفس عمر Cookie الجلسة بالضبط حتى يتزامن زوجا Cookie (المصادقة + CSRF) عند الطرح والانتهاء.</summary>
@@ -46,6 +47,7 @@ public class AuthController : ControllerBase
         JwtOptions jwt,
         IWebHostEnvironment env,
         IAuditLogger audit,
+        ICommandHandler<LoginCommand, LoginResult> login,
         ICommandHandler<ChangePasswordCommand, bool> changePassword)
     {
         _auth = auth;
@@ -54,6 +56,7 @@ public class AuthController : ControllerBase
         _jwt = jwt;
         _env = env;
         _audit = audit;
+        _login = login;
         _changePassword = changePassword;
     }
 
@@ -78,7 +81,7 @@ public class AuthController : ControllerBase
                 $"محاولات دخول كثيرة جداً، حاول بعد {Math.Max(1, _rateOptions.WindowMinutes)} دقائق");
         }
 
-        var result = await _auth.LoginAsync(request, ct);
+        var result = await _login.HandleAsync(new LoginCommand(request), ct);
         return result.Status switch
         {
             LoginStatus.LockedOut => ApiProblem.Result(

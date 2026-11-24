@@ -944,6 +944,9 @@
   الأربع مع `ICorrespondenceWriteRules` المشترك؛ حُذفت التواقيع الأربعة من
   `ICorrespondenceService` وبقيت القراءات، وأُزيلت الحقول الأربعة الميتة
   (`_uow`/`_tx`/`_audit`/`_errors`) من `CorrespondenceService` بعد نقل الكتابات.
+  **`P4-01bu`:** `LoginCommand` يملك مسار الدخول كاملًا (اختيار الحساب/الفرع، القفل
+  والتراجع الأسّي، ترقية صيغة الهاش، والتدقيق) داخل معالج واحد بلا معاملة متداخلة؛
+  `AuthService` صارت قراءةً فقط (`GetUserAsync`) وحُذفت حقولها الستة الميتة.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -1002,9 +1005,11 @@
   `docs/audit/180-p4-01bs-abolish-branch-20261124.md` و
   `docs/audit/181-p4-01bs-followup-review-20261124.md` و
   `docs/audit/182-p4-01bt-correspondence-writes-20261124.md` و
-  `docs/audit/183-p4-01bt-followup-review-20261124.md`.
+  `docs/audit/183-p4-01bt-followup-review-20261124.md` و
+  `docs/audit/184-p4-01bu-login-command-20261124.md` و
+  `docs/audit/185-p4-01bu-followup-review-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (`AuthService.LoginAsync`، `UnifyBranchesAsync`، `MoveEntryAsync`/`MoveAllEntriesAsync`،
+  (`UnifyBranchesAsync`، `MoveEntryAsync`/`MoveAllEntriesAsync`،
   دورة حياة/اعتماد الإنابة، وملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

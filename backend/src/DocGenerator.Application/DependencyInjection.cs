@@ -123,6 +123,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdateUserCommand, UserListItemDto?>, UpdateUserCommandHandler>();
         services.AddScoped<ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto>, CreateManualHeadAlertCommandHandler>();
         services.AddScoped<ICommandHandler<RemoveAppealAlertRecipientCommand, int>, RemoveAppealAlertRecipientCommandHandler>();
+        services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<ChangePasswordCommand, bool>, ChangePasswordCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePendingRegistrationAlertsCommand, bool>, DeletePendingRegistrationAlertsCommandHandler>();
         services.AddScoped<ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto>, AddReviewLetterAddendumCommandHandler>();

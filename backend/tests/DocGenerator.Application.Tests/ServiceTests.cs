@@ -5310,7 +5310,7 @@ public class AuthServiceTests : PostgresDbTest
     }
 
 
-    private AuthService CreateService(int maxFailedAttempts = 5, int lockoutMinutes = 15) => new(
+    private ICommandHandler<LoginCommand, LoginResult> CreateService(int maxFailedAttempts = 5, int lockoutMinutes = 15) => new LoginCommandHandler(
         new UserRepository(_db),
         new UnitOfWork(_db),
         new PasswordHasher(),
@@ -5321,7 +5321,8 @@ public class AuthServiceTests : PostgresDbTest
         {
             MaxFailedAttempts = maxFailedAttempts,
             LockoutMinutes = lockoutMinutes,
-        }));
+        }),
+        Array.Empty<IPipelineBehavior<LoginCommand, LoginResult>>());
 
     private ICommandHandler<ChangePasswordCommand, bool> CreateChangePassword() => new ChangePasswordCommandHandler(
         new UserRepository(_db),
