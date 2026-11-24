@@ -29,7 +29,8 @@
 | 2 | حرفية النصوص (اتجاهان) | مقارنة آلية مع الوالد | 11/11 و0 انحراف/0 إضافة | ✅ |
 | 3 | حدود المعاملة | الأصل | مطابقة (حلقة الترقيم حول معاملة واحدة) | ✅ |
 | 4 | مواضع الاختبار | `ReviewLetterServiceTests`/`SubHeadReviewCorrespondenceTests` (~30) | امتداد + بناء المعالجين (بما فيه اختبار سباق الترقيم) | ✅ |
-| 5 | `DI` | `DependencyInjection.cs` | 92 معالجًا / 0 غير مسجَّل | ✅ |
+| 5 | حقن العشوائية | `Create_NumberGeneration_UsesInjectedEntropy` (CI) | بناء المعالج فوق الخدمة ذات `DeterministicEntropy` لا فوق الافتراضية | ✅ |
+| 6 | `DI` | `DependencyInjection.cs` | 92 معالجًا / 0 غير مسجَّل | ✅ |
 
 ## التحقق
 

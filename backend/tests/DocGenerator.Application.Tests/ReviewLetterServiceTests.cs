@@ -169,8 +169,13 @@ public class ReviewLetterServiceTests : PostgresDbTest
     {
         // P1-02b: نفس عقد الحقن في كتاب المطالعة — بلا Random.Shared.
         var service = BuildService(new DeterministicEntropy(4321));
+        var createHandler = new CreateReviewLetterCommandHandler(
+            (IReviewLetterCreateWriteRules)service, new BranchRepository(_db), new DocumentRepository(_db),
+            new ReviewLetterRepository(_db), new Repository<Section>(_db), new UnitOfWork(_db),
+            new TransactionRunner(_db), _audit, new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
 
-        var letter = await _createLetter.CreateAsync(
+        var letter = await createHandler.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
