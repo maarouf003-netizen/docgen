@@ -27,6 +27,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
+    private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -99,6 +100,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _withdrawSuggestion = new WithdrawParentEditSuggestionCommandHandler(
             rules, new Repository<ParentEditSuggestion>(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?>>());
+        _reviewSuggestion = new ReviewParentEditSuggestionCommandHandler(
+            rules, entityRepository, new Repository<ParentEditSuggestion>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?>>());
     }
 
 
@@ -3873,7 +3877,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ReviewParentEditSuggestionAsync(
+            _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), HeadDamascusActor()));
     }
 
@@ -3883,7 +3887,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
 
-        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+        var reviewed = await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
 
         Assert.NotNull(reviewed);
@@ -3901,7 +3905,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ReviewParentEditSuggestionAsync(
+            _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected), ManagerActor()));
     }
 
@@ -3910,10 +3914,10 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
-        await _service.ReviewParentEditSuggestionAsync(
+        await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected, "اسم مقترح غير دقيق"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ReviewParentEditSuggestionAsync(
+            _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor()));
     }
 
@@ -3948,7 +3952,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
-        await _service.ReviewParentEditSuggestionAsync(
+        await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _withdrawSuggestion.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor()));
@@ -4123,7 +4127,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ReviewParentEditSuggestionAsync(
+            _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor()));
         Assert.Contains("طبّق إعادة التسمية", ex.Message);
 
@@ -4143,7 +4147,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         group.CanonicalName = "الاسم الصحيح الجديد";
         await _db.SaveChangesAsync();
 
-        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+        var reviewed = await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
 
         Assert.NotNull(reviewed);
@@ -4156,7 +4160,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(ProposedEntityType: "authority", Reason: "سبب"), HeadDamascusActor());
 
-        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+        var reviewed = await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
 
         Assert.NotNull(reviewed);

@@ -34,6 +34,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
     private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
+    private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -43,7 +44,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> addAlias,
         ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview,
         ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport,
-        ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion)
+        ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion,
+        ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -53,6 +55,7 @@ public class EntityRegistryController : ControllerBase
         _approveReview = approveReview;
         _commitImport = commitImport;
         _withdrawSuggestion = withdrawSuggestion;
+        _reviewSuggestion = reviewSuggestion;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -501,7 +504,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
+        var dto = await _reviewSuggestion.HandleAsync(
+            new ReviewParentEditSuggestionCommand(suggestionId, request, Actor), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 

@@ -132,55 +132,6 @@ public sealed partial class PublicEntityService
         var items = ordered.Skip((page - 1) * perPage).Take(perPage).Select(ToParentEditSuggestionDto).ToList();
         return new PagedResult<ParentEditSuggestionDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };
     }
-    /// <inheritdoc/>
-    public async Task<ParentEditSuggestionDto?> ReviewParentEditSuggestionAsync(
-        int suggestionId,
-        ReviewParentEditSuggestionRequest request,
-        EntityRegistryActor actor,
-        CancellationToken ct = default)
-    {
-        if (actor.Role is not (UserRole.Manager or UserRole.Admin))
-            throw new UnauthorizedAccessException("القرار على اقتراحات الجهة الأم متاح للمدير/المشرف فقط");
-
-        var suggestion = await _suggestions.GetByIdAsync(suggestionId, ct);
-        if (suggestion is null)
-            return null;
-        if (suggestion.Status != ParentEditSuggestionStatusCatalog.Pending)
-            throw new ArgumentException("الاقتراح لم يعد معلّقًا");
-
-        var status = Required(request.Status, "الحالة مطلوبة", 20);
-        if (status is not (ParentEditSuggestionStatusCatalog.Approved or ParentEditSuggestionStatusCatalog.Rejected))
-            throw new ArgumentException("الحالة يجب أن تكون approved أو rejected");
-        var reviewReason = NormalizeOptional(request.ReviewReason);
-        if (status == ParentEditSuggestionStatusCatalog.Rejected)
-            reviewReason = Required(reviewReason, "سبب الرفض مطلوب", 500);
-
-        // حوكمة S1: لا يُعتمد اسم مقترح لم يُطبَّق بعد — مدراء/مشرفون يجيزون التغيير المنجز
-        // فعليًا على الأرض، والواجهة تطبّقه قبل المراجعة (needsRename)؛ المسار المباشر يُجبَر هنا.
-        var proposedName = NormalizeOptional(suggestion.ProposedCanonicalName);
-        if (status == ParentEditSuggestionStatusCatalog.Approved && proposedName is not null)
-        {
-            var liveGroup = await _entities.GetGroupAsync(suggestion.GroupId, ct)
-                ?? throw new ArgumentException("المجموعة غير موجودة");
-            if (ArabicNameNormalizer.Normalize(proposedName) != ArabicNameNormalizer.Normalize(liveGroup.CanonicalName))
-                throw new ArgumentException("اعتماد اقتراح باسم غير مُطبَّق مرفوض — طبّق إعادة التسمية أولًا ثم أعد المراجعة");
-        }
-
-        suggestion.Status = status;
-        suggestion.ReviewedById = actor.UserId;
-        suggestion.ReviewReason = reviewReason;
-        suggestion.ReviewedAtUtc = DateTime.UtcNow;
-
-        await _tx.RunAsync(async token =>
-        {
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actor.Name, "review_parent_edit_suggestion",
-                details: $"{(status == ParentEditSuggestionStatusCatalog.Approved ? "قبل" : "رفض")} اقتراح تعديل الجهة الأم «{suggestion.Group?.CanonicalName ?? suggestion.Entry?.Group?.CanonicalName}»{($" — {reviewReason}")}",
-                ct: token);
-        }, ct);
-
-        return ToParentEditSuggestionDto(suggestion);
-    }
     private static ParentEditSuggestionDto ToParentEditSuggestionDto(ParentEditSuggestion s)
     {
         var canonical = s.Entry?.Group?.CanonicalName ?? s.Group?.CanonicalName ?? string.Empty;
