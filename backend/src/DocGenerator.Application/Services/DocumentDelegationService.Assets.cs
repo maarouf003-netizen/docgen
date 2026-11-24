@@ -10,21 +10,6 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentDelegationService : IDocumentDelegationService
 {
-    /// <summary>
-    /// مواءمة الحجوزات اليتيمة (B3 — شفاء ذاتي في نقطة واحدة): تحذف صفوف الحجوزات التي
-    /// لم تعد لإنابة حاجبة (منفذة/مناب نهائي) قبل الفحص — فلا يحتاج أي مسار تحرر
-    /// (إتمام/استرداد/شطب-مناب/حذف) خطافًا خاصًا قد يُنسى (عين علة التنبيهات D3)، وأي
-    /// انحراف (طفر مباشر، فشل لاحق الالتزام) يُشفى عند أول فحص لاحق. الحذف والفحص
-    /// والإدراج اللاحق في معاملة واحدة فلا تسمم متقاطع.
-    ///
-    /// <para>الحكم على «حاجبة» يتم داخل جملة الحذف من حالة القاعدة اللحظية، لا من لقطة
-    /// <c>source</c> — وإلا محا سباقٌ متزامن حجز إنابةٍ التزمت بعد قراءة اللقطة
-    /// (واقع `READ COMMITTED` على `Postgres`).</para>
-    /// </summary>
-    private async Task PruneStaleReservationsAsync(
-        Document source, CancellationToken ct)
-        => await _reservations.DeleteStaleAsync(source.Id, ct);
-
     /// <summary>حارس التسطير عند الإنشاء/التعديل: يرفض الكفالة (لا إنابة عليها أبدًا)
     /// ويرفض الأموال بلا تاريخ القاء حجز (لا إنابة عليها قانونًا) ويرفض الأموال
     /// المحجوبة بإنابة سارية أخرى — مسح اللقطات حصرًا (مطابقة واحد-لواحد بالنوع والوصف —
@@ -34,7 +19,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// محجوب فيحجب التوأمين معًا — القيد الفريد وحده يحسم السباق عند الكتابة.
     /// تُستثنى الإنابة ذاتها عند التعديل. يعمل على قراءة طازجة بلا تتبع
     /// (B2) — لا يُمرَّر له كيان متتبع هنا أبدًا.</summary>
-    private static Task ValidateAssetsNotBlockedAsync(
+    internal static Task ValidateAssetsNotBlockedAsync(
         Document source, List<int>? assetIds, int? excludeDelegationId, CancellationToken ct)
     {
         var ids = (assetIds ?? new List<int>()).Distinct().ToList();
@@ -57,7 +42,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// <summary>حارس «لا إنابة على مالٍ بلا حجز»: يرفض أي أصلٍ مختار بلا تاريخ القاء حجز
     /// مخزَّن (الفارغ/الأبيض في الطلب يؤول إلى null في BuildAsset، فالمقياس هنا null حصريًا).
     /// فاحص مستقل يُستدعى من حارس التسطير بعد فحص الكفالة وقبل فحص الحجب.</summary>
-    private static void ValidateAssetsHaveSeizureDate(Document source, List<int>? assetIds)
+    internal static void ValidateAssetsHaveSeizureDate(Document source, List<int>? assetIds)
     {
         var ids = (assetIds ?? new List<int>()).Distinct().ToList();
         if (ids.Count == 0)
@@ -76,7 +61,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// المشتركة الوحيدة بين المرجع الوصفي والمرجع الفيزيائي (التوائم قابلة للتبادل
     /// ولا تحمل اللقطات معرفاتها، فأي اختلاف بينهما يحجب توأمًا سليمًا).
     /// </summary>
-    private static HashSet<int> ComputeBlockedIds(Document source, int? excludeDelegationId) =>
+    internal static HashSet<int> ComputeBlockedIds(Document source, int? excludeDelegationId) =>
         ComputeBlockedIds(source.Assets, source.Delegations, excludeDelegationId);
 
     /// <summary>المطابقة نفسها على مجموعات مفكوكة — لقفل «الحجز بعد التسطير» في
@@ -99,7 +84,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     }
 
     /// <summary>استهلاك لقطات من المسبح (تزيل المستهلك وتسجله) — يُرجع المعرفات المستهلكة.</summary>
-    private static List<int> ConsumeSnapshots(
+    internal static List<int> ConsumeSnapshots(
         List<Asset> remaining, IEnumerable<DelegationAsset> snapshots, HashSet<int> blockedIds)
     {
         var consumed = new List<int>();
@@ -119,12 +104,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     }
 
     /// <summary>رسالة الحجب الموحدة (الحارس وترجمة تعارض القيد في B3).</summary>
-    private static string BlockedAssetsMessage(Document source, List<int>? assetIds)
+    internal static string BlockedAssetsMessage(Document source, List<int>? assetIds)
     {
         var ids = (assetIds ?? new List<int>()).Distinct().ToList();
         return BlockedAssetsMessage(source.Assets.Where(a => ids.Contains(a.Id)).ToList());
     }
 
-    private static string BlockedAssetsMessage(List<Asset> hit) =>
+    internal static string BlockedAssetsMessage(List<Asset> hit) =>
         $"الأموال التالية عليها إنابة سارية: {string.Join("، ", hit.Select(AssetDisplay.Label))}";
 }

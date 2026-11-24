@@ -27,12 +27,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         if (source.NeedsRegistration)
             throw new ArgumentException("لا يمكن تسطير إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
 
-        var (court, circuitId, fields) = await ValidateAndBuildAsync(request, source.BranchId, ct);
+        var (court, circuitId, fields) = await DocumentDelegationRules.ValidateAndBuildAsync(request, source.BranchId, _branches, _circuits, ct);
 
         // الاستهداف (§7.1): مالك الدائرة المنابة (رئيس شعبته وإلا قسمه)،
         // وخارجيةً رئيس قسم الفرع المناب، وبلا دائرة رئيس قسم فرع المنيب.
-        var (alertBranch, ownerId) = await ResolvePendingAlertTargetAsync(
-            fields.IsExternal, fields.ExternalBranchId, source.BranchId, circuitId, ct);
+        var (alertBranch, ownerId) = await DocumentDelegationRules.ResolvePendingAlertTargetAsync(
+            fields.IsExternal, fields.ExternalBranchId, source.BranchId, circuitId, _users, _circuits, ct);
         var pendingApprovalMessage = HeadAlertMessages.DelegationPendingApproval(new(
             source.CreatedBy?.FullName ?? string.Empty, SourceLabel(source), court));
 
@@ -44,7 +44,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             // (identity resolution) ولا ترى ما التزمته معاملة منافسة بعد القراءة الأولى.
             var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
                 ?? throw new ArgumentException("الملف المنيب غير موجود");
-            await PruneStaleReservationsAsync(fresh, token);
+            await DocumentDelegationRules.PruneStaleReservationsAsync(fresh, _reservations, token);
             await ValidateAssetsNotBlockedAsync(fresh, request.AssetIds, excludeDelegationId: null, token);
 
             delegation = new DocumentDelegation
@@ -131,12 +131,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         EnsurePendingByOwner(delegation, userId);
         var source = delegation.SourceDocument;
 
-        var (court, circuitId, fields) = await ValidateAndBuildAsync(request, source.BranchId, ct);
+        var (court, circuitId, fields) = await DocumentDelegationRules.ValidateAndBuildAsync(request, source.BranchId, _branches, _circuits, ct);
 
         // التصحيح قد يغيّر مالك الاعتماد (دائرة/فرع)، فتُبنى هوية المستلم الجديدة
         // مسبقًا، ويُستبدل أي تنبيه سابق للإنابة عند معالجة Outbox.
-        var (alertBranch, ownerId) = await ResolvePendingAlertTargetAsync(
-            fields.IsExternal, fields.ExternalBranchId, source.BranchId, circuitId, ct);
+        var (alertBranch, ownerId) = await DocumentDelegationRules.ResolvePendingAlertTargetAsync(
+            fields.IsExternal, fields.ExternalBranchId, source.BranchId, circuitId, _users, _circuits, ct);
         var pendingApprovalMessage = HeadAlertMessages.DelegationPendingApproval(new(
             source.CreatedBy?.FullName ?? string.Empty, SourceLabel(source), AlertCourtAfterDaira(court)));
 
@@ -146,7 +146,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             // داخل المعاملة نفسها. الرفض لا يترك حالة Modified عالقة.
             var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
                 ?? throw new ArgumentException("الملف المنيب غير موجود");
-            await PruneStaleReservationsAsync(fresh, token);
+            await DocumentDelegationRules.PruneStaleReservationsAsync(fresh, _reservations, token);
             await ValidateAssetsNotBlockedAsync(fresh, request.AssetIds, excludeDelegationId: delegation.Id, token);
 
             delegation.DelegatedCourt = court;
