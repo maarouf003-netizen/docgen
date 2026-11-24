@@ -90,6 +90,10 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
         string oldCanonical, string newCanonical, string? actorName, CancellationToken token)
         => SyncTextsAfterRenameAsync(oldCanonical, newCanonical, actorName, token);
 
+    Task IPublicEntityWriteRules.SyncTextsAfterFoldAsync(
+        List<Document> linkedDocs, string? actorName, CancellationToken token)
+        => SyncTextsAfterFoldAsync(linkedDocs, actorName, token);
+
     Task IPublicEntityWriteRules.SyncAppealsAfterEntityChangeAsync(
         IReadOnlyCollection<Document> affectedDocs, EntityRegistryActor actor, CancellationToken token)
         => SyncAppealsAfterEntityChangeAsync(affectedDocs, actor, token);
@@ -127,6 +131,9 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
 
     void IPublicEntityWriteRules.GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry)
         => GuardHeadCannotEditParent(actor, entry);
+
+    void IPublicEntityWriteRules.GuardNotParentEntry(PublicEntity entry, string? message)
+        => GuardNotParentEntry(entry, message);
 
     Task<List<ImportPreviewItemDto>> IPublicEntityWriteRules.BuildImportCandidatesAsync(CancellationToken ct)
         => BuildImportCandidatesAsync(ct);

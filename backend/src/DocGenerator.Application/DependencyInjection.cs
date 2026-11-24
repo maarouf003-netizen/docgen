@@ -140,6 +140,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse>, MergePublicEntityBranchesCommandHandler>();
         services.AddScoped<ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse>, AbolishPublicEntityBranchCommandHandler>();
         services.AddScoped<ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse>, UnifyPublicEntityBranchesCommandHandler>();
+        services.AddScoped<ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse>, MovePublicEntityEntryCommandHandler>();
+        services.AddScoped<ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse>, MoveAllPublicEntityEntriesCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

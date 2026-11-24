@@ -950,6 +950,10 @@
   **`P4-01bv`:** `UnifyPublicEntityBranchesCommand` يملك توحيد تسميات الفروع (الدخول
   النشط، تفرّد الاسم المصحّح، إعادة توجيه الروابط والمناديب، الألقاب، تغيير الفرع،
   الوقوعات والتنبيه، والتدقيق) داخل معاملة واحدة، وبقيت معاينة الإجراء قراءةً.
+  **`P4-01bw`:** `MovePublicEntityEntryCommand`/`MoveAllPublicEntityEntriesCommand` يملكان
+  نقل القيد (وضع الطيّ أو تغيير الهوية الأم) والنقل الجماعي: الحرّاس والنطاق، إعادة
+  توجيه الروابط والمناديب، الألقاب والمزامنة النصية، أحداث التغيير، الوقوعات والتنبيهات،
+  والتدقيق — بمعاملاتها كما في الأصل؛ وحُذف الملف الجزئي `PublicEntityService.Moves.cs` بعد إفراغه.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -1012,10 +1016,11 @@
   `docs/audit/184-p4-01bu-login-command-20261124.md` و
   `docs/audit/185-p4-01bu-followup-review-20261124.md` و
   `docs/audit/186-p4-01bv-unify-branches-20261124.md` و
-  `docs/audit/187-p4-01bv-followup-review-20261124.md`.
+  `docs/audit/187-p4-01bv-followup-review-20261124.md` و
+  `docs/audit/188-p4-01bw-move-entries-20261125.md` و
+  `docs/audit/189-p4-01bw-followup-review-20261125.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (`MoveEntryAsync`/`MoveAllEntriesAsync`،
-  دورة حياة/اعتماد الإنابة، وملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
+  (دورة حياة/اعتماد الإنابة، وملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

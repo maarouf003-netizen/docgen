@@ -32,6 +32,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
     private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
     private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
+    private readonly ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> _moveEntry;
+    private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -68,13 +70,14 @@ public class PublicEntityServiceTests : PostgresDbTest
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
+        var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _headAlerts = new HeadAlertService(alertsRepo, new DocumentRepository(_db), users,
             branches, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         _service = new PublicEntityService(
             new PublicEntityRepository(_db),
             branches,
             alertsRepo,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
+            outbox,
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
             new Repository<ParentEditSuggestion>(_db),
@@ -119,6 +122,13 @@ public class PublicEntityServiceTests : PostgresDbTest
         _unifyBranches = new UnifyPublicEntityBranchesCommandHandler(
             rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse>>());
+        _moveEntry = new MovePublicEntityEntryCommandHandler(
+            rules, entityRepository, new UserRepository(_db), new Repository<DocumentOccurrence>(_db),
+            outbox, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<MovePublicEntityEntryCommand, MoveEntryResponse>>());
+        _moveAllEntries = new MoveAllPublicEntityEntriesCommandHandler(
+            rules, entityRepository, new Repository<DocumentOccurrence>(_db), outbox, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse>>());
     }
 
 
@@ -902,7 +912,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveEntry_ModeA_ReassignsGroupId()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
-        var result = await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        var result = await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
 
         Assert.Equal(g2, result.ToGroupId);
         Assert.Equal(g1, result.FromGroupId);
@@ -933,7 +943,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var result = await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
+        var result = await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
 
         Assert.Equal(g2, result.ToGroupId);
         Assert.True(result.AffectedDocuments > 0);
@@ -963,7 +973,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -973,7 +983,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await SeedConflictEntryAsync(g2, "هيئة سكن", "دمشق", "الفرع الرئيسي");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -981,14 +991,14 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(e1, new MoveEntryRequest(null, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(null, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task MoveEntry_SendsHeadAlert()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(h => h.Recipients).SingleAsync();
@@ -1000,7 +1010,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveAllEntries_ModeA_TransfersAllEntries()
     {
         var (g1, e1, g2, e2) = await SeedTwoGroupsForMoveAsync();
-        var result = await _service.MoveAllEntriesAsync(
+        var result = await _moveAllEntries.MoveAllEntriesAsync(
             new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor());
 
         Assert.Equal(1, result.EntriesMoved);
@@ -1019,7 +1029,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await SeedConflictEntryAsync(g2, "هيئة سكن", "دمشق", "الفرع الرئيسي");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor()));
+            _moveAllEntries.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -1027,14 +1037,14 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e1, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(null, e1, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task MoveEntry_NonExistentEntry_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(9999, new MoveEntryRequest(1, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(9999, new MoveEntryRequest(1, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -1042,7 +1052,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(e1, new MoveEntryRequest(g1, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g1, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -1050,7 +1060,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (g1, _, _, _) = await SeedTwoGroupsForMoveAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g1, null, null, null, null), ManagerActor()));
+            _moveAllEntries.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g1, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
@@ -1063,7 +1073,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             "الإدارة العامة للنقل", "administration", "دمشق", "الجهة الأم"), ManagerActor());
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(sourceParent.Id, new MoveEntryRequest(null, foldedTarget.Id, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(sourceParent.Id, new MoveEntryRequest(null, foldedTarget.Id, null, null, null, null), ManagerActor()));
         Assert.Contains("لا يُنقَل ولا يُطوى", ex.Message);
 
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == sourceParent.Id);
@@ -1082,7 +1092,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             "المديرية الهدف", "administration", "حمص", "فرع حمص"), ManagerActor());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MoveEntryAsync(entry.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor()));
+            _moveEntry.MoveEntryAsync(entry.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor()));
 
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == entry.Id);
         Assert.True(stored.IsActive);
@@ -1098,7 +1108,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parentTarget = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم المطوِّرة", "ministry", "دمشق", "فرع المزة", IsParentEntity: true), ManagerActor());
 
-        var result = await _service.MoveEntryAsync(
+        var result = await _moveEntry.MoveEntryAsync(
             branch.Id, new MoveEntryRequest(null, parentTarget.Id, null, null, null, null), ManagerActor());
 
         Assert.Equal(parentTarget.GroupId, result.ToGroupId);
@@ -1181,7 +1191,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         doc.ApplicantPublicEntities.First().RegistryId = e1;
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
@@ -1199,7 +1209,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new User { Username = "del.group", FullName = "مندوب المجموعة", Role = UserRole.EntityManager, PortalGroupId = g1, PasswordHash = "x" });
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
 
         // مندوب القيد المطوي يرحل إلى (الهوية الهدف، القيد الهدف).
         var entryDel = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.entry");
@@ -1220,7 +1230,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         doc.ApplicantPublicEntities.First().RegistryId = e1;
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
@@ -1238,7 +1248,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         doc.ApplicantPublicEntities.First().RegistryId = e1;
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "قرار إداري", "123", "1/8/2026", null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "قرار إداري", "123", "1/8/2026", null), ManagerActor());
 
         var loaded = await _db.Documents.Include(d => d.Occurrences).SingleAsync(d => d.Id == doc.Id);
         var dto = DocumentResponse.FromEntity(loaded, 2026);
@@ -1255,7 +1265,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
         // `RF-014`: صيغة السنة-أولًا غير المبطنة (`2026/1/1`) مرفوضة — نفس التاريخ بصيغة يوم/شهر.
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/1/2026", "ملاحظة"), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/1/2026", "ملاحظة"), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(e1, evt.EntryId);
@@ -1270,7 +1280,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveAllEntries_CreatesChangeEvent()
     {
         var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
-        await _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, "نقل جماعي"), ManagerActor());
+        await _moveAllEntries.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, "نقل جماعي"), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(ActionKindCatalog.Move, evt.ActionKind);
@@ -1284,7 +1294,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // انحدار: «1/8/2026» يجب أن تُفسَّر 1 آب (يوم/شهر) لا 8 كانون الثاني —
         // الصيغة ISO السابقة («2026/1/1») متناظرة وعمياء عن هذا الصنف.
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/8/2026", null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/8/2026", null), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate);
@@ -1294,7 +1304,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveAllEntries_DecreeDate_ParsesDayFirst_FreeText()
     {
         var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
-        await _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, "admin_decision", "7", "1/8/2026", null), ManagerActor());
+        await _moveAllEntries.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, "admin_decision", "7", "1/8/2026", null), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate);
@@ -1817,7 +1827,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var g1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var g2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ2", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
-        await _service.MoveEntryAsync(g1.Id, new MoveEntryRequest(g2.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(g1.Id, new MoveEntryRequest(g2.GroupId, null, null, null, null, null), ManagerActor());
         var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
         Assert.All(paged.Items, i => Assert.Equal("move", i.ActionKind));
@@ -1830,8 +1840,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         var b1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var a2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب2", "ministry", "حلب", "فرع حلب"), ManagerActor());
         var b2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب2-ت", "ministry", "حلب", "فرع التجهيز 2"), ManagerActor());
-        await _service.MoveEntryAsync(a1.Id, new MoveEntryRequest(b1.GroupId, null, null, null, null, null), ManagerActor());
-        await _service.MoveEntryAsync(a2.Id, new MoveEntryRequest(b2.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(a1.Id, new MoveEntryRequest(b1.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(a2.Id, new MoveEntryRequest(b2.GroupId, null, null, null, null, null), ManagerActor());
         var p1 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1), ManagerActor());
         var p2 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 2, 1), ManagerActor());
         Assert.Single(p1.Items);
@@ -1844,7 +1854,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ج1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ج1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
-        await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
         var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
         var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, _managerId, from, to, 1, 20), ManagerActor());
@@ -1870,7 +1880,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ط1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ط1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
-        await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
 
         var all = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
         Assert.True(all.TotalCount >= 1);
@@ -1902,7 +1912,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         // نقلٌ لا إنشاء: الحدث المسجَّل في سجل التغييرات هو النقل — الإنشاء وحده
         // لا يُسجّل صفًّا، فيبقى المصنّف بلا بيانات إن لم يُنفَّذ نقل.
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         await using var stream = await _service.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
@@ -1951,7 +1961,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // يثبت الحارس عبر عمليات كتابة متنوعة (نقل/إعادة تسمية) ثم يدقق الأصناف المخزّنة.
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس أ", "ministry", "دمشق", "فرع أ"), ManagerActor());
         var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس ب", "ministry", "دمشق", "فرع ب"), ManagerActor());
-        await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         await _service.RenameGroupAsync(
             new RenameGroupRequest(b.GroupId, "جهة الحارس ب الجديدة", "قرار", "1", "1/8/2026"), ManagerActor());
 
@@ -1966,7 +1976,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الملخص ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, "move", null, null, null, 1, 20), ManagerActor());
@@ -2063,7 +2073,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التصدير أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         await using var stream = await _service.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
@@ -2080,7 +2090,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الاسم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الاسم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "المدير"), ManagerActor());
@@ -2094,7 +2104,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الدخول أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الدخول ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "mgr"), ManagerActor());
@@ -2117,7 +2127,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الرقم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الرقم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
-        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var arabicDigits = string.Concat(_managerId.ToString().Select(c => (char)('٠' + (c - '0'))));
         var paged = await _service.ListChangeEventsAsync(
@@ -3314,7 +3324,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
 
         var after = await _db.Documents.AsNoTracking().Include(d => d.ApplicantPublicEntities).SingleAsync(d => d.Id == doc.Id);
         // نسخة التسريع تُشتق من أول RegistryId غير فارغ = القيد الهدف (EntryId).
@@ -3332,7 +3342,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = e1;
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
 
         var after = await _db.Documents.AsNoTracking().Include(d => d.ApplicantPublicEntities).SingleAsync(d => d.Id == doc.Id);
         // القيد لم يتغير معرّفه، فالاشتقاق يعيد e1 (EntryId) ولا يضع g2 (GroupId) الجديد.
@@ -3350,7 +3360,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = e1;
         await _db.SaveChangesAsync();
 
-        await _service.MoveAllEntriesAsync(
+        await _moveAllEntries.MoveAllEntriesAsync(
             new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor());
 
         var movedEntry = await _db.PublicEntities.FindAsync(e1);
@@ -3429,7 +3439,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(unlinked);
         await _db.SaveChangesAsync();
 
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
 
         // الملف بلا ربط يبقى ApplicantRegistryId = null، ولا يُكتب GroupId.
         var unlinkedAfter = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == unlinked.Id);
