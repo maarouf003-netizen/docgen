@@ -1,6 +1,5 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -27,35 +26,6 @@ public interface ICorrespondenceService
     /// <summary>مراسلة برسائلها وتوثيق مشاهداتها — بعد التحقق من حق الوصول (نطاق الشعبة §10).</summary>
     Task<CorrespondenceDto> GetByIdAsync(int id, int actorUserId, UserRole role,
         int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null);
-
-    /// <summary>تسطير مراسلة (مربوطة بملف أو عامة) لطرف معيَّن بالاسم، برقم وتاريخ تلقائيين.</summary>
-    Task<CorrespondenceDto> CreateAsync(CreateCorrespondenceRequest request, int actorUserId,
-        string? actorName, UserRole role, int? actorBranchId, CancellationToken ct = default,
-        int? actorSectionId = null);
-
-    /// <summary>إضافة لاحق إلى مراسلة — منشئ المراسلة نفسه فقط.</summary>
-    Task<CorrespondenceMessageDto> AddAddendumAsync(int correspondenceId,
-        AddCorrespondenceAddendumRequest request, int actorUserId, string? actorName,
-        CancellationToken ct = default);
-
-    /// <summary>
-    /// رد الطرف المستلم على المراسلة — الطرف المستلم فقط. الرد يُوثّق مشاهدته
-    /// تلقائيًا (من؟ متى؟) في المعاملة نفسها إن لم يكن موثَّقًا سابقًا.
-    /// </summary>
-    Task<CorrespondenceMessageDto> ReplyAsync(int correspondenceId,
-        ReplyCorrespondenceRequest request, int actorUserId, string? actorName,
-        CancellationToken ct = default);
-    /// <summary>
-    /// تأكيد المشاهدة الصريح (زر «تمت المشاهدة») — يسجّل (من؟ متى؟) مرة واحدة؛
-    /// التكرار يُبقي أول توثيق ولا يجدّده. مقصور على الطرف المستلم معيَّنًا بالاسم:
-    /// من يقرأ المراسلة (المرسل/رئيس/المدير) يرى حالتها ولا يُنشئ توثيقًا.
-    /// قرار أرشيف مقصود: توثيقات قديمة أنشأها غير المستلم (حين كان الحق مفتوحًا)
-    /// تبقى في القاعدة ولا تُعرض في الواجهة، والمراسلة تُقرأ «بانتظار» حتى يوثّق
-    /// المستلم — فالتوثيق المرئي هو توثيق المستلم وحده دائمًا.
-    /// </summary>
-    Task<CorrespondenceReceiptDto> MarkSeenAsync(int correspondenceId, int actorUserId,
-        string? actorName, UserRole role, int? actorBranchId,
-        CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>عدد المراسلات غير المؤكَّدة المشاهدة (كمستلم) — عدّاد الجرس والشارة.</summary>
     Task<int> CountUnseenAsync(int actorUserId, CancellationToken ct = default);
@@ -87,7 +57,7 @@ public interface ICorrespondenceService
 /// للرسائل مع توثيق المشاهدات هو المرجع، والكتابة ضمن معاملات مع سجل التدقيق.
 /// كتابة المندوب تمر حصرًا عبر مسارات البوابة المخصصة (لا تُضعِف حارس العزل البنيوي).
 /// </summary>
-public sealed partial class CorrespondenceService : ICorrespondenceService
+public sealed partial class CorrespondenceService : ICorrespondenceService, ICorrespondenceWriteRules
 {
     private const int NumberRandomDigits = 5;
     private const int MaxNumberGenerationAttempts = 20;
@@ -112,10 +82,6 @@ public sealed partial class CorrespondenceService : ICorrespondenceService
     private readonly IAppealRepository _appeals;
     private readonly IDelegationRepository _delegations;
     private readonly IPortalRepository _portal;
-    private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
-    private readonly IDbExceptionClassifier _errors;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IEntropySource _entropy;
@@ -128,10 +94,6 @@ public sealed partial class CorrespondenceService : ICorrespondenceService
         IAppealRepository appeals,
         IDelegationRepository delegations,
         IPortalRepository portal,
-        IUnitOfWork uow,
-        ITransactionRunner tx,
-        IAuditLogger audit,
-        IDbExceptionClassifier errors,
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IRepository<Section> sections,
@@ -147,12 +109,48 @@ public sealed partial class CorrespondenceService : ICorrespondenceService
         _appeals = appeals;
         _delegations = delegations;
         _portal = portal;
-        _uow = uow;
-        _tx = tx;
-        _audit = audit;
-        _errors = errors;
         _clock = clock;
         _timeZone = timeZone;
         _entropy = entropy ?? SystemEntropySource.Instance;
     }
+
+    // ── تنفيذ عقد مساعدات كتابة المراسلات (P4-01bt) ──────────────────────
+
+    bool ICorrespondenceWriteRules.CanWrite(UserRole role) => CanWrite(role);
+
+    string ICorrespondenceWriteRules.RequireBodyText(string bodyHtml, string emptyMessage, string kindLabel)
+        => RequireBodyText(bodyHtml, emptyMessage, kindLabel);
+
+    string ICorrespondenceWriteRules.NextMessageNumber(Correspondence letter)
+        => NextMessageNumber(letter);
+
+    Task<string> ICorrespondenceWriteRules.GenerateUniqueNumberAsync(string code, DateTime at, CancellationToken ct)
+        => GenerateUniqueNumberAsync(code, at, ct);
+
+    Task<bool> ICorrespondenceWriteRules.MayAttachAsync(Document document, int actorUserId, UserRole role,
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
+        => MayAttachAsync(document, actorUserId, role, actorBranchId, actorSectionId, ct);
+
+    Task<bool> ICorrespondenceWriteRules.IsEligibleTargetAsync(
+        Document document, UserRole role, int targetUserId, CancellationToken ct)
+        => IsEligibleTargetAsync(document, role, targetUserId, ct);
+
+    Task<int?> ICorrespondenceWriteRules.ResolveHeadRecipientSectionAsync(
+        int? recipientSectionId, User target, Document? document, UserRole role,
+        int? actorBranchId, CancellationToken ct)
+        => ResolveHeadRecipientSectionAsync(recipientSectionId, target, document, role, actorBranchId, ct);
+
+    Task<(int? BranchId, string Governorate, string Prefix)> ICorrespondenceWriteRules.ResolveScopeAsync(
+        Document? document, UserRole role, int actorUserId, int? actorBranchId, CancellationToken ct)
+        => ResolveScopeAsync(document, role, actorUserId, actorBranchId, ct);
+
+    CorrespondenceMessageDto ICorrespondenceWriteRules.ToMessageDto(CorrespondenceMessage message)
+        => ToMessageDto(message);
+
+    CorrespondenceDto ICorrespondenceWriteRules.ToDto(Correspondence letter, int readerUserId)
+        => ToDto(letter, readerUserId);
+
+    Task<bool> ICorrespondenceWriteRules.CanViewAsync(Correspondence letter, int actorUserId, UserRole role,
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
+        => CanViewAsync(letter, actorUserId, role, actorBranchId, actorSectionId, ct);
 }

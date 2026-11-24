@@ -1,8 +1,10 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -13,7 +15,11 @@ namespace DocGenerator.Application.Tests;
 
 public class CorrespondenceServiceTests : PostgresDbTest
 {
-    private readonly ICorrespondenceService _service;
+    private readonly CorrespondenceService _service;
+    private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
+    private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addCorrespondenceAddendum;
+    private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _replyCorrespondence;
+    private readonly ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> _markCorrespondenceSeen;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _otherBranchId;
@@ -73,6 +79,47 @@ public class CorrespondenceServiceTests : PostgresDbTest
         _db.SaveChanges();
 
         _service = BuildService();
+        var writes = BuildWrites(_service);
+        _createCorrespondence = writes.Create;
+        _addCorrespondenceAddendum = writes.AddAddendum;
+        _replyCorrespondence = writes.Reply;
+        _markCorrespondenceSeen = writes.MarkSeen;
+    }
+
+    private sealed record CorrespondenceWrites(
+        ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> Create,
+        ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> AddAddendum,
+        ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> Reply,
+        ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> MarkSeen);
+
+    /// <summary>بناء معالجات الكتابة فوق خدمة اختبارية بعينها (ساعة/مستودع/وحدة عمل مخصصة).</summary>
+    private CorrespondenceWrites BuildWrites(
+        CorrespondenceService service,
+        IUnitOfWork? uow = null,
+        ICorrespondenceRepository? letters = null,
+        TimeProvider? clock = null)
+    {
+        var unitOfWork = uow ?? new UnitOfWork(_db);
+        var repository = letters ?? new CorrespondenceRepository(_db);
+        var runner = new TransactionRunner(_db);
+        var users = new UserRepository(_db);
+        var documents = new DocumentRepository(_db);
+        var time = clock ?? TestClock.Provider;
+        var errors = new DbExceptionClassifier();
+        return new CorrespondenceWrites(
+            new CreateCorrespondenceCommandHandler(
+                (ICorrespondenceWriteRules)service, users, documents, repository, unitOfWork, runner,
+                _audit, time, errors,
+                Array.Empty<IPipelineBehavior<CreateCorrespondenceCommand, CorrespondenceDto>>()),
+            new AddCorrespondenceAddendumCommandHandler(
+                (ICorrespondenceWriteRules)service, repository, users, unitOfWork, runner, _audit, time,
+                Array.Empty<IPipelineBehavior<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto>>()),
+            new ReplyCorrespondenceCommandHandler(
+                (ICorrespondenceWriteRules)service, repository, users, unitOfWork, runner, _audit, time, errors,
+                Array.Empty<IPipelineBehavior<ReplyCorrespondenceCommand, CorrespondenceMessageDto>>()),
+            new MarkCorrespondenceSeenCommandHandler(
+                (ICorrespondenceWriteRules)service, repository, unitOfWork, runner, _audit, time, errors,
+                Array.Empty<IPipelineBehavior<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto>>()));
     }
 
     /// <summary>
@@ -87,10 +134,8 @@ public class CorrespondenceServiceTests : PostgresDbTest
     }
 
 
-    private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));
-
     private CorrespondenceService BuildService(
-        IUnitOfWork uow, ICorrespondenceRepository? letters = null, TimeProvider? clock = null,
+        ICorrespondenceRepository? letters = null, TimeProvider? clock = null,
         DocGenerator.Application.Common.IEntropySource? entropy = null)
     {
         return new CorrespondenceService(
@@ -101,10 +146,6 @@ public class CorrespondenceServiceTests : PostgresDbTest
             new AppealRepository(_db),
             new DelegationRepository(_db),
             new PortalRepository(_db),
-            uow,
-            new TransactionRunner(_db),
-            _audit,
-            new DbExceptionClassifier(),
             clock ?? TestClock.Provider, TestClock.TimeZone,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db),
@@ -162,7 +203,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_GeneralFromLawyer_GeneratesNumberAndOriginalMessage()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, Correspondence.ImportanceNormal, "<p>نطلب موافاتنا بالبيانات</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -181,9 +222,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
     public async Task Create_NumberGeneration_UsesInjectedEntropy()
     {
         // P1-02: العشوائية عبر المصدر المحقون — بلا Random.Shared.
-        var service = BuildService(new UnitOfWork(_db), entropy: new DeterministicEntropy(12345));
+        var service = BuildService(entropy: new DeterministicEntropy(12345));
+        var writes = BuildWrites(service);
 
-        var letter = await service.CreateAsync(
+        var letter = await writes.Create.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, Correspondence.ImportanceNormal, "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -197,7 +239,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // الملف المربوط يقبل مناديب نطاقه فقط: نربطه بقيد المندوب المستلم.
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _delegate.Id, Correspondence.ImportanceUrgent, "<p>عاجل: زودونا بالمستندات</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -211,7 +253,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_InvalidImportance_Throws()
     {
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "سوبر", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
         Assert.Contains("الأهمية", ex.Message);
@@ -220,7 +262,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ToSelf_Throws()
     {
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer1.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
         Assert.Contains("لنفسك", ex.Message);
@@ -229,7 +271,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ToManager_Throws()
     {
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _manager.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
         Assert.Contains("المستلم", ex.Message);
@@ -238,7 +280,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ManagerRole_ThrowsUnauthorized()
     {
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>نص</p>"),
             _manager.Id, "المدير", UserRole.Manager, null));
     }
@@ -248,7 +290,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     {
         var doc = await AddDocumentAsync(_lawyer1);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _delegate.Id, "normal", "<p>نص</p>"),
             _lawyer2.Id, "المحامي الثاني", UserRole.Lawyer, _branchId));
     }
@@ -256,7 +298,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_GeneralFromDelegate_HasNullBranchAndEntityGovernorate()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer1.Id, "important", "<p>رد الجهة على طلبكم</p>"),
             _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
 
@@ -273,7 +315,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         _db.Users.Add(orphan);
         await _db.SaveChangesAsync();
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer1.Id, "normal", "<p>نص</p>"),
             orphan.Id, "مندوب بلا نطاق", UserRole.EntityManager, null));
         Assert.Contains("نطاق", ex.Message);
@@ -282,7 +324,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Head_SeesBranchCorrespondence_ButNotOtherGovernorate()
     {
-        await _service.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>للعلم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -298,7 +340,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Manager_SearchRequiresGovernorate()
     {
-        await _service.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>للعلم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -314,26 +356,26 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Addendum_OnlyCreator_AndReply_OnlyTarget()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        var addendum = await _service.AddAddendumAsync(letter.Id,
+        var addendum = await _addCorrespondenceAddendum.AddAddendumAsync(letter.Id,
             new AddCorrespondenceAddendumRequest("<p>لاحق المنشئ</p>"),
             _lawyer1.Id, "المحامي الأول");
         Assert.Equal("addendum", addendum.Kind);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.AddAddendumAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _addCorrespondenceAddendum.AddAddendumAsync(
             letter.Id, new AddCorrespondenceAddendumRequest("<p>لاحق الدخيل</p>"),
             _delegate.Id, "مندوب الجهة"));
 
-        var reply = await _service.ReplyAsync(letter.Id,
+        var reply = await _replyCorrespondence.ReplyAsync(letter.Id,
             new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
             _delegate.Id, "مندوب الجهة");
         Assert.Equal("reply", reply.Kind);
 
         // رئيس القسم ليس طرفًا — لا يحق له الرد.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ReplyAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _replyCorrespondence.ReplyAsync(
             letter.Id, new ReplyCorrespondenceRequest("<p>رد الرئيس</p>"),
             _head.Id, "رئيس القسم"));
     }
@@ -346,19 +388,19 @@ public class CorrespondenceServiceTests : PostgresDbTest
     {
         // النص الصافي فوق 10000 حرف يُرفض قبل الحفظ — والرسالة تذكر الحد.
         var oversized = $"<p>{new string('ن', 10_001)}</p>";
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
         var ex = path switch
         {
-            "create" => await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+            "create" => await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
                 new CreateCorrespondenceRequest(null, _delegate.Id, "normal", oversized),
                 _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId)),
-            "addendum" => await Assert.ThrowsAsync<ArgumentException>(() => _service.AddAddendumAsync(
+            "addendum" => await Assert.ThrowsAsync<ArgumentException>(() => _addCorrespondenceAddendum.AddAddendumAsync(
                 letter.Id, new AddCorrespondenceAddendumRequest(oversized),
                 _lawyer1.Id, "المحامي الأول")),
-            _ => await Assert.ThrowsAsync<ArgumentException>(() => _service.ReplyAsync(
+            _ => await Assert.ThrowsAsync<ArgumentException>(() => _replyCorrespondence.ReplyAsync(
                 letter.Id, new ReplyCorrespondenceRequest(oversized),
                 _delegate.Id, "مندوب الجهة")),
         };
@@ -369,7 +411,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     public async Task BodyText_AtLimit_IsAccepted()
     {
         // الحدّية: 10000 حرف بالضبط تُقبل — الحد للشذوذ لا للرسائل المشروعة.
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", $"<p>{new string('ن', 10_000)}</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
         Assert.Contains(new string('ن', 10_000), letter.Messages.Single().BodyHtml);
@@ -383,7 +425,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var body = string.Concat(Enumerable.Repeat("<b>ن</b>", 3000));
         Assert.True(body.Length > 10_000);
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", body),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
         Assert.Single(letter.Messages);
@@ -405,10 +447,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
         await Assert.ThrowsAsync<KeyNotFoundException>(() => path switch
         {
             "get" => _service.GetByIdAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
-            "addendum" => _service.AddAddendumAsync(missing, validBody, _lawyer1.Id, "المحامي الأول"),
-            "reply" => _service.ReplyAsync(missing,
+            "addendum" => _addCorrespondenceAddendum.AddAddendumAsync(missing, validBody, _lawyer1.Id, "المحامي الأول"),
+            "reply" => _replyCorrespondence.ReplyAsync(missing,
                 new ReplyCorrespondenceRequest("<p>نص</p>"), _delegate.Id, "مندوب الجهة"),
-            "markseen" => _service.MarkSeenAsync(missing, _delegate.Id, "مندوب الجهة",
+            "markseen" => _markCorrespondenceSeen.MarkSeenAsync(missing, _delegate.Id, "مندوب الجهة",
                 UserRole.EntityManager, null),
             _ => _service.ListByDocumentAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
         });
@@ -417,7 +459,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkSeen_TargetOnly_DocumentsOnce_AndReportsViewStatus()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -426,9 +468,9 @@ public class CorrespondenceServiceTests : PostgresDbTest
         Assert.Equal(Correspondence.ViewStatusPending, pending.ViewStatus);
         Assert.Empty(pending.Receipts);
 
-        var first = await _service.MarkSeenAsync(
+        var first = await _markCorrespondenceSeen.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
-        var second = await _service.MarkSeenAsync(
+        var second = await _markCorrespondenceSeen.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
 
         Assert.Equal(first.SeenAt, second.SeenAt);
@@ -447,25 +489,26 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // المحقونة — فأي `DateTime.UtcNow` مباشر متبقٍّ في مسارات الكتابة
         // الأربعة (تسطير/لاحق/رد/توثيق) سيُفشل هذا الاختبار.
         var frozen = new DateTimeOffset(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
-        var service = BuildService(new UnitOfWork(_db), clock: new FakeTimeProvider(frozen));
+        var service = BuildService(clock: new FakeTimeProvider(frozen));
+        var writes = BuildWrites(service, clock: new FakeTimeProvider(frozen));
 
-        var letter = await service.CreateAsync(
+        var letter = await writes.Create.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
         Assert.Equal(frozen.UtcDateTime, letter.CorrespondenceDate);
         Assert.Equal(frozen.UtcDateTime, letter.CreatedAt);
         Assert.Equal(frozen.UtcDateTime, Assert.Single(letter.Messages).MessageDate);
 
-        var receipt = await service.MarkSeenAsync(
+        var receipt = await writes.MarkSeen.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
         Assert.Equal(frozen.UtcDateTime, receipt.SeenAt);
 
-        var addendum = await service.AddAddendumAsync(letter.Id,
+        var addendum = await writes.AddAddendum.AddAddendumAsync(letter.Id,
             new AddCorrespondenceAddendumRequest("<p>لاحق</p>"),
             _lawyer1.Id, "المحامي الأول");
         Assert.Equal(frozen.UtcDateTime, addendum.MessageDate);
 
-        var reply = await service.ReplyAsync(letter.Id,
+        var reply = await writes.Reply.ReplyAsync(letter.Id,
             new ReplyCorrespondenceRequest("<p>رد</p>"),
             _delegate.Id, "مندوب الجهة");
         Assert.Equal(frozen.UtcDateTime, reply.MessageDate);
@@ -479,7 +522,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     {
         // القارئ غير المستلم يقرأ الحالة ولا ينشئ توثيقًا: «مشاهدة» بلا مشاهدة
         // تُفسد العدّاد وتدّعي طرفًا استلم وهو لم يستلم.
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -497,7 +540,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         };
         int? actorBranch = role == "lawyer" || role == "head" ? _branchId : null;
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.MarkSeenAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _markCorrespondenceSeen.MarkSeenAsync(
             letter.Id, actor.Id, "قارئ", actorRole, actorBranch));
 
         // لم يُنشأ توثيق باسم القارئ، والحالة تبقى «بانتظار» عند المستلم.
@@ -511,7 +554,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     public async Task Receipts_AreFilteredToTarget_AndListReportsStatusAndRight()
     {
         // مستند قديم: توثيقات أنشأها مرسلون وقت كان الحقل مفتوحًا للجميع.
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
         var entity = await _db.Correspondences.FirstAsync(c => c.Id == letter.Id);
@@ -545,7 +588,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         Assert.True(seenByTarget.CanMarkSeen);
         Assert.True(seenByTarget.CanReply);
 
-        await _service.MarkSeenAsync(
+        await _markCorrespondenceSeen.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
         var afterTargetSeen = await _service.GetByIdAsync(
             letter.Id, _manager.Id, UserRole.Manager, null);
@@ -572,10 +615,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UnseenCount_CountsAllUnseenForTargetOnly()
     {
-        var urgent = await _service.CreateAsync(
+        var urgent = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
-        await _service.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>عادي</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -584,7 +627,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // المنشئ يعرف محتواه — لا تنبيه له على ما سطّره.
         Assert.Equal(0, await _service.CountUnseenAsync(_lawyer1.Id));
 
-        await _service.MarkSeenAsync(
+        await _markCorrespondenceSeen.MarkSeenAsync(
             urgent.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
         Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
     }
@@ -592,12 +635,12 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Reply_RecordsSeenReceiptAutomatically()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
         Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
 
-        await _service.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
+        await _replyCorrespondence.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
             _delegate.Id, "مندوب الجهة");
 
         // الرد يُوثّق المشاهدة تلقائيًا: الحالة «تمت المشاهدة»، وتوثيق واحد للمستلم،
@@ -611,7 +654,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
 
         // التوثيق لا يُكرَّر عند الرد مرة أخرى، ويبقى أول توثيق هو المرجع.
         var firstSeenAt = receipt.SeenAt;
-        await _service.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد ثانٍ</p>"),
+        await _replyCorrespondence.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد ثانٍ</p>"),
             _delegate.Id, "مندوب الجهة");
         var afterSecondReply = await _service.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
@@ -638,10 +681,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         // المراسلات المربوطة بملف تقتضي مستلمًا ضمن نطاق الملف: نربط الملف بقيد نطاق المندوبين أولًا.
         await LinkDocumentToEntryAsync(doc, _entryId);
-        await _service.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _delegate.Id, "normal", "<p>للأول</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
-        await _service.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _delegate2.Id, "normal", "<p>للثاني</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -664,7 +707,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // الملف المربوط يقبل مناديب نطاقه فقط: نربطه بقيد المندوب المستلم.
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _delegate.Id, "normal", "<p>على ملف قديم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -676,10 +719,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Numbers_AreUniqueAcrossLetters()
     {
-        var first = await _service.CreateAsync(
+        var first = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>أول</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
-        var second = await _service.CreateAsync(
+        var second = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>ثانٍ</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -795,7 +838,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _lawyer3.Id, "normal", "<p>نص</p>"),
             _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null));
         Assert.Contains("محامي الملف", ex.Message);
@@ -807,7 +850,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _outDelegate.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
         Assert.Contains("مندوب جهة", ex.Message);
@@ -819,7 +862,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _head.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
         Assert.Contains("مندوب جهة", ex.Message);
@@ -831,7 +874,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _lawyer1.Id, "normal", "<p>استفسار عن الملف</p>"),
             _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
 
@@ -989,9 +1032,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // المحاولة الأولى تصطدم بالقيد الفريد (سباق ترقيم) فتُعاد بالتوليد برقم جديد.
         var recorder = new RecordingCorrespondenceRepository(_db);
         var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 1);
-        var service = BuildService(uow, recorder);
+        var service = BuildService(recorder);
+        var writes = BuildWrites(service, uow, recorder);
 
-        var letter = await service.CreateAsync(
+        var letter = await writes.Create.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>سباق الترقيم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
@@ -1016,9 +1060,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
     {
         // 20 = حد محاولات التوليد: كل المحاولات متصادمة فيُرفض الطلب برسالة مفهومة بلا صف يتيم.
         var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 20);
-        var service = BuildService(uow);
+        var service = BuildService();
+        var writes = BuildWrites(service, uow);
 
-        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() => service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() => writes.Create.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>سباق مستعصٍ</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
 
@@ -1034,9 +1079,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
         // الفشل غير الفريد (عطل حفظ عام) لا يُعاد: يتصاعد كما هو من أول محاولة.
         var boom = new DbUpdateException("فشل حفظ", new InvalidOperationException("سبب داخلي غير فريد"));
         var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 1, failureFactory: () => boom);
-        var service = BuildService(uow);
+        var service = BuildService();
+        var writes = BuildWrites(service, uow);
 
-        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => service.CreateAsync(
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => writes.Create.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>نص</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
 
@@ -1049,23 +1095,23 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Messages_AreNumberedSequentiallyWithinLetterScope()
     {
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
         Assert.Equal(letter.CorrespondenceNumber, letter.Messages[0].MessageNumber);
 
-        var addendum = await _service.AddAddendumAsync(letter.Id,
+        var addendum = await _addCorrespondenceAddendum.AddAddendumAsync(letter.Id,
             new AddCorrespondenceAddendumRequest("<p>لاحق أول</p>"),
             _lawyer1.Id, "المحامي الأول");
         Assert.Equal(letter.CorrespondenceNumber + "-2", addendum.MessageNumber);
 
-        var reply = await _service.ReplyAsync(letter.Id,
+        var reply = await _replyCorrespondence.ReplyAsync(letter.Id,
             new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
             _delegate.Id, "مندوب الجهة");
         Assert.Equal(letter.CorrespondenceNumber + "-3", reply.MessageNumber);
 
-        var secondAddendum = await _service.AddAddendumAsync(letter.Id,
+        var secondAddendum = await _addCorrespondenceAddendum.AddAddendumAsync(letter.Id,
             new AddCorrespondenceAddendumRequest("<p>لاحق ثانٍ</p>"),
             _lawyer1.Id, "المحامي الأول");
         Assert.Equal(letter.CorrespondenceNumber + "-4", secondAddendum.MessageNumber);
@@ -1126,16 +1172,16 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var otherDoc = await AddSectionDocumentAsync(_lawyer1, null);
         await LinkDocumentToEntryAsync(otherDoc, _entryId);
 
-        var letter = await _service.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(ownDoc.Id, _delegate.Id, "normal", "<p>من الشعبة</p>"),
             sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, sectionId);
         Assert.Equal(ownDoc.Id, letter.DocumentId);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(otherDoc.Id, _delegate.Id, "normal", "<p>خارج النطاق</p>"),
             sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, sectionId));
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(ownDoc.Id, _delegate.Id, "normal", "<p>بلا شعبة</p>"),
             sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, null));
     }

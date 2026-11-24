@@ -939,6 +939,11 @@
   **`P4-01bq`/`P4-01br`/`P4-01bs`:** `RenamePublicEntityBranchCommand`/
   `MergePublicEntityBranchesCommand`/`AbolishPublicEntityBranchCommand` تملك عمليات
   الفروع الثلاث مع `IPublicEntityWriteRules` المشترك.
+  **`P4-01bt`:** `CreateCorrespondenceCommand`/`AddCorrespondenceAddendumCommand`/
+  `ReplyCorrespondenceCommand`/`MarkCorrespondenceSeenCommand` تملك كتابات المراسلات
+  الأربع مع `ICorrespondenceWriteRules` المشترك؛ حُذفت التواقيع الأربعة من
+  `ICorrespondenceService` وبقيت القراءات، وأُزيلت الحقول الأربعة الميتة
+  (`_uow`/`_tx`/`_audit`/`_errors`) من `CorrespondenceService` بعد نقل الكتابات.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -995,8 +1000,12 @@
   `docs/audit/178-p4-01bq-rename-branch-20261124.md` و
   `docs/audit/179-p4-01br-merge-branches-20261124.md` و
   `docs/audit/180-p4-01bs-abolish-branch-20261124.md` و
-  `docs/audit/181-p4-01bs-followup-review-20261124.md`.
-  **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
+  `docs/audit/181-p4-01bs-followup-review-20261124.md` و
+  `docs/audit/182-p4-01bt-correspondence-writes-20261124.md` و
+  `docs/audit/183-p4-01bt-followup-review-20261124.md`.
+  **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
+  (`AuthService.LoginAsync`، `UnifyBranchesAsync`، `MoveEntryAsync`/`MoveAllEntriesAsync`،
+  دورة حياة/اعتماد الإنابة، وملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

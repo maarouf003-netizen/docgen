@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,12 +24,25 @@ public class CorrespondencesController : ControllerBase
 {
     private readonly ICorrespondenceService _letters;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _create;
+    private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addAddendum;
+    private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _reply;
+    private readonly ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> _markSeen;
 
     public CorrespondencesController(
-        ICorrespondenceService letters, IUserCapabilities capabilities)
+        ICorrespondenceService letters,
+        IUserCapabilities capabilities,
+        ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> create,
+        ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> addAddendum,
+        ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> reply,
+        ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> markSeen)
     {
         _letters = letters;
         _capabilities = capabilities;
+        _create = create;
+        _addAddendum = addAddendum;
+        _reply = reply;
+        _markSeen = markSeen;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -126,7 +141,8 @@ public class CorrespondencesController : ControllerBase
         if (IsSubHead && SectionId is null)
             return Forbid();
 
-        var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct, SectionId);
+        var letter = await _create.HandleAsync(
+            new CreateCorrespondenceCommand(request, UserId, ActorName, Role, BranchId, SectionId), ct);
         return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
     }
 
@@ -158,7 +174,8 @@ public class CorrespondencesController : ControllerBase
 
         try
         {
-            var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
+            var addendum = await _addAddendum.HandleAsync(
+                new AddCorrespondenceAddendumCommand(id, request, UserId, ActorName), ct);
             return Ok(addendum);
         }
         catch (KeyNotFoundException e)
@@ -181,7 +198,8 @@ public class CorrespondencesController : ControllerBase
 
         try
         {
-            var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, ct);
+            var reply = await _reply.HandleAsync(
+                new ReplyCorrespondenceCommand(id, request, UserId, ActorName), ct);
             return Ok(reply);
         }
         catch (KeyNotFoundException e)
@@ -205,7 +223,8 @@ public class CorrespondencesController : ControllerBase
 
         try
         {
-            var receipt = await _letters.MarkSeenAsync(id, UserId, ActorName, Role, BranchId, ct, SectionId);
+            var receipt = await _markSeen.HandleAsync(
+                new MarkCorrespondenceSeenCommand(id, UserId, ActorName, Role, BranchId, SectionId), ct);
             return Ok(receipt);
         }
         catch (KeyNotFoundException e)

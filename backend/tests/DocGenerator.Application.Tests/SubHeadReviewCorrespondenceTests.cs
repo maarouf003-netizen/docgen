@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -23,7 +24,8 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
     private readonly IReviewLetterService _letters;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
-    private readonly ICorrespondenceService _correspondences;
+    private readonly CorrespondenceService _correspondences;
+    private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -79,14 +81,21 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new AppealRepository(_db),
             new DelegationRepository(_db),
             new PortalRepository(_db),
-            uow,
-            tx,
-            _audit,
-            new DbExceptionClassifier(),
             TestClock.Provider,
             TestClock.TimeZone,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db));
+        _createCorrespondence = new CreateCorrespondenceCommandHandler(
+            (ICorrespondenceWriteRules)_correspondences,
+            new UserRepository(_db),
+            new DocumentRepository(_db),
+            new CorrespondenceRepository(_db),
+            uow,
+            tx,
+            _audit,
+            TestClock.Provider,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateCorrespondenceCommand, CorrespondenceDto>>());
     }
 
 
@@ -380,13 +389,13 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1.Id);
 
         // عامة من رئيس الشعبة مسموحة بفرعه.
-        var general = await _correspondences.CreateAsync(
+        var general = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer1.Id, "normal", "<p>من الشعبة</p>"),
             sub.Id, "sub", UserRole.SubHead, _branch.Id);
         Assert.NotNull(general);
 
         // مربوطة بملف مرفوضة (لا تأليف للشعبة على الملفات).
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _correspondences.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(doc.Id, _lawyer1.Id, "normal", "<p>على ملف</p>"),
             sub.Id, "sub", UserRole.SubHead, _branch.Id));
     }
@@ -499,7 +508,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
-        var letter = await _correspondences.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, sub.Id, "normal", "<p>إلى الشعبة</p>", sectionId),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
 
@@ -512,7 +521,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
     public async Task Correspondence_Create_General_ToHeadDefault_RequiresBranchHead()
     {
         // الافتراضي رئيس قسم فرع المنشئ.
-        var letter = await _correspondences.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _head1.Id, "normal", "<p>إلى القسم</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
         var stored = await _db.Correspondences.SingleAsync(c => c.Id == letter.Id);
@@ -522,7 +531,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var otherHead = User(_otherBranch.Id, "head_alp", "رئيس حلب", UserRole.Head);
         _db.Users.Add(otherHead);
         await _db.SaveChangesAsync();
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _correspondences.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, otherHead.Id, "normal", "<p>عام</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id));
         Assert.Contains("يجب اختيار المستلم", ex.Message);
@@ -535,7 +544,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
-        var letter = await _correspondences.CreateAsync(
+        var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, sub.Id, "normal", "<p>عام للشعبة</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
         var stored = await _db.Correspondences.SingleAsync(c => c.Id == letter.Id);
@@ -545,7 +554,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionless = User(_branch.Id, "sub_nosection", "بلا شعبة", UserRole.SubHead);
         _db.Users.Add(sectionless);
         await _db.SaveChangesAsync();
-        var exSub = await Assert.ThrowsAsync<ArgumentException>(() => _correspondences.CreateAsync(
+        var exSub = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, sectionless.Id, "normal", "<p>عام</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id));
         Assert.Contains("يجب اختيار المستلم", exSub.Message);
@@ -569,7 +578,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
         await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _correspondences.CreateAsync(
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer2.Id, "normal", "<p>عام</p>", sectionId),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id));
         Assert.Contains("للمستلم الرئيس فقط", ex.Message);
@@ -582,13 +591,13 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
         // عامة للشعبة (مستلمها الرئيس)، وعامة للقسم، وخاصة بين محامين.
-        await _correspondences.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, sub.Id, "normal", "<p>للشعبة</p>", sectionId),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
-        await _correspondences.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _head1.Id, "normal", "<p>للقسم</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
-        await _correspondences.CreateAsync(
+        await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _lawyer2.Id, "normal", "<p>خاصة</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
 
@@ -607,10 +616,10 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
         var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
-        var sectionLetter = await _correspondences.CreateAsync(
+        var sectionLetter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, sub.Id, "normal", "<p>للشعبة</p>", sectionId),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
-        var headLetter = await _correspondences.CreateAsync(
+        var headLetter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _head1.Id, "normal", "<p>للقسم</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
 

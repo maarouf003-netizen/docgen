@@ -1,5 +1,7 @@
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -26,7 +28,7 @@ public class CorrespondenceConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    private static ICorrespondenceService BuildService(DocGeneratorDbContext db, FakeAuditLogger audit)
+    private static CorrespondenceService BuildService(DocGeneratorDbContext db, FakeAuditLogger audit)
         => new CorrespondenceService(
             new CorrespondenceRepository(db),
             new DocumentRepository(db),
@@ -35,13 +37,23 @@ public class CorrespondenceConcurrencyTests : IAsyncLifetime
             new AppealRepository(db),
             new DelegationRepository(db),
             new PortalRepository(db),
-            new UnitOfWork(db),
-            new TransactionRunner(db),
-            audit,
-            new DbExceptionClassifier(),
             TestClock.Provider, TestClock.TimeZone,
             new Repository<Section>(db),
             new Repository<ExecutionCircuit>(db));
+
+    private static ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> BuildCreateHandler(
+        DocGeneratorDbContext db, CorrespondenceService service, FakeAuditLogger audit)
+        => new CreateCorrespondenceCommandHandler(
+            (ICorrespondenceWriteRules)service,
+            new UserRepository(db),
+            new DocumentRepository(db),
+            new CorrespondenceRepository(db),
+            new UnitOfWork(db),
+            new TransactionRunner(db),
+            audit,
+            TestClock.Provider,
+            new DbExceptionClassifier(),
+            Array.Empty<IPipelineBehavior<CreateCorrespondenceCommand, CorrespondenceDto>>());
 
     private async Task<(int LawyerId, int DelegateId, int BranchId)> SeedAsync()
     {
@@ -86,7 +98,8 @@ public class CorrespondenceConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 var audit = new FakeAuditLogger();
                 var service = BuildService(db, audit);
-                var letter = await service.CreateAsync(
+                var create = BuildCreateHandler(db, service, audit);
+                var letter = await create.CreateAsync(
                     new CreateCorrespondenceRequest(null, delegateId, "normal", $"<p>سباق {i}</p>"),
                     lawyerId, "محامي السباق", UserRole.Lawyer, branchId);
                 return new RaceOutcome(

@@ -6,6 +6,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Application.UseCases.PublicEntities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,13 +26,29 @@ public class PortalController : ControllerBase
 {
     private readonly IPortalService _portal;
     private readonly ICorrespondenceService _correspondence;
+    private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
+    private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addCorrespondenceAddendum;
+    private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _replyCorrespondence;
+    private readonly ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> _markCorrespondenceSeen;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
-    public PortalController(IPortalService portal, ICorrespondenceService correspondence, TimeProvider clock, TimeZoneInfo timeZone)
+    public PortalController(
+        IPortalService portal,
+        ICorrespondenceService correspondence,
+        ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> createCorrespondence,
+        ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> addCorrespondenceAddendum,
+        ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> replyCorrespondence,
+        ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> markCorrespondenceSeen,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _portal = portal;
         _correspondence = correspondence;
+        _createCorrespondence = createCorrespondence;
+        _addCorrespondenceAddendum = addCorrespondenceAddendum;
+        _replyCorrespondence = replyCorrespondence;
+        _markCorrespondenceSeen = markCorrespondenceSeen;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -185,8 +202,9 @@ public class PortalController : ControllerBase
     public async Task<IActionResult> CorrespondenceCreate(
         [FromBody] CreateCorrespondenceRequest request, CancellationToken ct)
     {
-        var letter = await _correspondence.CreateAsync(request, UserId, ViewerName,
-            DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct);
+        var letter = await _createCorrespondence.HandleAsync(
+            new CreateCorrespondenceCommand(request, UserId, ViewerName,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null), ct);
         return CreatedAtAction(nameof(CorrespondenceGet), new { id = letter.Id }, letter);
     }
 
@@ -197,7 +215,8 @@ public class PortalController : ControllerBase
     {
         try
         {
-            return Ok(await _correspondence.AddAddendumAsync(id, request, UserId, ViewerName, ct));
+            return Ok(await _addCorrespondenceAddendum.HandleAsync(
+                new AddCorrespondenceAddendumCommand(id, request, UserId, ViewerName), ct));
         }
         catch (KeyNotFoundException e)
         {
@@ -216,7 +235,8 @@ public class PortalController : ControllerBase
     {
         try
         {
-            return Ok(await _correspondence.ReplyAsync(id, request, UserId, ViewerName, ct));
+            return Ok(await _replyCorrespondence.HandleAsync(
+                new ReplyCorrespondenceCommand(id, request, UserId, ViewerName), ct));
         }
         catch (KeyNotFoundException e)
         {
@@ -234,8 +254,9 @@ public class PortalController : ControllerBase
     {
         try
         {
-            return Ok(await _correspondence.MarkSeenAsync(id, UserId, ViewerName,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+            return Ok(await _markCorrespondenceSeen.HandleAsync(
+                new MarkCorrespondenceSeenCommand(id, UserId, ViewerName,
+                    DocGenerator.Domain.Enums.UserRole.EntityManager, null), ct));
         }
         catch (KeyNotFoundException e)
         {
