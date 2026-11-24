@@ -27,6 +27,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<AssignDocumentAppealCommand, AppealDto?> _appealAssign;
     private readonly ICommandHandler<TransferDocumentAppealCommand, AppealDto?> _appealTransfer;
     private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _appealTransferAll;
+    private readonly ICommandHandler<DecideDocumentAppealCommand, AppealDto?> _appealDecide;
+    private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _appealStrike;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -99,6 +101,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         _appealTransferAll = new TransferAllDocumentAppealsCommandHandler(
             new AppealRepository(_db), new UserRepository(_db), new UnitOfWork(_db), _tx, _audit,
             Array.Empty<IPipelineBehavior<TransferAllDocumentAppealsCommand, int>>());
+        _appealDecide = new DecideDocumentAppealCommandHandler(
+            new AppealRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<DecideDocumentAppealCommand, AppealDto?>>());
+        _appealStrike = new StrikeDocumentAppealCommandHandler(
+            new AppealRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<StrikeDocumentAppealCommand, AppealDto?>>());
     }
 
 
@@ -408,7 +418,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var decided = await _service.DecideAsync(created.Id,
+        var decided = await _appealDecide.DecideAsync(created.Id,
             new DecideAppealRequest("قرار-55", "15/9/2026", "قبول الاستئناف جزئيًا", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
 
@@ -416,6 +426,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Equal(AppealStatusCatalog.Decided, decided!.Status);
         Assert.Equal("2026-09-15", decided.DecisionDate);
         Assert.Equal("للصالح", decided.OutcomeLabel);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"حسم الاستئناف (رقم {created.Id}) بالقرار قرار-55 — النتيجة: للصالح");
 
         // إشعار محامي الملف الأساس (مختلف عن المتابع) بالحسم.
         await FlushAlertsAsync();
@@ -424,7 +437,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // حسم مكرر مرفوض، وحسم من غير المتابع مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DecideAsync(created.Id,
+            _appealDecide.DecideAsync(created.Id,
                 new DecideAppealRequest("قرار-56", "20/9/2026", "نص", AppealOutcomeCatalog.Against),
                 _lawyer2.Id, "lawyer2"));
     }
@@ -440,13 +453,16 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var struck = await _service.StrikeAsync(created.Id,
+        var struck = await _appealStrike.StrikeAsync(created.Id,
             new StrikeAppealRequest("قرار-شطب-3", "1/10/2026"), _lawyer2.Id, "lawyer2");
 
         Assert.NotNull(struck);
         Assert.Equal(AppealStatusCatalog.StruckOff, struck!.Status);
         Assert.Equal("2026-10-01", struck.StruckOffDate);
         Assert.Equal("قرار-شطب-3", struck.StruckOffDecisionNumber);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"شطب الاستئناف (رقم {created.Id}) بقرار رقم قرار-شطب-3");
     }
 
     [PostgresFact]
@@ -461,13 +477,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DecideAsync(created.Id,
+            _appealDecide.DecideAsync(created.Id,
                 new DecideAppealRequest(null, "1/10/2026", "نص", AppealOutcomeCatalog.InFavor), _lawyer2.Id, "lawyer2"));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DecideAsync(created.Id,
+            _appealDecide.DecideAsync(created.Id,
                 new DecideAppealRequest("رقم", "تاريخ غير صالح", "نص", AppealOutcomeCatalog.InFavor), _lawyer2.Id, "lawyer2"));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.DecideAsync(created.Id,
+            _appealDecide.DecideAsync(created.Id,
                 new DecideAppealRequest("رقم", "1/10/2026", "نص", "قيمة غريبة"), _lawyer2.Id, "lawyer2"));
     }
 
@@ -854,7 +870,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
-        await _service.DecideAsync(created.Id,
+        await _appealDecide.DecideAsync(created.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
 
@@ -1016,7 +1032,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Contains("لا تتابعه", exCreator.Message);
 
         // المحسوم: المسند نفسه مرفوض بعد الحسم.
-        await _service.DecideAsync(created.Id,
+        await _appealDecide.DecideAsync(created.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
         var exDecided = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1029,7 +1045,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        await _service.StrikeAsync(second.Id,
+        await _appealStrike.StrikeAsync(second.Id,
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
         var exStruck = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.SaveBaseNumbersAsync(second.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
@@ -1377,10 +1393,10 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        await _service.DecideAsync(first.Id,
+        await _appealDecide.DecideAsync(first.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
-        await _service.StrikeAsync(second.Id,
+        await _appealStrike.StrikeAsync(second.Id,
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
 
         // لا منظور قابل للنقل ← صفر، والمحسوم والمشطوب يبقيان عند المسند الأصلي (R5).
@@ -1426,7 +1442,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // استئناف محسوم مسند لنفس المحامي لا يدخل العدّاد (المنظورة فقط — R5/C3).
         await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        await _service.DecideAsync(second.Id,
+        await _appealDecide.DecideAsync(second.Id,
             new DecideAppealRequest("قرار-2", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
         Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
@@ -1725,7 +1741,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Equal(1, (await _service.GetEntityAsync(appeal.Id))!.Version);
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         Assert.Equal(2, (await _service.GetEntityAsync(appeal.Id))!.Version);
-        await _service.DecideAsync(appeal.Id,
+        await _appealDecide.DecideAsync(appeal.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
         Assert.Equal(3, (await _service.GetEntityAsync(appeal.Id))!.Version);
@@ -1734,7 +1750,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await SetDocNumberAsync(doc2.Id, "541");
         var appeal2 = await CreatePendingAppealAsync(doc2.Id);
         await _appealAssign.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        await _service.StrikeAsync(appeal2.Id,
+        await _appealStrike.StrikeAsync(appeal2.Id,
             new StrikeAppealRequest("قرار-2", "16/9/2026"),
             _lawyer2.Id, "lawyer2");
         Assert.Equal(3, (await _service.GetEntityAsync(appeal2.Id))!.Version);
@@ -1889,7 +1905,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Contains(headResults.Items, a => a.Id == appealSection.Id);
 
         await _appealAssign.AssignAsync(appealSection.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
-        await _service.DecideAsync(appealSection.Id,
+        await _appealDecide.DecideAsync(appealSection.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
         headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
@@ -1932,7 +1948,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id);
         await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
-        await _service.DecideAsync(appeal.Id,
+        await _appealDecide.DecideAsync(appeal.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer1.Id, "lawyer1");
 

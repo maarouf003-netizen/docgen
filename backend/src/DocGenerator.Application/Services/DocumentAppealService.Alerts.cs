@@ -72,34 +72,4 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
             occurredAt,
             ct);
     }
-
-    private Task EnqueueAppealFinalAsync(
-        DocumentAppeal appeal, bool decided, int actorUserId,
-        DateTime occurredAt, CancellationToken ct)
-    {
-        var source = appeal.Document;
-        if (source.BranchId is null || source.CreatedById == appeal.AssignedLawyerId)
-            return Task.CompletedTask; // لا إشعار ذاتيًا عندما المتابع هو نفسه محامي الملف الأساس.
-
-        var outcomePart = decided && appeal.Outcome is not null
-            ? $" — النتيجة: {AppealOutcomeCatalog.ToLabel(appeal.Outcome)}"
-            : string.Empty;
-
-        return _alertOutbox.EnqueueSystemAsync(
-            new CreateSystemHeadAlertRequest(
-                Kind: HeadAlertKindCatalog.AppealFinalToBaseLawyer,
-                Message: HeadAlertMessages.AppealFinalToBaseLawyer(new(
-                    DocumentTitle(source),
-                    AppealDocumentNumber(source),
-                    decided ? "محسومًا" : "مشطوبًا",
-                    outcomePart)),
-                Audience: HeadAlertAudience.DocumentCreator,
-                BranchId: source.BranchId.Value,
-                CreatedById: actorUserId,
-                DocumentId: source.Id,
-                AppealId: appeal.Id),
-            supersedePlan: null,
-            occurredAt,
-            ct);
-    }
 }

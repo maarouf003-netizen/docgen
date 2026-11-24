@@ -30,6 +30,8 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<AssignDocumentAppealCommand, AppealDto?> _assignAppeal;
     private readonly ICommandHandler<TransferDocumentAppealCommand, AppealDto?> _transferAppeal;
     private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _transferAllAppeals;
+    private readonly ICommandHandler<DecideDocumentAppealCommand, AppealDto?> _decideAppeal;
+    private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _strikeAppeal;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -41,7 +43,9 @@ public class AppealsController : ControllerBase
         ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> updateAppealRegistration,
         ICommandHandler<AssignDocumentAppealCommand, AppealDto?> assignAppeal,
         ICommandHandler<TransferDocumentAppealCommand, AppealDto?> transferAppeal,
-        ICommandHandler<TransferAllDocumentAppealsCommand, int> transferAllAppeals)
+        ICommandHandler<TransferAllDocumentAppealsCommand, int> transferAllAppeals,
+        ICommandHandler<DecideDocumentAppealCommand, AppealDto?> decideAppeal,
+        ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> strikeAppeal)
     {
         _appeals = appeals;
         _documents = documents;
@@ -53,6 +57,8 @@ public class AppealsController : ControllerBase
         _assignAppeal = assignAppeal;
         _transferAppeal = transferAppeal;
         _transferAllAppeals = transferAllAppeals;
+        _decideAppeal = decideAppeal;
+        _strikeAppeal = strikeAppeal;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -247,7 +253,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var updated = await _appeals.DecideAsync(id, request, User.GetUserId(), ActorName, ct);
+        var updated = await _decideAppeal.HandleAsync(
+            new DecideDocumentAppealCommand(id, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -257,7 +264,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var updated = await _appeals.StrikeAsync(id, request, User.GetUserId(), ActorName, ct);
+        var updated = await _strikeAppeal.HandleAsync(
+            new StrikeDocumentAppealCommand(id, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
