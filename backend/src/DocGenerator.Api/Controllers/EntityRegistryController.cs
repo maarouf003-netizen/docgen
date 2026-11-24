@@ -32,6 +32,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
+    private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -39,7 +40,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> createEntity,
         ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> updateEntity,
         ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> addAlias,
-        ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview)
+        ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview,
+        ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -47,6 +49,7 @@ public class EntityRegistryController : ControllerBase
         _updateEntity = updateEntity;
         _addAlias = addAlias;
         _approveReview = approveReview;
+        _commitImport = commitImport;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -191,8 +194,9 @@ public class EntityRegistryController : ControllerBase
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
-            return Ok(await _registry.CommitImportAsync(request, User.GetUserId(), ActorName, ct,
-                IdempotencyKeyHeader()));
+            return Ok(await _commitImport.HandleAsync(
+                new CommitPublicEntityImportCommand(request, User.GetUserId(), ActorName,
+                    IdempotencyKeyHeader()), ct));
         }
         catch (IdempotentReplayException r)
         {

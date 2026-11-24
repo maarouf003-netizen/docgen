@@ -127,4 +127,10 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
 
     void IPublicEntityWriteRules.GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry)
         => GuardHeadCannotEditParent(actor, entry);
+
+    Task<List<ImportPreviewItemDto>> IPublicEntityWriteRules.BuildImportCandidatesAsync(CancellationToken ct)
+        => BuildImportCandidatesAsync(ct);
+
+    Task<PublicEntityGroup?> IPublicEntityWriteRules.FindGroupByNormAsync(string norm, CancellationToken token)
+        => FindGroupByNormAsync(norm, token);
 }

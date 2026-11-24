@@ -46,7 +46,6 @@ public interface IPublicEntityService
     Task<Stream> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
     Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default);
-    Task<ImportCommitResultDto> CommitImportAsync(ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null);
 
     /// <summary>نقل قيد من هوية أم إلى أخرى أو طيّه في قيد مطابق (د3).</summary>
     Task<MoveEntryResponse> MoveEntryAsync(int entryId, MoveEntryRequest request, EntityRegistryActor actor, CancellationToken ct = default);

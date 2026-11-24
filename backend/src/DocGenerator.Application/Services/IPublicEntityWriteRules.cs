@@ -29,4 +29,6 @@ internal interface IPublicEntityWriteRules
     string? NormalizeOptional(string? value);
     void SetGroupNorm(PublicEntityGroup group);
     void GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry);
+    Task<List<ImportPreviewItemDto>> BuildImportCandidatesAsync(CancellationToken ct);
+    Task<PublicEntityGroup?> FindGroupByNormAsync(string norm, CancellationToken token);
 }

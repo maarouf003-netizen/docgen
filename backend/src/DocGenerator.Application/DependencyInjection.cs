@@ -125,6 +125,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto>, AddReviewLetterAddendumCommandHandler>();
         services.AddScoped<ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto>, ReplyReviewLetterCommandHandler>();
         services.AddScoped<ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto>, CreateReviewLetterCommandHandler>();
+        services.AddScoped<ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto>, CommitPublicEntityImportCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

@@ -25,6 +25,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
     private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
+    private readonly ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> _commitImport;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -91,6 +92,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _approveReview = new ApprovePublicEntityReviewCommandHandler(
             rules, entityRepository, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?>>());
+        _commitImport = new CommitPublicEntityImportCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<CommitPublicEntityImportCommand, ImportCommitResultDto>>());
     }
 
 
@@ -793,7 +797,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var candidate = preview.Items[0];
 
         // الاسم المعتمد المختار يخالف تطبيع الكتابات الأصلية، فتُسجَّل الكتابات أسماءً بديلة.
-        var result = await _service.CommitImportAsync(new ImportCommitRequest(new[]
+        var result = await _commitImport.CommitImportAsync(new ImportCommitRequest(new[]
         {
             new ImportCommitItemRequest(candidate.NormalizedName, "مديرية النقل والاقتصاد", "administration",
                 "دمشق", "الفرع الرئيسي", AddVariantsAsAliases: true),
@@ -814,7 +818,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         Assert.Contains("import_entity_registry", _audit.Actions);
 
         // إعادة الاعتماد لنفس البند لا يكرر القيد (سلوك اتصالي آمن).
-        var again = await _service.CommitImportAsync(new ImportCommitRequest(new[]
+        var again = await _commitImport.CommitImportAsync(new ImportCommitRequest(new[]
         {
             new ImportCommitItemRequest(candidate.NormalizedName, "مديرية النقل والاقتصاد", "administration",
                 "دمشق", "الفرع الرئيسي"),
@@ -827,7 +831,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ImportCommit_UnknownNormalizedName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitImportAsync(new ImportCommitRequest(new[]
+            _commitImport.CommitImportAsync(new ImportCommitRequest(new[]
             {
                 new ImportCommitItemRequest("غير موجود", "غير موجود", "ministry", "دمشق", "الفرع الرئيسي"),
             }), UserId(), "المدير"));
