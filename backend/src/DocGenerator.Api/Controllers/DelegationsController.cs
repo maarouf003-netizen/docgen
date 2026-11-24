@@ -1,8 +1,10 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,15 +24,18 @@ public class DelegationsController : ControllerBase
     private readonly IDocumentDelegationService _delegations;
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _deleteDelegation;
 
     public DelegationsController(
         IDocumentDelegationService delegations,
         IDocumentService documents,
-        IUserCapabilities capabilities)
+        IUserCapabilities capabilities,
+        ICommandHandler<DeleteDocumentDelegationCommand, bool> deleteDelegation)
     {
         _delegations = delegations;
         _documents = documents;
         _capabilities = capabilities;
+        _deleteDelegation = deleteDelegation;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -147,7 +152,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var ok = await _delegations.DeleteAsync(id, User.GetUserId(), ActorName, ct);
+        var ok = await _deleteDelegation.HandleAsync(
+            new DeleteDocumentDelegationCommand(id, User.GetUserId(), ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 

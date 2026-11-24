@@ -6,6 +6,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Alerts;
 using DocGenerator.Application.UseCases.Branches;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Application.UseCases.Forum;
@@ -86,6 +87,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SaveDocumentBaseNumbersCommand, bool>, SaveDocumentBaseNumbersCommandHandler>();
         services.AddScoped<ICommandHandler<CorrectDocumentBaseNumberCommand, bool>, CorrectDocumentBaseNumberCommandHandler>();
         services.AddScoped<ICommandHandler<UndoDocumentRotationCommand, bool>, UndoDocumentRotationCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         services.AddScoped<ICommandHandler<MarkReviewRepliesSeenCommand, bool>, MarkReviewRepliesSeenCommandHandler>();
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();

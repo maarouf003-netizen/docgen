@@ -46,7 +46,7 @@ public sealed class DelegationPendingCountBranchGuardTests
         // رئيس يمرّ بفحص الدور (`CanApproveDelegations`) فيبلغ حارس الفرع —
         // اعتماد `_documents` غير مستخدم في هذا المسار فيُمرَّر `null!` صراحة.
         var controller = new DelegationsController(
-            new FakeDelegationService(), null!, new DocGenerator.Api.Authorization.UserCapabilities());
+            new FakeDelegationService(), null!, new DocGenerator.Api.Authorization.UserCapabilities(), null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

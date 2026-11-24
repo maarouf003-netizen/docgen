@@ -219,31 +219,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         return ToDto(delegation, source, currentYear);
     }
 
-    public async Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default)
-    {
-        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
-            ?? throw new KeyNotFoundException("الإنابة غير موجودة");
-
-        EnsurePendingByOwner(delegation, userId);
-        var source = delegation.SourceDocument;
-
-        await _tx.RunAsync(async token =>
-        {
-            await _alerts.ArchiveByDelegationAsync(
-                delegation.Id,
-                HeadAlertKindCatalog.DelegationKinds,
-                "delegation_deleted",
-                token);
-            _delegations.Remove(delegation);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "delete_delegation",
-                source.Id, source.DocumentType,
-                $"حذف إنابة (رقم {delegation.Id}) إلى {delegation.DelegatedCourt}", token);
-        }, ct);
-
-        return true;
-    }
-
     public async Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds,
         int newLawyerId, string? actorName, int? actorUserId = null, CancellationToken ct = default)
     {

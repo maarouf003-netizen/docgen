@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -29,6 +30,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly FakeAuditLogger _audit = new();
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
+    private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _delegationDelete;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -87,6 +89,9 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TestClock.Provider,
             TestClock.TimeZone);
+        _delegationDelete = new DeleteDocumentDelegationCommandHandler(
+            new DelegationRepository(_db), _headAlerts, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<DeleteDocumentDelegationCommand, bool>>());
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
@@ -552,8 +557,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        Assert.True(await _service.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
+        Assert.True(await _delegationDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
         Assert.Null(await _db.DocumentDelegations.FindAsync(created.Id));
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"حذف إنابة (رقم {created.Id}) إلى دائرة تنفيذ حلب");
     }
 
     [PostgresFact]
@@ -915,7 +923,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.Equal(first.Id, row.DelegationId);
         Assert.Equal(ids[1], row.AssetId);
 
-        Assert.True(await _service.DeleteAsync(first.Id, _lawyer1.Id, "lawyer1"));
+        Assert.True(await _delegationDelete.DeleteAsync(first.Id, _lawyer1.Id, "lawyer1"));
         Assert.Empty(await RowsAsync());
 
         var again = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
@@ -2414,7 +2422,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
 
-        Assert.True(await _service.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
+        Assert.True(await _delegationDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
 
         Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id && a.ArchivedAt == null));
     }
