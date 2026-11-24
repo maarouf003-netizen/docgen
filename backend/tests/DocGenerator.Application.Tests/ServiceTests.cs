@@ -21,6 +21,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
+    private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
@@ -58,6 +59,7 @@ public class DocumentServiceTests : PostgresDbTest
         _delete = bundle.DeleteDocument;
         _transfer = bundle.TransferDocument;
         _transferAll = bundle.TransferAllDocuments;
+        _saveBaseNumbers = bundle.SaveBaseNumbers;
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
@@ -3517,7 +3519,7 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.Equal("520", before!.DisplayFileNumber);
         Assert.Equal("520", before.FileNumber);
 
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1");
 
         // بعد التدوير: الرقم الظاهر يحل محل رقم الملف، والأصلي يبقى محفوظًا للتاريخ.
         var after = await _service.GetAsync(doc.Id);
@@ -3645,7 +3647,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await CreateDocForRotation(1);
         var year = TestClock.Today.Year;
 
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, " 1500 ") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, " 1500 ") }, "lawyer1");
         var first = await _db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
         Assert.Equal(year, first.Year);
         Assert.Equal("1500", first.BaseNumber);
@@ -3653,7 +3655,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         // حفظ ثانٍ لنفس السنة يُنشئ سجلًا جديدًا بدل تحديث السجل — والمعتبر هو الأحدث CreatedAt.
         _db.ChangeTracker.Clear();
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1501") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1501") }, "lawyer1");
         var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Id).ToListAsync();
         Assert.Equal(2, rows.Count);
         Assert.Equal("1500", rows[0].BaseNumber);
@@ -3676,7 +3678,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         _db.ChangeTracker.Clear();
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "   ") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "   ") }, "lawyer1");
 
         // v2/G8: الإدخال الفارغ لا يغيّر شيئًا (الإلغاء له مسار التراجع المستقل).
         var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Year).ToListAsync();
@@ -3693,7 +3695,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3703,7 +3705,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3715,7 +3717,7 @@ public class DocumentServiceTests : PostgresDbTest
         var resp = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3726,7 +3728,7 @@ public class DocumentServiceTests : PostgresDbTest
         var resp = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3737,7 +3739,7 @@ public class DocumentServiceTests : PostgresDbTest
         var resp = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         await AddPreviousYearBaseAsync(resp.Id, "999");
 
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
             .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
@@ -3750,7 +3752,7 @@ public class DocumentServiceTests : PostgresDbTest
         var resp = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
         await AddPreviousYearBaseAsync(resp.Id, "999");
 
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
             .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
@@ -3768,7 +3770,7 @@ public class DocumentServiceTests : PostgresDbTest
         await AddPreviousYearBaseAsync(resp.Id, "999");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
         Assert.Equal(1, _db.BaseNumbers.AsNoTracking().Count()); // سجل التدوير القديم محفوظ
     }
 
@@ -3782,7 +3784,7 @@ public class DocumentServiceTests : PostgresDbTest
         await AddPreviousYearBaseAsync(resp.Id, "999");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1"));
         Assert.Equal(1, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3801,7 +3803,7 @@ public class DocumentServiceTests : PostgresDbTest
         var list = await _service.GetRotationListAsync(1, 1, 100);
         Assert.Contains(resp.Id, list.Items.Select(r => r.DocumentId));
 
-        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
 
         var row = _db.BaseNumbers.AsNoTracking()
             .Single(b => b.DocumentId == resp.Id && b.Year == TestClock.Today.Year);
@@ -3814,7 +3816,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await CreateDocForRotation(1, draft: true);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3828,7 +3830,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3838,14 +3840,14 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await CreateDocForRotation(1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1,
+            _saveBaseNumbers.SaveBaseNumbersAsync(1,
                 new List<BaseNumberEntry> { new(doc.Id, "1500"), new(doc.Id, "1501") }, "lawyer1"));
     }
     [PostgresFact]
     public async Task SaveBaseNumbers_RejectsNullEntry()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { null! }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { null! }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3855,7 +3857,7 @@ public class DocumentServiceTests : PostgresDbTest
         var doc = await CreateDocForRotation(1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, new string('9', 51)) }, "lawyer1"));
+            _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, new string('9', 51)) }, "lawyer1"));
         Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
     }
 
@@ -3866,7 +3868,7 @@ public class DocumentServiceTests : PostgresDbTest
         var executed = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(1,
+            _saveBaseNumbers.SaveBaseNumbersAsync(1,
                 new List<BaseNumberEntry> { new(doc.Id, "1500"), new(executed.Id, "1600") }, "lawyer1"));
 
         // الذرّية: لا يُحفظ أي سجل حتى للصف الصالح.
@@ -3883,7 +3885,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         _audit.Actions.Clear();
 
-        await _service.SaveBaseNumbersAsync(1,
+        await _saveBaseNumbers.SaveBaseNumbersAsync(1,
             new List<BaseNumberEntry>
             {
                 new(doc1.Id, "1500"),
@@ -5586,6 +5588,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
+    private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
@@ -5612,6 +5615,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _delete = considerBundle.DeleteDocument;
         _transfer = considerBundle.TransferDocument;
         _transferAll = considerBundle.TransferAllDocuments;
+        _saveBaseNumbers = considerBundle.SaveBaseNumbers;
         _status = considerBundle.Status;
     }
 

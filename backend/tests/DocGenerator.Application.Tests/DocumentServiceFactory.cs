@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -203,6 +203,10 @@ public static class DocumentServiceFactory
             Array.Empty<IPipelineBehavior<TransferAllDocumentsCommand, int>>(),
             idempotency);
 
-        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument, transferDocument, transferAllDocuments);
+        var saveBaseNumbers = new SaveDocumentBaseNumbersCommandHandler(
+            numberRegistry,
+            Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
+
+        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers);
     }
 }
