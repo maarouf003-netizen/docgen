@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,6 +21,10 @@ namespace DocGenerator.Application.Tests;
 public class PublicEntityServiceTests : PostgresDbTest
 {
     private readonly IPublicEntityService _service;
+    private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
+    private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
+    private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
+    private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -70,6 +76,21 @@ public class PublicEntityServiceTests : PostgresDbTest
             _audit,
             users,
             new AppealRepository(_db));
+
+        var rules = (IPublicEntityWriteRules)_service;
+        var entityRepository = new PublicEntityRepository(_db);
+        _createEntity = new CreatePublicEntityCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<CreatePublicEntityCommand, PublicEntityEntryDto>>());
+        _updateEntity = new UpdatePublicEntityCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<UpdatePublicEntityCommand, PublicEntityEntryDto?>>());
+        _addAlias = new AddPublicEntityAliasCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<AddPublicEntityAliasCommand, PublicEntityEntryDto?>>());
+        _approveReview = new ApprovePublicEntityReviewCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?>>());
     }
 
 
@@ -112,7 +133,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_BuildsGroupAndFinalEntry_WithAliasesAndAudit()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي",
             CitationFormulaCatalog.AddToPosition, new[] { "وزارة التعليم العالي" }), ManagerActor());
 
@@ -131,14 +152,14 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Create_EmptyName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest(" ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
+            _createEntity.CreateAsync(new CreatePublicEntityRequest(" ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Create_InvalidEntityType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest("هيئة جديدة", "union", "دمشق", "الفرع الرئيسي"), ManagerActor()));
+            _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة جديدة", "union", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
     [PostgresTheory]
@@ -152,7 +173,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [InlineData("town-council")]
     public async Task Create_AcceptsNewCatalogEntityTypes(string entityType)
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             $"جهة تجريبية {entityType}", entityType, "دمشق", ""), ManagerActor());
 
         Assert.True(dto.Id > 0);
@@ -164,23 +185,23 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // رمز شبيه بالأسماء الجديدة لكنه خارج الكتالوج النهائي — يُرفض (حماية من كتالوج ناقص).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest("جهة تجريبية", "secretariat", "دمشق", ""), ManagerActor()));
+            _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة تجريبية", "secretariat", "دمشق", ""), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Create_DuplicateSameGovernorateAndBranch_Throws()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
+            _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Create_AllowsSameEntity_InDifferentGovernorates()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var second = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var second = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         Assert.True(second.Id > 0);
     }
@@ -188,7 +209,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_DefaultsBranchName_WhenMissing()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("مديرية النقل", "administration", "حمص", ""), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("مديرية النقل", "administration", "حمص", ""), ManagerActor());
 
         Assert.Equal("الجهة الأم", dto.BranchName);
         Assert.True(dto.IsParentEntity);
@@ -201,7 +222,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var beforeEntries = await _db.PublicEntities.CountAsync();
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest(
+            _createEntity.CreateAsync(new CreatePublicEntityRequest(
                 "هيئة أم مقترحة", "authority", "دمشق", "الجهة الأم", IsParentEntity: true), LawyerActor()));
         Assert.Contains("الإدارة", ex.Message);
 
@@ -215,7 +236,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // حوكمة S1: إنشاء المحامي بالاسم الافتراضي لا يولِّد «جهة أم» — يبقى فرعًا،
         // وتبقى مراجعة رئيس القسم مطلوبة (NeedsReview) كما هو النموذج.
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة جديدة للمحامي", "authority", "دمشق", ""), LawyerActor());
 
         Assert.Equal("الجهة الأم", dto.BranchName);
@@ -230,7 +251,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_LawyerExplicitFalse_Accepted_AsRegularBranch()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة محامٍ بفرع صريح", "authority", "دمشق", "فرع المزة", IsParentEntity: false), LawyerActor());
 
         Assert.Equal("فرع المزة", dto.BranchName);
@@ -243,7 +264,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task List_HidesPending_ByDefault_AndFiltersByGovernorate()
     {
-        var final = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var final = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var pendingEntry = new PublicEntity
         {
             GroupId = final.GroupId,
@@ -268,7 +289,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Search_MatchesNormalizedArabicSpelling()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("الإدارة العامة للكتابة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("الإدارة العامة للكتابة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         // «الاداره» بلا همزات وتاء مربوطة تطابق «الإدارة العامة» بعد التطبيع.
         var result = await _service.ListAsync(new EntityRegistryListQuery("الاداره العامه", null, null, IncludePending: false, 1, 20));
@@ -279,8 +300,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Search_ExcludesInactiveEntries_SoTheyCannotBeLinkedOrBound()
     {
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة معايير قديمة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.UpdateAsync(entry.Id,
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة معايير قديمة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _updateEntity.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
 
         var pickerView = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50, IncludeInactive: false));
@@ -294,9 +315,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Search_FiltersByExactBranchName()
     {
         // الجهة الأم تُبقي ظاهرة عند فلترة الفرع (تغطي كل المحافظات)، لكن الفرع الآخر غير المطابق يُستثنى.
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
         var onlyMain = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
         var onlyBranch = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
@@ -318,8 +339,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // الجهة الأم (بلا فرع — تغطي كل المحافظات) تُخزَّن في محافظة ما لكنها تمثل كيانًا عامًا؛
         // بحثٌ بفرع «الجهة الأم» يعيدها أينما كانت محافظتها كي يمكن اختيارها عند مخاصمة الجهة الأساسية.
-        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "الجهة الأم"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "فرع دمشق"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "الجهة الأم"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "فرع دمشق"), ManagerActor());
 
         var main = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
 
@@ -333,8 +354,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task List_IncludesParentEntity_AcrossAnyGovernorateFilter()
     {
         // الجهة الأم تخزَّن في محافظة واحدة لكنها تمثل كل المحافظات؛ فلتر المحافظة يجب أن يبقيها ظاهرة.
-        var parent = await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
+        var parent = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
 
         var aleppoFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", "حلب", null, IncludePending: true, 1, 50, IncludeInactive: false));
 
@@ -348,8 +369,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task List_IncludesParentEntity_WhenFilteringByBranch()
     {
         // فلتر الفرع يضيّق على فرع محدد لكنه يُبقي الجهة الأم ظاهرة (تغطي كل المحافظات) لاختيارها.
-        var parent = await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
+        var parent = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
 
         var branchFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
 
@@ -395,7 +416,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(interventionOnlyDoc);
         await _db.SaveChangesAsync();
 
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         // متدخل جهة عامة مرتبط بالقيد نفسه: إعادة التسمية يجب أن تزامن اسمه المجمّد كذلك
         // (فرع __Col_Interventions) لا صفوف الأطراف فقط.
         applicantDoc.Interventions.Add(new DocumentIntervention
@@ -417,7 +438,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         _audit.Actions.Clear();
 
-        var updated = await _service.UpdateAsync(entry.Id,
+        var updated = await _updateEntity.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest("وزارة التربية", null, null, null, null, null, null), ManagerActor());
 
         Assert.NotNull(updated);
@@ -495,10 +516,10 @@ public class PublicEntityServiceTests : PostgresDbTest
         // `PB-001`: البلوب مطبَّع (`ة`←`ه` و`ى`←`ي`؛ `ؤ` تبقى).
         Assert.Contains("هيئه اخري", doc.SearchText);
 
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         _audit.Actions.Clear();
 
-        await _service.UpdateAsync(entry.Id,
+        await _updateEntity.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest("وزارة التربية", null, null, null, null, null, null), ManagerActor());
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
@@ -518,11 +539,11 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_RenameByHead_OfOtherGovernorate_IsForbidden()
     {
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.UpdateAsync(entry.Id,
+            _updateEntity.UpdateAsync(entry.Id,
                 new UpdatePublicEntityRequest("وزارة المواصلات", null, null, null, null, null, null), headDamascus));
 
         var unchanged = await _db.PublicEntityGroups.AsNoTracking().SingleAsync();
@@ -532,10 +553,10 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_RenameByHeadWithinHisGovernorate_Succeeds()
     {
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        var updated = await _service.UpdateAsync(entry.Id,
+        var updated = await _updateEntity.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest("وزارة المواصلات", null, null, null, null, null, null), headDamascus);
         Assert.NotNull(updated);
 
@@ -545,23 +566,23 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_RenameToExistingCanonical_Throws()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الداخلية", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الخارجية", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة الداخلية", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة الخارجية", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(other.Id,
+            _updateEntity.UpdateAsync(other.Id,
                 new UpdatePublicEntityRequest("وزارة الداخلية", null, null, null, null, null, null), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task AddAlias_RejectsNormalizedDuplicate_ButAcceptsNew()
     {
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("وزاره التعليم"), ManagerActor()));
+            _addAlias.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("وزاره التعليم"), ManagerActor()));
 
-        var updated = await _service.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("التعليم العالي"), ManagerActor());
+        var updated = await _addAlias.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("التعليم العالي"), ManagerActor());
         Assert.NotNull(updated);
 
         Assert.Contains("التعليم العالي", updated.Aliases);
@@ -572,7 +593,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ByLawyer_IsFinalImmediately_NeedsReview_WithoutReviewAlert()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة التفتيش", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
@@ -592,7 +613,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Create_ByLawyer_InAnotherGovernorate_KeepsNeedsReviewWithoutReviewAlert()
     {
         // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب — تبقى بحاجة مراجعة بلا تنبيه مراجعة (R1 متقاعد).
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة حلبية", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
@@ -603,12 +624,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ApproveReview_ClearsFlagSilently_NoAlertToCreator()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة التخطيط", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        var approved = await _service.ApproveReviewAsync(dto.Id, headDamascus);
+        var approved = await _approveReview.ApproveReviewAsync(dto.Id, headDamascus);
 
         Assert.NotNull(approved);
         Assert.False(approved.NeedsReview);
@@ -627,13 +648,13 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // جهة في محافظة دمشق أدخلها محامٍ من فرع دمشق — رئيس حلب لا يملكها
         // (لا محاميه ولا محافظة فرعه).
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الري", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headAleppo = new EntityRegistryActor(_headAleppoId, "رئيس قسم حلب", UserRole.Head, _aleppoId);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ApproveReviewAsync(dto.Id, headAleppo));
+            _approveReview.ApproveReviewAsync(dto.Id, headAleppo));
     }
 
     [PostgresFact]
@@ -641,12 +662,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب (قد يقيم ملفًا تنفيذيًا عليها):
         // رئيس قسم دمشق يراها ويعتمدها رغم أنها جهة من محافظة أخرى، لأنها من عمل محاميه.
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الري", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        var approved = await _service.ApproveReviewAsync(dto.Id, headDamascus);
+        var approved = await _approveReview.ApproveReviewAsync(dto.Id, headDamascus);
 
         Assert.NotNull(approved);
         Assert.False(approved.NeedsReview);
@@ -660,12 +681,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // السيناريو المبلّغ: رئيس قسم دمشق يعدّل جهة أضافها محامٍ من فرعه
         // حتى لو كانت الجهة تتبع محافظة أخرى (حلب) — قد يقيم المحامي ملفًا تنفيذيًا عليها هناك.
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الري", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        var updated = await _service.UpdateAsync(dto.Id,
+        var updated = await _updateEntity.UpdateAsync(dto.Id,
             new UpdatePublicEntityRequest("هيئة الري المحدثة", null, null, null, null, null, null), headDamascus);
         Assert.NotNull(updated);
 
@@ -675,12 +696,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameDuringReview_ByHead_NotifiesCreatorLawyer_WithOldAndNewNames_AndClosesReview()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة السوق", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        var edited = await _service.UpdateAsync(dto.Id,
+        var edited = await _updateEntity.UpdateAsync(dto.Id,
             new UpdatePublicEntityRequest("هيئة السوق المركزية", null, null, null, null, null, null), headDamascus);
         Assert.NotNull(edited);
 
@@ -707,9 +728,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // محامٍ واحد من فرع دمشق أدخل جهة في محافظته وجهة في محافظة أخرى:
         // رئيس قسم دمشق يرى الاثنتين (كلاهما من عمل محاميه)، والمدير يرى الكل.
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة أ", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة أ", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة ب", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة ب", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
@@ -727,7 +748,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ByManager_DoesNotNeedReview()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة إدارية", "authority", "دمشق", "الفرع الرئيسي"),
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة إدارية", "authority", "دمشق", "الفرع الرئيسي"),
             ManagerActor());
 
         Assert.False(dto.NeedsReview);
@@ -816,18 +837,18 @@ public class PublicEntityServiceTests : PostgresDbTest
 
     private async Task<(int groupId1, int entryId1, int groupId2, int entryId2)> SeedTwoGroupsForMoveAsync()
     {
-        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var dto2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة سكن", "authority", "دمشق", "فرع التجهيز"), ManagerActor());
         return (dto1.GroupId, dto1.Id, dto2.GroupId, dto2.Id);
     }
 
     private async Task<(int groupId1, int entryId1, int groupId2, int entryId2)> SeedTwoGroupsSameBranchForFoldAsync()
     {
-        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var dto2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة سكن", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         return (dto1.GroupId, dto1.Id, dto2.GroupId, dto2.Id);
     }
@@ -1008,9 +1029,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveEntry_FoldParentEntry_Throws_AndLeavesParentUntouched()
     {
         // مصدر «جهة أم» يُطوى إلى قيد مطابق — الحارس يمنع قبل أي أثر.
-        var sourceParent = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var sourceParent = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة النقل الأم", "ministry", "دمشق", "الجهة الأم", IsParentEntity: true), ManagerActor());
-        var foldedTarget = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var foldedTarget = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الإدارة العامة للنقل", "administration", "دمشق", "الجهة الأم"), ManagerActor());
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1027,9 +1048,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveEntry_ReassignParentEntry_Throws_AndKeepsGroupId()
     {
         // نقل أمّ إلى هوية أخرى (وضع أ) — الحارس يمنع؛ لا «أمّين» في مجموعة ولا مجموعة بلا أمّ.
-        var entry = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var entry = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "المديرية الأم", "administration", "دمشق", "الجهة الأم", IsParentEntity: true), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "المديرية الهدف", "administration", "حمص", "فرع حمص"), ManagerActor());
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1044,9 +1065,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task MoveEntry_FoldBranchIntoParentTarget_StillAllowed()
     {
         // حدّية الحارس على المصدر فقط: طيّ فرع عادي إلى قيد «جهة أم» هدف يبقى مباحًا.
-        var branch = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var branch = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
-        var parentTarget = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var parentTarget = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة التعليم المطوِّرة", "ministry", "دمشق", "فرع المزة", IsParentEntity: true), ManagerActor());
 
         var result = await _service.MoveEntryAsync(
@@ -1062,7 +1083,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_WithCoverageLabel_StoresLabel()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي", CoverageLabel: "تغطية دمشق"), ManagerActor());
 
         Assert.Equal("تغطية دمشق", dto.CoverageLabel);
@@ -1075,7 +1096,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var longLabel = new string('أ', 151);
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest(
+            _createEntity.CreateAsync(new CreatePublicEntityRequest(
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: longLabel), ManagerActor()));
     }
 
@@ -1083,16 +1104,16 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Create_CoverageLabelMatchesGovernorate_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest(
+            _createEntity.CreateAsync(new CreatePublicEntityRequest(
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "دمشق"), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Update_CoverageLabel_StoresLabel()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var updated = await _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
+        var updated = await _updateEntity.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
             null, null, null, null, null, null, null, CoverageLabel: "تغطية دمشق"), ManagerActor());
         Assert.Equal("تغطية دمشق", updated!.CoverageLabel);
     }
@@ -1100,10 +1121,10 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_CoverageLabelMatchesGovernorate_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
+            _updateEntity.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
                 null, null, null, null, null, null, null, CoverageLabel: "دمشق"), ManagerActor()));
     }
 
@@ -1111,14 +1132,14 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Create_CoverageLabelWithArabicDigits_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest(
+            _createEntity.CreateAsync(new CreatePublicEntityRequest(
                 "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "تغطية ١٢٣"), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Create_CoverageLabelTrimmed()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الثقافة", "ministry", "دمشق", "الفرع الرئيسي", CoverageLabel: "  تغطية ثقافة  "), ManagerActor());
         Assert.Equal("تغطية ثقافة", dto.CoverageLabel);
     }
@@ -1255,11 +1276,11 @@ public class PublicEntityServiceTests : PostgresDbTest
 
     private async Task<(int survivorGroupId, int absorbedGroupId1, int absorbedGroupId2)> SeedThreeGroupsForMergeAsync()
     {
-        var survivor = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var survivor = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "مديرية الصحة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الإغاثة", "authority", "حلب", "فرع حلب"), ManagerActor());
         return (survivor.GroupId, absorbed1.GroupId, absorbed2.GroupId);
     }
@@ -1401,9 +1422,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task CommitMerge_MigratesPriorAliasesOfAbsorbedEntry_ToSurvivor()
     {
         // جهة ممتصة قيدها يحمل اسمًا بديلًا سابقًا إضافه المستخدمون (يُحفظ حجّة للبحث).
-        var survivor = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var survivor = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "مديرية الصحة", "administration", "دمشق", "الفرع الرئيسي",
             Aliases: new[] { "مصلحة الصحة المؤقتة" }), ManagerActor());
 
@@ -1621,10 +1642,10 @@ public class PublicEntityServiceTests : PostgresDbTest
     private async Task<(int survivorGroupId, int absorbedGroupId, int damascusSurvivorId, int aleppoSurvivorId, int damascusAbsorbedId, int aleppoAbsorbedId)>
         SeedTwoBranchMergeAsync()
     {
-        var survivor = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "دمشق", "فرع دمشق"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "دمشق", "فرع دمشق"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "حلب", "فرع حلب"), ManagerActor());
+        var survivor = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "دمشق", "فرع دمشق"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "دمشق", "فرع دمشق"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "حلب", "فرع حلب"), ManagerActor());
 
         var sD = await _db.PublicEntities.FirstAsync(e => e.GroupId == survivor.GroupId && e.Governorate == "دمشق");
         var sA = await _db.PublicEntities.FirstAsync(e => e.GroupId == survivor.GroupId && e.Governorate == "حلب");
@@ -1673,8 +1694,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // الممتصة فيها قيد (اللاذقية) بلا نظير في الناجية؛ فيسقط المندوب على أول قيد ناجٍ
         // (نفس قانون طيّ الملفات) — لكنه يبقى داخل المجموعة الهدف.
-        var survivor = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "دمشق", "فرع دمشق"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "اللاذقية", "فرع اللاذقية"), ManagerActor());
+        var survivor = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة الصحة", "ministry", "دمشق", "فرع دمشق"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("مديرية الصحة", "administration", "اللاذقية", "فرع اللاذقية"), ManagerActor());
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
         var survivorEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == survivor.GroupId);
 
@@ -1766,8 +1787,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_FiltersByActionKindAndGovernorate()
     {
-        var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var g2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أ2", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var g1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var g2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ2", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _service.MoveEntryAsync(g1.Id, new MoveEntryRequest(g2.GroupId, null, null, null, null, null), ManagerActor());
         var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
@@ -1777,10 +1798,10 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_PaginationWorks()
     {
-        var a1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var b1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
-        var a2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب2", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var b2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب2-ت", "ministry", "حلب", "فرع التجهيز 2"), ManagerActor());
+        var a1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var b1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب2", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var b2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب2-ت", "ministry", "حلب", "فرع التجهيز 2"), ManagerActor());
         await _service.MoveEntryAsync(a1.Id, new MoveEntryRequest(b1.GroupId, null, null, null, null, null), ManagerActor());
         await _service.MoveEntryAsync(a2.Id, new MoveEntryRequest(b2.GroupId, null, null, null, null, null), ManagerActor());
         var p1 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1), ManagerActor());
@@ -1793,8 +1814,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_FilterByActorAndPeriod()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ج1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var b = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ج1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ج1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ج1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
         var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
@@ -1819,8 +1840,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_ActorFilterNormalizingToEmpty_MatchesNothing()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ط1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var b = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ط1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ط1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ط1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
 
         var all = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
@@ -1835,7 +1856,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_ExportProducesWorkbook()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await using var stream = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
         var bytes = XlsxReader.ToArray(stream);
         Assert.True(bytes.Length > 100);
@@ -1849,8 +1870,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         // حارس محتوى حقيقي لمسار التصدير بعد مشاركته محرّك `WriteWorkbook` مع
         // تصدير البوابة: «إنه ملف zip» لا يكشف كسرًا في اسم الورقة ولا العناوين ولا
         // صفوف البيانات ولا مدى الفلتر — وكلها عقدٌ يلتزم به هذا المسار.
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس", "ministry", "حمص", "فرع حمص"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس", "ministry", "حمص", "فرع حمص"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         // نقلٌ لا إنشاء: الحدث المسجَّل في سجل التغييرات هو النقل — الإنشاء وحده
         // لا يُسجّل صفًّا، فيبقى المصنّف بلا بيانات إن لم يُنفَّذ نقل.
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
@@ -1900,8 +1921,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // نقطة الخنق TrackChangeEventAsync ترفض أي صنف خارج الكتالوج — هذا الاختبار
         // يثبت الحارس عبر عمليات كتابة متنوعة (نقل/إعادة تسمية) ثم يدقق الأصناف المخزّنة.
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس أ", "ministry", "دمشق", "فرع أ"), ManagerActor());
-        var b = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس ب", "ministry", "دمشق", "فرع ب"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس أ", "ministry", "دمشق", "فرع أ"), ManagerActor());
+        var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس ب", "ministry", "دمشق", "فرع ب"), ManagerActor());
         await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         await _service.RenameGroupAsync(
             new RenameGroupRequest(b.GroupId, "جهة الحارس ب الجديدة", "قرار", "1", "1/8/2026"), ManagerActor());
@@ -1915,8 +1936,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_SummaryShowsArabicMoveDetails_NotRawJson()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الملخص ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
@@ -1936,7 +1957,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_RenameSummaryShowsBeforeAfterAndDecree()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التسمية القديمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التسمية القديمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await _service.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "جهة التسمية الجديدة", "قرار", "77", "1/8/2026"), ManagerActor());
 
@@ -2012,8 +2033,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_ExportDetailsAreReadableArabic()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التصدير أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         await using var stream = await _service.ExportChangeEventsAsync(
@@ -2029,8 +2050,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_FilterByActorNameMatchesFullName()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الاسم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الاسم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الاسم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الاسم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
@@ -2043,8 +2064,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_FilterByActorNameMatchesUsername()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الدخول أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الدخول ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الدخول أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الدخول ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
@@ -2066,8 +2087,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_ArabicDigitsActorIdIsAccepted()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الرقم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الرقم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الرقم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الرقم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var arabicDigits = string.Concat(_managerId.ToString().Select(c => (char)('٠' + (c - '0'))));
@@ -2083,9 +2104,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListGroups_ReturnsGroupsOrderedWithCountsAndGovernorates()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "حمص", "فرع حمص"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "حمص", "فرع حمص"), ManagerActor());
 
         var paged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 2);
@@ -2100,8 +2121,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListGroups_FiltersByQueryAndGovernorate()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var qPaged = await _service.ListGroupsAsync(new EntityGroupListQuery("النقل", null, 1, 20), ManagerActor());
         Assert.Single(qPaged.Items);
@@ -2114,8 +2135,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListGroups_HeadSeesOnlyHisGovernorate()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة دمشق فقط", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة حلب فقط", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة دمشق فقط", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة حلب فقط", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var damPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadDamascusActor());
         Assert.All(damPaged.Items, g => Assert.Contains("دمشق", g.Governorates));
@@ -2129,7 +2150,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ListGroups_PaginationWorks()
     {
         for (int i = 0; i < 5; i++)
-            await _service.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
+            await _createEntity.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
 
         var p1 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
         var p2 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 2, 2), ManagerActor());
@@ -2145,7 +2166,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // تُنبأ 5 جهات تُفرز أبجديًا: «جهة ترقيم 4» هي آخرها أبجديًا (كأعلى رقم) — أي خارج
         // الصفحة الأولى (perPage=2) عند الفرز التنازلي الطبيعي الصاعد.
         for (int i = 0; i < 5; i++)
-            await _service.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
+            await _createEntity.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
 
         var page = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
         var all = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 10), ManagerActor());
@@ -2162,7 +2183,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListGroups_IncludeIdsIgnoresNonExistentOrInactiveIds()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة نشطة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة نشطة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         var result = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20, IncludeIds: new[] { 999999 }), ManagerActor());
         Assert.Empty(result.Items.Where(g => g.GroupId == 999999));
@@ -2170,8 +2191,8 @@ public class PublicEntityServiceTests : PostgresDbTest
 
     private async Task<(int targetGroupId, int absorbedGroupId)> SeedTwoGroupsForUnifyAsync()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("الجهة الممتصة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الجهة الممتصة", "ministry", "حلب", "فرع حلب"), ManagerActor());
         return (target.GroupId, absorbed.GroupId);
     }
 
@@ -2189,8 +2210,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task PreviewUnify_ListsFoldsWithCounts()
     {
         // قيد مطابق حرفيًا (المحافظة/الفرع) في الهدف ← يُعرض كطي لا تعارضًا.
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة تعارض", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة تعارض ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
 
         var doc = await SeedApplicantDocumentAsync("جهة تعارض ممتصة", "دمشق");
@@ -2211,11 +2232,11 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         // الحالة الثانية: ممتصتان بنفس المفتاح والهدف يخلو منه ← محاكاة مطابقة للتنفيذ:
         // الأولى تُنقل (تضيف مفتاحها للمجموعة التجميعية) والثانية تُطوى عليها.
-        var target2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة فارغة", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
+        var target2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة فارغة", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
         var target2Entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target2.GroupId);
-        await _service.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
-        var first = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var second = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _updateEntity.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var first = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var second = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var preview2 = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target2.GroupId, new[] { first.GroupId, second.GroupId }));
         Assert.Equal(1, preview2.TotalEntriesToMove);
@@ -2278,9 +2299,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Unify_MatchingBranch_FoldsOntoSurvivor()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الممتصة", "ministry", "دمشق", "الفرع الرئيسي",
             Aliases: new[] { "المصلحة المؤقتة" }), ManagerActor());
         _db.PublicEntities.Add(new PublicEntity
@@ -2328,9 +2349,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Unify_Fold_RepointsDocumentsAndDelegates()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var foldedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
         _db.PublicEntities.Add(new PublicEntity
@@ -2416,12 +2437,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // الهدف بلا قيود نشطة: بركة الناجين تبدأ فارغة، فأول ممتصة (حسب ترتيب Distinct) تُنقل
         // وتُضاف للبركة، والثانية المطابقة تُطوى عليها — حتمية مرتبطة بترتيب الطلب.
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الموحدة", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
         var targetEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target.GroupId);
-        await _service.UpdateAsync(targetEntry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
-        var first = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var second = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _updateEntity.UpdateAsync(targetEntry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var first = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var second = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var result = await _service.UnifyNamesAsync(
             new UnifyNamesRequest(target.GroupId, new[] { first.GroupId, second.GroupId }), ManagerActor());
@@ -2437,12 +2458,12 @@ public class PublicEntityServiceTests : PostgresDbTest
         Assert.Contains(survivor.Aliases, a => a.AliasText == "الهوية الثانية");
 
         // معكوس الترتيب يعكس الحتمية: من يُنقل يتبدّل.
-        var target2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var target2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "الجهة الموحدة 2", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
         var target2Entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target2.GroupId);
-        await _service.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
-        var third = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثالثة", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var fourth = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الرابعة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _updateEntity.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var third = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثالثة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var fourth = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الرابعة", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var result2 = await _service.UnifyNamesAsync(
             new UnifyNamesRequest(target2.GroupId, new[] { fourth.GroupId, third.GroupId }), ManagerActor());
@@ -2478,8 +2499,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListEntriesByGroup_HeadSeesOnlyHisGovernorate()
     {
-        var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "دمشق", "فرع دمشق 1"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "حلب", "فرع حلب 1"), ManagerActor());
+        var g1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "دمشق", "فرع دمشق 1"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "حلب", "فرع حلب 1"), ManagerActor());
 
         var damEntries = await _service.ListEntriesByGroupAsync(g1.GroupId, HeadDamascusActor());
         Assert.All(damEntries, e => Assert.Equal("دمشق", e.Governorate));
@@ -2492,8 +2513,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_WithDecree_SucceedsAndStoresDecree()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var updated = await _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم جديدة", DecreeKind: "مرسوم تشريعي", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var updated = await _updateEntity.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم جديدة", DecreeKind: "مرسوم تشريعي", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
         Assert.NotNull(updated);
         Assert.Equal("جهة مرسوم جديدة", updated!.CanonicalName);
         var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
@@ -2506,8 +2527,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_WithInvalidDecreeDate_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم 2", "ministry", "دمشق", "فرع 2"), ManagerActor());
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم 2 جديدة", DecreeDate: "تاريخ فاسد"), ManagerActor()));
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم 2", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _updateEntity.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم 2 جديدة", DecreeDate: "تاريخ فاسد"), ManagerActor()));
         Assert.Contains("تاريخ المرسوم", ex.Message);
     }
 
@@ -2585,9 +2606,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task FindSimilarToGroup_ReturnsFunctionalWordSuggestions()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار والتجارة", "authority", "حلب", "فرع حلب"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مختلفة تماما لا علاقة", "authority", "دمشق", "فرع آخر"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار والتجارة", "authority", "حلب", "فرع حلب"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مختلفة تماما لا علاقة", "authority", "دمشق", "فرع آخر"), ManagerActor());
 
         var resp = await _service.FindSimilarToGroupAsync(target.GroupId, 0.55, 10);
         Assert.Single(resp.Items);
@@ -2598,7 +2619,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ListGroups_IncludesLinkedDocumentCount()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بعداد", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة بعداد", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == dto.GroupId);
 
         var doc = new Document
@@ -2626,7 +2647,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ProposeEdit_ByLawyer_SucceedsWithoutAlert()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var proposed = await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة مقترحة جديدة"), LawyerActor());
         Assert.NotNull(proposed);
         Assert.Equal("جهة مقترحة جديدة", proposed!.CanonicalName);
@@ -2641,22 +2662,22 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ProposeEdit_ByNonLawyer_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أخرى", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أخرى", "ministry", "دمشق", "فرع 2"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "تعديل"), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task ProposeEdit_DuplicateBranch_Throws()
     {
-        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        var dto1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 2"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() => _service.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
     }
 
     [PostgresFact]
     public async Task ProposeEdit_LawyerExplicitIsParentEntity_Throws_AndLeavesEntryUntouched()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ثابتة", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ثابتة", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة ترقية", IsParentEntity: true), LawyerActor()));
@@ -2673,7 +2694,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ProposeEdit_LawyerRenameToDefaultBranchName_KeepsParentFlagFalse()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تغيير فرع", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة تغيير فرع", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
         var proposed = await _service.ProposeEditAsync(
             dto.Id, new ProposeEditRequest(BranchName: "الجهة الأم"), LawyerActor());
@@ -2713,7 +2734,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_RenamesAndSyncsTexts()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
 
         var result = await _service.RenameGroupAsync(
@@ -2737,7 +2758,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_SavesOldNameAsAlias()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("الهيئة العامة للطيران", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهيئة العامة للطيران", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await _service.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "الهيئة العامة للطيران المدني", "مرسوم", "5", "1/1/2026"), ManagerActor());
 
@@ -2748,7 +2769,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_MissingDecree_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بدون مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة بدون مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "", "1", "1/1/2026"), ManagerActor()));
         Assert.Contains("نوع المرجع", ex.Message);
@@ -2757,7 +2778,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_ByHead_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحوكمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحوكمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم محظور", "قرار", "1", "1/1/2026"), HeadDamascusActor()));
     }
@@ -2765,7 +2786,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_NeedsReview_Throws()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بانتظار المراجعة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة بانتظار المراجعة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var entry = await _db.PublicEntities.FirstAsync(e => e.GroupId == dto.GroupId);
         entry.NeedsReview = true;
         await _db.SaveChangesAsync();
@@ -2780,8 +2801,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_CreatesNewAndMovesLinks()
     {
-        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        var absorbed1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("المؤسسة القديمة أ", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed1.GroupId);
@@ -2814,7 +2835,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_MissingDecree_Throws()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحل أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.AbolishAndReplaceAsync(
                 new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق"), ManagerActor()));
@@ -2824,7 +2845,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_ByHead_Throws()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل ب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحل ب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.AbolishAndReplaceAsync(
                 new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق",
@@ -2834,7 +2855,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_MigratesDelegates()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة المناديب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var delegateUser = new User
         {
             Username = "delegate_abol",
@@ -2857,7 +2878,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_MigratesEntryLevelDelegates()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة المناديب قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == absorbed.GroupId);
 
         var delegateUser = new User
@@ -2884,7 +2905,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishPreview_CountsEntryLevelDelegates()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة العدادة قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة العدادة قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == absorbed.GroupId);
 
         _db.Users.AddRange(
@@ -2925,7 +2946,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_UpdatesFileAndAppealSnapshots()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "المركز الوطني للصحة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("المركز الوطني للصحة", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -2960,7 +2981,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_CorruptedAppealSnapshot_SkipsSyncWithAuditAndKeepsOriginal()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة اللقطة التالفة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("جهة اللقطة التالفة", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -2998,7 +3019,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // الثغرة: اسم اللقطة المخزَّن يختلف عن الاسم المعياري المُلغى — يجب أن يُحدَّث مباشرة
         // لأن التقاط الملف يتم بالـ RegistryId وليس بمطابقة الاسم.
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "مصلحة الضرائب العامة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("مصلحة الضرائب", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3029,7 +3050,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_SingleGroup_IsAllowedAndMovesLinks()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة واحدة للحل", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("جهة واحدة للحل", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3052,7 +3073,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_AppealEmptyJson_StaysUnchanged()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة لقطة فارغة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("جهة لقطة فارغة", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3079,7 +3100,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_AppealNoMatch_StaysUnchanged()
     {
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة المنفذة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("جهة المنفذة", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3109,7 +3130,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_UpdatesAppealSnapshots()
     {
-        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var group = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3134,7 +3155,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_DecidedAppeal_StaysHistorical()
     {
-        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var group = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
@@ -3160,7 +3181,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_ExecutedParty_UpdatesAppealSnapshots()
     {
-        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var group = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "بلدية دمشق", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = new Document
         {
@@ -3198,7 +3219,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameGroup_DoesNotRenameFreeLegalExecutionApplicant()
     {
-        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var group = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "المؤسسة السورية للتجارة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == group.GroupId);
         var doc = new Document
@@ -3335,8 +3356,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishAndReplace_ApplicantRegistryId_IsNewParentEntryId()
     {
-        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        var absorbed1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("المؤسسة القديمة أ", "دمشق");
         var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed1.GroupId);
@@ -3406,7 +3427,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameBranch_HeadInScope_SyncsBranchLabelsAndWritesEvent()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
         var result = await _service.RenameBranchAsync(
@@ -3437,7 +3458,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameBranch_HeadOutOfScope_Throws()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("اسم آخر"), HeadAleppoActor()));
     }
@@ -3445,7 +3466,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameBranch_SameName_Throws()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
@@ -3453,8 +3474,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task RenameBranch_DuplicateBranchName_Throws()
     {
-        var a1 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var a2 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RenameBranchAsync(a1.GroupId, a2.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
     }
@@ -3462,8 +3483,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MergeBranches_HeadInScope_MergesAndFolds()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var docSource = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
         var result = await _service.MergeBranchesAsync(
@@ -3493,8 +3514,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MergeBranches_DifferentGovernorate_Throws()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), ManagerActor()));
     }
@@ -3502,8 +3523,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MergeBranches_NeedsReview_Throws()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var tgtEntry = await _db.PublicEntities.SingleAsync(e => e.Id == target.Id);
         tgtEntry.NeedsReview = true;
         await _db.SaveChangesAsync();
@@ -3516,8 +3537,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MergeBranches_HeadOutOfScope_Throws()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadAleppoActor()));
     }
@@ -3525,8 +3546,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishBranch_LinkedDocs_NoTarget_Throws()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -3537,8 +3558,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishBranch_NoLinks_DirectDeactivate()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
 
         var result = await _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor());
 
@@ -3554,8 +3575,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishBranch_WithTarget_ImplicitMerge()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
         var result = await _service.AbolishBranchAsync(
@@ -3578,7 +3599,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task AbolishBranch_LastActiveEntry_Throws()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
         Assert.Contains("آخر فرع نشط", ex.Message);
@@ -3587,9 +3608,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task UnifyBranches_UnifiesIntoSurvivorWithCorrectedName()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
-        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع المعارض"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var absorbed2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع المعارض"), ManagerActor());
         var doc1 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع التجهيز", absorbed1.Id);
         var doc2 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع المعارض", absorbed2.Id);
 
@@ -3623,7 +3644,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task PreviewBranchAction_Rename_ReportsAffectedWithoutWriting()
     {
-        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
         var preview = await _service.PreviewBranchActionAsync(
@@ -3642,8 +3663,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task PreviewBranchAction_Merge_OutOfGovernorateScope_Forbidden()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.PreviewBranchActionAsync(
                 source.GroupId,
@@ -3656,8 +3677,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // انحدار R0-1: مسار المعاينة (بما فيه ValidateMergeablePairAsync) يجب أن
         // ينشر الإلغاء عبر ct بدل الحجب المتزامن — رمز ملغى مسبقًا = رمي حتمي.
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
@@ -3671,8 +3692,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task PreviewBranchAction_Merge_NeedsReview_ReportsError()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var tgtEntry = await _db.PublicEntities.SingleAsync(e => e.Id == target.Id);
         tgtEntry.NeedsReview = true;
         await _db.SaveChangesAsync();
@@ -3689,7 +3710,7 @@ public class PublicEntityServiceTests : PostgresDbTest
 
     private async Task<int> SeedParentEntityAsync(string canonical, string governorate, string branch)
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(canonical, "ministry", governorate, branch), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(canonical, "ministry", governorate, branch), ManagerActor());
         var entry = await _db.PublicEntities.SingleAsync(e => e.Id == dto.Id);
         entry.IsParentEntity = true;
         await _db.SaveChangesAsync();
@@ -3796,7 +3817,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         Assert.DoesNotContain(groups.Items, g => g.CanonicalName == "وزارة الصحة");
 
         // حظر الأم المباشر كما القسم.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _createEntity.CreateAsync(
             new CreatePublicEntityRequest("جهة أم مباشرة", "ministry", "دمشق", "الجهة الأم", IsParentEntity: true),
             sub, default));
     }
@@ -3954,8 +3975,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         // مجموعة تضم فرعًا في محافظة الرئيس (دمشق) — حدث المجموعة يُعرض لرئيس عضو بمحافظته.
         // قبل إصلاح ThenInclude(g => g.Entries) كان Group.Entries فارغًا فلا يظهر الحدث،
         // وGovernorate/CanonicalName يبقيان null في DTO.
-        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var dam = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
 
@@ -3970,8 +3991,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ChangeEvents_GroupLevelEvent_HiddenFromGovernorateWithoutMembers()
     {
         // مجموعة بفروع دمشق فقط — حدث المجموعة لا يظهر لرئيس محافظة بلا عضو في المجموعة.
-        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var dam = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
 
         var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
 
@@ -3985,8 +4006,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // أحداث مستوى القيد (بها EntryId) تُنطاق بمحافظة القيد وحدها: حدث إعادة تسمية فرع دمشق
         // لا يتسرب لرئيس حلب رغم أن المجموعة تضم فرعًا في حلب (ثغرة Scope بعد ThenInclude).
-        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var dam = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
         await _service.RenameBranchAsync(dam.GroupId, dam.Id, new RenameBranchRequest("فرع دمشق المحدث"), HeadDamascusActor());
 
@@ -4002,16 +4023,16 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_HeadExplicitIsParentEntity_ThrowsUnauthorized()
     {
-        var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var created = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.UpdateAsync(created.Id, new UpdatePublicEntityRequest(IsParentEntity: true), HeadDamascusActor()));
+            _updateEntity.UpdateAsync(created.Id, new UpdatePublicEntityRequest(IsParentEntity: true), HeadDamascusActor()));
     }
 
     [PostgresFact]
     public async Task Update_HeadRenameToDefaultBranchName_KeepsIsParentEntityFalse()
     {
-        var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.UpdateAsync(created.Id, new UpdatePublicEntityRequest(BranchName: "الجهة الأم"), HeadDamascusActor());
+        var created = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _updateEntity.UpdateAsync(created.Id, new UpdatePublicEntityRequest(BranchName: "الجهة الأم"), HeadDamascusActor());
 
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == created.Id);
         Assert.Equal("الجهة الأم", stored.BranchName);
@@ -4022,13 +4043,13 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Create_HeadExplicitIsParentEntity_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "عشوائي", IsParentEntity: true), HeadDamascusActor()));
+            _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "عشوائي", IsParentEntity: true), HeadDamascusActor()));
     }
 
     [PostgresFact]
     public async Task Create_HeadDefaultBranchName_DerivesIsParentEntityFalse()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), HeadDamascusActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), HeadDamascusActor());
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
         Assert.False(stored.IsParentEntity);
     }
@@ -4036,7 +4057,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_ManagerIsParentEntity_StillAllowed()
     {
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
         Assert.True(stored.IsParentEntity);
     }
@@ -4074,7 +4095,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // معاينة الدمج على قيد أم: خطأ ضمن Errors (200) لا استثناء مرمي (400) — تناسق مع باقي العمليات.
         var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
-        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع آخر"), ManagerActor());
+        var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع آخر"), ManagerActor());
 
         var preview = await _service.PreviewBranchActionAsync(
             parent.GroupId,
@@ -4139,8 +4160,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task PreviewAbolish_WithTarget_ShowsTargetBranchName()
     {
-        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
         var preview = await _service.PreviewBranchActionAsync(
@@ -4167,7 +4188,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task RenameGroupPreview_ShowsOldNewAndCountsWithoutWriting()
     {
         // توصيف `RF-022`: المعاينة تعرض القديم/الجديد وعدد الملفات والفروع بلا أي كتابة.
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+        var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة المعاينة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         var preview = await _service.PreviewRenameGroupAsync(
@@ -4192,7 +4213,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.AddRange(subDam, subAlp);
         await _db.SaveChangesAsync();
 
-        await _service.CreateAsync(new CreatePublicEntityRequest(
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الشعبة", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 

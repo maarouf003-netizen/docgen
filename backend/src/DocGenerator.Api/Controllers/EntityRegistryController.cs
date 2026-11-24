@@ -4,8 +4,10 @@ using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,11 +28,25 @@ public class EntityRegistryController : ControllerBase
 {
     private readonly IPublicEntityService _registry;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
+    private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
+    private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
+    private readonly ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> _approveReview;
 
-    public EntityRegistryController(IPublicEntityService registry, IUserCapabilities capabilities)
+    public EntityRegistryController(
+        IPublicEntityService registry,
+        IUserCapabilities capabilities,
+        ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> createEntity,
+        ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> updateEntity,
+        ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> addAlias,
+        ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?> approveReview)
     {
         _registry = registry;
         _capabilities = capabilities;
+        _createEntity = createEntity;
+        _updateEntity = updateEntity;
+        _addAlias = addAlias;
+        _approveReview = approveReview;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -87,7 +103,7 @@ public class EntityRegistryController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreatePublicEntityRequest request, CancellationToken ct)
     {
         // المندوب مستبعد بنيويًا بسمة الصنف؛ الإنشاء متاح للمحامي أيضًا (حوكمة د4).
-        return Ok(await _registry.CreateAsync(request, Actor, ct));
+        return Ok(await _createEntity.HandleAsync(new CreatePublicEntityCommand(request, Actor), ct));
     }
 
     /// <summary>تعديل قيد/إعادة تسمية جماعية بمزامنة النصوص وتدقيق الحقول — نطاقات د5/د6.</summary>
@@ -96,7 +112,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        var updated = await _registry.UpdateAsync(id, request, Actor, ct);
+        var updated = await _updateEntity.HandleAsync(new UpdatePublicEntityCommand(id, request, Actor), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -106,7 +122,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        var updated = await _registry.AddAliasAsync(id, request, Actor, ct);
+        var updated = await _addAlias.HandleAsync(new AddPublicEntityAliasCommand(id, request, Actor), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -149,7 +165,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        var dto = await _registry.ApproveReviewAsync(id, Actor, ct);
+        var dto = await _approveReview.HandleAsync(new ApprovePublicEntityReviewCommand(id, Actor), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
     // ── الاستيراد التاريخي (د12) — إداري: مدير/مشرف ──

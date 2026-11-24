@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,6 +22,7 @@ namespace DocGenerator.Application.Tests;
 public class PB001NormalizationTests : PostgresDbTest
 {
     private readonly IPublicEntityService _registry;
+    private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _managerId;
@@ -39,7 +42,7 @@ public class PB001NormalizationTests : PostgresDbTest
         _lawyerId = lawyer.Id;
 
         var tx = new TransactionRunner(_db);
-        _registry = new PublicEntityService(
+        var service = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
             new HeadAlertRepository(_db),
@@ -52,6 +55,10 @@ public class PB001NormalizationTests : PostgresDbTest
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));
+        _registry = service;
+        _createEntity = new CreatePublicEntityCommandHandler(
+            (IPublicEntityWriteRules)service, new PublicEntityRepository(_db), new UnitOfWork(_db), tx, _audit,
+            Array.Empty<IPipelineBehavior<CreatePublicEntityCommand, PublicEntityEntryDto>>());
     }
 
 
@@ -78,10 +85,10 @@ public class PB001NormalizationTests : PostgresDbTest
     public async Task CreateEntry_BranchVariant_Rejected()
     {
         // نفس الهوية والمحافظة بفرع متغير إملائيًا: اليوم قيد ثانٍ؛ بعده `400`.
-        await _registry.CreateAsync(new CreatePublicEntityRequest(
+        await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _registry.CreateAsync(new CreatePublicEntityRequest(
+        await Assert.ThrowsAsync<ArgumentException>(() => _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسى"), ManagerActor()));
     }
 
