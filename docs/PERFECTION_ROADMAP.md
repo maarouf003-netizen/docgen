@@ -912,6 +912,10 @@
   **`P4-01bc`:** `SaveAppealBaseNumbersCommand`/`CorrectAppealBaseNumberCommand` يملكان
   كتابات رقم الأساس الاستئنافي (التدوير للمسند المنظور، والتصحيح الموضعي في أي حالة)
   تحت `AppealBaseNumberPolicy`، مع بقاء `GetBaseNumberHistoryAsync` قراءة.
+  **`P4-01bd`:** ستة أوامر لانتقالات حالة المستند (`UpdateStatus`/`RevertStatus`/
+  `ReturnFromReferredToStart`/`ConsiderExecutedByDelegation`/`UpdateExecutedStatus`/
+  `RestoreStruckOff`) تملك معاملاتها وتدقيقها، مع `DocumentStatusRules` لمساعدات
+  الحقول/التجديد/توريث المناب وبقاء كاتبَي الوقوعات في الخدمة لمعاملة المستدعي.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -949,7 +953,8 @@
   `docs/audit/161-p4-01az-appeal-forward-20261124.md` و
   `docs/audit/162-p4-01ba-appeal-actions-20261124.md` و
   `docs/audit/163-p4-01bb-appeal-reminders-20261124.md` و
-  `docs/audit/164-p4-01bc-appeal-base-numbers-20261124.md`.
+  `docs/audit/164-p4-01bc-appeal-base-numbers-20261124.md` و
+  `docs/audit/165-p4-01bd-document-status-transitions-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

@@ -15,14 +15,15 @@ public class DocumentGenerationDisabledTests
 {
     private static DocumentsController ControllerWithGeneration(bool enabled) =>
         new(
-            null!, null!, null!, null!, null!,
+            null!, null!, null!, null!,
             Options.Create(new DocumentGenerationOptions
             {
                 Enabled = enabled,
                 DisabledMessage = "الميزة معطلة حاليًا لحين توحيد النماذج المولدة",
             }),
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!);
 
     [Fact]
     public async Task Generate_WhenDisabled_Returns503WithConfiguredMessage()

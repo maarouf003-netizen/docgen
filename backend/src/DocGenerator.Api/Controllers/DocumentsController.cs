@@ -38,7 +38,6 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
     private readonly IDocumentSearchService _search;
-    private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
@@ -67,6 +66,12 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<SetActionReminderCommand, ExecutionActionDto> _setActionReminder;
     private readonly ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> _rescheduleActionReminder;
     private readonly ICommandHandler<RestoreDocumentCommand, bool> _restoreDocument;
+    private readonly ICommandHandler<UpdateDocumentStatusCommand, bool> _updateStatus;
+    private readonly ICommandHandler<RevertDocumentStatusCommand, bool> _revertStatus;
+    private readonly ICommandHandler<ReturnFromReferredToStartCommand, bool> _returnFromReferredToStart;
+    private readonly ICommandHandler<ConsiderExecutedByDelegationCommand, bool> _considerExecutedByDelegation;
+    private readonly ICommandHandler<UpdateExecutedStatusCommand, bool> _updateExecutedStatus;
+    private readonly ICommandHandler<RestoreStruckOffDocumentCommand, bool> _restoreStruckOff;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -74,7 +79,6 @@ public class DocumentsController : ControllerBase
         IDocumentService documents,
         IExecutionActionService executionActions,
         IDocumentSearchService search,
-        IDocumentStatusService status,
         IWordDocumentGenerator generator,
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
@@ -103,13 +107,18 @@ public class DocumentsController : ControllerBase
         ICommandHandler<SetActionReminderCommand, ExecutionActionDto> setActionReminder,
         ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> rescheduleActionReminder,
         ICommandHandler<RestoreDocumentCommand, bool> restoreDocument,
+        ICommandHandler<UpdateDocumentStatusCommand, bool> updateStatus,
+        ICommandHandler<RevertDocumentStatusCommand, bool> revertStatus,
+        ICommandHandler<ReturnFromReferredToStartCommand, bool> returnFromReferredToStart,
+        ICommandHandler<ConsiderExecutedByDelegationCommand, bool> considerExecutedByDelegation,
+        ICommandHandler<UpdateExecutedStatusCommand, bool> updateExecutedStatus,
+        ICommandHandler<RestoreStruckOffDocumentCommand, bool> restoreStruckOff,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
         _documents = documents;
         _executionActions = executionActions;
         _search = search;
-        _status = status;
         _generator = generator;
         _generationOptions = generationOptions;
         _excel = excel;
@@ -138,6 +147,12 @@ public class DocumentsController : ControllerBase
         _setActionReminder = setActionReminder;
         _rescheduleActionReminder = rescheduleActionReminder;
         _restoreDocument = restoreDocument;
+        _updateStatus = updateStatus;
+        _revertStatus = revertStatus;
+        _returnFromReferredToStart = returnFromReferredToStart;
+        _considerExecutedByDelegation = considerExecutedByDelegation;
+        _updateExecutedStatus = updateExecutedStatus;
+        _restoreStruckOff = restoreStruckOff;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -704,7 +719,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
         if (denied is not null) return denied;
 
-        var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
+        var ok = await _updateStatus.HandleAsync(
+            new UpdateDocumentStatusCommand(id, request.Status, request.Fields ?? new(), ActorName, request.Version), ct);
         return ok ? Ok(new { message = "تم تحديث الحالة" }) : DocumentNotFound();
     }
 
@@ -716,7 +732,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
         if (denied is not null) return denied;
 
-        var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+        var ok = await _revertStatus.HandleAsync(
+            new RevertDocumentStatusCommand(id, request.Fields ?? new(), ActorName, request.Version), ct);
         return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : DocumentNotFound();
     }
 
@@ -729,7 +746,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
         if (denied is not null) return denied;
 
-        var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
+        var ok = await _returnFromReferredToStart.HandleAsync(
+            new ReturnFromReferredToStartCommand(id, request ?? new(), ActorName), ct);
         return ok ? Ok(new { message = "أعيد السير بالملف" }) : DocumentNotFound();
     }
 
@@ -742,7 +760,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
         if (denied is not null) return denied;
 
-        var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+        var ok = await _considerExecutedByDelegation.HandleAsync(
+            new ConsiderExecutedByDelegationCommand(id, request.Fields ?? new(), ActorName, request.Version), ct);
         return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : DocumentNotFound();
     }
 
@@ -754,7 +773,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.ChangeStatus, ct);
         if (denied is not null) return denied;
 
-        var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
+        var ok = await _updateExecutedStatus.HandleAsync(
+            new UpdateExecutedStatusCommand(id, request.Status, request, ActorName), ct);
         return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : DocumentNotFound();
     }
 
@@ -766,7 +786,8 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Restore, ct);
         if (denied is not null) return denied;
 
-        return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
+        return await _restoreStruckOff.HandleAsync(
+            new RestoreStruckOffDocumentCommand(id, request, ActorName), ct)
             ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
             : NotFound();
     }

@@ -26,7 +26,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _documentTransfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _documentTransferAll;
     private readonly IDocumentSearchService _documentSearch;
-    private readonly IDocumentStatusService _documentStatus;
+    private readonly DocumentStatusHandlers _documentStatusCommands;
     private readonly FakeAuditLogger _audit = new();
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
@@ -114,7 +114,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _documentTransfer = docBundle.TransferDocument;
         _documentTransferAll = docBundle.TransferAllDocuments;
         _documentSearch = docBundle.Search;
-        _documentStatus = docBundle.Status;
+        _documentStatusCommands = docBundle.StatusCommands;
     }
 
 
@@ -1177,7 +1177,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.NotNull(second);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            _documentStatusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
                 new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
@@ -2091,7 +2091,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
@@ -2140,7 +2140,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var (source, created, _) = await RegisteredDelegationAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -2156,7 +2156,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+        Assert.True(await _documentStatusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
@@ -2176,7 +2176,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var (_, created, targetId) = await RegisteredDelegationAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentStatus.UpdateStatusAsync(targetId, ExecutionStatusCatalog.StateStruckOff,
+        Assert.True(await _documentStatusCommands.UpdateStatus.UpdateStatusAsync(targetId, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer2"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -2195,7 +2195,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatusCommands.UpdateStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -3570,7 +3570,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _db.Documents.Update(source);
         await _db.SaveChangesAsync();
 
-        var restored = await _documentStatus.RestoreStruckOffAsync(source.Id,
+        var restored = await _documentStatusCommands.RestoreStruckOff.RestoreStruckOffAsync(source.Id,
             new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1");
         Assert.True(restored);
         await FlushAlertsAsync();

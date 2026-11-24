@@ -24,7 +24,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
 {
     private readonly IExecutionCircuitService _circuits;
     private readonly IDocumentService _documents;
-    private readonly IDocumentStatusService _documentStatus;
+    private readonly DocumentStatusHandlers _documentStatusCommands;
     private readonly IHeadAlertService _headAlerts;
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
     private readonly ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto> _setCircuitActive;
@@ -126,7 +126,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
-        _documentStatus = docBundle.Status;
+        _documentStatusCommands = docBundle.StatusCommands;
         _transferDocument = docBundle.TransferDocument;
     }
 
@@ -451,7 +451,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         await ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentStatus.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
+            _documentStatusCommands.UpdateStatus.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
     }
 
     [PostgresFact]

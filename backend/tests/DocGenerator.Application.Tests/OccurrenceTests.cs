@@ -23,7 +23,7 @@ public class OccurrenceTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
-    private readonly IDocumentStatusService _status;
+    private readonly DocumentStatusHandlers _statusCommands;
     private readonly FakeAuditLogger _audit = new();
 
     public OccurrenceTests()
@@ -49,7 +49,7 @@ public class OccurrenceTests : PostgresDbTest
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
         _update = bundle.UpdateDocument;
-        _status = bundle.Status;
+        _statusCommands = bundle.StatusCommands;
     }
 
 
@@ -81,7 +81,7 @@ public class OccurrenceTests : PostgresDbTest
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -103,7 +103,7 @@ public class OccurrenceTests : PostgresDbTest
         req.FileType = "قضية تنفيذ";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -128,7 +128,7 @@ public class OccurrenceTests : PostgresDbTest
         req.FileType = "قضية تنفيذ";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
         Assert.True(ok);
 
@@ -158,7 +158,7 @@ public class OccurrenceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -191,7 +191,7 @@ public class OccurrenceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var ok = await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+        var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
         Assert.True(ok);
 
@@ -208,9 +208,9 @@ public class OccurrenceTests : PostgresDbTest
     public async Task RestoreStruckOff_RecordsRenewalOccurrence_AndKeepsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ok = await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest
+        var ok = await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest
         {
             RenewalFileNumber = "2026/55",
             RenewalFileType = "قضية تنفيذ",
@@ -259,8 +259,8 @@ public class OccurrenceTests : PostgresDbTest
     {
         // شطب ثم تجديد ثم شطب من جديد: يُسجَّل وقعتا شطب معًا في السجل الزمني.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
-        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -359,7 +359,7 @@ public class OccurrenceTests : PostgresDbTest
     {
         // §4.6 حارس: مشطوب → منفذ مباشر عبر نموذج التعديل ممنوع — يجب الإعادة إلى المتداول أولًا.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;

@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -127,18 +127,36 @@ public static class DocumentServiceFactory
             numberRegistry: numberRegistry);
 
         var statusService = new DocumentStatusService(
-            documentsValue,
             occurrencesValue,
             baseNumbersValue,
-            alertServiceValue,
-            delegationsValue,
-            txValue,
-            uowValue,
             clockValue,
             timeZoneValue,
-            delegationService,
-            writeGuard,
             numberRegistry);
+
+        var statusCommands = new DocumentStatusHandlers(
+            new UpdateDocumentStatusCommandHandler(
+                documentsValue, delegationsValue, writeGuard, txValue, uowValue, occurrencesValue,
+                clockValue, timeZoneValue, delegationService, alertServiceValue,
+                Array.Empty<IPipelineBehavior<UpdateDocumentStatusCommand, bool>>()),
+            new RevertDocumentStatusCommandHandler(
+                documentsValue, delegationsValue, writeGuard, txValue, uowValue, occurrencesValue,
+                clockValue, timeZoneValue, delegationService,
+                Array.Empty<IPipelineBehavior<RevertDocumentStatusCommand, bool>>()),
+            new ReturnFromReferredToStartCommandHandler(
+                documentsValue, delegationsValue, writeGuard, txValue, uowValue, occurrencesValue,
+                clockValue, timeZoneValue, statusService,
+                Array.Empty<IPipelineBehavior<ReturnFromReferredToStartCommand, bool>>()),
+            new ConsiderExecutedByDelegationCommandHandler(
+                documentsValue, delegationsValue, writeGuard, txValue, uowValue, occurrencesValue,
+                clockValue, timeZoneValue, delegationService, alertServiceValue,
+                Array.Empty<IPipelineBehavior<ConsiderExecutedByDelegationCommand, bool>>()),
+            new UpdateExecutedStatusCommandHandler(
+                documentsValue, writeGuard, txValue, uowValue, occurrencesValue, statusService,
+                Array.Empty<IPipelineBehavior<UpdateExecutedStatusCommand, bool>>()),
+            new RestoreStruckOffDocumentCommandHandler(
+                documentsValue, writeGuard, txValue, uowValue, statusService, delegationService,
+                clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<RestoreStruckOffDocumentCommand, bool>>()));
 
         var documentService = new DocumentService(
             documentsValue,
@@ -207,6 +225,15 @@ public static class DocumentServiceFactory
             numberRegistry,
             Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
 
-        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers);
+        return (documentService, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers);
     }
 }
+
+/// <summary>معالجات انتقالات حالة المستند (`P4-01bd`) فوق سياق واحد ومصانع الخدمة نفسها.</summary>
+public sealed record DocumentStatusHandlers(
+    ICommandHandler<UpdateDocumentStatusCommand, bool> UpdateStatus,
+    ICommandHandler<RevertDocumentStatusCommand, bool> RevertStatus,
+    ICommandHandler<ReturnFromReferredToStartCommand, bool> ReturnFromReferredToStart,
+    ICommandHandler<ConsiderExecutedByDelegationCommand, bool> ConsiderExecutedByDelegation,
+    ICommandHandler<UpdateExecutedStatusCommand, bool> UpdateExecutedStatus,
+    ICommandHandler<RestoreStruckOffDocumentCommand, bool> RestoreStruckOff);
