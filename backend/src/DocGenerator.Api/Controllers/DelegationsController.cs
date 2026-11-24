@@ -25,17 +25,23 @@ public class DelegationsController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _deleteDelegation;
+    private readonly ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> _createDelegation;
+    private readonly ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> _updateDelegation;
 
     public DelegationsController(
         IDocumentDelegationService delegations,
         IDocumentService documents,
         IUserCapabilities capabilities,
-        ICommandHandler<DeleteDocumentDelegationCommand, bool> deleteDelegation)
+        ICommandHandler<DeleteDocumentDelegationCommand, bool> deleteDelegation,
+        ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> createDelegation,
+        ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> updateDelegation)
     {
         _delegations = delegations;
         _documents = documents;
         _capabilities = capabilities;
         _deleteDelegation = deleteDelegation;
+        _createDelegation = createDelegation;
+        _updateDelegation = updateDelegation;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -130,7 +136,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var created = await _delegations.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
+        var created = await _createDelegation.HandleAsync(
+            new CreateDocumentDelegationCommand(documentId, request, User.GetUserId(), ActorName), ct);
         return CreatedAtAction(nameof(ListForDocument), new { documentId }, created);
     }
 
@@ -141,7 +148,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var updated = await _delegations.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        var updated = await _updateDelegation.HandleAsync(
+            new UpdateDocumentDelegationCommand(id, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 

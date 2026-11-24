@@ -31,6 +31,8 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _delegationDelete;
+    private readonly ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> _delegationCreate;
+    private readonly ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> _delegationUpdate;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -92,6 +94,18 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _delegationDelete = new DeleteDocumentDelegationCommandHandler(
             new DelegationRepository(_db), _headAlerts, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteDocumentDelegationCommand, bool>>());
+        _delegationCreate = new CreateDocumentDelegationCommandHandler(
+            documents, new DelegationRepository(_db), new DelegationReservationRepository(_db),
+            users, branches, new Repository<ExecutionCircuit>(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx), uow, _tx, _audit,
+            new DbExceptionClassifier(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<CreateDocumentDelegationCommand, DelegationDto>>());
+        _delegationUpdate = new UpdateDocumentDelegationCommandHandler(
+            documents, new DelegationRepository(_db), new DelegationReservationRepository(_db),
+            users, branches, new Repository<ExecutionCircuit>(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx), uow, _tx, _audit,
+            new DbExceptionClassifier(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<UpdateDocumentDelegationCommand, DelegationDto?>>());
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
@@ -175,7 +189,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync("520");
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.True(dto.Id > 0);
         Assert.Equal(DelegationStatusCatalog.PendingHead, dto.Status);
@@ -188,6 +202,9 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.Equal("أحمد خالد الخطيب", dto.SourceDocumentLabel);
         Assert.Equal("520", dto.SourceFileNumber);
         Assert.Equal("2024", dto.SourceFileYear);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"سطّر إنابة على الملف (رقم {source.Id}) إلى دائرة تنفيذ حلب");
     }
 
     [PostgresFact]
@@ -204,7 +221,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.Equal("1500", dto.SourceFileNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
@@ -217,7 +234,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لا تملكه", ex.Message);
     }
 
@@ -231,7 +248,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("طالبة التنفيذ", ex.Message);
     }
 
@@ -246,7 +263,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("منفَّذ", ex.Message);
     }
 
@@ -258,12 +275,12 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var noCourt = SampleRequest(assetId) with { DelegatedCourt = null };
         var ex1 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, noCourt, _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, noCourt, _lawyer1.Id, "lawyer1"));
         Assert.Contains("الدائرة المنابة", ex1.Message);
 
         var noDate = SampleRequest(assetId) with { DelegationDate = null };
         var ex2 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, noDate, _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, noDate, _lawyer1.Id, "lawyer1"));
         Assert.Contains("تاريخ الإنابة", ex2.Message);
     }
 
@@ -273,7 +290,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
 
         var ex1 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(), _lawyer1.Id, "lawyer1"));
         Assert.Contains("الأموال موضوع الإنابة", ex1.Message);
 
         var foreign = new Asset { DocumentId = source.Id, AssetKind = AssetKindCatalog.Vehicle, PlateNumber = "1" };
@@ -281,7 +298,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex2 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(foreign.Id + 999), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(foreign.Id + 999), _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا يتبع", ex2.Message);
     }
 
@@ -301,7 +318,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(bareId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(bareId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", ex.Message);
         Assert.Contains("مركبة لوحة 999", ex.Message);
     }
@@ -323,7 +340,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(salaryId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(salaryId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("كفالة الرواتب لا يجري عليها إنابة", ex.Message);
     }
 
@@ -332,7 +349,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         _db.Assets.Add(new Asset
         {
             DocumentId = source.Id,
@@ -345,7 +362,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(created.Id, SampleRequest(assetId, bareId), _lawyer1.Id, "lawyer1"));
+            _delegationUpdate.UpdateAsync(created.Id, SampleRequest(assetId, bareId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", ex.Message);
     }
 
@@ -365,7 +382,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var freeId = await _db.Assets
             .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "88")
             .Select(a => a.Id).SingleAsync();
-        await _service.CreateAsync(source.Id, SampleRequest(seizedId), _lawyer1.Id, "lawyer1");
+        await _delegationCreate.CreateAsync(source.Id, SampleRequest(seizedId), _lawyer1.Id, "lawyer1");
         return (source, seizedId, freeId);
     }
 
@@ -486,15 +503,18 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _delegationUpdate.UpdateAsync(created.Id,
             SampleRequest(assetId) with { DelegatedCourt = "دائرة تنفيذ حماة", DelegationText = "عدّلت المنطوق" },
             _lawyer1.Id, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.Equal("دائرة تنفيذ حماة", updated!.DelegatedCourt);
         Assert.Equal("عدّلت المنطوق", updated.DelegationText);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"عدّل إنابة (رقم {created.Id}) إلى دائرة تنفيذ حماة");
     }
 
     [PostgresFact]
@@ -520,14 +540,14 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "78")
             .Select(a => a.Id).SingleAsync();
 
-        var created = await _service.CreateAsync(source.Id, SampleRequest(firstId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(firstId), _lawyer1.Id, "lawyer1");
 
         // محاكاة طلب HTTP جديد: تفريغ متعقب الكيانات فيُعاد التحميل طازجًا من القاعدة
         // (في الإنتاج سياق جديد لكل طلب — السياق المشترك وحده يخفي غياب الـ Include
         // عبر خريطة الهوية، فيبقى التعديل أخضر في الاختبار ومكسورًا في الإنتاج).
         _db.ChangeTracker.Clear();
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _delegationUpdate.UpdateAsync(created.Id,
             SampleRequest(secondId) with { DelegationText = "تصحيح العقار" },
             _lawyer1.Id, "lawyer1");
 
@@ -543,10 +563,10 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
+            _delegationUpdate.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لا تملكه", ex.Message);
     }
 
@@ -555,7 +575,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.True(await _delegationDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
         Assert.Null(await _db.DocumentDelegations.FindAsync(created.Id));
@@ -569,7 +589,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
@@ -602,7 +622,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // المالك الجديد، فتعرض بطاقة التشعبات/نافذة الإتمام المتابع الحالي.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -622,7 +642,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // نفسها داخل معاملة النقل — لا استدعاء يدوي من الواجهة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -642,7 +662,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -702,7 +722,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         {
             var source = await CreateSourceAsync();
             var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-            var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+            var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
             await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
                 _head1.Id, _branch.Id, "head1");
         }
@@ -736,7 +756,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // كي لا يبقى الملف بلا أي تنبيه (الترتيب القديم كان يؤرشف ثم يتخطى الإشعار).
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -768,7 +788,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // وبطاقة الإنابة تعرض الحيّة منها.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -803,11 +823,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // وتُسمّى الأموال المحجوبة في رسالة الرفض.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var first = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var first = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         Assert.True(first.BlocksAssets);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("إنابة سارية", ex.Message);
         Assert.Contains("عقار رقم 77", ex.Message);
     }
@@ -822,7 +842,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(salary.Id), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(salary.Id), _lawyer1.Id, "lawyer1"));
         Assert.Contains("كفالة الرواتب", ex.Message);
     }
 
@@ -832,9 +852,9 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // تعديل المعلّقة على أموالها مسموح (تُستثنى ذاتها من الحجب).
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _delegationUpdate.UpdateAsync(created.Id,
             SampleRequest(assetId) with { DelegationText = "عدّلت المنطوق" },
             _lawyer1.Id, "lawyer1");
 
@@ -857,11 +877,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
-        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
-        var second = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(second.Id, SampleRequest(ids[0], ids[1]), _lawyer1.Id, "lawyer1"));
+            _delegationUpdate.UpdateAsync(second.Id, SampleRequest(ids[0], ids[1]), _lawyer1.Id, "lawyer1"));
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
@@ -880,11 +900,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
-        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
-        var second = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateAsync(second.Id,
+            _delegationUpdate.UpdateAsync(second.Id,
                 SampleRequest(ids[0]) with { DelegatedCourt = "دائرة تنفيذ حمص" },
                 _lawyer1.Id, "lawyer1"));
         Assert.Contains("إنابة سارية", ex.Message);
@@ -913,12 +933,12 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         async Task<List<DelegationAssetReservation>> RowsAsync() => await _db.DelegationAssetReservations
             .AsNoTracking().Where(r => r.SourceDocumentId == source.Id).ToListAsync();
 
-        var first = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var first = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
         var row = Assert.Single(await RowsAsync());
         Assert.Equal(first.Id, row.DelegationId);
         Assert.Equal(ids[0], row.AssetId);
 
-        await _service.UpdateAsync(first.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        await _delegationUpdate.UpdateAsync(first.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
         row = Assert.Single(await RowsAsync());
         Assert.Equal(first.Id, row.DelegationId);
         Assert.Equal(ids[1], row.AssetId);
@@ -926,7 +946,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.True(await _delegationDelete.DeleteAsync(first.Id, _lawyer1.Id, "lawyer1"));
         Assert.Empty(await RowsAsync());
 
-        var again = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var again = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
         Assert.NotNull(again);
     }
 
@@ -946,15 +966,15 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
         Assert.Equal(2, ids.Count);
-        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
 
         // التوأم الثاني متاح.
-        var twin = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        var twin = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
         Assert.NotNull(twin);
 
         // وبعد حجبه أيضًا: أي تسطير ثالث على أي منهما مرفوض.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1"));
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
@@ -978,7 +998,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
             Assert.Equal(2, ids.Count);
 
-            await _service.CreateAsync(source.Id,
+            await _delegationCreate.CreateAsync(source.Id,
                 SampleRequest(firstPick == 0 ? ids[0] : ids[1]), _lawyer1.Id, "lawyer1");
 
             DelegationDto? second = null;
@@ -987,7 +1007,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             {
                 try
                 {
-                    second = await _service.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1");
+                    second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1");
                     break;
                 }
                 catch (ArgumentException ex)
@@ -1002,7 +1022,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             foreach (var id in ids)
             {
                 var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                    _service.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1"));
+                    _delegationCreate.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1"));
                 Assert.Contains("إنابة سارية", ex.Message);
             }
         }
@@ -1031,11 +1051,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             .Where(a => a.DocumentId == source.Id && a.PropertyNumber == " 78 ")
             .Select(a => a.Id).SingleAsync();
 
-        var first = await _service.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1");
+        var first = await _delegationCreate.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1");
         Assert.Equal("عقار رقم 78", Assert.Single(first.Assets).AssetLabel);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("إنابة سارية", ex.Message);
     }
 
@@ -1045,7 +1065,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // الإتمام يُحرر الأموال: تسطير جديد على المال نفسه مسموح، وعلم الحجب ساقط عن المنفذة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1055,7 +1075,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
             _lawyer2.Id, "lawyer2");
 
-        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         Assert.NotNull(second);
         Assert.True(second.BlocksAssets);
 
@@ -1070,7 +1090,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // شطب المناب يُحرر الأموال (الحالة «مسجلة أصولًا» لا تتغير — يُفحص المناب نفسه).
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1083,7 +1103,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var card = await _service.ListForDocumentAsync(source.Id);
         Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
 
-        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         Assert.NotNull(second);
     }
 
@@ -1095,7 +1115,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // كل حالة مناب نهائية (مسترد/منفذ إنابة) تُحرر الأموال رغم بقاء الإنابة «مسجلة أصولًا».
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1108,7 +1128,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var card = await _service.ListForDocumentAsync(source.Id);
         Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
 
-        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         Assert.NotNull(second);
     }
 
@@ -1121,7 +1141,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // A1: الحقل المحسوب مرآة IsTargetTerminal — مسجلة بمناب نهائي تُعلَّم نهائية وغير حاجبة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1143,7 +1163,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // مسجلة بمناب مشطوب: تسطير جديد على الأصل نفسه مسموح، وشطب المنيب مرفوض.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1153,7 +1173,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
         await _db.SaveChangesAsync();
 
-        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         Assert.NotNull(second);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1168,7 +1188,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // A1: الفرع الرابع من النهائية — شطب جهة «طالبة منفذة» (ExecutedStatus) يُنهي المناب أيضًا.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1189,7 +1209,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // A1: مناب حي أو غائب (معلّقة قبل الاعتماد) → غير نهائي.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var pending = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.False(pending.TargetTerminal);
@@ -1212,7 +1232,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // في «الملفات التنفيذية» وفلتر المحامي وقائمته — كان يُترك فارغًا فيُعرض «—».
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1242,7 +1262,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(nameless.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1256,7 +1276,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1282,7 +1302,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var target = await _db.Documents.FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
@@ -1304,7 +1324,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // يتطلب جلب TargetDocument.BaseNumbers وإلا سقط العرض إلى الرقم الأصلي.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1365,7 +1385,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1408,7 +1428,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1423,7 +1443,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = dto!.TargetDocumentId!.Value;
@@ -1446,7 +1466,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1475,7 +1495,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1504,7 +1524,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // فيرفض كل تعديل مشروع برسالة «مبلغ العقد كتابة» — هذا اختبار الانحدار.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1544,7 +1564,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1582,7 +1602,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _db.Documents.Update(source);
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1607,7 +1627,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
@@ -1632,7 +1652,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id,
+        var created = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
@@ -1651,7 +1671,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         // رئيس قسم فرع آخر لا يملك اعتماد إنابة فرع دمشق.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1665,7 +1685,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         // رئيس القسم نفسه ليس محاميًا مختصًا (لا يمكن أن يُكلَّف بمتابعة الإنابة).
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1678,7 +1698,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1701,7 +1721,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -1719,7 +1739,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // التي تعرضها «صفحة تعديل الملف» — هي عينُها لا نسخٌ متوازية.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1750,7 +1770,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -1784,7 +1804,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1817,7 +1837,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id,
+        var created = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
@@ -1848,7 +1868,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1887,7 +1907,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
@@ -1970,7 +1990,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
 
         Assert.Contains("لا يمكن تسطير انابة في ملف تريث", ex.Message);
     }
@@ -1981,7 +2001,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // N5 (E5): لا تُسجَّل إنابة بعد وصول كتاب تريث في الملف المنيب — الحالة تُفحص لحظة التسجيل.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2003,7 +2023,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // N5: لو أصبح المنيب منفَّذًا (تسوية) بعد الاعتماد تُرفض التسجيل برسالة ValidateSource القائمة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2031,7 +2051,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
 
         Assert.Contains("لا يمكن تسطير انابة في ملف «محال الى البداية»", ex.Message);
     }
@@ -2042,7 +2062,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // B5 (نمط E5): لو أصبح المنيب «محال الى البداية» بعد الاعتماد تُرفض التسجيل برسالة مخصصة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2065,7 +2085,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // «مسجلة أصولًا» غير حاجبة (TargetTerminal=true) — بدل الطفرة المباشرة السابقة.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2104,7 +2124,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2190,7 +2210,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // يتيمة كما سُطّرت (لا نقل تلقائي)، فيتحرر الجديد فعليًا مع بقاء السجل التاريخي.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2213,7 +2233,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var newAssetId = await _db.Assets
             .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "99")
             .Select(a => a.Id).SingleAsync();
-        var fresh = await _service.CreateAsync(source.Id, SampleRequest(newAssetId), _lawyer1.Id, "lawyer1");
+        var fresh = await _delegationCreate.CreateAsync(source.Id, SampleRequest(newAssetId), _lawyer1.Id, "lawyer1");
         Assert.NotNull(fresh);
     }
 
@@ -2224,7 +2244,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // (يحفظ حجب الأصل المعدّل من التحرر الصامت).
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2246,7 +2266,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var dto = await _service.CreateAsync(source.Id,
+        var dto = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
@@ -2265,12 +2285,12 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var noBranch = SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = null };
         var ex1 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, noBranch, _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, noBranch, _lawyer1.Id, "lawyer1"));
         Assert.Contains("تتطلب تحديد الفرع المناب", ex1.Message);
 
         var unknownBranch = SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = 999_999 };
         var ex2 = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, unknownBranch, _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, unknownBranch, _lawyer1.Id, "lawyer1"));
         Assert.Contains("الفرع المناب غير موجود", ex2.Message);
     }
 
@@ -2279,9 +2299,9 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var updated = await _service.UpdateAsync(created.Id,
+        var updated = await _delegationUpdate.UpdateAsync(created.Id,
             SampleRequest(assetId) with
             {
                 IsExternal = true,
@@ -2302,7 +2322,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id,
+        var created = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
@@ -2341,8 +2361,8 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
 
-        var internalDelegation = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
-        var externalDelegation = await _service.CreateAsync(source.Id,
+        var internalDelegation = await _delegationCreate.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var externalDelegation = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(ids[1]) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
@@ -2363,7 +2383,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
 
         // تنبيه نظامي لرئيس القسم: «بانتظار اعتماد الإنابة» في فرع الاعتماد (فرع المنيب
@@ -2384,7 +2404,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var created = await _service.CreateAsync(source.Id,
+        var created = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
@@ -2400,9 +2420,9 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        await _service.UpdateAsync(created.Id,
+        await _delegationUpdate.UpdateAsync(created.Id,
             SampleRequest(assetId) with { DelegatedCourt = "دائرة تنفيذ حماة" },
             _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
@@ -2419,7 +2439,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
 
         Assert.True(await _delegationDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
@@ -2432,7 +2452,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
@@ -2454,7 +2474,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2479,7 +2499,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2506,7 +2526,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         source.IsDeleted = true;
         _db.Documents.Update(source);
@@ -2518,7 +2538,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.Contains("غير موجودة", exAssign.Message);
 
         var exUpdate = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _service.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationUpdate.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("غير موجودة", exUpdate.Message);
 
         Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
@@ -2529,7 +2549,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2566,7 +2586,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.Equal("1500", dto.SourceFileNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), dto.SourceFileYear);
@@ -2577,7 +2597,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync("520");
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         var listed1 = await _service.ListForDocumentAsync(source.Id);
         Assert.Equal("520", Assert.Single(listed1).SourceFileNumber);
@@ -2607,7 +2627,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -2626,7 +2646,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+            _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("تحت رفع", ex.Message);
     }
 
@@ -2641,7 +2661,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
-        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
         Assert.True(dto.Id > 0);
         Assert.Equal(DelegationStatusCatalog.PendingHead, dto.Status);
@@ -2682,7 +2702,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2725,7 +2745,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         source.BorrowerAddress = "عنوان-المصدر";
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2784,7 +2804,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2846,7 +2866,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2916,7 +2936,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -2984,7 +3004,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3040,7 +3060,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // والعدّاد يبقى صحيحًا بعدد العناصر كلها.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3094,7 +3114,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3163,7 +3183,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // لا يُنسخ الممثل إلى المناب (لا يجتمعان)، ويبقى الوريث المحلي سليمًا.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3209,7 +3229,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3253,7 +3273,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         }
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3304,7 +3324,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _db.Documents.Update(source);
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3360,7 +3380,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // B3/قرار 16: تعديل ممثل قائم كإزالته مرفوض — لا صمت.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3418,7 +3438,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3499,7 +3519,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3542,7 +3562,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // B4: التراجع عن الشطب يُنبه المنابات المعلقة بالنص الموحد كالشطب ذاته.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
@@ -3567,7 +3587,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // T4/قرار 13: حفظ متكرر بلا إضافة (مع ورثة) لا يُرفض ويُخزَّن العنوان فارغًا باطراد.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3601,7 +3621,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         // القاعدة الصارمة: لا يجتمع ممثل الطرف مع ورثته — حتى على المناب.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3666,7 +3686,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3713,7 +3733,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         source.BorrowerAddressType = "عنوان";
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3752,7 +3772,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         c.EntitySet(source, c.V1);
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
@@ -3904,7 +3924,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
-        await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
         return source;
     }
 

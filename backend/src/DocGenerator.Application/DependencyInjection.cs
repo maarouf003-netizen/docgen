@@ -90,6 +90,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UndoDocumentRotationCommand, bool>, UndoDocumentRotationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?>, UpdateDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         services.AddScoped<ICommandHandler<MarkReviewRepliesSeenCommand, bool>, MarkReviewRepliesSeenCommandHandler>();
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();
