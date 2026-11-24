@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -166,35 +167,24 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
         Assert.Equal(wins, circuit.Version);
     }
 
-    private static IDocumentDelegationService DelegationService(DocGeneratorDbContext db)
+    private static RedirectDocumentDelegationCommandHandler RedirectHandler(DocGeneratorDbContext db)
     {
-        var documents = new DocumentRepository(db);
         var users = new UserRepository(db);
-        var branches = new Repository<Branch>(db);
         var uow = new UnitOfWork(db);
         var audit = new FakeAuditLogger();
         var tx = new TransactionRunner(db);
-        var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches,
-            new DelegationRepository(db), uow, tx, audit);
-        return new DocumentDelegationService(
+        return new RedirectDocumentDelegationCommandHandler(
             new DelegationRepository(db),
-            new DelegationReservationRepository(db),
-            new DbExceptionClassifier(),
-            documents,
             users,
-            branches,
-            new Repository<DocumentRegistrationDate>(db),
-            new Repository<DocumentOccurrence>(db),
+            new Repository<Section>(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             uow,
             tx,
             audit,
-            headAlerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            new DbExceptionClassifier(),
             TestClock.Provider,
             TestClock.TimeZone,
-            new Repository<ExecutionCircuit>(db),
-            new Repository<Section>(db));
+            Array.Empty<IPipelineBehavior<RedirectDocumentDelegationCommand, DelegationDto?>>());
     }
 
     private async Task<(int DelegationId, int SectionA, int SectionB, int HeadId)> SeedRedirectAsync()
@@ -274,7 +264,7 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    await DelegationService(db).RedirectToSectionAsync(
+                    await RedirectHandler(db).RedirectToSectionAsync(
                         seed.DelegationId, new RedirectDelegationRequest(seed.SectionA), seed.HeadId, "head");
                     return "ok-a";
                 }
@@ -285,7 +275,7 @@ public class TransferRedirectConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    await DelegationService(db).RedirectToSectionAsync(
+                    await RedirectHandler(db).RedirectToSectionAsync(
                         seed.DelegationId, new RedirectDelegationRequest(seed.SectionB), seed.HeadId, "head");
                     return "ok-b";
                 }

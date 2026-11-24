@@ -110,7 +110,6 @@ public static class DocumentServiceFactory
             circuits);
         var delegationService = new DocumentDelegationService(
             delegationsValue,
-            new DelegationReservationRepository(db),
             dbErrorsValue,
             documentsValue,
             usersValue,

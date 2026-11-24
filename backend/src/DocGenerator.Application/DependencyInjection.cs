@@ -146,6 +146,9 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?>, UpdateDocumentDelegationCommandHandler>();
+        services.AddScoped<ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?>, RedirectDocumentDelegationCommandHandler>();
+        services.AddScoped<ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?>, RecallDelegationRedirectCommandHandler>();
+        services.AddScoped<ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?>, RejectDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentAppealCommand, AppealDto>, CreateDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateDocumentAppealCommand, AppealDto?>, UpdateDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?>, UpdateAppealRegistrationCommandHandler>();

@@ -27,6 +27,9 @@ public class DelegationsController : ControllerBase
     private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _deleteDelegation;
     private readonly ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> _createDelegation;
     private readonly ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> _updateDelegation;
+    private readonly ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> _redirectDelegation;
+    private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
+    private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
 
     public DelegationsController(
         IDocumentDelegationService delegations,
@@ -34,7 +37,10 @@ public class DelegationsController : ControllerBase
         IUserCapabilities capabilities,
         ICommandHandler<DeleteDocumentDelegationCommand, bool> deleteDelegation,
         ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> createDelegation,
-        ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> updateDelegation)
+        ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> updateDelegation,
+        ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> redirectDelegation,
+        ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> recallRedirect,
+        ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> rejectDelegation)
     {
         _delegations = delegations;
         _documents = documents;
@@ -42,6 +48,9 @@ public class DelegationsController : ControllerBase
         _deleteDelegation = deleteDelegation;
         _createDelegation = createDelegation;
         _updateDelegation = updateDelegation;
+        _redirectDelegation = redirectDelegation;
+        _recallRedirect = recallRedirect;
+        _rejectDelegation = rejectDelegation;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -239,7 +248,8 @@ public class DelegationsController : ControllerBase
             return Forbid();
         try
         {
-            var redirected = await _delegations.RedirectToSectionAsync(id, request, User.GetUserId(), ActorName, ct);
+            var redirected = await _redirectDelegation.HandleAsync(
+                new RedirectDocumentDelegationCommand(id, request, User.GetUserId(), ActorName), ct);
             return redirected is null ? NotFound() : Ok(redirected);
         }
         catch (DocumentConflictException e)
@@ -261,7 +271,8 @@ public class DelegationsController : ControllerBase
             return Forbid();
         try
         {
-            var recalled = await _delegations.RecallRedirectAsync(id, User.GetUserId(), ActorName, ct);
+            var recalled = await _recallRedirect.HandleAsync(
+                new RecallDelegationRedirectCommand(id, User.GetUserId(), ActorName), ct);
             return recalled is null ? NotFound() : Ok(recalled);
         }
         catch (DocumentConflictException e)
@@ -283,7 +294,9 @@ public class DelegationsController : ControllerBase
             return Forbid();
         try
         {
-            var rejected = await _delegations.RejectAsync(id, request ?? new RejectDelegationRequest(null), User.GetUserId(), ActorName, ct);
+            var rejected = await _rejectDelegation.HandleAsync(
+                new RejectDocumentDelegationCommand(
+                    id, request ?? new RejectDelegationRequest(null), User.GetUserId(), ActorName), ct);
             return rejected is null ? NotFound() : Ok(rejected);
         }
         catch (DocumentConflictException e)

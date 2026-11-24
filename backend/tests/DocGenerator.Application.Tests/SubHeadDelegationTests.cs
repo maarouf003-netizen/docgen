@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,6 +22,9 @@ namespace DocGenerator.Application.Tests;
 public class SubHeadDelegationTests : PostgresDbTest
 {
     private readonly IDocumentDelegationService _service;
+    private readonly ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> _redirectDelegation;
+    private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
+    private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
     private readonly HeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -67,7 +72,6 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            new DelegationReservationRepository(_db),
             new DbExceptionClassifier(),
             documents,
             users,
@@ -81,8 +85,23 @@ public class SubHeadDelegationTests : PostgresDbTest
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TestClock.Provider,
             TestClock.TimeZone,
-            circuits: new Repository<ExecutionCircuit>(_db),
-            sections: new Repository<Section>(_db));
+            circuits: new Repository<ExecutionCircuit>(_db));
+
+        var delegations = new DelegationRepository(_db);
+        var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
+        var dbErrors = new DbExceptionClassifier();
+        _redirectDelegation = new RedirectDocumentDelegationCommandHandler(
+            delegations, users, new Repository<Section>(_db), outbox, uow, _tx, _audit, dbErrors,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<RedirectDocumentDelegationCommand, DelegationDto?>>());
+        _recallRedirect = new RecallDelegationRedirectCommandHandler(
+            delegations, users, outbox, uow, _tx, _audit, dbErrors,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<RecallDelegationRedirectCommand, DelegationDto?>>());
+        _rejectDelegation = new RejectDocumentDelegationCommandHandler(
+            delegations, users, new Repository<ExecutionCircuit>(_db), outbox, _headAlerts,
+            uow, _tx, _audit, dbErrors, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<RejectDocumentDelegationCommand, DelegationDto?>>());
     }
 
 
@@ -312,9 +331,9 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         // التوجيه لرئيس الشعبة حصرًا بيد رئيس القسم.
         var subRedirectEx = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), sub.Id, "sub"));
+            _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), sub.Id, "sub"));
         Assert.Contains("رئيس قسم", subRedirectEx.Message);
-        var redirected = await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
+        var redirected = await _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
         Assert.NotNull(redirected);
         Assert.Equal(sectionId, redirected!.RedirectedToSectionId);
         Assert.Contains("redirect_delegation", _audit.Actions);
@@ -339,9 +358,9 @@ public class SubHeadDelegationTests : PostgresDbTest
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
-        await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
+        await _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
 
-        var recalled = await _service.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
+        var recalled = await _recallRedirect.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
         Assert.NotNull(recalled);
         Assert.Null(recalled!.RedirectedToSectionId);
         Assert.Contains(await _service.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
@@ -357,8 +376,8 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         // السبب إلزامي.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RejectAsync(created.Id, new RejectDelegationRequest(null), _head1.Id, "head1"));
-        var rejected = await _service.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة مكانيًا"), _head1.Id, "head1");
+            _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest(null), _head1.Id, "head1"));
+        var rejected = await _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة مكانيًا"), _head1.Id, "head1");
         Assert.NotNull(rejected);
         Assert.Equal("الدائرة غير مختصة مكانيًا", rejected!.RejectReason);
 
@@ -412,8 +431,8 @@ public class SubHeadDelegationTests : PostgresDbTest
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
-        await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
-        await _service.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
+        await _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
+        await _recallRedirect.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
         await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(a => a.Recipients)
@@ -432,7 +451,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
-        await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
+        await _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
 
         var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص معدّل", "كتاب-1", "2/8/2026", new List<int> { assetId }),
@@ -452,7 +471,7 @@ public class SubHeadDelegationTests : PostgresDbTest
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
-        await _service.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة"), _head1.Id, "head1");
+        await _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة"), _head1.Id, "head1");
 
         var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         await FlushAlertsAsync();
@@ -472,10 +491,10 @@ public class SubHeadDelegationTests : PostgresDbTest
         var circuitId = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
         var (doc, assetId) = await CreateSourceAsync();
         var created = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
-        await _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب أول"), _head1.Id, "head1");
+        await _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest("سبب أول"), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب ثانٍ"), _head1.Id, "head1"));
+            _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest("سبب ثانٍ"), _head1.Id, "head1"));
     }
 
     [PostgresFact]
@@ -489,9 +508,9 @@ public class SubHeadDelegationTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId, 9999), _otherHead.Id, "head2"));
+            _redirectDelegation.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId, 9999), _otherHead.Id, "head2"));
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.RejectAsync(created.Id, new RejectDelegationRequest("سبب", 9999), _otherHead.Id, "head2"));
+            _rejectDelegation.RejectAsync(created.Id, new RejectDelegationRequest("سبب", 9999), _otherHead.Id, "head2"));
     }
 
     [PostgresFact]

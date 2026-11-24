@@ -18,16 +18,10 @@ public sealed class DelegationPendingCountBranchGuardTests
 {
     private sealed class FakeDelegationService : IDocumentDelegationService
     {
-        public Task<DelegationDto> CreateAsync(int sourceDocumentId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> UpdateAsync(int delegationId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId, string? actorName, int? actorUserId = null, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> RedirectToSectionAsync(int delegationId, RedirectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> RecallRedirectAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<DelegationDto?> RejectAsync(int delegationId, RejectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
@@ -46,7 +40,8 @@ public sealed class DelegationPendingCountBranchGuardTests
         // رئيس يمرّ بفحص الدور (`CanApproveDelegations`) فيبلغ حارس الفرع —
         // اعتماد `_documents` غير مستخدم في هذا المسار فيُمرَّر `null!` صراحة.
         var controller = new DelegationsController(
-            new FakeDelegationService(), null!, new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!);
+            new FakeDelegationService(), null!, new DocGenerator.Api.Authorization.UserCapabilities(),
+            null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),
