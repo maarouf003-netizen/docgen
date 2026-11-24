@@ -1,20 +1,60 @@
 using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.PublicEntities;
 
-public sealed partial class PublicEntityService
+/// <summary>نقل قيد من هوية أم إلى أخرى أو طيّه في قيد مطابق (د3).</summary>
+public sealed record MovePublicEntityEntryCommand(
+    int EntryId,
+    MoveEntryRequest Request,
+    EntityRegistryActor Actor) : ICommand<MoveEntryResponse>;
+
+internal sealed class MovePublicEntityEntryCommandHandler
+    : CommandHandlerBase<MovePublicEntityEntryCommand, MoveEntryResponse>
 {
-    // ── نقل القيد (د3) ──
+    private readonly IPublicEntityWriteRules _rules;
+    private readonly IPublicEntityRepository _entities;
+    private readonly IUserRepository _users;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
 
-    /// <inheritdoc/>
-    public async Task<MoveEntryResponse> MoveEntryAsync(int entryId, MoveEntryRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    public MovePublicEntityEntryCommandHandler(
+        IPublicEntityWriteRules rules,
+        IPublicEntityRepository entities,
+        IUserRepository users,
+        IRepository<DocumentOccurrence> occurrences,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IEnumerable<IPipelineBehavior<MovePublicEntityEntryCommand, MoveEntryResponse>> behaviors)
+        : base(behaviors)
     {
+        _rules = rules;
+        _entities = entities;
+        _users = users;
+        _occurrences = occurrences;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+    }
+
+    protected override async Task<MoveEntryResponse> HandleCoreAsync(
+        MovePublicEntityEntryCommand command, CancellationToken ct)
+    {
+        var entryId = command.EntryId;
+        var request = command.Request;
+        var actor = command.Actor;
         if (request.TargetGroupId is null && request.TargetEntryId is null)
             throw new ArgumentException("حدّد الهوية الأم الهدف (TargetGroupId) أو القيد الهدف (TargetEntryId)");
 
@@ -31,7 +71,7 @@ public sealed partial class PublicEntityService
 
             // حوكمة S1 — منع صريح للجميع: قيد «الجهة الأم» لا يُنقَل ولا يُطوى أصلًا؛
             // الحارس على المصدر فقط، فالطيُّ باتجاه أمّ هدفٍ يبقى مباحًا في وضع (ب).
-            GuardNotParentEntry(entry, "القيد الأم لا يُنقَل ولا يُطوى — إعادة الهيكلة عبر الإلغاء والاستبدال المركزي");
+            _rules.GuardNotParentEntry(entry, "القيد الأم لا يُنقَل ولا يُطوى — إعادة الهيكلة عبر الإلغاء والاستبدال المركزي");
 
             var fromGroupId = entry.GroupId;
             var fromGroupName = entry.Group.CanonicalName;
@@ -52,14 +92,14 @@ public sealed partial class PublicEntityService
 
                 toGroupId = targetEntry.GroupId;
                 // نطاق رئيس القسم: القيد المنقول نفسه يجب أن يكون ضمن نطاقه (لمحامٍ من فرعه).
-                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
+                await _rules.EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
                 targetEntryId = targetEntry.Id;
 
                 // ترحيل روابط RegistryId
                 var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(entryId, token);
                 affectedDocIds.AddRange(linkedDocs.Select(d => d.Id));
                 foreach (var doc in linkedDocs)
-                    RepointEntryLinks(doc, entryId, targetEntryId);
+                    _rules.RepointEntryLinks(doc, entryId, targetEntryId);
                 affectedDocs = linkedDocs.Count;
 
                 // ترحيل مندوبي مستوى القيد إلى القيد الناجي (نطاق بوابة المحاماة يتبدل مع القيد المطوي)
@@ -96,7 +136,7 @@ public sealed partial class PublicEntityService
                 }
 
                 // مزامنة النصوص
-                await SyncTextsAfterFoldAsync(linkedDocs, actor.Name, token);
+                await _rules.SyncTextsAfterFoldAsync(linkedDocs, actor.Name, token);
             }
             else
             {
@@ -110,7 +150,7 @@ public sealed partial class PublicEntityService
                 toGroupId = targetGroup.Id;
                 targetEntryId = entryId;
 
-                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
+                await _rules.EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
 
                 // فحص تعارض المحافظة والفرع
                 var conflict = await _entities.FindEntryInGroupAsync(toGroupId, entry.Governorate, entry.BranchName, token);
@@ -127,7 +167,7 @@ public sealed partial class PublicEntityService
                 affectedDocs = linkedDocs.Count;
                 foreach (var doc in linkedDocs)
                     doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
-                await SyncTextsAfterFoldAsync(linkedDocs, actor.Name, token);
+                await _rules.SyncTextsAfterFoldAsync(linkedDocs, actor.Name, token);
             }
 
             // كتابة ChangeEvent
@@ -160,7 +200,7 @@ public sealed partial class PublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await TrackChangeEventAsync(changeEvent, token);
+            await _rules.TrackChangeEventAsync(changeEvent, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -214,9 +254,49 @@ public sealed partial class PublicEntityService
             return new MoveEntryResponse(entryId, fromGroupId, toGroupId, affectedDocs, changeEvent.Id);
         }, ct);
     }
-    /// <inheritdoc/>
-    public async Task<MoveAllEntriesResponse> MoveAllEntriesAsync(MoveAllEntriesRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+}
+
+/// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
+public sealed record MoveAllPublicEntityEntriesCommand(
+    MoveAllEntriesRequest Request,
+    EntityRegistryActor Actor) : ICommand<MoveAllEntriesResponse>;
+
+internal sealed class MoveAllPublicEntityEntriesCommandHandler
+    : CommandHandlerBase<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse>
+{
+    private readonly IPublicEntityWriteRules _rules;
+    private readonly IPublicEntityRepository _entities;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IHeadAlertOutbox _alertOutbox;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+
+    public MoveAllPublicEntityEntriesCommandHandler(
+        IPublicEntityWriteRules rules,
+        IPublicEntityRepository entities,
+        IRepository<DocumentOccurrence> occurrences,
+        IHeadAlertOutbox alertOutbox,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IEnumerable<IPipelineBehavior<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse>> behaviors)
+        : base(behaviors)
     {
+        _rules = rules;
+        _entities = entities;
+        _occurrences = occurrences;
+        _alertOutbox = alertOutbox;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+    }
+
+    protected override async Task<MoveAllEntriesResponse> HandleCoreAsync(
+        MoveAllPublicEntityEntriesCommand command, CancellationToken ct)
+    {
+        var request = command.Request;
+        var actor = command.Actor;
         return await _tx.RunAsync(async token =>
         {
             var sourceGroup = await _entities.GetGroupAsync(request.SourceGroupId, token)
@@ -238,7 +318,7 @@ public sealed partial class PublicEntityService
 
             foreach (var entry in sourceEntries)
             {
-                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
+                await _rules.EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
 
                 // فحص تعارض
                 var conflict = await _entities.FindEntryInGroupAsync(request.TargetGroupId, entry.Governorate, entry.BranchName, token);
@@ -284,7 +364,7 @@ public sealed partial class PublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await TrackChangeEventAsync(changeEvent, token);
+            await _rules.TrackChangeEventAsync(changeEvent, token);
 
             await _uow.SaveChangesAsync(token);
 

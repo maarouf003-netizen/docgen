@@ -17,6 +17,7 @@ internal interface IPublicEntityWriteRules
     Task<PublicEntityGroup> FindOrCreateGroupAsync(string canonical, string entityType, int actorUserId, CancellationToken token);
     Task TrackChangeEventAsync(PublicEntityChangeEvent changeEvent, CancellationToken token);
     Task<List<Document>> SyncTextsAfterRenameAsync(string oldCanonical, string newCanonical, string? actorName, CancellationToken token);
+    Task SyncTextsAfterFoldAsync(List<Document> linkedDocs, string? actorName, CancellationToken token);
     Task SyncAppealsAfterEntityChangeAsync(IReadOnlyCollection<Document> affectedDocs, EntityRegistryActor actor, CancellationToken token);
     Task InsertRenameNoticeToCreatorAsync(PublicEntity entry, string oldName, string newName, CancellationToken token);
     PublicEntityEntryDto ToEntryDto(PublicEntityGroup group, PublicEntity entry);
@@ -29,6 +30,7 @@ internal interface IPublicEntityWriteRules
     string? NormalizeOptional(string? value);
     void SetGroupNorm(PublicEntityGroup group);
     void GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry);
+    void GuardNotParentEntry(PublicEntity entry, string? message = null);
     Task<List<ImportPreviewItemDto>> BuildImportCandidatesAsync(CancellationToken ct);
     Task<PublicEntityGroup?> FindGroupByNormAsync(string norm, CancellationToken token);
     ParentEditSuggestionDto ToParentEditSuggestionDto(ParentEditSuggestion suggestion);

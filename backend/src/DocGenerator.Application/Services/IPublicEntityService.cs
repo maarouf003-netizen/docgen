@@ -47,12 +47,6 @@ public interface IPublicEntityService
 
     Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default);
 
-    /// <summary>نقل قيد من هوية أم إلى أخرى أو طيّه في قيد مطابق (د3).</summary>
-    Task<MoveEntryResponse> MoveEntryAsync(int entryId, MoveEntryRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
-    Task<MoveAllEntriesResponse> MoveAllEntriesAsync(MoveAllEntriesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
     Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default);
 

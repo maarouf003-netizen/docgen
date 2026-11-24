@@ -39,6 +39,8 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
     private readonly ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> _abolishBranch;
     private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
+    private readonly ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> _moveEntry;
+    private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -53,7 +55,9 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch,
         ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches,
         ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch,
-        ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> unifyBranches)
+        ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> unifyBranches,
+        ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> moveEntry,
+        ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> moveAllEntries)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -68,6 +72,8 @@ public class EntityRegistryController : ControllerBase
         _mergeBranches = mergeBranches;
         _abolishBranch = abolishBranch;
         _unifyBranches = unifyBranches;
+        _moveEntry = moveEntry;
+        _moveAllEntries = moveAllEntries;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -228,7 +234,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
+        return Ok(await _moveEntry.HandleAsync(
+            new MovePublicEntityEntryCommand(id, request, Actor), ct));
     }
 
     /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
@@ -237,7 +244,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
+        return Ok(await _moveAllEntries.HandleAsync(
+            new MoveAllPublicEntityEntriesCommand(request, Actor), ct));
     }
 
     // ── قائمة المجموعات (الهويات الأم) وتوحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات) ──
