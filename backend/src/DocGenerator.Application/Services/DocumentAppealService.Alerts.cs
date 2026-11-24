@@ -73,35 +73,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
             ct);
     }
 
-    private Task EnqueueAppealAssignedAsync(
-        DocumentAppeal appeal, User lawyer, int actorUserId,
-        DateTime occurredAt, CancellationToken ct)
-    {
-        var source = appeal.Document;
-        if (source.BranchId is null)
-            return Task.CompletedTask;
-
-        return _alertOutbox.EnqueueSystemAsync(
-            new CreateSystemHeadAlertRequest(
-                Kind: HeadAlertKindCatalog.AppealAssignedToLawyer,
-                Message: HeadAlertMessages.AppealAssignedToLawyer(new(
-                    DocumentTitle(source),
-                    AppealDocumentNumber(source))),
-                Audience: HeadAlertAudience.SingleLawyer,
-                BranchId: source.BranchId.Value,
-                CreatedById: actorUserId,
-                DocumentId: source.Id,
-                AppealId: appeal.Id,
-                TargetLawyerId: lawyer.Id),
-            new HeadAlertSupersedePlan(
-                DelegationId: null,
-                AppealId: appeal.Id,
-                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
-                Reason: "appeal_assigned"),
-            occurredAt,
-            ct);
-    }
-
     private Task EnqueueAppealFinalAsync(
         DocumentAppeal appeal, bool decided, int actorUserId,
         DateTime occurredAt, CancellationToken ct)

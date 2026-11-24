@@ -36,4 +36,31 @@ public static class DocumentAppealWriteCommandExtensions
         string? actorName,
         CancellationToken ct = default)
         => handler.HandleAsync(new UpdateAppealRegistrationCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<AppealDto?> AssignAsync(
+        this ICommandHandler<AssignDocumentAppealCommand, AppealDto?> handler,
+        int appealId,
+        AssignAppealRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new AssignDocumentAppealCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<AppealDto?> TransferAsync(
+        this ICommandHandler<TransferDocumentAppealCommand, AppealDto?> handler,
+        int appealId,
+        TransferAppealRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new TransferDocumentAppealCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<int> TransferAllAsync(
+        this ICommandHandler<TransferAllDocumentAppealsCommand, int> handler,
+        TransferAllAppealsRequest request,
+        int? headBranchId,
+        int? ownerSectionId,
+        string? actorName,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new TransferAllDocumentAppealsCommand(request, headBranchId, ownerSectionId, actorName), ct);
 }

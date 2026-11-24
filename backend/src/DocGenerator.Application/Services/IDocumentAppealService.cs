@@ -34,15 +34,6 @@ public interface IDocumentAppealService
     /// <summary>شطب الاستئناف بتاريخ الشطب ورقم قرار الشطب — المحامي المتابع.</summary>
     Task<AppealDto?> StrikeAsync(int appealId, StrikeAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>إسناد الاستئناف إلى محامي الفرع للمتابعة — رئيس القسم والشعبة بنطاقه.</summary>
-    Task<AppealDto?> AssignAsync(int appealId, AssignAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>نقل استئناف مفرد بين محامي الفرع — رئيس القسم والشعبة بنطاقه.</summary>
-    Task<AppealDto?> TransferAsync(int appealId, TransferAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
-
-    /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن نطاق المنفِّذ — رئيس القسم والشعبة.</summary>
-    Task<int> TransferAllAsync(TransferAllAppealsRequest request, int? headBranchId, int? ownerSectionId, string? actorName, CancellationToken ct = default);
-
     /// <summary>عدد استئنافات محامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
     Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default);
 

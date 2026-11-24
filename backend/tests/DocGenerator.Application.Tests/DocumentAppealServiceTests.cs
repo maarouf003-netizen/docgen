@@ -24,6 +24,9 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _appealCreate;
     private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _appealUpdate;
     private readonly ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> _appealRegistration;
+    private readonly ICommandHandler<AssignDocumentAppealCommand, AppealDto?> _appealAssign;
+    private readonly ICommandHandler<TransferDocumentAppealCommand, AppealDto?> _appealTransfer;
+    private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _appealTransferAll;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -85,6 +88,17 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
             TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<UpdateAppealRegistrationCommand, AppealDto?>>());
+        _appealAssign = new AssignDocumentAppealCommandHandler(
+            new AppealRepository(_db), new UserRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<AssignDocumentAppealCommand, AppealDto?>>());
+        _appealTransfer = new TransferDocumentAppealCommandHandler(
+            new AppealRepository(_db), new UserRepository(_db), _outbox, new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<TransferDocumentAppealCommand, AppealDto?>>());
+        _appealTransferAll = new TransferAllDocumentAppealsCommandHandler(
+            new AppealRepository(_db), new UserRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            Array.Empty<IPipelineBehavior<TransferAllDocumentAppealsCommand, int>>());
     }
 
 
@@ -338,7 +352,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var selections = new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) };
         var created = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _appealUpdate.UpdateAsync(created.Id, Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1"));
@@ -355,7 +369,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head2.Id, "head2"));
+            _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head2.Id, "head2"));
     }
 
     [PostgresFact]
@@ -368,7 +382,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
 
-        var assigned = await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        var assigned = await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         Assert.NotNull(assigned);
         Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
@@ -381,7 +395,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // إسناد مكرر مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
+            _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
     }
     [PostgresFact]
     public async Task Decide_ByFollower_SetsOutcomeAndNotifiesBaseLawyer()
@@ -392,7 +406,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var decided = await _service.DecideAsync(created.Id,
             new DecideAppealRequest("قرار-55", "15/9/2026", "قبول الاستئناف جزئيًا", AppealOutcomeCatalog.InFavor),
@@ -424,7 +438,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var struck = await _service.StrikeAsync(created.Id,
             new StrikeAppealRequest("قرار-شطب-3", "1/10/2026"), _lawyer2.Id, "lawyer2");
@@ -444,7 +458,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.DecideAsync(created.Id,
@@ -466,7 +480,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var updated = await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", "محكمة استئناف دمشق", "1450", "2026", "7/8/2026"),
@@ -493,7 +507,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // القيد قبل التدوير: رقم أساس لسنة سابقة.
         var previousYear = (TestClock.Today.Year - 1).ToString();
@@ -558,7 +572,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -595,7 +609,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -614,7 +628,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -646,7 +660,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = TestClock.Today.Year - 1;
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -682,7 +696,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -709,7 +723,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var entity = await _db.DocumentAppeals.SingleAsync(a => a.Id == created.Id);
         entity.AppealBaseNumber = "777";
@@ -736,7 +750,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var tooLong = new string('9', AppealBaseNumberPolicy.MaxNumberLength + 1);
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -795,7 +809,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var currentYear = TestClock.Today.Year;
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -818,7 +832,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
@@ -834,7 +848,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = TestClock.Today.Year - 1;
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
@@ -885,7 +899,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
@@ -916,7 +930,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = TestClock.Today.Year - 1;
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
@@ -949,7 +963,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
@@ -994,7 +1008,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا تتابعه", exUnassigned.Message);
 
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // المنشئ غير المسند مرفوض بعد الإسناد.
         var exCreator = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1014,7 +1028,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.StrikeAsync(second.Id,
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
         var exStruck = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1032,7 +1046,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var before = await _service.GetAsync(created.Id);
         Assert.NotNull(before);
@@ -1055,7 +1069,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var action = await _service.AddActionAsync(created.Id,
             new AddAppealActionRequest("action", "إيداع موجبات الاستئناف", "3/8/2026", "أسبوع", "أحمر"),
@@ -1108,7 +1122,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.AgainstUs,
                 new List<AppealPartySelectionDto> { new("executed-public", entity.Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         var action = await _service.AddActionAsync(created.Id,
             new AddAppealActionRequest("action", "متابعة", "3/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
@@ -1161,7 +1175,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         return created.Id;
     }
 
@@ -1316,27 +1330,35 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // نقل فردي: من lawyer2 إلى lawyer1.
-        var transferred = await _service.TransferAsync(first.Id,
+        var transferred = await _appealTransfer.TransferAsync(first.Id,
             new TransferAppealRequest(_lawyer1.Id), _head1.Id, "head1");
         Assert.NotNull(transferred);
         Assert.Equal(_lawyer1.Id, transferred!.AssignedLawyerId);
+        // تثبيت نصَّي التدقيق (إسناد/نقل) حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"أسند الاستئناف (رقم {first.Id}) إلى المحامي {_lawyer2.FullName}");
+        Assert.Contains(_audit.Details,
+            d => d == $"نقل الاستئناف (رقم {first.Id}) إلى المحامي {_lawyer1.FullName}");
 
         // نقل جملة ضمن الفرع: كل استئنافات lawyer2 تصير لـ lawyer1 (الاستئناف الثاني).
-        var count = await _service.TransferAllAsync(
+        var count = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, null, "head1");
         Assert.Equal(1, count);
+        // تثبيت نص تدقيق النقل الجماعي حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"نقل 1 استئنافًا منظورًا من المحامي (رقم {_lawyer2.Id}) إلى المحامي {_lawyer1.FullName}");
 
         // نقل جملة من رئيس فرع آخر مرفوض (نطاق الفرع).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.TransferAllAsync(new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _otherBranch.Id, null, "head2"));
+            _appealTransferAll.TransferAllAsync(new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _otherBranch.Id, null, "head2"));
     }
 
     [PostgresFact]
@@ -1348,12 +1370,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         var second = await _appealCreate.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await _service.DecideAsync(first.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
@@ -1362,7 +1384,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
 
         // لا منظور قابل للنقل ← صفر، والمحسوم والمشطوب يبقيان عند المسند الأصلي (R5).
-        var count = await _service.TransferAllAsync(
+        var count = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, null, "head1");
         Assert.Equal(0, count);
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(first.Id))!.AssignedLawyerId);
@@ -1397,13 +1419,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
         Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
 
         // استئناف محسوم مسند لنفس المحامي لا يدخل العدّاد (المنظورة فقط — R5/C3).
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.DecideAsync(second.Id,
             new DecideAppealRequest("قرار-2", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
@@ -1425,7 +1447,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // بحث بالاسم المستأنف (من اللقطة).
         var byName = await _service.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, null, 1, 20);
@@ -1618,7 +1640,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), stranger.Id, "stranger"));
         // الإسناد (بمالك النطاق) يغلق باب الإحالة.
-        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
+        await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
     }
@@ -1701,7 +1723,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await SetDocNumberAsync(doc.Id, "540");
         var appeal = await CreatePendingAppealAsync(doc.Id);
         Assert.Equal(1, (await _service.GetEntityAsync(appeal.Id))!.Version);
-        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         Assert.Equal(2, (await _service.GetEntityAsync(appeal.Id))!.Version);
         await _service.DecideAsync(appeal.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
@@ -1711,7 +1733,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc2 = await CreateApplicantDocAsync();
         await SetDocNumberAsync(doc2.Id, "541");
         var appeal2 = await CreatePendingAppealAsync(doc2.Id);
-        await _service.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.StrikeAsync(appeal2.Id,
             new StrikeAppealRequest("قرار-2", "16/9/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1731,7 +1753,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RecallForwardAsync(appeal.Id, _lawyer2.Id, "lawyer2"));
 
-        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.RecallForwardAsync(appeal.Id, sub.Id, "sub"));
     }
@@ -1746,7 +1768,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
         await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
 
-        var assigned = await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        var assigned = await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         Assert.NotNull(assigned);
         Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
@@ -1763,7 +1785,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
+            _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
         Assert.Contains("ليست ضمن نطاقك", ex.Message);
     }
 
@@ -1776,7 +1798,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var doc = await CreateApplicantDocAsync();
         var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
 
-        var assigned = await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
+        var assigned = await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
         Assert.NotNull(assigned);
 
         var doc2 = await CreateApplicantDocAsync();
@@ -1784,7 +1806,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appeal2 = await CreatePendingAppealAsync(doc2.Id, circuitId);
         await _service.ForwardAsync(appeal2.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub"));
+            _appealAssign.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub"));
     }
 
     [PostgresFact]
@@ -1795,7 +1817,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // نسخة قديمة صراحةً → `409` ودية بالفحص المسبق (السباق الحقيقي يصطاده الرمز).
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
-            _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id, 9999), _head1.Id, "head1"));
+            _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id, 9999), _head1.Id, "head1"));
     }
 
     [PostgresFact]
@@ -1811,13 +1833,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await SetDocCircuitAsync(docB.Id, sectionCircuit);
         var appealA = await CreatePendingAppealAsync(docA.Id);
         var appealB = await CreatePendingAppealAsync(docB.Id);
-        await _service.AssignAsync(appealA.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
-        await _service.AssignAsync(appealB.Id, new AssignAppealRequest(_lawyer1.Id), sub.Id, "sub");
+        await _appealAssign.AssignAsync(appealA.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appealB.Id, new AssignAppealRequest(_lawyer1.Id), sub.Id, "sub");
 
-        var subCount = await _service.TransferAllAsync(
+        var subCount = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, sectionId, "sub");
         Assert.Equal(1, subCount);
-        var headCount = await _service.TransferAllAsync(
+        var headCount = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(1, headCount);
         Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, sectionId));
@@ -1866,7 +1888,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
         Assert.Contains(headResults.Items, a => a.Id == appealSection.Id);
 
-        await _service.AssignAsync(appealSection.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appealSection.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.DecideAsync(appealSection.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
@@ -1889,11 +1911,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await SetDocCircuitAsync(doc.Id, sectionCircuit);
         var appeal = await CreatePendingAppealAsync(doc.Id);
         await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
-        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
 
         Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
 
-        var moved = await _service.TransferAllAsync(
+        var moved = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(1, moved);
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(appeal.Id))!.AssignedLawyerId);
@@ -1909,14 +1931,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await SetDocCircuitAsync(doc.Id, sectionCircuit);
         var appeal = await CreatePendingAppealAsync(doc.Id);
         await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
-        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+        await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
         await _service.DecideAsync(appeal.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer1.Id, "lawyer1");
 
         // المحسوم مستبعد من العدّ والنقل ولو كان محالًا (قيد `Pending` الأصلي).
         Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
-        var moved = await _service.TransferAllAsync(
+        var moved = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(0, moved);
 
