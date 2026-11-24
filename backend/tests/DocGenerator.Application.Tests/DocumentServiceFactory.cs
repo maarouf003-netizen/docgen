@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -192,6 +192,17 @@ public static class DocumentServiceFactory
             timeZoneValue,
             Array.Empty<IPipelineBehavior<TransferDocumentCommand, DocumentResponse>>());
 
-        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument, transferDocument);
+        var transferAllDocuments = new TransferAllDocumentsCommandHandler(
+            usersValue,
+            documentsValue,
+            delegationService,
+            audit,
+            txValue,
+            clockValue,
+            timeZoneValue,
+            Array.Empty<IPipelineBehavior<TransferAllDocumentsCommand, int>>(),
+            idempotency);
+
+        return (documentService, actionService, searchService, statusService, updateDocument, deleteDocument, transferDocument, transferAllDocuments);
     }
 }

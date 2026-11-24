@@ -20,6 +20,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
+    private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
     private readonly IExecutionActionService _actions;
     private readonly IDocumentSearchService _search;
     private readonly IDocumentStatusService _status;
@@ -56,6 +57,7 @@ public class DocumentServiceTests : PostgresDbTest
         _update = bundle.UpdateDocument;
         _delete = bundle.DeleteDocument;
         _transfer = bundle.TransferDocument;
+        _transferAll = bundle.TransferAllDocuments;
         _actions = bundle.Actions;
         _search = bundle.Search;
         _status = bundle.Status;
@@ -947,7 +949,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
         var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
 
-        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+        var transferred = await _transferAll.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
 
         Assert.Equal(2, transferred);
         var docs = await _db.Documents.AsNoTracking().ToListAsync();
@@ -957,6 +959,13 @@ public class DocumentServiceTests : PostgresDbTest
         Assert.All(docs, d => Assert.Equal("محامي", d.ReferredFromLawyer));
         Assert.All(docs, d => Assert.NotNull(d.ReferredAt));
         Assert.Equal(2, _audit.Actions.Count(a => a == "transfer"));
+        // تثبيت نص التدقيق لكل ملف (الهدف + المنفذ عليه) بلا اعتماد على صيغة التاريخ.
+        Assert.Contains(_audit.Details, d => d != null
+            && d.StartsWith("تم إحالة هذا الملف إلى المحامي: محامي ثانٍ بتاريخ ")
+            && d.EndsWith(" — المنفذ عليه: أحمد خالد الخطيب"));
+        Assert.Contains(_audit.Details, d => d != null
+            && d.StartsWith("تم إحالة هذا الملف إلى المحامي: محامي ثانٍ بتاريخ ")
+            && d.EndsWith(" — المنفذ عليه: سامي خالد الخطيب"));
     }
 
     [PostgresFact]
@@ -974,7 +983,7 @@ public class DocumentServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transferAll.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
     }
 
     [PostgresFact]
@@ -983,7 +992,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await AddLawyerInBranch1Async("lawyer4", "محامي موقوف", isActive: false);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transferAll.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
     }
 
     [PostgresFact]
@@ -993,7 +1002,7 @@ public class DocumentServiceTests : PostgresDbTest
         await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
 
         // نطاق رئيس القسم فرع 2 بينما المحامي المصدر في فرع 1.
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 2, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transferAll.TransferAllAsync(1, 2, scopeBranchId: 2, "head1"));
     }
 
     [PostgresFact]
@@ -1001,7 +1010,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 1, scopeBranchId: 1, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _transferAll.TransferAllAsync(1, 1, scopeBranchId: 1, "head1"));
     }
 
     [PostgresFact]
@@ -1009,7 +1018,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
 
-        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+        var transferred = await _transferAll.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
 
         Assert.Equal(0, transferred);
         Assert.DoesNotContain("transfer", _audit.Actions);
@@ -1022,7 +1031,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _delete.DeleteAsync(created.Id, "lawyer1");
         var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
 
-        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+        var transferred = await _transferAll.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
 
         Assert.Equal(0, transferred);
         var doc = await _db.Documents.IgnoreQueryFilters().SingleAsync(d => d.Id == created.Id);
@@ -5576,6 +5585,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
+    private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
     private readonly IDocumentStatusService _status;
     private readonly IHeadAlertService _alerts;
     private readonly ITransactionRunner _tx;
@@ -5601,6 +5611,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
         _update = considerBundle.UpdateDocument;
         _delete = considerBundle.DeleteDocument;
         _transfer = considerBundle.TransferDocument;
+        _transferAll = considerBundle.TransferAllDocuments;
         _status = considerBundle.Status;
     }
 

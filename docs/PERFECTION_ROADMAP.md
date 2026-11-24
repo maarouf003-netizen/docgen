@@ -872,6 +872,8 @@
   من حقول `DocumentService`.
   **`P4-01ao`:** `TransferDocumentCommand` يملك نقل الملف المفرد (تحققات `TOCTOU`،
   التعاقب، مزامنة المناب، التدقيق، وتنبيه المالك الجديد `H2`) داخل معاملة واحدة.
+  **`P4-01ap`:** `TransferAllDocumentsCommand` يملك النقل الجماعي بمفتاح `RF-011`
+  (بصمة مطابقة، تحققات داخل المعاملة، تدقيق لكل ملف، مزامنة المناب، وتنبيه `H2`).
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -895,7 +897,8 @@
   `docs/audit/147-p4-01al-circuit-refer-files-20261124.md` و
   `docs/audit/148-p4-01am-document-update-20261124.md` و
   `docs/audit/149-p4-01an-document-delete-20261124.md` و
-  `docs/audit/150-p4-01ao-document-transfer-20261124.md`.
+  `docs/audit/150-p4-01ao-document-transfer-20261124.md` و
+  `docs/audit/151-p4-01ap-document-transfer-all-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

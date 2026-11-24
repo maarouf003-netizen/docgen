@@ -52,6 +52,7 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _updateDocument;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _deleteDocument;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transferDocument;
+    private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAllDocuments;
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
@@ -84,6 +85,7 @@ public class DocumentsController : ControllerBase
         ICommandHandler<UpdateDocumentCommand, DocumentResponse?> updateDocument,
         ICommandHandler<DeleteDocumentCommand, bool> deleteDocument,
         ICommandHandler<TransferDocumentCommand, DocumentResponse> transferDocument,
+        ICommandHandler<TransferAllDocumentsCommand, int> transferAllDocuments,
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
@@ -115,6 +117,7 @@ public class DocumentsController : ControllerBase
         _updateDocument = updateDocument;
         _deleteDocument = deleteDocument;
         _transferDocument = transferDocument;
+        _transferAllDocuments = transferAllDocuments;
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
@@ -854,9 +857,10 @@ public class DocumentsController : ControllerBase
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد العدد المخزن نفسه.
-            var transferredCount = await _documents.TransferAllAsync(
-                request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct,
-                IdempotencyKeyHeader(), scope.OwnerSectionId, User.GetUserId());
+            var transferredCount = await _transferAllDocuments.HandleAsync(
+                new TransferAllDocumentsCommand(
+                    request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName,
+                    IdempotencyKeyHeader(), scope.OwnerSectionId, User.GetUserId()), ct);
             return Ok(new { transferredCount });
         }
         catch (IdempotentReplayException r)
