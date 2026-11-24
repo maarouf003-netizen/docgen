@@ -33,14 +33,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     }
 
     private void EnsurePendingByOwner(DocumentDelegation delegation, int userId)
-    {
-        // P2-02e: فحص الملكية أولًا (403) قبل حالة الإنابة (400) — لا نكشف حالة إنابة
-        // ليست للمستخدم برسالة 400، ولا نخلط فشل الصلاحية بخطأ مدخلات.
-        if (delegation.SourceDocument.CreatedById != userId)
-            throw new UnauthorizedAccessException("لا يمكنك تعديل أو حذف إنابة على ملف لا تملكه");
-        if (delegation.Status != DelegationStatusCatalog.PendingHead)
-            throw new ArgumentException("لا يمكن تعديل أو حذف إنابة لم تعد معلّقة");
-    }
+        => DocumentDelegationRules.EnsurePendingByOwner(delegation, userId);
 
     private async Task<(string Court, int? CircuitId, DelegationFields Fields)> ValidateAndBuildAsync(
         UpsertDelegationRequest request, int? sourceBranchId, CancellationToken ct)

@@ -16,9 +16,6 @@ public interface IDocumentDelegationService
     /// <summary>تعديل إنابة معلّقة (قبل اعتماد رئيس القسم) — محامي الملف المنيب فقط.</summary>
     Task<DelegationDto?> UpdateAsync(int delegationId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>حذف إنابة معلّقة (قبل اعتماد رئيس القسم) — محامي الملف المنيب فقط.</summary>
-    Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>إنابات ملف (المنيب: المصدر؛ أو المناب: إنابته) — بطاقة «تشعبات الملف».</summary>
     Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
