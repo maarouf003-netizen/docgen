@@ -385,7 +385,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_MovesReminderBaseKeepingDuration()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -416,7 +416,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_DoesNotTouchActionDate()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "10-11-2026", "3 أيام", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -433,7 +433,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_EmptyOrInvalid_Throws(string? newDueDate)
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -446,7 +446,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_NoReminder_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var note = await _service.AddActionAsync(appealId,
+        var note = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("note", "ملاحظة بلا تذكير", null, null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -459,7 +459,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_NonFollower_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
@@ -472,7 +472,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
     public async Task Reschedule_MissingAppealOrAction_Throws()
     {
         var appealId = await CreateAppealWithAssigneeAsync();
-        var action = await _service.AddActionAsync(appealId,
+        var action = await AppealWriteHandlerFactory.AddAction(_db, _audit).AddActionAsync(appealId,
             new AddAppealActionRequest("action", "إجراء", "1/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 

@@ -34,6 +34,9 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> _strikeAppeal;
     private readonly ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> _forwardAppeal;
     private readonly ICommandHandler<RecallAppealForwardCommand, AppealDto?> _recallForward;
+    private readonly ICommandHandler<AddAppealActionCommand, AppealActionDto> _addAppealAction;
+    private readonly ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> _updateAppealAction;
+    private readonly ICommandHandler<DeleteAppealActionCommand, bool> _deleteAppealAction;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -49,7 +52,10 @@ public class AppealsController : ControllerBase
         ICommandHandler<DecideDocumentAppealCommand, AppealDto?> decideAppeal,
         ICommandHandler<StrikeDocumentAppealCommand, AppealDto?> strikeAppeal,
         ICommandHandler<ForwardDocumentAppealCommand, AppealDto?> forwardAppeal,
-        ICommandHandler<RecallAppealForwardCommand, AppealDto?> recallForward)
+        ICommandHandler<RecallAppealForwardCommand, AppealDto?> recallForward,
+        ICommandHandler<AddAppealActionCommand, AppealActionDto> addAppealAction,
+        ICommandHandler<UpdateAppealActionCommand, AppealActionDto?> updateAppealAction,
+        ICommandHandler<DeleteAppealActionCommand, bool> deleteAppealAction)
     {
         _appeals = appeals;
         _documents = documents;
@@ -65,6 +71,9 @@ public class AppealsController : ControllerBase
         _strikeAppeal = strikeAppeal;
         _forwardAppeal = forwardAppeal;
         _recallForward = recallForward;
+        _addAppealAction = addAppealAction;
+        _updateAppealAction = updateAppealAction;
+        _deleteAppealAction = deleteAppealAction;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -502,7 +511,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        return Ok(await _appeals.AddActionAsync(id, request, User.GetUserId(), ActorName, ct));
+        return Ok(await _addAppealAction.HandleAsync(
+            new AddAppealActionCommand(id, request, User.GetUserId(), ActorName), ct));
     }
 
     /// <summary>تعديل إجراء على الاستئناف — المحامي المتابع.</summary>
@@ -511,7 +521,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var updated = await _appeals.UpdateActionAsync(id, actionId, request, User.GetUserId(), ActorName, ct);
+        var updated = await _updateAppealAction.HandleAsync(
+            new UpdateAppealActionCommand(id, actionId, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -544,7 +555,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var ok = await _appeals.DeleteActionAsync(id, actionId, User.GetUserId(), ActorName, ct);
+        var ok = await _deleteAppealAction.HandleAsync(
+            new DeleteAppealActionCommand(id, actionId, User.GetUserId(), ActorName), ct);
         return ok ? NoContent() : NotFound();
     }
 
