@@ -27,6 +27,9 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _createAppeal;
     private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _updateAppeal;
     private readonly ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> _updateAppealRegistration;
+    private readonly ICommandHandler<AssignDocumentAppealCommand, AppealDto?> _assignAppeal;
+    private readonly ICommandHandler<TransferDocumentAppealCommand, AppealDto?> _transferAppeal;
+    private readonly ICommandHandler<TransferAllDocumentAppealsCommand, int> _transferAllAppeals;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -35,7 +38,10 @@ public class AppealsController : ControllerBase
         ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal,
         ICommandHandler<CreateDocumentAppealCommand, AppealDto> createAppeal,
         ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> updateAppeal,
-        ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> updateAppealRegistration)
+        ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> updateAppealRegistration,
+        ICommandHandler<AssignDocumentAppealCommand, AppealDto?> assignAppeal,
+        ICommandHandler<TransferDocumentAppealCommand, AppealDto?> transferAppeal,
+        ICommandHandler<TransferAllDocumentAppealsCommand, int> transferAllAppeals)
     {
         _appeals = appeals;
         _documents = documents;
@@ -44,6 +50,9 @@ public class AppealsController : ControllerBase
         _createAppeal = createAppeal;
         _updateAppeal = updateAppeal;
         _updateAppealRegistration = updateAppealRegistration;
+        _assignAppeal = assignAppeal;
+        _transferAppeal = transferAppeal;
+        _transferAllAppeals = transferAllAppeals;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -262,7 +271,8 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            var assigned = await _appeals.AssignAsync(id, request, User.GetUserId(), ActorName, ct);
+            var assigned = await _assignAppeal.HandleAsync(
+                new AssignDocumentAppealCommand(id, request, User.GetUserId(), ActorName), ct);
             return assigned is null ? NotFound() : Ok(assigned);
         }
         catch (DocumentConflictException e)
@@ -283,7 +293,8 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            var transferred = await _appeals.TransferAsync(id, request, User.GetUserId(), ActorName, ct);
+            var transferred = await _transferAppeal.HandleAsync(
+                new TransferDocumentAppealCommand(id, request, User.GetUserId(), ActorName), ct);
             return transferred is null ? NotFound() : Ok(transferred);
         }
         catch (DocumentConflictException e)
@@ -316,7 +327,8 @@ public class AppealsController : ControllerBase
             if (section is null)
                 return Forbid();
         }
-        var count = await _appeals.TransferAllAsync(request, branchId, section, ActorName, ct);
+        var count = await _transferAllAppeals.HandleAsync(
+            new TransferAllDocumentAppealsCommand(request, branchId, section, ActorName), ct);
         return Ok(new { transferredCount = count });
     }
 

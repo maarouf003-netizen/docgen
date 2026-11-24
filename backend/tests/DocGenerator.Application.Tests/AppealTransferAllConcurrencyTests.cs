@@ -103,7 +103,7 @@ public class AppealTransferAllConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    var moved = await AppealService(db).TransferAllAsync(
+                    var moved = await AppealWriteHandlerFactory.TransferAll(db).TransferAllAsync(
                         new TransferAllAppealsRequest(seed.SourceId, seed.TargetId), seed.BranchId, null, "head");
                     return (Moved: (int?)moved, Error: (string?)null);
                 }
@@ -114,7 +114,7 @@ public class AppealTransferAllConcurrencyTests : IAsyncLifetime
                 await using var db = _pg.CreateContext();
                 try
                 {
-                    var moved = await AppealService(db).TransferAllAsync(
+                    var moved = await AppealWriteHandlerFactory.TransferAll(db).TransferAllAsync(
                         new TransferAllAppealsRequest(seed.SourceId, seed.TargetId), seed.BranchId, null, "head");
                     return (Moved: (int?)moved, Error: (string?)null);
                 }
@@ -139,7 +139,7 @@ public class AppealTransferAllConcurrencyTests : IAsyncLifetime
         await using var db = _pg.CreateContext();
 
         // المصدر بلا منظور مسند (الهدف نفسه لا يملك شيئًا) — صفر ناجح بلا استثناء.
-        var moved = await AppealService(db).TransferAllAsync(
+        var moved = await AppealWriteHandlerFactory.TransferAll(db).TransferAllAsync(
             new TransferAllAppealsRequest(seed.TargetId, seed.SourceId), seed.BranchId, null, "head");
         Assert.Equal(0, moved);
     }

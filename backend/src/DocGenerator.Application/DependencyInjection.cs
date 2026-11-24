@@ -95,6 +95,9 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CreateDocumentAppealCommand, AppealDto>, CreateDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateDocumentAppealCommand, AppealDto?>, UpdateDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?>, UpdateAppealRegistrationCommandHandler>();
+        services.AddScoped<ICommandHandler<AssignDocumentAppealCommand, AppealDto?>, AssignDocumentAppealCommandHandler>();
+        services.AddScoped<ICommandHandler<TransferDocumentAppealCommand, AppealDto?>, TransferDocumentAppealCommandHandler>();
+        services.AddScoped<ICommandHandler<TransferAllDocumentAppealsCommand, int>, TransferAllDocumentAppealsCommandHandler>();
         services.AddScoped<ICommandHandler<DismissStrikeOffReminderCommand, bool>, DismissStrikeOffReminderCommandHandler>();
         services.AddScoped<ICommandHandler<MarkReviewRepliesSeenCommand, bool>, MarkReviewRepliesSeenCommandHandler>();
         services.AddScoped<ICommandHandler<SetLawyerActiveCommand, bool>, SetLawyerActiveCommandHandler>();

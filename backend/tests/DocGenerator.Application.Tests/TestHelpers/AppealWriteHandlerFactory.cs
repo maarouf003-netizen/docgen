@@ -44,4 +44,52 @@ public static class AppealWriteHandlerFactory
             TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<UpdateDocumentAppealCommand, AppealDto?>>());
     }
+
+    public static AssignDocumentAppealCommandHandler Assign(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        return new AssignDocumentAppealCommandHandler(
+            new AppealRepository(db),
+            new UserRepository(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            uow,
+            tx,
+            audit ?? new FakeAuditLogger(),
+            TestClock.Provider,
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<AssignDocumentAppealCommand, AppealDto?>>());
+    }
+
+    public static TransferDocumentAppealCommandHandler Transfer(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        return new TransferDocumentAppealCommandHandler(
+            new AppealRepository(db),
+            new UserRepository(db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            uow,
+            tx,
+            audit ?? new FakeAuditLogger(),
+            TestClock.Provider,
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<TransferDocumentAppealCommand, AppealDto?>>());
+    }
+
+    public static TransferAllDocumentAppealsCommandHandler TransferAll(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+    {
+        var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
+        return new TransferAllDocumentAppealsCommandHandler(
+            new AppealRepository(db),
+            new UserRepository(db),
+            uow,
+            tx,
+            audit ?? new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<TransferAllDocumentAppealsCommand, int>>());
+    }
 }

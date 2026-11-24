@@ -377,7 +377,7 @@ public class RescheduleAppealReminderTests : PostgresDbTest
                 DefenseOpinion: null,
                 Notes: null),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await AppealWriteHandlerFactory.Assign(_db).AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         return created.Id;
     }
 
