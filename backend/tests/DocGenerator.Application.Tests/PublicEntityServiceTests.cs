@@ -29,6 +29,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
+    private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -107,6 +108,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _renameBranch = new RenamePublicEntityBranchCommandHandler(
             rules, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<RenamePublicEntityBranchCommand, RenameBranchResponse>>());
+        _mergeBranches = new MergePublicEntityBranchesCommandHandler(
+            rules, entityRepository, new UserRepository(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<MergePublicEntityBranchesCommand, MergeBranchesResponse>>());
     }
 
 
@@ -3503,7 +3507,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         var docSource = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
-        var result = await _service.MergeBranchesAsync(
+        var result = await _mergeBranches.MergeBranchesAsync(
             source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadDamascusActor());
 
         Assert.Equal(source.Id, result.SourceEntryId);
@@ -3533,7 +3537,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), ManagerActor()));
+            _mergeBranches.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), ManagerActor()));
     }
 
     [PostgresFact]
@@ -3546,7 +3550,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadDamascusActor()));
+            _mergeBranches.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadDamascusActor()));
         Assert.Contains("مراجعة", ex.Message);
     }
 
@@ -3556,7 +3560,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadAleppoActor()));
+            _mergeBranches.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadAleppoActor()));
     }
 
     [PostgresFact]

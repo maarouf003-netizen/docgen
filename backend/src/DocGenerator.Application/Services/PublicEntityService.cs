@@ -158,4 +158,11 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
     Task IPublicEntityWriteRules.InsertBranchChangeAlertAsync(
         PublicEntity entry, string message, string actionKind, EntityRegistryActor actor, CancellationToken ct)
         => InsertBranchChangeAlertAsync(entry, message, actionKind, actor, ct);
+
+    void IPublicEntityWriteRules.RepointEntryLinks(Document document, int sourceEntryId, int targetEntryId)
+        => RepointEntryLinks(document, sourceEntryId, targetEntryId);
+
+    void IPublicEntityWriteRules.AddFoldAliases(
+        PublicEntity target, string canonical, PublicEntity absorbed, ref int aliasesAdded)
+        => AddFoldAliases(target, canonical, absorbed, ref aliasesAdded);
 }

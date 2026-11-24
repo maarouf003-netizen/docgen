@@ -38,4 +38,6 @@ internal interface IPublicEntityWriteRules
     string FullEntryName(string canonical, string governorate, string branchName);
     Task InsertBranchOccurrencesAsync(List<Document> docs, string message, EntityRegistryActor actor, CancellationToken ct);
     Task InsertBranchChangeAlertAsync(PublicEntity entry, string message, string actionKind, EntityRegistryActor actor, CancellationToken ct);
+    void RepointEntryLinks(Document document, int sourceEntryId, int targetEntryId);
+    void AddFoldAliases(PublicEntity target, string canonical, PublicEntity absorbed, ref int aliasesAdded);
 }

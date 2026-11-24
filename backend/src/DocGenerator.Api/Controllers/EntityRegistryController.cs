@@ -36,6 +36,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> _withdrawSuggestion;
     private readonly ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> _reviewSuggestion;
     private readonly ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> _renameBranch;
+    private readonly ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> _mergeBranches;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -47,7 +48,8 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto> commitImport,
         ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?> withdrawSuggestion,
         ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?> reviewSuggestion,
-        ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch)
+        ICommandHandler<RenamePublicEntityBranchCommand, RenameBranchResponse> renameBranch,
+        ICommandHandler<MergePublicEntityBranchesCommand, MergeBranchesResponse> mergeBranches)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -59,6 +61,7 @@ public class EntityRegistryController : ControllerBase
         _withdrawSuggestion = withdrawSuggestion;
         _reviewSuggestion = reviewSuggestion;
         _renameBranch = renameBranch;
+        _mergeBranches = mergeBranches;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -454,7 +457,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
+        return Ok(await _mergeBranches.HandleAsync(
+            new MergePublicEntityBranchesCommand(groupId, request, Actor), ct));
     }
 
     /// <summary>إلغاء فرع: تعطيل مباشر لصفر روابط أو دمج ضمني مع فرع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
