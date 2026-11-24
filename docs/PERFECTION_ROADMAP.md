@@ -916,6 +916,20 @@
   `ReturnFromReferredToStart`/`ConsiderExecutedByDelegation`/`UpdateExecutedStatus`/
   `RestoreStruckOff`) تملك معاملاتها وتدقيقها، مع `DocumentStatusRules` لمساعدات
   الحقول/التجديد/توريث المناب وبقاء كاتبَي الوقوعات في الخدمة لمعاملة المستدعي.
+  **`P4-01be`:** `CreatePublicEntityCommand`/`UpdatePublicEntityCommand`/
+  `AddPublicEntityAliasCommand`/`ApprovePublicEntityReviewCommand` تملك كتابات السجل
+  الأساسية مع `IPublicEntityWriteRules` لمساعدات الحرّاس/التكرار/أحداث التغيير.
+  **`P4-01bf`:** `CreateEntityDelegateCommand`/`UpdateEntityDelegateCommand` تملك
+  كتابات مندوبي الجهات مع `IEntityDelegateWriteRules`.
+  **`P4-01bg`:** `CreateLawyerCommand`/`UpdateLawyerCommand` تملك كتابات المحامين.
+  **`P4-01bh`:** `CreateUserCommand`/`UpdateUserCommand` تملك كتابات المستخدمين
+  (الدور/الفرع/الشعبة/الخلف الإجباري).
+  **`P4-01bi`:** `CreateManualHeadAlertCommand`/`RemoveAppealAlertRecipientCommand`
+  تملك الإصدار اليدوي للتنبيهات، مع الحفاظ على حارس البناء المركزي.
+  **`P4-01bj`:** `ChangePasswordCommand` يملك تغيير كلمة المرور (يبقى الدخول لمرحلة تالية).
+  **`P4-01bk`:** `DeletePendingRegistrationAlertsCommand` يملك خطاف تنظيف تنبيه إعادة القيد.
+  **`P4-01bl`:** `AddReviewLetterAddendumCommand`/`ReplyReviewLetterCommand` يملكان
+  لاحق/رد كتاب المطالعة، مع `IReviewLetterReplyWriteRules`.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -954,7 +968,15 @@
   `docs/audit/162-p4-01ba-appeal-actions-20261124.md` و
   `docs/audit/163-p4-01bb-appeal-reminders-20261124.md` و
   `docs/audit/164-p4-01bc-appeal-base-numbers-20261124.md` و
-  `docs/audit/165-p4-01bd-document-status-transitions-20261124.md`.
+  `docs/audit/165-p4-01bd-document-status-transitions-20261124.md` و
+  `docs/audit/166-p4-01be-public-entity-writes-20261124.md` و
+  `docs/audit/167-p4-01bf-entity-delegate-writes-20261124.md` و
+  `docs/audit/168-p4-01bg-lawyer-writes-20261124.md` و
+  `docs/audit/169-p4-01bh-user-writes-20261124.md` و
+  `docs/audit/170-p4-01bi-head-alert-manual-20261124.md` و
+  `docs/audit/171-p4-01bj-change-password-20261124.md` و
+  `docs/audit/172-p4-01bk-pending-registration-hook-20261124.md` و
+  `docs/audit/173-p4-01bl-review-letter-replies-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

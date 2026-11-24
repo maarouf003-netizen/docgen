@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Domain.Entities;
@@ -5322,6 +5323,14 @@ public class AuthServiceTests : PostgresDbTest
             LockoutMinutes = lockoutMinutes,
         }));
 
+    private ICommandHandler<ChangePasswordCommand, bool> CreateChangePassword() => new ChangePasswordCommandHandler(
+        new UserRepository(_db),
+        new PasswordHasher(),
+        new UnitOfWork(_db),
+        new TransactionRunner(_db),
+        _audit,
+        Array.Empty<IPipelineBehavior<ChangePasswordCommand, bool>>());
+
     [PostgresFact]
     public async Task Login_WithValidCredentials_ReturnsUser()
     {
@@ -5441,7 +5450,7 @@ public class AuthServiceTests : PostgresDbTest
     {
         var service = CreateService();
         var user = _db.Users.First();
-        var ok = await service.ChangePasswordAsync(user.Id, "123456", "TestPass1234");
+        var ok = await CreateChangePassword().ChangePasswordAsync(user.Id, "123456", "TestPass1234");
         Assert.True(ok);
 
         var login = await service.LoginAsync(new LoginRequest("lawyer1", "TestPass1234"));
@@ -5456,7 +5465,7 @@ public class AuthServiceTests : PostgresDbTest
         var user = _db.Users.First();
         var initial = user.TokenVersion;
 
-        var ok = await service.ChangePasswordAsync(user.Id, "123456", "TestPass1234");
+        var ok = await CreateChangePassword().ChangePasswordAsync(user.Id, "123456", "TestPass1234");
 
         Assert.True(ok);
         Assert.Equal(initial + 1, _db.Users.First().TokenVersion);
@@ -5468,7 +5477,7 @@ public class AuthServiceTests : PostgresDbTest
         var service = CreateService();
         var user = _db.Users.First();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ChangePasswordAsync(user.Id, "123456", "123"));
+            CreateChangePassword().ChangePasswordAsync(user.Id, "123456", "123"));
     }
 
     [PostgresFact]

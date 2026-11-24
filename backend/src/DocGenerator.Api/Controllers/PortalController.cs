@@ -3,8 +3,10 @@ using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.PublicEntities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -274,11 +276,19 @@ public class DelegatesController : ControllerBase
 {
     private readonly IEntityDelegateService _delegates;
     private readonly IUserCapabilities _capabilities;
+    private readonly ICommandHandler<CreateEntityDelegateCommand, DelegateDto> _createDelegate;
+    private readonly ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> _updateDelegate;
 
-    public DelegatesController(IEntityDelegateService delegates, IUserCapabilities capabilities)
+    public DelegatesController(
+        IEntityDelegateService delegates,
+        IUserCapabilities capabilities,
+        ICommandHandler<CreateEntityDelegateCommand, DelegateDto> createDelegate,
+        ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> updateDelegate)
     {
         _delegates = delegates;
         _capabilities = capabilities;
+        _createDelegate = createDelegate;
+        _updateDelegate = updateDelegate;
     }
 
     [HttpGet]
@@ -294,7 +304,8 @@ public class DelegatesController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
-        return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct, Actor()));
+        return Ok(await _createDelegate.HandleAsync(
+            new CreateEntityDelegateCommand(request, User.Identity?.Name, Actor()), ct));
     }
 
     [HttpPut("{id:int}")]
@@ -302,7 +313,8 @@ public class DelegatesController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
-        var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct, Actor());
+        var dto = await _updateDelegate.HandleAsync(
+            new UpdateEntityDelegateCommand(id, request, User.Identity?.Name, Actor()), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 

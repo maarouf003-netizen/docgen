@@ -16,6 +16,8 @@ public class ReviewLetterServiceTests : PostgresDbTest
 {
     private readonly IReviewLetterService _service;
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
+    private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
+    private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _otherBranchId;
@@ -50,6 +52,17 @@ public class ReviewLetterServiceTests : PostgresDbTest
             {
                 new TransactionBehavior<MarkReviewRepliesSeenCommand, bool>(new TransactionRunner(_db)),
             });
+
+        var replyRules = (IReviewLetterReplyWriteRules)_service;
+        var lettersRepo = new ReviewLetterRepository(_db);
+        var unitOfWork = new UnitOfWork(_db);
+        var runner = new TransactionRunner(_db);
+        _addAddendum = new AddReviewLetterAddendumCommandHandler(
+            replyRules, lettersRepo, unitOfWork, runner, _audit,
+            Array.Empty<IPipelineBehavior<AddReviewLetterAddendumCommand, ReviewLetterMessageDto>>());
+        _reply = new ReplyReviewLetterCommandHandler(
+            replyRules, lettersRepo, unitOfWork, runner, _audit,
+            Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
     }
 
     /// <summary>
@@ -234,7 +247,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             new CreateReviewLetterRequest(null, "<p>نطلب التوجيه</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        var reply = await _service.ReplyAsync(
+        var reply = await _reply.ReplyAsync(
             letter.Id, new ReplyReviewLetterRequest("<p>يوجه بالتالي...</p>"),
             _head.Id, "رئيس القسم", _branchId);
 
@@ -254,7 +267,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             new CreateReviewLetterRequest(null, "<p>سؤال</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ReplyAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _reply.ReplyAsync(
             letter.Id, new ReplyReviewLetterRequest("<p>رد</p>"),
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId));
     }
@@ -265,15 +278,15 @@ public class ReviewLetterServiceTests : PostgresDbTest
         var letter = await _service.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>الرد</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>الرد</p>"),
             _head.Id, "رئيس القسم", _branchId);
 
         // محامٍ آخر لا يستطيع إضافة لاحق لكتاب غيره
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.AddAddendumAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _addAddendum.AddAddendumAsync(
             letter.Id, new AddReviewLetterAddendumRequest("<p>لاحق</p>"),
             _lawyer2.Id, "المحامي الثاني"));
 
-        var addendum = await _service.AddAddendumAsync(
+        var addendum = await _addAddendum.AddAddendumAsync(
             letter.Id, new AddReviewLetterAddendumRequest("<p>لاحق جديد بعد الرد</p>"),
             _lawyer1.Id, "المحامي الأول");
 
@@ -403,9 +416,9 @@ public class ReviewLetterServiceTests : PostgresDbTest
             new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>الرد الأول</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>الرد الأول</p>"),
             _head.Id, "رئيس القسم", _branchId);
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>رد ثانٍ قبل الاطلاع</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>رد ثانٍ قبل الاطلاع</p>"),
             _head.Id, "رئيس القسم", _branchId);
         await FlushAlertsAsync();
 
@@ -438,7 +451,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             _lawyer1.Id, "المحامي الأول", _branchId);
         var fullReply = string.Concat(Enumerable.Repeat("تفصيل الرد الكامل ", 20)).Trim();
 
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest($"<p>{fullReply}</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest($"<p>{fullReply}</p>"),
             _head.Id, "رئيس القسم", _branchId);
         await FlushAlertsAsync();
 
@@ -453,7 +466,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         var letter = await _service.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>سؤال</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب</p>"),
             _head.Id, "رئيس القسم", _branchId);
 
         // محامٍ آخر لا يستطيع التعليم على كتاب غيره
@@ -476,14 +489,14 @@ public class ReviewLetterServiceTests : PostgresDbTest
         var letter = await _service.CreateAsync(
             new CreateReviewLetterRequest(null, "<p>س</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>ج</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>ج</p>"),
             _head.Id, "رئيس القسم", _branchId);
         await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer1.Id));
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
 
-        await _service.AddAddendumAsync(letter.Id,
+        await _addAddendum.AddAddendumAsync(letter.Id,
             new AddReviewLetterAddendumRequest("<p>استفسار إضافي</p>"), _lawyer1.Id, "المحامي الأول");
-        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب اللاحق</p>"),
+        await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب اللاحق</p>"),
             _head.Id, "رئيس القسم", _branchId);
 
         Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));

@@ -21,11 +21,6 @@ public interface IExecutionCircuitService
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);
     Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
     Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default);
-    /// <summary>
-    /// خطاف التنظيف المسمّى DeleteByPendingRegistration (على نمط DeleteByDelegationAsync):
-    /// يُصفّى تنبيه المحامي تلقائيًا عند الصفر.
-    /// </summary>
-    Task<bool> DeleteByPendingRegistrationAsync(int lawyerId, CancellationToken ct = default);
 
     /// <summary>
     /// مزامنة تنبيهات إعادة القيد بعد نقل ملكية (H2): تُنشأ تنبيهات المالك الجديد

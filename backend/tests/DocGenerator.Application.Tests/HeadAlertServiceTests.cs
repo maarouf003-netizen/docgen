@@ -17,6 +17,7 @@ public class HeadAlertServiceTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
+    private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
     private readonly FakeAuditLogger _audit = new();
     private readonly TransactionRunner _tx;
     private readonly int _branchId;
@@ -71,6 +72,9 @@ public class HeadAlertServiceTests : PostgresDbTest
             new DelegationRepository(_db), uow, _tx, _audit);
         _markRead = new MarkHeadAlertReadCommandHandler(
             new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
+        _createManual = new CreateManualHeadAlertCommandHandler(
+            (IHeadAlertManualWriteRules)_service, users, branches, alerts, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<CreateManualHeadAlertCommand, HeadAlertSummaryDto>>());
     }
 
 
@@ -140,7 +144,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     {
         var doc = await AddDocumentAsync(_lawyer1);
 
-        var alert = await _service.CreateAsync(
+        var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("document", doc.Id, null, "راجع هذا الملف"), ActorFor(_head), "head_x");
 
         Assert.Equal(HeadAlertTargetType.Document.ToString().ToLowerInvariant(), alert.TargetType);
@@ -159,7 +163,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_LawyerTargeted_RecipientIsThatLawyerOnly()
     {
-        var alert = await _service.CreateAsync(
+        var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         Assert.Equal(_lawyer2.Id, alert.TargetLawyerId);
@@ -184,7 +188,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var alert = await _service.CreateAsync(
+        var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم لجميع المحامين"), ActorFor(_head), "head_x");
 
         Assert.Equal(2, alert.RecipientCount);
@@ -196,7 +200,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     public async Task Create_EmptyMessage_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), ActorFor(_head), "head_x"));
     }
 
     [PostgresFact]
@@ -218,7 +222,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
 
         Assert.Equal("الملف غير متاح", ex.Message);
     }
@@ -245,7 +249,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
 
         Assert.Equal("الملف غير متاح", ex.Message);
     }
@@ -256,7 +260,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         // P3-5: الملف غير الموجود والملف خارج الفرع برسالة واحدة — لا يُكشف وجود
         // ملف فرع آخر عبر اختلاف النص.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", int.MaxValue, null, "ملف وهمي"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("document", int.MaxValue, null, "ملف وهمي"), ActorFor(_head), "head_x"));
 
         Assert.Equal("الملف غير متاح", ex.Message);
     }
@@ -269,7 +273,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "منشئ معطّل"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "منشئ معطّل"), ActorFor(_head), "head_x"));
 
         Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", ex.Message);
     }
@@ -281,7 +285,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "محامٍ معطّل"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "محامٍ معطّل"), ActorFor(_head), "head_x"));
 
         Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
@@ -304,7 +308,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), ActorFor(_head), "head_x"));
 
         Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
@@ -313,16 +317,16 @@ public class HeadAlertServiceTests : PostgresDbTest
     public async Task Create_InvalidTargetType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), ActorFor(_head), "head_x"));
+            _createManual.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), ActorFor(_head), "head_x"));
     }
 
     [PostgresFact]
     public async Task ListForHead_ReturnsOnlyOwnRecipientAlerts()
     {
         var doc = await AddDocumentAsync(_lawyer1);
-        await _service.CreateAsync(
+        await _createManual.CreateAsync(
             new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), ActorFor(_head), "head_x");
-        await _service.CreateAsync(
+        await _createManual.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
         var ownId = await CreateSystemHeadAlertAsync(
             "تنبيه نظامي للرئيس", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
@@ -350,7 +354,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRead_SetsRead_AndDecrementsUnread()
     {
-        var alert = await _service.CreateAsync(
+        var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
@@ -374,7 +378,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRead_NonRecipient_ReturnsFalse()
     {
-        var alert = await _service.CreateAsync(
+        var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
         var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(alert.Id, ActorFor(_lawyer2)));
@@ -386,7 +390,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     public async Task Create_ManualHeadTarget_Rejected()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(
+            _createManual.CreateAsync(
                 new CreateHeadAlertRequest("head", null, null, "manual head"),
                 ActorFor(_head), "head_x"));
     }
@@ -434,7 +438,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     {
         var doc = await AddDocumentAsync(_lawyer1);
 
-        var created = await _service.CreateAsync(
+        var created = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("document", doc.Id, null, "نص كامل للتفاصيل"), ActorFor(_head), "head_x");
 
         Assert.Equal(HeadAlertKindCatalog.ManualToDocument, created.Kind);
@@ -486,7 +490,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         _db.Users.Add(lawyer3);
         await _db.SaveChangesAsync();
 
-        var created = await _service.CreateAsync(
+        var created = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
         // المنشئ ليس مستلمًا: IsRead فارغة، وعقد التفاصيل بلا عدّادي المستلمين (PR-6a).
@@ -505,7 +509,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task MarkRead_UpdatesOnlyActorRow_AndDetailReflectsIt()
     {
-        var created = await _service.CreateAsync(
+        var created = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
         Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(created.Id, ActorFor(_lawyer1))));
@@ -680,7 +684,7 @@ public class HeadAlertServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
-        var sent = await _service.CreateAsync(
+        var sent = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         // الصادر: يراه مُصدِره بفرعه مع عدّادات المستلمين...
@@ -719,9 +723,9 @@ public class HeadAlertServiceTests : PostgresDbTest
         _db.Users.Add(sub);
         await _db.SaveChangesAsync();
 
-        await _service.CreateAsync(
+        await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), ActorFor(sub), "sub_x");
-        await _service.CreateAsync(
+        await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), ActorFor(_head), "head_x");
 
         var subSent = await SentAsync(sub);

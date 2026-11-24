@@ -21,6 +21,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
+    private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
     private readonly int _branchA;
     private readonly int _branchB;
     private readonly User _headA;
@@ -85,6 +86,10 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
             new FakeAuditLogger());
         _markRead = new MarkHeadAlertReadCommandHandler(
             new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
+        _createManual = new CreateManualHeadAlertCommandHandler(
+            (IHeadAlertManualWriteRules)_service, users, new Repository<Branch>(_db),
+            new HeadAlertRepository(_db), new UnitOfWork(_db), new TransactionRunner(_db), new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<CreateManualHeadAlertCommand, HeadAlertSummaryDto>>());
     }
 
 
@@ -323,7 +328,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_lawyerA.Id, role, _branchA);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CreateAsync(
+            _createManual.CreateAsync(
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "actor"));
     }
 
@@ -334,7 +339,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_headA.Id, UserRole.Head, null);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(
+            _createManual.CreateAsync(
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "head_a"));
     }
 
@@ -346,7 +351,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_lawyerA.Id, UserRole.Head, _branchA);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(
+            _createManual.CreateAsync(
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "law_a"));
     }
 

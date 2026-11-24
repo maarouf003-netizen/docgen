@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Api.Auth;
 using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
@@ -24,6 +26,7 @@ public class AuthController : ControllerBase
     private readonly JwtOptions _jwt;
     private readonly IWebHostEnvironment _env;
     private readonly IAuditLogger _audit;
+    private readonly ICommandHandler<ChangePasswordCommand, bool> _changePassword;
 
     /// <summary>نفس عمر Cookie الجلسة بالضبط حتى يتزامن زوجا Cookie (المصادقة + CSRF) عند الطرح والانتهاء.</summary>
     private TimeSpan SessionMaxAge => TimeSpan.FromMinutes(Math.Max(1, _jwt.ExpiryMinutes));
@@ -42,7 +45,8 @@ public class AuthController : ControllerBase
         IOptions<RateLimitOptions> rateOptions,
         JwtOptions jwt,
         IWebHostEnvironment env,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        ICommandHandler<ChangePasswordCommand, bool> changePassword)
     {
         _auth = auth;
         _rateLimiter = rateLimiter;
@@ -50,6 +54,7 @@ public class AuthController : ControllerBase
         _jwt = jwt;
         _env = env;
         _audit = audit;
+        _changePassword = changePassword;
     }
 
     [HttpPost("login")]
@@ -150,7 +155,8 @@ public class AuthController : ControllerBase
     [EnableRateLimiting(RateLimitingSetup.PasswordPolicy)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
-        var ok = await _auth.ChangePasswordAsync(User.GetUserId(), request.OldPassword, request.NewPassword, ct);
+        var ok = await _changePassword.HandleAsync(
+            new ChangePasswordCommand(User.GetUserId(), request.OldPassword, request.NewPassword), ct);
         if (!ok)
             return ApiProblem.Result(
                 HttpContext,

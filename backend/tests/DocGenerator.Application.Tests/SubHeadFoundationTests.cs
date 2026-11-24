@@ -1,6 +1,8 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Users;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -16,6 +18,7 @@ namespace DocGenerator.Application.Tests;
 public class SubHeadFoundationTests : PostgresDbTest
 {
     private readonly IUserManagementService _service;
+    private readonly ICommandHandler<CreateUserCommand, UserListItemDto> _createUser;
 
     public SubHeadFoundationTests()
     {
@@ -39,6 +42,11 @@ public class SubHeadFoundationTests : PostgresDbTest
                 new DbExceptionClassifier(),
                 tx),
             uow, new PasswordHasher(), tx, new FakeAuditLogger());
+
+        _createUser = new CreateUserCommandHandler(
+            (IUserManagementUserWriteRules)_service, users, new Repository<HeadSuccession>(_db), uow,
+            new PasswordHasher(), tx, new FakeAuditLogger(),
+            Array.Empty<IPipelineBehavior<CreateUserCommand, UserListItemDto>>());
     }
 
 
@@ -56,7 +64,7 @@ public class SubHeadFoundationTests : PostgresDbTest
     public async Task CreateUser_UndefinedNumericRole_Throws(string role)
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", role, null, "TestPass1234"), "admin"));
+            _createUser.CreateUserAsync(new CreateUserRequest("x", "مستخدم", role, null, "TestPass1234"), "admin"));
     }
 
     [PostgresTheory]
@@ -71,7 +79,7 @@ public class SubHeadFoundationTests : PostgresDbTest
         var branchId = _db.Branches.Single(b => b.Code == "HAM").Id;
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", role, branchId, "TestPass1234"), "admin"));
         Assert.Contains("الشعبة إلزامية", ex.Message);
     }
@@ -86,7 +94,7 @@ public class SubHeadFoundationTests : PostgresDbTest
         _db.Sections.Add(section);
         await _db.SaveChangesAsync();
 
-        var user = await _service.CreateUserAsync(
+        var user = await _createUser.CreateUserAsync(
             new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", "subhead", branchId, "TestPass1234", section.Id), "admin");
 
         Assert.Equal("subhead", user.Role);
@@ -101,7 +109,7 @@ public class SubHeadFoundationTests : PostgresDbTest
         // مغلق بإحكام منذ 1ب: رئيس الشعبة فرعي بالتصميم — ترفض الخدمة بلا فرع
         // برسالة واضحة قبل أي كتابة (وقيد القاعدة ظهرًا للكتابة المباشرة).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(
+            _createUser.CreateUserAsync(
                 new CreateUserRequest("sub_non", "رئيس شعبة شاذ", "subhead", null, "TestPass1234"), "admin"));
     }
 }

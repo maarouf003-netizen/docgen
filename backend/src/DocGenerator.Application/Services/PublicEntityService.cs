@@ -17,7 +17,7 @@ namespace DocGenerator.Application.Services;
 /// إعادة التسمية الجماعية تزامن الأعمدة النصية ضمن معاملة واحدة (د5)، وأداة
 /// الاستيراد التاريخي تعتمد نهائيًا مباشرة (د12).
 /// </summary>
-public sealed partial class PublicEntityService : IPublicEntityService
+public sealed partial class PublicEntityService : IPublicEntityService, IPublicEntityWriteRules
 {
     /// <summary>الاسم الافتراضي لفرع قيد الجهة الأم — من الكتالوج لا من حرفي مكرر.</summary>
     private const string DefaultBranchName = PublicEntityBranchCatalog.ParentBranchName;
@@ -65,4 +65,66 @@ public sealed partial class PublicEntityService : IPublicEntityService
         _appeals = appeals;
         _idempotency = idempotency;
     }
+
+    // ── تنفيذ عقد مساعدات الكتابة المشتركة (P4-01be) ──────────────────────
+
+    Task IPublicEntityWriteRules.EnsureHeadScopeAsync(
+        EntityRegistryActor actor, PublicEntity? entry, string? fallbackGovernorate, CancellationToken ct)
+        => EnsureHeadScopeAsync(actor, entry, fallbackGovernorate, ct);
+
+    Task IPublicEntityWriteRules.EnsureCanonicalAvailableAsync(string canonical, int excludeGroupId, CancellationToken ct)
+        => EnsureCanonicalAvailableAsync(canonical, excludeGroupId, ct);
+
+    Task IPublicEntityWriteRules.EnsureNoDuplicateEntryAsync(
+        int? excludeEntryId, string canonical, string governorate, string branchName, CancellationToken ct)
+        => EnsureNoDuplicateEntryAsync(excludeEntryId, canonical, governorate, branchName, ct);
+
+    Task<PublicEntityGroup> IPublicEntityWriteRules.FindOrCreateGroupAsync(
+        string canonical, string entityType, int actorUserId, CancellationToken token)
+        => FindOrCreateGroupAsync(canonical, entityType, actorUserId, token);
+
+    Task IPublicEntityWriteRules.TrackChangeEventAsync(PublicEntityChangeEvent changeEvent, CancellationToken token)
+        => TrackChangeEventAsync(changeEvent, token);
+
+    Task<List<Document>> IPublicEntityWriteRules.SyncTextsAfterRenameAsync(
+        string oldCanonical, string newCanonical, string? actorName, CancellationToken token)
+        => SyncTextsAfterRenameAsync(oldCanonical, newCanonical, actorName, token);
+
+    Task IPublicEntityWriteRules.SyncAppealsAfterEntityChangeAsync(
+        IReadOnlyCollection<Document> affectedDocs, EntityRegistryActor actor, CancellationToken token)
+        => SyncAppealsAfterEntityChangeAsync(affectedDocs, actor, token);
+
+    Task IPublicEntityWriteRules.InsertRenameNoticeToCreatorAsync(
+        PublicEntity entry, string oldName, string newName, CancellationToken token)
+        => InsertRenameNoticeToCreatorAsync(entry, oldName, newName, token);
+
+    PublicEntityEntryDto IPublicEntityWriteRules.ToEntryDto(PublicEntityGroup group, PublicEntity entry)
+        => ToEntryDto(group, entry);
+
+    string IPublicEntityWriteRules.Required(string? value, string emptyMessage, int maxLength)
+        => Required(value, emptyMessage, maxLength);
+
+    string IPublicEntityWriteRules.RequiredWithFallback(string? value, string fallback, int maxLength)
+        => RequiredWithFallback(value, fallback, maxLength);
+
+    string IPublicEntityWriteRules.ValidEntityType(string? value)
+        => ValidEntityType(value);
+
+    string IPublicEntityWriteRules.ValidCitationFormula(string? value, string fallback)
+        => ValidCitationFormula(value, fallback);
+
+    List<string> IPublicEntityWriteRules.CleanAliases(IEnumerable<string>? aliases, string canonicalNorm)
+        => CleanAliases(aliases, canonicalNorm);
+
+    string? IPublicEntityWriteRules.ValidateCoverageLabel(string? value)
+        => ValidateCoverageLabel(value);
+
+    string? IPublicEntityWriteRules.NormalizeOptional(string? value)
+        => NormalizeOptional(value);
+
+    void IPublicEntityWriteRules.SetGroupNorm(PublicEntityGroup group)
+        => SetGroupNorm(group);
+
+    void IPublicEntityWriteRules.GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry)
+        => GuardHeadCannotEditParent(actor, entry);
 }

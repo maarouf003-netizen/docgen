@@ -24,15 +24,21 @@ public class ReviewLettersController : ControllerBase
     private readonly IReviewLetterService _letters;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
+    private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
+    private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
 
     public ReviewLettersController(
         IReviewLetterService letters,
         IUserCapabilities capabilities,
-        ICommandHandler<MarkReviewRepliesSeenCommand, bool> markRepliesSeen)
+        ICommandHandler<MarkReviewRepliesSeenCommand, bool> markRepliesSeen,
+        ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> addAddendum,
+        ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> reply)
     {
         _letters = letters;
         _capabilities = capabilities;
         _markRepliesSeen = markRepliesSeen;
+        _addAddendum = addAddendum;
+        _reply = reply;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -153,7 +159,8 @@ public class ReviewLettersController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanCreateReviewLetters))
             return Forbid();
 
-        var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
+        var addendum = await _addAddendum.HandleAsync(
+            new AddReviewLetterAddendumCommand(id, request, UserId, ActorName), ct);
         return Ok(addendum);
     }
 
@@ -173,7 +180,8 @@ public class ReviewLettersController : ControllerBase
         if (IsSubHead && SectionId is null)
             return Forbid();
 
-        var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct, Role, SectionId);
+        var reply = await _reply.HandleAsync(
+            new ReplyReviewLetterCommand(id, request, UserId, ActorName, BranchId.Value, Role, SectionId), ct);
         return Ok(reply);
     }
 }

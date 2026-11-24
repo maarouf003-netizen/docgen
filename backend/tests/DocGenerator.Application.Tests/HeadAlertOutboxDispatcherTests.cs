@@ -789,13 +789,6 @@ public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
             HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default)
             => _inner.CountUnreadAsync(actor, scope, ct);
 
-        public Task<HeadAlertSummaryDto> CreateAsync(
-            CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default)
-            => _inner.CreateAsync(request, actor, actorName, ct);
-
-        public Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
-            => _inner.RemoveAppealRecipientAsync(appealId, userId, ct);
-
         public Task<int> ApplyCircuitRenamedAsync(
             int circuitId, string message, DateTime occurredAt, CancellationToken ct = default)
             => _inner.ApplyCircuitRenamedAsync(circuitId, message, occurredAt, ct);
