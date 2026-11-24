@@ -28,9 +28,6 @@ public interface IDocumentAppealService
     /// <summary>كيان الاستئناف بروابطه (للتحقق من صلاحية العرض في المتحكم).</summary>
     Task<DocGenerator.Domain.Entities.DocumentAppeal?> GetEntityAsync(int appealId, CancellationToken ct = default);
 
-    /// <summary>تحديث حقول القيد (المحكمة/رقم الأساس/السنة/تاريخ الإقرار/النوع) — المحامي المتابع.</summary>
-    Task<AppealDto?> UpdateRegistrationAsync(int appealId, UpdateAppealRegistrationRequest request, int userId, string? actorName, CancellationToken ct = default);
-
     /// <summary>حسم الاستئناف برقم قرار الحسم وتاريخه ومنطوقه ونتيجته — المحامي المتابع.</summary>
     Task<AppealDto?> DecideAsync(int appealId, DecideAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 

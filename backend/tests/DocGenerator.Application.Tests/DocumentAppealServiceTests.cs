@@ -23,6 +23,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _appealDelete;
     private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _appealCreate;
     private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _appealUpdate;
+    private readonly ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> _appealRegistration;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -80,6 +81,10 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
             TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<UpdateDocumentAppealCommand, AppealDto?>>());
+        _appealRegistration = new UpdateAppealRegistrationCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<UpdateAppealRegistrationCommand, AppealDto?>>());
     }
 
 
@@ -463,7 +468,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var updated = await _service.UpdateRegistrationAsync(created.Id,
+        var updated = await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", "محكمة استئناف دمشق", "1450", "2026", "7/8/2026"),
             _lawyer2.Id, "lawyer2");
 
@@ -471,9 +476,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Equal("محكمة استئناف دمشق", updated!.AppellateCourt);
         Assert.Equal("1450", updated.AppealBaseNumber);
         Assert.Equal("2026-08-07", updated.RegistrationDate);
+        // تثبيت نص التدقيق حرفيًا.
+        Assert.Contains(_audit.Details,
+            d => d == $"حدّث قيد الاستئناف (رقم {created.Id}) برقم أساس 1450 لعام 2026");
         // من غير المتابع مرفوض.
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.UpdateRegistrationAsync(created.Id,
+            _appealRegistration.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, null, null, null), _lawyer1.Id, "lawyer1"));
     }
     [PostgresFact]
@@ -489,7 +497,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // القيد قبل التدوير: رقم أساس لسنة سابقة.
         var previousYear = (TestClock.Today.Year - 1).ToString();
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
 
@@ -553,7 +561,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
         await _service.SaveBaseNumbersAsync(created.Id,
@@ -561,7 +569,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         // تعديل القيد يعدّل رقم السنة الحالية في مكانه، ويُبقي رقم السنة السابقة في السجل.
-        var updated = await _service.UpdateRegistrationAsync(created.Id,
+        var updated = await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", "محكمة استئناف دمشق", "1450",
                 TestClock.Today.Year.ToString(), null),
             _lawyer2.Id, "lawyer2");
@@ -590,7 +598,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateRegistrationAsync(created.Id,
+            _appealRegistration.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "500",
                     (TestClock.Today.Year + 1).ToString(), null),
                 _lawyer2.Id, "lawyer2"));
@@ -609,7 +617,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
         await _service.SaveBaseNumbersAsync(created.Id,
@@ -618,7 +626,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // نقل الرقم الحالي (صف السنة الحالية) إلى سنة مؤرشفة يطمسها؛ التصحيح هو المسار المخصص.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateRegistrationAsync(created.Id,
+            _appealRegistration.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "1450", previousYear, null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("مُدارة آليًا", ex.Message);
@@ -641,7 +649,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = TestClock.Today.Year - 1;
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
         await _service.SaveBaseNumbersAsync(created.Id,
@@ -651,7 +659,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         // سنة صف التدوير مُولَّدة من الخادم: تحريفها إلى سنة بلا هوية يطمس سنة مؤرشفة.
         var unusedYear = (TestClock.Today.Year - 3).ToString();
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateRegistrationAsync(created.Id,
+            _appealRegistration.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "1450", unusedYear, null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("مُدارة آليًا", ex.Message);
@@ -677,12 +685,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = (TestClock.Today.Year - 1).ToString();
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
 
         // الإفراغ لا يمسّ الرقم المسجَّل (لا مسار لحذفه): تُحفظ الهوية كما هي.
-        var updated = await _service.UpdateRegistrationAsync(created.Id,
+        var updated = await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", null, null, null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -709,7 +717,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         // تعديل الرقم بلا سنة لا يختلق سنة للسنة الحالية؛ يبقى بلا سنة ويستوجب التدوير.
-        var updated = await _service.UpdateRegistrationAsync(created.Id,
+        var updated = await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "778", null, null),
             _lawyer2.Id, "lawyer2");
 
@@ -732,7 +740,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         var tooLong = new string('9', AppealBaseNumberPolicy.MaxNumberLength + 1);
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateRegistrationAsync(created.Id,
+            _appealRegistration.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, tooLong, null, null),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
@@ -829,7 +837,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var previousYear = TestClock.Today.Year - 1;
-        await _service.UpdateRegistrationAsync(created.Id,
+        await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
         await _service.DecideAsync(created.Id,

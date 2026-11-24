@@ -26,6 +26,7 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _deleteAppeal;
     private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _createAppeal;
     private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _updateAppeal;
+    private readonly ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> _updateAppealRegistration;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -33,7 +34,8 @@ public class AppealsController : ControllerBase
         IUserCapabilities capabilities,
         ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal,
         ICommandHandler<CreateDocumentAppealCommand, AppealDto> createAppeal,
-        ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> updateAppeal)
+        ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> updateAppeal,
+        ICommandHandler<UpdateAppealRegistrationCommand, AppealDto?> updateAppealRegistration)
     {
         _appeals = appeals;
         _documents = documents;
@@ -41,6 +43,7 @@ public class AppealsController : ControllerBase
         _deleteAppeal = deleteAppeal;
         _createAppeal = createAppeal;
         _updateAppeal = updateAppeal;
+        _updateAppealRegistration = updateAppealRegistration;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -224,7 +227,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        var updated = await _appeals.UpdateRegistrationAsync(id, request, User.GetUserId(), ActorName, ct);
+        var updated = await _updateAppealRegistration.HandleAsync(
+            new UpdateAppealRegistrationCommand(id, request, User.GetUserId(), ActorName), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
