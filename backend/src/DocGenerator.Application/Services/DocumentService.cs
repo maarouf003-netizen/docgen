@@ -26,16 +26,6 @@ public interface IDocumentService
     Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default);
     /// <summary>سجل أرقام ملف محذوف (IgnoreQueryFilters) — لصفحة المحذوفات.</summary>
     Task<List<BaseNumberHistoryDto>> GetDeletedBaseNumberHistoryAsync(int documentId, CancellationToken ct = default);
-    /// <summary>تصحيح رقم أساس سنة محددة موضعيًا (لا حذف).</summary>
-    Task CorrectBaseNumberAsync(int documentId, int year, CorrectBaseNumberRequest request, int userId, string? actorName, CancellationToken ct = default);
-    /// <summary>التراجع عن تدوير السنة الحالية (VoidedAt + بقاء الصف).</summary>
-    Task UndoRotationAsync(int documentId, int year, int userId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// حفظ أرقام أساس السنة الحالية ذرّيًا: رقم جديد يُنشأ (صف تدوير)، والإدخال الفارغ لا يغيّر
-    /// شيئًا. يتحقق من ملكية المحامي وأهلية الملف (مقيد وغير منفَّذ وغير محذوف)، ويطبّق
-    /// طبقتَي التكرار (حجب صلب/تحذير بـ warningToken).
-    /// </summary>
-    Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, string? warningToken = null, CancellationToken ct = default);
 }
 
 public sealed partial class DocumentService : IDocumentService

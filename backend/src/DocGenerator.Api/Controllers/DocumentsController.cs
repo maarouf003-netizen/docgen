@@ -53,6 +53,9 @@ public class DocumentsController : ControllerBase
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _deleteDocument;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transferDocument;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAllDocuments;
+    private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
+    private readonly ICommandHandler<CorrectDocumentBaseNumberCommand, bool> _correctBaseNumber;
+    private readonly ICommandHandler<UndoDocumentRotationCommand, bool> _undoRotation;
     private readonly ICommandHandler<DismissStrikeOffReminderCommand, bool> _dismissStrikeOffReminder;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteExecutionAction;
     private readonly ICommandHandler<DeleteDocumentInterventionCommand, bool> _deleteIntervention;
@@ -86,6 +89,9 @@ public class DocumentsController : ControllerBase
         ICommandHandler<DeleteDocumentCommand, bool> deleteDocument,
         ICommandHandler<TransferDocumentCommand, DocumentResponse> transferDocument,
         ICommandHandler<TransferAllDocumentsCommand, int> transferAllDocuments,
+        ICommandHandler<SaveDocumentBaseNumbersCommand, bool> saveBaseNumbers,
+        ICommandHandler<CorrectDocumentBaseNumberCommand, bool> correctBaseNumber,
+        ICommandHandler<UndoDocumentRotationCommand, bool> undoRotation,
         ICommandHandler<DismissStrikeOffReminderCommand, bool> dismissStrikeOffReminder,
         ICommandHandler<DeleteExecutionActionCommand, bool> deleteExecutionAction,
         ICommandHandler<DeleteDocumentInterventionCommand, bool> deleteIntervention,
@@ -118,6 +124,9 @@ public class DocumentsController : ControllerBase
         _deleteDocument = deleteDocument;
         _transferDocument = transferDocument;
         _transferAllDocuments = transferAllDocuments;
+        _saveBaseNumbers = saveBaseNumbers;
+        _correctBaseNumber = correctBaseNumber;
+        _undoRotation = undoRotation;
         _dismissStrikeOffReminder = dismissStrikeOffReminder;
         _deleteExecutionAction = deleteExecutionAction;
         _deleteIntervention = deleteIntervention;
@@ -518,7 +527,8 @@ public class DocumentsController : ControllerBase
         if (denied is not null) return denied;
         try
         {
-            await _documents.CorrectBaseNumberAsync(id, year, request, User.GetUserId(), ActorName, ct);
+            await _correctBaseNumber.HandleAsync(
+                new CorrectDocumentBaseNumberCommand(id, year, request, User.GetUserId(), ActorName), ct);
             return NoContent();
         }
         catch (DocumentConflictException e)
@@ -535,7 +545,8 @@ public class DocumentsController : ControllerBase
         if (denied is not null) return denied;
         try
         {
-            await _documents.UndoRotationAsync(id, year, User.GetUserId(), ActorName, ct);
+            await _undoRotation.HandleAsync(
+                new UndoDocumentRotationCommand(id, year, User.GetUserId(), ActorName), ct);
             return NoContent();
         }
         catch (DocumentConflictException e)
@@ -655,8 +666,9 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanRotate))
             return Forbid();
 
-        await _documents.SaveBaseNumbersAsync(
-            User.GetUserId(), request.Entries, ActorName, request.WarningToken, ct);
+        await _saveBaseNumbers.HandleAsync(
+            new SaveDocumentBaseNumbersCommand(
+                User.GetUserId(), request.Entries, ActorName, request.WarningToken), ct);
         return NoContent();
     }
 

@@ -27,7 +27,7 @@ public sealed class TransferBranchGuardTests
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             new CatalogAuthorization(),
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

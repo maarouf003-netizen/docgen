@@ -52,30 +52,4 @@ public sealed partial class DocumentService : IDocumentService
         var history = await _numberRegistry.GetHistoryAsync(documentId, includeDeletedDocument: true, ct);
         return history.ToList();
     }
-
-    public Task CorrectBaseNumberAsync(
-        int documentId,
-        int year,
-        CorrectBaseNumberRequest request,
-        int userId,
-        string? actorName,
-        CancellationToken ct = default)
-    {
-        if (request is null || string.IsNullOrWhiteSpace(request.BaseNumber))
-            throw new ArgumentException("رقم الأساس مطلوب");
-        return _numberRegistry.CorrectAsync(
-            documentId, year, request.RowId, request.BaseNumber!, userId, actorName, request.WarningToken, ct);
-    }
-
-    public Task UndoRotationAsync(
-        int documentId, int year, int userId, string? actorName, CancellationToken ct = default)
-        => _numberRegistry.UndoRotationAsync(documentId, year, userId, actorName, ct);
-
-    public Task SaveBaseNumbersAsync(
-        int userId,
-        List<BaseNumberEntry> entries,
-        string? actorName,
-        string? warningToken = null,
-        CancellationToken ct = default)
-        => _numberRegistry.SaveRotationsAsync(userId, actorName, entries, warningToken, ct);
 }
