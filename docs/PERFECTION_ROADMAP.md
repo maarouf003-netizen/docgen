@@ -909,6 +909,9 @@
   **`P4-01bb`:** `ClearAppealReminderCommand`/`SetAppealReminderCommand`/
   `RescheduleAppealReminderCommand` تملك تذكيرات إجراءات الاستئناف، مع
   `DocumentAppealRules.ClearReminderCoreAsync` المشتركة وقاعدة «تاريخ الإجراء لا يُكتب».
+  **`P4-01bc`:** `SaveAppealBaseNumbersCommand`/`CorrectAppealBaseNumberCommand` يملكان
+  كتابات رقم الأساس الاستئنافي (التدوير للمسند المنظور، والتصحيح الموضعي في أي حالة)
+  تحت `AppealBaseNumberPolicy`، مع بقاء `GetBaseNumberHistoryAsync` قراءة.
   التفاصيل:
   `docs/audit/128-p4-01a-command-query-slice-20261123.md` و
   `docs/audit/129-p4-01b-dismiss-command-20261123.md` و
@@ -945,7 +948,8 @@
   `docs/audit/160-p4-01ay-appeal-decision-20261124.md` و
   `docs/audit/161-p4-01az-appeal-forward-20261124.md` و
   `docs/audit/162-p4-01ba-appeal-actions-20261124.md` و
-  `docs/audit/163-p4-01bb-appeal-reminders-20261124.md`.
+  `docs/audit/163-p4-01bb-appeal-reminders-20261124.md` و
+  `docs/audit/164-p4-01bc-appeal-base-numbers-20261124.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.

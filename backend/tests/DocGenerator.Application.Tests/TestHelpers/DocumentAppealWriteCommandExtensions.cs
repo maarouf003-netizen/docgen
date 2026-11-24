@@ -128,4 +128,14 @@ public static class DocumentAppealWriteCommandExtensions
         this ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> handler,
         int appealId, int actionId, string? newDueDate, int userId, string? actorName, CancellationToken ct = default)
         => handler.HandleAsync(new RescheduleAppealReminderCommand(appealId, actionId, newDueDate, userId, actorName), ct);
+
+    public static Task<bool> SaveBaseNumbersAsync(
+        this ICommandHandler<SaveAppealBaseNumbersCommand, bool> handler,
+        int appealId, SaveAppealBaseNumbersRequest request, int userId, string? actorName, CancellationToken ct = default)
+        => handler.HandleAsync(new SaveAppealBaseNumbersCommand(appealId, request, userId, actorName), ct);
+
+    public static Task<bool> CorrectBaseNumberAsync(
+        this ICommandHandler<CorrectAppealBaseNumberCommand, bool> handler,
+        int appealId, int year, CorrectAppealBaseNumberRequest request, int userId, string? actorName, CancellationToken ct = default)
+        => handler.HandleAsync(new CorrectAppealBaseNumberCommand(appealId, year, request, userId, actorName), ct);
 }

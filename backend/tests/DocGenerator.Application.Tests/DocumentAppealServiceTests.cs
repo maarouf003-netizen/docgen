@@ -36,6 +36,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteAppealActionCommand, bool> _appealDeleteAction;
     private readonly ICommandHandler<SetAppealReminderCommand, AppealActionDto> _appealSetReminder;
     private readonly ICommandHandler<ClearAppealReminderCommand, bool> _appealClearReminder;
+    private readonly ICommandHandler<SaveAppealBaseNumbersCommand, bool> _appealSaveBaseNumbers;
+    private readonly ICommandHandler<CorrectAppealBaseNumberCommand, bool> _appealCorrectBaseNumber;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -140,6 +142,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
         _appealClearReminder = new ClearAppealReminderCommandHandler(
             new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
             Array.Empty<IPipelineBehavior<ClearAppealReminderCommand, bool>>());
+        _appealSaveBaseNumbers = new SaveAppealBaseNumbersCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SaveAppealBaseNumbersCommand, bool>>());
+        _appealCorrectBaseNumber = new CorrectAppealBaseNumberCommandHandler(
+            new AppealRepository(_db), new UnitOfWork(_db), _tx, _audit,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<CorrectAppealBaseNumberCommand, bool>>());
     }
 
 
@@ -568,7 +578,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.True(before!.NeedsRotation);
         Assert.Equal("900", before.CurrentBaseNumber);
 
-        await _service.SaveBaseNumbersAsync(created.Id,
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
             {
                 new(TestClock.Today.Year.ToString()),
@@ -584,7 +594,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // إعادة الإدخال لنفس السنة عبر «التدوير» مرفوضة — التصحيح مساره المستقل ويعدّل في مكانه.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(created.Id,
+            _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
                 new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
                 {
                     new("1450"),
@@ -592,7 +602,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Contains("لا حاجة لتدوير", ex.Message);
 
         // تصحيح رقم السنة الحالية يعدّله في مكانه بلا إلحاق سجل جديد.
-        await _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
+        await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
             new CorrectAppealBaseNumberRequest("1450"), _lawyer2.Id, "lawyer2");
 
         var after2 = await _service.GetAsync(created.Id);
@@ -608,6 +618,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.Equal("1450", history2[1].BaseNumber);
         Assert.True(history2[1].IsCurrent);
         Assert.Contains(history2, h => h.BaseNumber == "900");
+        // تثبيت نصَّي تدقيق التدوير والتصحيح حرفيًا (P4-01bc).
+        Assert.Contains(_audit.Details,
+            d => d == $"أضاف سجل رقم أساس استئنافي (رقم {created.Id}) لسنة {TestClock.Today.Year} بالقيمة {TestClock.Today.Year} — تُحفظ السجلات السابقة");
+        Assert.Contains(_audit.Details,
+            d => d == $"صحّح رقم الأساس الاستئنافي (رقم {created.Id}) لسنة {TestClock.Today.Year} إلى 1450");
     }
 
     [PostgresFact]
@@ -625,7 +640,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
-        await _service.SaveBaseNumbersAsync(created.Id,
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry> { new("1000") }),
             _lawyer2.Id, "lawyer2");
 
@@ -681,7 +696,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
             _lawyer2.Id, "lawyer2");
-        await _service.SaveBaseNumbersAsync(created.Id,
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry> { new("1000") }),
             _lawyer2.Id, "lawyer2");
 
@@ -713,7 +728,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealRegistration.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
             _lawyer2.Id, "lawyer2");
-        await _service.SaveBaseNumbersAsync(created.Id,
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry> { new("1000") }),
             _lawyer2.Id, "lawyer2");
 
@@ -860,13 +875,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         var currentYear = TestClock.Today.Year;
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CorrectBaseNumberAsync(created.Id, currentYear + 1,
+            _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, currentYear + 1,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer2.Id, "lawyer2"));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CorrectBaseNumberAsync(created.Id, currentYear - 2,
+            _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, currentYear - 2,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer2.Id, "lawyer2"));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CorrectBaseNumberAsync(created.Id, currentYear,
+            _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, currentYear,
                 new CorrectAppealBaseNumberRequest("   "), _lawyer2.Id, "lawyer2"));
     }
 
@@ -882,7 +897,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
+            _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
                 new CorrectAppealBaseNumberRequest("1"), _lawyer1.Id, "lawyer1"));
     }
 
@@ -906,7 +921,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         // التصحيح الموضعي كـ«تعديل القيد»: متاح في أي حالة للمسند له، بخلاف التدوير.
-        await _service.CorrectBaseNumberAsync(created.Id, previousYear,
+        await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, previousYear,
             new CorrectAppealBaseNumberRequest("950"), _lawyer2.Id, "lawyer2");
 
         var history = await _service.GetBaseNumberHistoryAsync(created.Id);
@@ -989,7 +1004,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        await _service.CorrectBaseNumberAsync(created.Id, previousYear,
+        await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, previousYear,
             new CorrectAppealBaseNumberRequest("950"), _lawyer2.Id, "lawyer2");
 
         var history = await _service.GetBaseNumberHistoryAsync(created.Id);
@@ -1026,7 +1041,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.True(before!.NeedsRotation);
         Assert.Equal("777", before.CurrentBaseNumber);
 
-        await _service.SaveBaseNumbersAsync(created.Id,
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id,
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
             {
                 new(TestClock.Today.Year.ToString()),
@@ -1052,14 +1067,14 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
         // بلا إسناد: المنشئ نفسه مرفوض (R3).
         var exUnassigned = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
+            _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا تتابعه", exUnassigned.Message);
 
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // المنشئ غير المسند مرفوض بعد الإسناد.
         var exCreator = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
+            _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا تتابعه", exCreator.Message);
 
         // المحسوم: المسند نفسه مرفوض بعد الحسم.
@@ -1067,7 +1082,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
         var exDecided = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
+            _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لم يبق منظورًا", exDecided.Message);
 
         // المشطوب: مرفوض أيضًا.
@@ -1079,7 +1094,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealStrike.StrikeAsync(second.Id,
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
         var exStruck = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SaveBaseNumbersAsync(second.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
+            _appealSaveBaseNumbers.SaveBaseNumbersAsync(second.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
         Assert.Contains("لم يبق منظورًا", exStruck.Message);
     }
 
@@ -1099,7 +1114,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.NotNull(before);
         Assert.True(before!.NeedsRotation);
 
-        await _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2");
+        await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2");
 
         var after = await _service.GetAsync(created.Id);
         Assert.NotNull(after);
