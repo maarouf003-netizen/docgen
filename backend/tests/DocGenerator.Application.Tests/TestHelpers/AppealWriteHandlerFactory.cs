@@ -152,4 +152,16 @@ public static class AppealWriteHandlerFactory
         => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
             audit ?? new FakeAuditLogger(),
             Array.Empty<IPipelineBehavior<RescheduleAppealReminderCommand, AppealActionDto>>());
+
+    public static SaveAppealBaseNumbersCommandHandler SaveBaseNumbers(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SaveAppealBaseNumbersCommand, bool>>());
+
+    public static CorrectAppealBaseNumberCommandHandler CorrectBaseNumber(
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        => new(new AppealRepository(db), new UnitOfWork(db), new TransactionRunner(db),
+            audit ?? new FakeAuditLogger(), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<CorrectAppealBaseNumberCommand, bool>>());
 }

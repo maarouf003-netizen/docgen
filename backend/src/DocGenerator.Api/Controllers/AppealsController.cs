@@ -40,6 +40,8 @@ public class AppealsController : ControllerBase
     private readonly ICommandHandler<SetAppealReminderCommand, AppealActionDto> _setAppealReminder;
     private readonly ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> _rescheduleAppealReminder;
     private readonly ICommandHandler<ClearAppealReminderCommand, bool> _clearAppealReminder;
+    private readonly ICommandHandler<SaveAppealBaseNumbersCommand, bool> _saveAppealBaseNumbers;
+    private readonly ICommandHandler<CorrectAppealBaseNumberCommand, bool> _correctAppealBaseNumber;
 
     public AppealsController(
         IDocumentAppealService appeals,
@@ -61,7 +63,9 @@ public class AppealsController : ControllerBase
         ICommandHandler<DeleteAppealActionCommand, bool> deleteAppealAction,
         ICommandHandler<SetAppealReminderCommand, AppealActionDto> setAppealReminder,
         ICommandHandler<RescheduleAppealReminderCommand, AppealActionDto> rescheduleAppealReminder,
-        ICommandHandler<ClearAppealReminderCommand, bool> clearAppealReminder)
+        ICommandHandler<ClearAppealReminderCommand, bool> clearAppealReminder,
+        ICommandHandler<SaveAppealBaseNumbersCommand, bool> saveAppealBaseNumbers,
+        ICommandHandler<CorrectAppealBaseNumberCommand, bool> correctAppealBaseNumber)
     {
         _appeals = appeals;
         _documents = documents;
@@ -83,6 +87,8 @@ public class AppealsController : ControllerBase
         _setAppealReminder = setAppealReminder;
         _rescheduleAppealReminder = rescheduleAppealReminder;
         _clearAppealReminder = clearAppealReminder;
+        _saveAppealBaseNumbers = saveAppealBaseNumbers;
+        _correctAppealBaseNumber = correctAppealBaseNumber;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -477,7 +483,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        await _appeals.SaveBaseNumbersAsync(id, request, User.GetUserId(), ActorName, ct);
+        await _saveAppealBaseNumbers.HandleAsync(
+            new SaveAppealBaseNumbersCommand(id, request, User.GetUserId(), ActorName), ct);
         return NoContent();
     }
 
@@ -488,7 +495,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        await _appeals.CorrectBaseNumberAsync(id, year, request, User.GetUserId(), ActorName, ct);
+        await _correctAppealBaseNumber.HandleAsync(
+            new CorrectAppealBaseNumberCommand(id, year, request, User.GetUserId(), ActorName), ct);
         return NoContent();
     }
 
