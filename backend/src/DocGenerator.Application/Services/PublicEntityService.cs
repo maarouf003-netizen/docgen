@@ -172,4 +172,20 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
     void IPublicEntityWriteRules.AddFoldAliases(
         PublicEntity target, string canonical, PublicEntity absorbed, ref int aliasesAdded)
         => AddFoldAliases(target, canonical, absorbed, ref aliasesAdded);
+
+    Task<int> IPublicEntityWriteRules.MigrateDelegatesAsync(
+        HashSet<int> absorbedIds,
+        int targetGroupId,
+        int? defaultTargetEntryId,
+        IReadOnlyDictionary<int, int>? entryTargetByAbsorbedEntry,
+        CancellationToken token)
+        => MigrateDelegatesAsync(absorbedIds, targetGroupId, defaultTargetEntryId, entryTargetByAbsorbedEntry, token);
+
+    Task IPublicEntityWriteRules.BroadcastEntityChangeToAllLawyersAsync(
+        string kind, string message, string entityOperation, string entityGroupKey, int actorUserId, CancellationToken token)
+        => BroadcastEntityChangeToAllLawyersAsync(kind, message, entityOperation, entityGroupKey, actorUserId, token);
+
+    Task IPublicEntityWriteRules.BroadcastToAllHeadsAsync(
+        string kind, string message, string entityOperation, string entityGroupKey, int actorUserId, CancellationToken token)
+        => BroadcastToAllHeadsAsync(kind, message, entityOperation, entityGroupKey, actorUserId, token);
 }

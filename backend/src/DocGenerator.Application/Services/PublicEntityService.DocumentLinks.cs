@@ -86,7 +86,7 @@ public sealed partial class PublicEntityService
             aliasesAdded++;
         }
     }
-    private static int CountUniqueDocuments(Dictionary<int, Document> a, Dictionary<int, Document> b)
+    internal static int CountUniqueDocuments(Dictionary<int, Document> a, Dictionary<int, Document> b)
     {
         var ids = new HashSet<int>();
         foreach (var k in a.Keys) ids.Add(k);

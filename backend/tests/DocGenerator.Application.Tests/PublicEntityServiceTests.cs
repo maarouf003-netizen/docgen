@@ -34,6 +34,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
     private readonly ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> _moveEntry;
     private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
+    private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
+    private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -129,6 +131,12 @@ public class PublicEntityServiceTests : PostgresDbTest
         _moveAllEntries = new MoveAllPublicEntityEntriesCommandHandler(
             rules, entityRepository, new Repository<DocumentOccurrence>(_db), outbox, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse>>());
+        _commitMerge = new CommitPublicEntityMergeCommandHandler(
+            rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<CommitPublicEntityMergeCommand, MergeCommitResponse>>());
+        _renameGroup = new RenamePublicEntityGroupCommandHandler(
+            rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<RenamePublicEntityGroupCommand, RenameGroupResponse>>());
     }
 
 
@@ -1368,7 +1376,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        var result = await _service.CommitMergeAsync(
+        var result = await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1, ag2 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1393,7 +1401,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task CommitMerge_CreatesChangeEvent()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1408,7 +1416,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task CommitMerge_SendsHeadAlert()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
         await FlushAlertsAsync();
@@ -1427,7 +1435,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1443,7 +1451,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
         var absorbedGroup = await _db.PublicEntityGroups.FindAsync(ag1);
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1466,7 +1474,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             "مديرية الصحة", "administration", "دمشق", "الفرع الرئيسي",
             Aliases: new[] { "مصلحة الصحة المؤقتة" }), ManagerActor());
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(survivor.GroupId, new[] { absorbed.GroupId },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1503,7 +1511,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(nameOnlyDoc);
         await _db.SaveChangesAsync();
 
-        var result = await _service.CommitMergeAsync(
+        var result = await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1516,7 +1524,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+            _commitMerge.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
         Assert.Contains("نوع المرجع", ex.Message);
     }
 
@@ -1524,7 +1532,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task CommitMerge_WithNewName_RenamesSurvivor()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 NewCanonicalName: "وزارة الصحة والسكان",
                 DecreeKind: "قرار", DecreeNumber: "55", DecreeDate: "15/9/2026"), ManagerActor());
@@ -1556,7 +1564,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1589,7 +1597,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 NewCanonicalName: "وزارة الصحة والسكان",
                 DecreeKind: "قرار", DecreeNumber: "55", DecreeDate: "15/9/2026"), ManagerActor());
@@ -1630,7 +1638,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 NewCanonicalName: "وزارة الصحة والسكان",
                 DecreeKind: "قرار", DecreeNumber: "56", DecreeDate: "16/9/2026"), ManagerActor());
@@ -1663,7 +1671,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1716,7 +1724,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.AddRange(damascusDelegate, aleppoDelegate);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -1748,7 +1756,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(survivor.GroupId, new[] { absorbed.GroupId },
                 DecreeKind: "قرار", DecreeNumber: "124", DecreeDate: "2/8/2026"), ManagerActor());
 
@@ -1772,7 +1780,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "125", DecreeDate: "3/8/2026"), ManagerActor());
 
@@ -1785,7 +1793,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(
+            _commitMerge.CommitMergeAsync(
                 new MergeCommitRequest(sg, new[] { sg },
                     DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
     }
@@ -1799,7 +1807,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(
+            _commitMerge.CommitMergeAsync(
                 new MergeCommitRequest(sg, new[] { ag1 },
                     DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
         Assert.Contains("مراجعة", ex.Message);
@@ -1814,7 +1822,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(
+            _commitMerge.CommitMergeAsync(
                 new MergeCommitRequest(sg, new[] { ag1 },
                     DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
         Assert.Contains("مراجعة", ex.Message);
@@ -1962,7 +1970,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس أ", "ministry", "دمشق", "فرع أ"), ManagerActor());
         var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحارس ب", "ministry", "دمشق", "فرع ب"), ManagerActor());
         await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(b.GroupId, "جهة الحارس ب الجديدة", "قرار", "1", "1/8/2026"), ManagerActor());
 
         var kinds = _db.PublicEntityChangeEvents.Select(e => e.ActionKind).Distinct().ToList();
@@ -1996,7 +2004,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ChangeLog_RenameSummaryShowsBeforeAfterAndDecree()
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التسمية القديمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "جهة التسمية الجديدة", "قرار", "77", "1/8/2026"), ManagerActor());
 
         var paged = await _service.ListChangeEventsAsync(
@@ -2015,7 +2023,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
         var survivorName = (await _db.PublicEntityGroups.FindAsync(sg))!.CanonicalName;
         var absorbedName = (await _db.PublicEntityGroups.FindAsync(ag1))!.CanonicalName;
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
@@ -2775,7 +2783,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
 
-        var result = await _service.RenameGroupAsync(
+        var result = await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "وزارة المواصلات", "قرار", "77", "10/5/2026"), ManagerActor());
 
         Assert.Equal("وزارة المواصلات", result.NewCanonicalName);
@@ -2797,7 +2805,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task RenameGroup_SavesOldNameAsAlias()
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهيئة العامة للطيران", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "الهيئة العامة للطيران المدني", "مرسوم", "5", "1/1/2026"), ManagerActor());
 
         var entries = await _db.PublicEntities.Include(e => e.Aliases).Where(e => e.GroupId == dto.GroupId).ToListAsync();
@@ -2809,7 +2817,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة بدون مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "", "1", "1/1/2026"), ManagerActor()));
+            _renameGroup.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "", "1", "1/1/2026"), ManagerActor()));
         Assert.Contains("نوع المرجع", ex.Message);
     }
 
@@ -2818,7 +2826,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحوكمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم محظور", "قرار", "1", "1/1/2026"), HeadDamascusActor()));
+            _renameGroup.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم محظور", "قرار", "1", "1/1/2026"), HeadDamascusActor()));
     }
 
     [PostgresFact]
@@ -2830,7 +2838,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "قرار", "1", "1/1/2026"), ManagerActor()));
+            _renameGroup.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "قرار", "1", "1/1/2026"), ManagerActor()));
         Assert.Contains("مراجعة", ex.Message);
     }
 
@@ -3178,7 +3186,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "وزارة النقل") },
             new List<AppealPartyDto>());
 
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(group.GroupId, "وزارة النقل والمواصلات",
                 DecreeKind: "قرار", DecreeNumber: "105", DecreeDate: "5/7/2026"), ManagerActor());
 
@@ -3207,7 +3215,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var originalJson = appeal.AppellantsJson;
 
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(group.GroupId, "وزارة النقل والمواصلات",
                 DecreeKind: "قرار", DecreeNumber: "106", DecreeDate: "6/7/2026"), ManagerActor());
 
@@ -3243,7 +3251,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto>(),
             new List<AppealPartyDto> { EntityParty("executed-public", executedRow.Id, "بلدية دمشق") });
 
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(group.GroupId, "أمانة دمشق",
                 DecreeKind: "قرار", DecreeNumber: "106", DecreeDate: "6/7/2026"), ManagerActor());
 
@@ -3290,7 +3298,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto> { EntityParty("execution-applicant", row.Id, "شركة بركات التجارية") },
             new List<AppealPartyDto>());
 
-        await _service.RenameGroupAsync(
+        await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(group.GroupId, "هيئة التجارة الموحدة",
                 DecreeKind: "قرار", DecreeNumber: "108", DecreeDate: "8/7/2026"), ManagerActor());
 
@@ -3381,7 +3389,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(
+        await _commitMerge.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 

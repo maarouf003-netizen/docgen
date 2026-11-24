@@ -969,6 +969,13 @@
   **`P4-01ca`:** `CompleteDocumentDelegationCommand` يملك إتمام الإنابة (بدلات البيع،
   تحويل المنيب إلى «منفذ جبريا/جزئيا»، الملف المناب «منفذ إنابة»، الوقعة، التنبيه،
   والتدقيق)؛ وحُذف `DocumentDelegationService.Lifecycle.cs` بعد إفراغه.
+  **`P4-01cb`:** `CommitPublicEntityMergeCommand` يملك اعتماد دمج الجهات (الحرّاس،
+  الاسم النهائي والألقاب، ترحيل الروابط والأسماء، مزامنة النصوص والاستئنافات،
+  مندوبو الجهات، حدث الدمج، الوقوعات، التنبيهات، والتدقيق) داخل معاملة واحدة مع
+  حجز `RF-011` كما هو.
+  **`P4-01cc`:** `RenamePublicEntityGroupCommand` يملك إعادة تسمية الهوية الأم
+  (فحص الصلاحية والمرسوم، تفرّد الاسم، الألقاب البديلة، مزامنة النصوص والاستئنافات،
+  حدث التغيير، الوقوعات، التنبيهات، والتدقيق) بلا تغيير سلوكي.
   **ملحق `P4-01bs`:** مراجعة نقدية ثانية بعد الدمج أزالت تعليقَي `XML` يتيمين،
   وحقل `_dbErrors` الميت في `ReviewLetterService`، وثبّتت ثابت محاولات الترقيم (20).
   التفاصيل:
@@ -1040,9 +1047,13 @@
   `docs/audit/193-p4-01by-followup-review-20261125.md` و
   `docs/audit/194-p4-01bz-register-delegation-20261125.md` و
   `docs/audit/195-p4-01bz-complete-delegation-20261125.md` و
-  `docs/audit/196-p4-01bz-ca-followup-review-20261125.md`.
+  `docs/audit/196-p4-01bz-ca-followup-review-20261125.md` و
+  `docs/audit/197-p4-01cb-merge-commit-20261125.md` و
+  `docs/audit/198-p4-01cc-rename-group-20261125.md` و
+  `docs/audit/199-p4-01cb-cc-followup-review-20261125.md`.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (ملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة).
+  (ملكية `CreateDocumentCommand`، وبقايا كتابات الجهات العامة:
+  `AbolishAndReplaceAsync` و`ProposeEditAsync` و`SuggestParentEditAsync`).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

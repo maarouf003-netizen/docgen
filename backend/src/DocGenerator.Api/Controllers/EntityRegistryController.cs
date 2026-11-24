@@ -41,6 +41,8 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> _unifyBranches;
     private readonly ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> _moveEntry;
     private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
+    private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
+    private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -57,7 +59,9 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<AbolishPublicEntityBranchCommand, AbolishBranchResponse> abolishBranch,
         ICommandHandler<UnifyPublicEntityBranchesCommand, UnifyBranchesResponse> unifyBranches,
         ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> moveEntry,
-        ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> moveAllEntries)
+        ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> moveAllEntries,
+        ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> commitMerge,
+        ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> renameGroup)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -74,6 +78,8 @@ public class EntityRegistryController : ControllerBase
         _unifyBranches = unifyBranches;
         _moveEntry = moveEntry;
         _moveAllEntries = moveAllEntries;
+        _commitMerge = commitMerge;
+        _renameGroup = renameGroup;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -344,8 +350,8 @@ public class EntityRegistryController : ControllerBase
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
-            return Ok(await _registry.CommitMergeAsync(request, Actor, ct,
-                IdempotencyKeyHeader()));
+            return Ok(await _commitMerge.HandleAsync(
+                new CommitPublicEntityMergeCommand(request, Actor, IdempotencyKeyHeader()), ct));
         }
         catch (IdempotentReplayException r)
         {
@@ -384,7 +390,8 @@ public class EntityRegistryController : ControllerBase
                 ApiErrorCodes.ValidationFailed,
                 "تعارض معرف المجموعة في المسار",
                 field: "groupId");
-        return Ok(await _registry.RenameGroupAsync(request, Actor, ct));
+        return Ok(await _renameGroup.HandleAsync(
+            new RenamePublicEntityGroupCommand(request, Actor), ct));
     }
 
     // ── الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة — المدير/المشرف) ──
