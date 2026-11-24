@@ -108,7 +108,7 @@ public sealed partial class UserManagementService : IUserManagementService, IUse
         => ParseRole(role);
 
     Task IUserManagementUserWriteRules.GuardManagerAdminBoundaryAsync(
-        int actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct)
+        int? actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct)
         => GuardManagerAdminBoundaryAsync(actorUserId, requestedIsAdmin, targetIsAdmin, ct);
 
     Task<int?> IUserManagementUserWriteRules.ResolveBranchAsync(int? branchId, UserRole role, CancellationToken ct)

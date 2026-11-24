@@ -56,7 +56,7 @@ internal sealed class CreateUserCommandHandler
             throw new ArgumentException("الاسم الكامل مطلوب");
 
         var role = _rules.ParseRole(request.Role);
-        await _rules.GuardManagerAdminBoundaryAsync(command.ActorUserId ?? 0, requestedIsAdmin: role == UserRole.Admin, targetIsAdmin: false, ct);
+        await _rules.GuardManagerAdminBoundaryAsync(command.ActorUserId, requestedIsAdmin: role == UserRole.Admin, targetIsAdmin: false, ct);
         var branchId = await _rules.ResolveBranchAsync(request.BranchId, role, ct);
         // شعبة الحساب (§9.1): إلزامية ومحققة لرئيس الشعبة، ومرفوضة لغيره.
         var sectionId = await _rules.ResolveSectionAsync(role, branchId, request.SectionId, ct);

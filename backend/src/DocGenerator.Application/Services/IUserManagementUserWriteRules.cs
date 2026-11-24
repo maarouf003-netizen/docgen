@@ -15,7 +15,7 @@ internal interface IUserManagementUserWriteRules
     string NormalizePassword(string? password, string? username = null);
     string DuplicateUsernameMessage(int? branchId);
     UserRole ParseRole(string? role);
-    Task GuardManagerAdminBoundaryAsync(int actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct);
+    Task GuardManagerAdminBoundaryAsync(int? actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct);
     Task<int?> ResolveBranchAsync(int? branchId, UserRole role, CancellationToken ct);
     Task<int?> ResolveSectionAsync(UserRole role, int? branchId, int? sectionId, CancellationToken ct);
     Task GuardSingleActiveHeadAsync(UserRole role, int? branchId, int? sectionId, int? excludeUserId, CancellationToken ct);
