@@ -52,7 +52,6 @@ public static class PortalServiceFactory
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             registrationDates,
             occurrences,
             uow,

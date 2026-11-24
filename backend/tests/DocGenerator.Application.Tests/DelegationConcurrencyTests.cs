@@ -49,7 +49,6 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             new Repository<DocumentRegistrationDate>(db),
             new Repository<DocumentOccurrence>(db),
             uow,
@@ -244,7 +243,6 @@ public class DelegationConcurrencyTests : IAsyncLifetime
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             registrationDates,
             occurrences,
             uow,
@@ -351,7 +349,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
         var (delegations, _, _) = BuildServices(db);
         var created = await DelegationWriteHandlerFactory.Create(db).CreateAsync(source.Id, Request(asset.Id), owner.Id, "owner");
-        var assigned = await delegations.AssignAsync(
+        var assigned = await DelegationWriteHandlerFactory.Assign(db).AssignAsync(
             created.Id, new AssignDelegationRequest(assignee.Id), head.Id, branch.Id, "head");
         await delegations.RegisterAsync(
             created.Id, new RegisterDelegationRequest($"89{suffix}", "2026", "5/8/2026"), assignee.Id, "assignee");

@@ -30,6 +30,7 @@ public class DelegationsController : ControllerBase
     private readonly ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> _redirectDelegation;
     private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
     private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
+    private readonly ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> _assignDelegation;
 
     public DelegationsController(
         IDocumentDelegationService delegations,
@@ -40,7 +41,8 @@ public class DelegationsController : ControllerBase
         ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> updateDelegation,
         ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> redirectDelegation,
         ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> recallRedirect,
-        ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> rejectDelegation)
+        ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> rejectDelegation,
+        ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> assignDelegation)
     {
         _delegations = delegations;
         _documents = documents;
@@ -51,6 +53,7 @@ public class DelegationsController : ControllerBase
         _redirectDelegation = redirectDelegation;
         _recallRedirect = recallRedirect;
         _rejectDelegation = rejectDelegation;
+        _assignDelegation = assignDelegation;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -226,7 +229,9 @@ public class DelegationsController : ControllerBase
             return Forbid();
         try
         {
-            var assigned = await _delegations.AssignAsync(id, request, User.GetUserId(), User.GetBranchId(), ActorName, ct);
+            var assigned = await _assignDelegation.HandleAsync(
+                new AssignDocumentDelegationCommand(
+                    id, request, User.GetUserId(), User.GetBranchId(), ActorName), ct);
             return assigned is null ? NotFound() : Ok(assigned);
         }
         catch (DocumentConflictException e)

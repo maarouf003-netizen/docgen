@@ -33,6 +33,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _delegationDelete;
     private readonly ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> _delegationCreate;
     private readonly ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> _delegationUpdate;
+    private readonly ICommandHandler<AssignDocumentDelegationCommand, DelegationDto?> _delegationAssign;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -80,7 +81,6 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new DbExceptionClassifier(),
             documents,
             users,
-            branches,
             registrationDates,
             occurrences,
             uow,
@@ -105,6 +105,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx), uow, _tx, _audit,
             new DbExceptionClassifier(), TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<UpdateDocumentDelegationCommand, DelegationDto?>>());
+        _delegationAssign = DelegationWriteHandlerFactory.Assign(_db, _audit);
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
@@ -590,7 +591,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         Assert.NotNull(dto);
@@ -622,7 +623,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -642,7 +643,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -662,7 +663,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await FlushAlertsAsync();
@@ -722,7 +723,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             var source = await CreateSourceAsync();
             var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
             var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-            await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
                 _head1.Id, _branch.Id, "head1");
         }
         _db.ChangeTracker.Clear();
@@ -756,7 +757,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await FlushAlertsAsync();
@@ -788,7 +789,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1065,7 +1066,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1090,7 +1091,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1115,7 +1116,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1141,7 +1142,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1163,7 +1164,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1188,7 +1189,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1214,7 +1215,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.False(pending.TargetTerminal);
         Assert.True(pending.BlocksAssets);
 
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1232,7 +1233,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var targetId = dto!.TargetDocumentId!.Value;
@@ -1262,7 +1263,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(nameless.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(nameless.Id),
             _head1.Id, _branch.Id, "head1");
 
         _db.ChangeTracker.Clear();
@@ -1276,7 +1277,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var targetId = dto!.TargetDocumentId!.Value;
@@ -1302,7 +1303,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var target = await _db.Documents.FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
         target.FileNumber = "300";
@@ -1324,7 +1325,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var targetId = dto!.TargetDocumentId!.Value;
@@ -1385,7 +1386,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var target = await _db.Documents
@@ -1428,7 +1429,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var target = await _db.Documents.AsNoTracking()
@@ -1443,7 +1444,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = dto!.TargetDocumentId!.Value;
 
@@ -1466,7 +1467,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -1495,7 +1496,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1524,7 +1525,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1564,7 +1565,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1602,7 +1603,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1628,7 +1629,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await FlushAlertsAsync();
 
@@ -1655,7 +1656,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
             _head2.Id, _otherBranch.Id, "head2");
         await FlushAlertsAsync();
 
@@ -1674,7 +1675,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         // رئيس قسم فرع آخر لا يملك اعتماد إنابة فرع دمشق.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
                 _head2.Id, _otherBranch.Id, "head2"));
         Assert.Contains("ضمن فرعك", ex.Message);
     }
@@ -1688,7 +1689,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         // رئيس القسم نفسه ليس محاميًا مختصًا (لا يمكن أن يُكلَّف بمتابعة الإنابة).
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_head1.Id), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_head1.Id), _head1.Id, _branch.Id, "head1"));
         Assert.Contains("المحامي المختص", ex.Message);
     }
 
@@ -1698,7 +1699,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -1721,7 +1722,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -1739,7 +1740,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -1770,7 +1771,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -1804,7 +1805,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1839,7 +1840,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var created = await _delegationCreate.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
             _head2.Id, _otherBranch.Id, "head2");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _externalLawyer.Id, "externalLawyer");
@@ -1868,7 +1869,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -1907,7 +1908,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2001,7 +2002,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         source.ExecStatus = ExecutionStatusCatalog.Deferred;
@@ -2023,7 +2024,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         source.ExecStatus = ExecutionStatusCatalog.ExecutedBySettlement;
@@ -2062,7 +2063,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         source.ExecStatus = ExecutionStatusCatalog.ReferredToStart;
@@ -2085,7 +2086,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -2124,7 +2125,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -2210,7 +2211,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var template = (await _documentService.GetAsync(source.Id))!.Assets.Single();
@@ -2244,7 +2245,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var template = (await _documentService.GetAsync(source.Id))!.Assets.Single();
@@ -2327,12 +2328,12 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         // العكس: رئيس قسم الفرع المنيب لا يملك اعتماد إنابة خارجية.
         var wrongHead = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
                 _head1.Id, _branch.Id, "head1"));
         Assert.Contains("ضمن فرعك", wrongHead.Message);
 
         // رئيس قسم الفرع المناب (اللاذقية) يعتمدها ويكلف محاميًا ضمن فرعه.
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
             _head2.Id, _otherBranch.Id, "head2");
 
         Assert.NotNull(dto);
@@ -2453,7 +2454,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var dto = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await FlushAlertsAsync();
 
@@ -2474,7 +2475,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -2499,7 +2500,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
@@ -2533,7 +2534,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         // الفلتر العام (Configurations) يخفي الإنابة مع حذف مصدرها منطقيًا — لا عمليات ولا NRE.
         var exAssign = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
+            _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
         Assert.Contains("غير موجودة", exAssign.Message);
 
         var exUpdate = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
@@ -2549,7 +2550,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -2627,7 +2628,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId);
@@ -2702,7 +2703,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
@@ -2745,7 +2746,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2804,7 +2805,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2866,7 +2867,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -2936,7 +2937,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3004,7 +3005,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3060,7 +3061,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3114,7 +3115,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3183,7 +3184,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3229,7 +3230,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3273,7 +3274,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3324,7 +3325,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3380,7 +3381,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3438,7 +3439,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3519,7 +3520,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3562,7 +3563,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
         source.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
@@ -3587,7 +3588,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3621,7 +3622,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3686,7 +3687,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3733,7 +3734,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
@@ -3772,7 +3773,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
-        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+        var assigned = await _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
         var copied = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
