@@ -23,7 +23,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         return $"ملف {target.Id}";
     }
 
-    private static DelegationDto ToDto(
+    internal static DelegationDto ToDto(
         DocumentDelegation d, Document source, int currentYear) => new(
         d.Id,
         d.SourceDocumentId,
@@ -75,7 +75,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 d.LocalAdditionLastMessage ?? string.Empty,
                 d.LocalAdditionLastAt);
 
-    private static string SourceLabel(Document source)
+    internal static string SourceLabel(Document source)
     {
         var parts = new[] { source.BorrowerName, source.BorrowerFather, source.BorrowerFamily }
             .Where(v => !string.IsNullOrWhiteSpace(v));
@@ -124,7 +124,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     }
 
     /// <summary>يجهّز اسم الدائرة للقوالب التي تضيف «دائرة » قبل الحقل، فيمنع «دائرة دائرة تنفيذ».</summary>
-    private static string AlertCourtAfterDaira(string? court)
+    internal static string AlertCourtAfterDaira(string? court)
     {
         var value = Normalize(court);
         if (value is null)

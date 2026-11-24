@@ -99,9 +99,10 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             }
             else
             {
-                (completionOwnerBranch, completionOwnerId) = await ResolvePendingAlertTargetAsync(
+                (completionOwnerBranch, completionOwnerId) = await DocumentDelegationRules.ResolvePendingAlertTargetAsync(
                     isExternal: false, externalBranchId: null,
-                    sourceBranchId: target.BranchId, circuitId: target.ExecutionCircuitId, ct);
+                    sourceBranchId: target.BranchId, circuitId: target.ExecutionCircuitId,
+                    _users, _circuits, ct);
             }
         }
 

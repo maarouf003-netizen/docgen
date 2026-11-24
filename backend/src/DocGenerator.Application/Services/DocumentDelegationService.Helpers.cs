@@ -12,7 +12,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 {
     // ── أدوات مساعدة ─────────────────────────────────────────────
 
-    private static void ValidateSourceForDelegation(Document source)
+    internal static void ValidateSourceForDelegation(Document source)
     {
         // حراس NeedsRegistration الصريحة: تُمنع على المعلق — تسطير/اعتماد إنابة حيث تلزم الهوية.
         if (source.NeedsRegistration)
@@ -35,114 +35,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     private void EnsurePendingByOwner(DocumentDelegation delegation, int userId)
         => DocumentDelegationRules.EnsurePendingByOwner(delegation, userId);
 
-    private async Task<(string Court, int? CircuitId, DelegationFields Fields)> ValidateAndBuildAsync(
-        UpsertDelegationRequest request, int? sourceBranchId, CancellationToken ct)
-    {
-        var isExternal = request.IsExternal;
-        int? externalBranchId;
-        string court;
-        int? circuitId = null;
-        if (isExternal)
-        {
-            // الاستثناء الخارجي: دائرتها خارج المحافظة وخارج السجل — تبقى نصًا حرًا.
-            court = Normalize(request.DelegatedCourt)
-                ?? throw new ArgumentException("الدائرة المنابة مطلوبة");
-            if (request.DelegatedCircuitId is not null)
-                throw new ArgumentException("الإنابة الخارجية لا تُربط بسجل الدوائر");
-            externalBranchId = request.ExternalBranchId;
-            if (externalBranchId is null)
-                throw new ArgumentException("الإنابة الخارجية تتطلب تحديد الفرع المناب في المحافظة الأخرى");
-            var branch = await _branches.GetByIdAsync(externalBranchId.Value, ct);
-            if (branch is null)
-                throw new ArgumentException("الفرع المناب غير موجود");
-        }
-        else
-        {
-            externalBranchId = null;
-            // قفل تسطير الإنابة (S2): الداخلي يتحقق من السجل منذ الإنشاء —
-            // الوجود + النشاط + محافظة فرع الدائرة == محافظة فرع المنيب
-            // (مرآة فحص الاعتماد، البند 38)، وإلا تسرّب اسم دائرة فرع آخر
-            // في المسودة ثم يفشل الاعتماد متأخرًا.
-            if (request.DelegatedCircuitId is not null)
-            {
-                var circuit = await _circuits.GetByIdAsync(request.DelegatedCircuitId.Value, ct)
-                    ?? throw new ArgumentException("الدائرة المنابة المختارة غير موجودة");
-                if (!circuit.IsActive)
-                    throw new ArgumentException("الدائرة المنابة معطلة — اختر دائرة نشطة");
-                var draftSourceBranch = await _branches.GetByIdAsync(sourceBranchId ?? 0, ct);
-                var draftCircuitBranch = await _branches.GetByIdAsync(circuit.BranchId, ct);
-                var draftSourceGov = draftSourceBranch?.Governorate?.Trim() ?? string.Empty;
-                var draftCircuitGov = draftCircuitBranch?.Governorate?.Trim() ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(draftSourceGov) && !string.IsNullOrWhiteSpace(draftCircuitGov)
-                    && !string.Equals(draftSourceGov, draftCircuitGov, StringComparison.Ordinal)
-                    && !GovernorateCatalog.IsGovernorate(draftSourceGov))
-                {
-                    throw new ArgumentException("محافظة الفرع غير معتمدة — ثبّتها من الإدارة قبل الإنابة");
-                }
-                if (!string.IsNullOrWhiteSpace(draftSourceGov) && !string.IsNullOrWhiteSpace(draftCircuitGov)
-                    && !string.Equals(draftSourceGov, draftCircuitGov, StringComparison.Ordinal))
-                    throw new ArgumentException("دائرة المناب ليست ضمن محافظة الملف المنيب");
-                circuitId = circuit.Id;
-                court = circuit.Name;
-            }
-            else
-            {
-                // انتقالي: نص حر يُقبل فقط حين لا يملك النطاق أي دائرة بعد.
-                court = Normalize(request.DelegatedCourt)
-                    ?? throw new ArgumentException("الدائرة المنابة مطلوبة");
-                var all = await _circuits.ListAsync(ct);
-                if (all.Count > 0)
-                    throw new ArgumentException("الدائرة المنابة خارج السجل — اختر من قائمة المحافظة");
-            }
-        }
-
-        var delegationDate = FreeDateParser.Parse(request.DelegationDate, "تاريخ الإنابة");
-        if (delegationDate is null)
-            throw new ArgumentException("تاريخ الإنابة مطلوب");
-
-        return (court, circuitId, new DelegationFields(
-            isExternal,
-            externalBranchId,
-            delegationDate,
-            FreeDateParser.Parse(request.DepositBookDate, "تاريخ كتاب إيداع رئيس القسم")));
-    }
-
-    /// <summary>
-    /// هدف تنبيه «بانتظار الاعتماد» (§7.1): فرع الاعتماد + مالكه — فرع الدائرة
-    /// المنابة ومالكها (رئيس شعبته وإلا قسمه) للداخلية بدائرة، والفرع المناب
-    /// ورئيس قسمه للخارجية، وفرع المنيب ورئيس قسمه بلا دائرة. `null` للمالك
-    /// عند غياب مفعّل (يُبثّ حينها لنطاق الفرع ويُسجَّل الفشل لاحقًا).
-    /// </summary>
-    private async Task<(int BranchId, int? OwnerId)> ResolvePendingAlertTargetAsync(
-        bool isExternal, int? externalBranchId, int? sourceBranchId, int? circuitId, CancellationToken ct)
-    {
-        if (isExternal)
-        {
-            var branch = externalBranchId
-                ?? throw new ArgumentException("الإنابة الخارجية بلا فرع مناب — تعذّر الاستهداف");
-            return (branch, (await _users.FindActiveHeadAsync(UserRole.Head, branch, null, ct))?.Id);
-        }
-        var circuit = circuitId.HasValue ? await _circuits.GetByIdAsync(circuitId.Value, ct) : null;
-        if (circuit is not null)
-        {
-            if (circuit.SectionId.HasValue)
-                return (circuit.BranchId, ((await _users.FindActiveHeadAsync(UserRole.SubHead, circuit.BranchId, circuit.SectionId, ct))
-                    ?? await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, ct))?.Id);
-            return (circuit.BranchId, (await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, ct))?.Id);
-        }
-        var srcBranch = sourceBranchId
-            ?? throw new ArgumentException("الملف بلا فرع — تعذّر الاستهداف");
-        return (srcBranch, (await _users.FindActiveHeadAsync(UserRole.Head, srcBranch, null, ct))?.Id);
-    }
-
-    /// <summary>حقول الإنابة المنبثقة من الطلب بعد التحقق (الجهة الخارجية وتواريخها النصية الحرة).</summary>
-    private sealed record DelegationFields(
-        bool IsExternal,
-        int? ExternalBranchId,
-        DateTime? DelegationDate,
-        DateTime? DepositBookDate);
-
-    private void ApplyDelegationAssets(DocumentDelegation delegation, Document source, List<int>? assetIds)
+    internal static void ApplyDelegationAssets(DocumentDelegation delegation, Document source, List<int>? assetIds)
     {
         var ids = (assetIds ?? new List<int>()).Distinct().ToList();
         if (ids.Count == 0)
@@ -348,7 +241,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         return delegation is null ? new List<DocumentDelegation>() : new List<DocumentDelegation> { delegation };
     }
 
-    private static string? Normalize(string? value) =>
+    internal static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
