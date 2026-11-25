@@ -1395,7 +1395,7 @@
 - **الحالة (2026-11-17):** **جزئيًا — أساس العقد مثبت.** PR
   [`#196`](https://github.com/maarouf003-netizen/docgen/pull/196): أُضيف `operationId` حتمي
   (`Controller_Action`) لكل عملية، ولقطة عقد مُطبَّعة في
-  `docs/openapi/docgen-v1.json` (239 عملية) يتحقق منها اختبار `OpenApiContractTests`
+  `docs/openapi/docgen-v1.json` (239 عملية وقتها؛ 245 في لقطة 2026-11-25) يتحقق منها اختبار `OpenApiContractTests`
   عند كل تشغيل (تطابق اللقطة + `operationId` فريد + معاملات مسار معلنة + مخطط
   `Bearer`). أي تغيير في سطح `API` يفشل حتى يُحدَّث العقد واعيًا بأمر موثّق. التفاصيل:
   `docs/audit/54-p4-04-openapi-contract-20261117.md`.
@@ -1409,6 +1409,20 @@
   و`DocumentInterventionDto` و`DocumentOccurrenceDto` إلى اللقطة والعميل المولَّد —
   **إضافة بلا حذف ولا تغيير سلوك**. التفاصيل:
   `docs/audit/97-p4-04b-openapi-response-schemas-20261122.md`.
+- **الجزء الثالث — سياسة الإصدار (2026-11-25):** `P4-04b` أغلق **الفجوة غير الكاسرة**
+  المتبقية من `P4-04`: [`API_VERSIONING.md`](API_VERSIONING.md) (السطح الحالي بلا إصدار،
+  شروط إدخال `/api/v1`/`Accept-Version`، نافذة الإهمال إعلان ← تشغيل مزدوج ← إزالة ≥90
+  يومًا، ولا تغيير كاسر بلا إصدار) + [`ADR-0011`](adr/0011-api-versioning.md) بالبدائل
+  المرفوضة + `docs/openapi/deprecations.json` (فارغ `[]` بمخطط موثّق) + حارس
+  `ApiVersioningPolicyTests` (تطابق اسم اللقطة مع `info.version` ومسارات `/api/vN`، نمط
+  `operationId = Controller_Action` وفرادته، ربط السياسة/`ADR` من الفهرس، ومطابقة سجل
+  الإهمال للمخطط وللقطة، ووسم كل عملية `deprecated`). **لا تغيير مسار ولا `DTO` ولا شكل
+  استجابة ولا هجرة ولا اعتمادية.** التفاصيل: `docs/audit/249…251`.
+  **متبقٍ (فعلي، غير مُدّعى إغلاقه):** آلية الإصدار **وقت التشغيل** (`/api/v1` أو
+  `Accept-Version`) — **مؤجلة بقرار مالك** لأنها تغيّر كل مسار + عنوان القاعدة في
+  `frontend/src/api/client.ts` + إعادة توليد `generated.ts`، وتحتاج `staging` للتشغيل
+  المزدوج (`P5-04`)؛ وإحلال `types/document.ts` المتبقي بالعميل المولَّد (`P6-06`)؛
+  وتفعيل `OpenAPI` محميًا في staging/prod.
 - **العمل:** تفعيل OpenAPI في staging/prod محمي؛ `openapi-typescript`/NSwag لتوليد `frontend/src/api/generated.ts`؛ حذف `types/document.ts` اليدوي تدريجيًا؛ contract tests؛ **إصدار API** (`/api/v1` أو `Accept-Version` + سياسة إهمال).
 - **DoD:** تغيير API يكسر التوليد/الاختبارات، لا الواجهة بصمت؛ لا كسر بلا إصدار.
 - **الاعتمادية:** `P4-03` (شكل أخطاء/عقود) و`P6-06`.
