@@ -77,8 +77,8 @@
 
 ### 2.3 التحويل إلى أسماء `Prometheus`
 
-جامع `OTLP` يُصدّر المقاييس عبر `prometheus` exporter مع `add_metric_suffixes: true`
-(الافتراضي). القواعد: النقاط → `_`، وإضافة لاحقة الوحدة (`s` → `_seconds`، `By` → `_bytes`)،
+جامع `OTLP` يُصدّر المقاييس عبر `prometheus` exporter مع
+`translation_strategy: UnderscoreEscapingWithSuffixes` (السياسة الموثّقة). القواعد: النقاط → `_`، وإضافة لاحقة الوحدة (`s` → `_seconds`، `By` → `_bytes`)،
 و`_total` للمجاميع الرتيبة (`Counter`)، ولا لاحقة للوحدات التعليقية (`{request}`…).
 هذه أسماء الاستعلام الفعلية:
 
@@ -109,9 +109,11 @@
 `http_response_status_code`، `http.route` → `http_route`، `aspnetcore.authentication.result` →
 `aspnetcore_authentication_result`، `aspnetcore.rate_limiting.result` →
 `aspnetcore_rate_limiting_result`، `cpu.mode` → `cpu_mode`.
-`resource_to_telemetry_conversion` يضيف `service_name`, `service_namespace`,
-`deployment_environment` إلى كل سلسلة. **لا** نستخدم `job` للدلالة على التطبيق: `job` يضبطه
-`Prometheus` لوظيفة سحب الجامع؛ التصفية الصحيحة `service_name="docgen-api"`.
+`transform/resource_labels` في الجامع ينسخ `service.name`/`service.namespace`/
+`deployment.environment` إلى وسوم كل نقطة (`service_name`, `service_namespace`,
+`deployment_environment`) بدل `resource_to_telemetry_conversion` المهجور. **لا** نستخدم `job`
+للدلالة على التطبيق: `job` يضبطه `Prometheus` لوظيفة سحب الجامع؛ التصفية الصحيحة
+`service_name="docgen-api"`.
 
 ### 2.4 ما **لا** يُقاس في هذه الجولة (فجوات صريحة)
 

@@ -63,6 +63,19 @@ processors:
         value: docgen
         action: upsert
 
+  # Copy the three stable resource attributes into datapoint attributes.
+  # This is explicit and version-independent: newer collector releases
+  # deprecate resource_to_telemetry_conversion, and without an explicit copy
+  # `service.name` would only reach target_info/job, not every series.
+  transform/resource_labels:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["service_name"], resource.attributes["service.name"])
+          - set(attributes["service_namespace"], resource.attributes["service.namespace"])
+          - set(attributes["deployment_environment"], resource.attributes["deployment.environment"])
+
   # Defense in depth for PII: drop credentials, cookies, query strings and
   # raw SQL text/parameters before anything reaches Tempo/Prometheus.
   # The app already avoids bodies/passwords (P5-01), but collectors must not
@@ -157,15 +170,14 @@ exporters:
       max_elapsed_time: 60s
 
   # Metrics -> Prometheus scrape endpoint (default :8889/metrics).
-  # add_metric_suffixes=true is the documented naming contract in docs/SLO.md.
+  # UnderscoreEscapingWithSuffixes is the documented naming contract in
+  # docs/SLO.md (dots -> _, unit suffix, _total for counters).
   prometheus:
     endpoint: 0.0.0.0:8889
     send_timestamps: true
     metric_expiration: 10m
     enable_open_metrics: true
-    add_metric_suffixes: true
-    resource_to_telemetry_conversion:
-      enabled: true
+    translation_strategy: UnderscoreEscapingWithSuffixes
 
 extensions:
   health_check:
@@ -196,5 +208,5 @@ service:
 
     metrics:
       receivers: [otlp, span_metrics]
-      processors: [memory_limiter, resourcedetection, resource, attributes/redact, filter/health, batch/metrics]
+      processors: [memory_limiter, resourcedetection, resource, attributes/redact, filter/health, transform/resource_labels, batch/metrics]
       exporters: [prometheus]

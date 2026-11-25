@@ -15,7 +15,7 @@
 | 4 | **مقاييس `Runtime`** | وثائق `.NET` المدمجة: `dotnet.process.cpu.time`، `dotnet.process.memory.working_set`، `dotnet.thread_pool.*`… **لا** أسماء `process.runtime.dotnet.*` القديمة | **سليم** |
 | 5 | **مقاييس `Npgsql`** | وثائق `Npgsql` 10: `db.client.connection.count` (`state=idle/used`)، `db.client.connection.max`، `db.client.connection.npgsql.timeouts` | **سليم كأسماء، لكن غير مُصدرة حاليًا** (المتر غير مسجّل) |
 | 6 | **زمن `SQL` المشتق** | `spanmetricsconnector` README: `calls`/`duration` مع `namespace`، `unit: s`، `include_instrumentation_scope`؛ ينتج `docgen.db.duration` → `docgen_db_duration_seconds_bucket` | **سليم (مشتق، موثّق)** |
-| 7 | **أسماء `Prometheus` المطبّعة** | `add_metric_suffixes: true`: النقاط → `_`، `s` → `_seconds`، `By` → `_bytes`، `_total` للعدّادات؛ الدليل يوثّق الجدول كاملًا | **سليم** |
+| 7 | **أسماء `Prometheus` المطبّعة** | `translation_strategy: UnderscoreEscapingWithSuffixes`: النقاط → `_`، `s` → `_seconds`، `By` → `_bytes`، `_total` للعدّادات؛ الدليل يوثّق الجدول كاملًا | **سليم** |
 | 8 | **وجود مقاييس التنبيهات** | كل تعبير يستخدم مقياسًا من جدول `docs/SLO.md` §2، عدا `probe_success` (مُولَّد من `blackbox`) و`docgen_outbox_*` (اختياري موثّق) | **سليم** |
 | 9 | **اتساق عتبات الإتاحة** | `99.5%` → ميزانية `0.5%`؛ `14.4x` = `7.2%` (`1h`)، `6x` = `3%` (`6h`)، `1x` = `0.5%` (`3d`)؛ الحساب مطابق | **سليم** |
 | 10 | **اتساق عتبات الزمن** | `p95 ≤ 500ms` للقراءة و`≤ 1s` للكتابة؛ تنبيهات `30m/5m` و`2x`؛ لا خلط بين `p95` والمتوسط | **سليم** |

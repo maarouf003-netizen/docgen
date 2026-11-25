@@ -75,6 +75,10 @@ curl -fsS http://otel-collector:13133/          # health extension
 curl -fsS http://otel-collector:8889/metrics | head
 ```
 
+> **أسماء المقاييس:** `prometheus.translation_strategy: UnderscoreEscapingWithSuffixes`،
+> و`transform/resource_labels` ينسخ `service.name` إلى `service_name` في كل سلسلة. لا تعتمد
+> على `resource_to_telemetry_conversion` (مهجور في إصدارات الجامع الحديثة).
+
 ### 3.1 ماذا يحذف الجامع؟
 
 `attributes/redact` يحذف: `http.request.header.authorization`، `http.request.header.cookie`،

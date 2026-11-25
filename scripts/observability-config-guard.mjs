@@ -134,6 +134,22 @@ function validateCollector(collector) {
     'collector: memory_limiter.limit_mib must be > 0',
   );
 
+  assert(
+    isObject(processors['transform/resource_labels']),
+    'collector: processors.transform/resource_labels is required (service_name label)',
+  );
+  const labelStatements = JSON.stringify(
+    processors['transform/resource_labels']?.metric_statements ?? [],
+  );
+  assert(
+    labelStatements.includes('service_name') && labelStatements.includes('service.name'),
+    'collector: transform/resource_labels must copy service.name to service_name',
+  );
+  assert(
+    exporters.prometheus?.translation_strategy === 'UnderscoreEscapingWithSuffixes',
+    'collector: prometheus exporter must pin UnderscoreEscapingWithSuffixes',
+  );
+
   const batchKeys = Object.keys(processors).filter((key) => key === 'batch' || key.startsWith('batch/'));
   assert(batchKeys.length >= 1, 'collector: at least one batch processor is required');
 
@@ -228,6 +244,11 @@ function validateCollector(collector) {
     Array.isArray(pipelines.metrics?.exporters) &&
       pipelines.metrics.exporters.includes('prometheus'),
     'collector: metrics pipeline must export to prometheus',
+  );
+  assert(
+    Array.isArray(pipelines.metrics?.processors) &&
+      pipelines.metrics.processors.includes('transform/resource_labels'),
+    'collector: metrics pipeline must apply transform/resource_labels',
   );
 
   const raw = read(PATHS.collector);
