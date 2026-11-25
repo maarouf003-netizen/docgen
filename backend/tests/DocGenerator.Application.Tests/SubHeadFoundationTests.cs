@@ -17,7 +17,6 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class SubHeadFoundationTests : PostgresDbTest
 {
-    private readonly IUserManagementService _service;
     private readonly ICommandHandler<CreateUserCommand, UserListItemDto> _createUser;
 
     public SubHeadFoundationTests()
@@ -27,9 +26,8 @@ public class SubHeadFoundationTests : PostgresDbTest
         var sections = new Repository<Section>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new UserManagementService(
+        var service = new UserManagementService(
             users, branches, sections,
-            new Repository<ExecutionCircuit>(_db),
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
@@ -41,10 +39,10 @@ public class SubHeadFoundationTests : PostgresDbTest
                 new FakeAuditLogger(),
                 new DbExceptionClassifier(),
                 tx),
-            uow, new PasswordHasher(), tx, new FakeAuditLogger());
+            uow, new FakeAuditLogger());
 
         _createUser = new CreateUserCommandHandler(
-            (IUserManagementUserWriteRules)_service, users, new Repository<HeadSuccession>(_db), uow,
+            (IUserManagementUserWriteRules)service, users, new Repository<HeadSuccession>(_db), uow,
             new PasswordHasher(), tx, new FakeAuditLogger(),
             Array.Empty<IPipelineBehavior<CreateUserCommand, UserListItemDto>>());
     }

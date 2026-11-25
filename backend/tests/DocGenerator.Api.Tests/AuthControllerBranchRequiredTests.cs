@@ -5,7 +5,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
@@ -32,9 +31,9 @@ public sealed class AuthControllerBranchRequiredTests
             => Task.FromResult(new DocGenerator.Application.DTOs.LoginResult(LoginStatus.BranchRequired, null));
     }
 
-    private sealed class StubAuthService : IAuthService
+    private sealed class StubGetUserHandler : IQueryHandler<GetUserQuery, UserDto?>
     {
-        public Task<UserDto?> GetUserAsync(int userId, CancellationToken ct = default)
+        public Task<UserDto?> HandleAsync(GetUserQuery query, CancellationToken ct = default)
             => Task.FromResult<UserDto?>(null);
     }
 
@@ -72,7 +71,7 @@ public sealed class AuthControllerBranchRequiredTests
     public async Task Login_BranchRequired_ReturnsBadRequestWithGeneralMessage()
     {
         var controller = new AuthController(
-            new StubAuthService(),
+            new StubGetUserHandler(),
             new AllowAllRateLimiter(),
             Options.Create(new RateLimitOptions()),
             new JwtOptions(),

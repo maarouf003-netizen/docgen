@@ -3,7 +3,6 @@ using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +14,8 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "head,subhead,manager,admin")]
 public class UserManagementController : ControllerBase
 {
-    private readonly IUserManagementService _users;
+    private readonly IQueryHandler<ListUsersQuery, List<UserListItemDto>> _listUsers;
+    private readonly IQueryHandler<ListLawyersQuery, List<LawyerListItemDto>> _listLawyers;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
     private readonly ICommandHandler<CreateLawyerCommand, LawyerListItemDto> _createLawyer;
@@ -24,7 +24,8 @@ public class UserManagementController : ControllerBase
     private readonly ICommandHandler<UpdateUserCommand, UserListItemDto?> _updateUser;
 
     public UserManagementController(
-        IUserManagementService users,
+        IQueryHandler<ListUsersQuery, List<UserListItemDto>> listUsers,
+        IQueryHandler<ListLawyersQuery, List<LawyerListItemDto>> listLawyers,
         IUserCapabilities capabilities,
         ICommandHandler<SetLawyerActiveCommand, bool> setLawyerActive,
         ICommandHandler<CreateLawyerCommand, LawyerListItemDto> createLawyer,
@@ -32,7 +33,8 @@ public class UserManagementController : ControllerBase
         ICommandHandler<CreateUserCommand, UserListItemDto> createUser,
         ICommandHandler<UpdateUserCommand, UserListItemDto?> updateUser)
     {
-        _users = users;
+        _listUsers = listUsers;
+        _listLawyers = listLawyers;
         _capabilities = capabilities;
         _setLawyerActive = setLawyerActive;
         _createLawyer = createLawyer;
@@ -54,7 +56,7 @@ public class UserManagementController : ControllerBase
         // إدارة المستخدمين — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`).
         if (!CanManageUsers)
             return Forbid();
-        return Ok(await _users.ListUsersAsync(ct));
+        return Ok(await _listUsers.HandleAsync(new ListUsersQuery(), ct));
     }
 
     [HttpPost]
@@ -73,7 +75,7 @@ public class UserManagementController : ControllerBase
     {
         if (!CanManageUsers)
             return Forbid();
-        var user = (await _users.ListUsersAsync(ct)).FirstOrDefault(u => u.Id == id);
+        var user = (await _listUsers.HandleAsync(new ListUsersQuery(), ct)).FirstOrDefault(u => u.Id == id);
         return user is null ? NotFound() : Ok(user);
     }
 
@@ -111,9 +113,10 @@ public class UserManagementController : ControllerBase
             effectiveBranchId = branchId;
         }
 
-        return Ok(await _users.ListLawyersAsync(
-            effectiveBranchId, mode, User.GetUserId(), User.GetSectionId(),
-            IsHeadOrSubHead, includeInactive, ct));
+        return Ok(await _listLawyers.HandleAsync(
+            new ListLawyersQuery(
+                effectiveBranchId, mode, User.GetUserId(), User.GetSectionId(),
+                IsHeadOrSubHead, includeInactive), ct));
     }
 
     [HttpPost("lawyers")]

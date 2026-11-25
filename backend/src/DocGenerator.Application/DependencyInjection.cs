@@ -42,7 +42,6 @@ public static class DependencyInjection
         var timeZoneId = configuration?["TimeZone:Id"];
         services.AddSingleton(ServerClock.ResolveTimeZone(timeZoneId));
         services.AddScoped<IPasswordHasher, PasswordHasher>();
-        services.AddScoped<IAuthService, AuthService>();
         // P2-01a: بوابة القراءة الضيقة لسياسات الوصول إلى المستند (إسقاط F-01 + سؤالا
         // الاستئناف) — يستهلكها معالج السياسة في Api بدل استدعاء المستودعات مباشرة.
         services.AddScoped<IDocumentAccessReader, DocumentAccessReader>();
@@ -54,10 +53,8 @@ public static class DependencyInjection
         services.AddScoped<IDocumentWriteGuard, DocumentWriteGuard>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<UserManagementService>();
-        services.AddScoped<IUserManagementService>(sp => sp.GetRequiredService<UserManagementService>());
         services.AddScoped<IUserManagementLawyerWriteRules>(sp => sp.GetRequiredService<UserManagementService>());
         services.AddScoped<IUserManagementUserWriteRules>(sp => sp.GetRequiredService<UserManagementService>());
-        services.AddScoped<IBranchManagementService, BranchManagementService>();
         services.AddScoped<HeadAlertService>();
         services.AddScoped<IHeadAlertService>(sp => sp.GetRequiredService<HeadAlertService>());
         services.AddScoped<IHeadAlertManualWriteRules>(sp => sp.GetRequiredService<HeadAlertService>());
@@ -82,7 +79,6 @@ public static class DependencyInjection
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();
         services.AddScoped<IExecutionCircuitService, ExecutionCircuitService>();
         services.AddScoped<IStrikeOffReminderService, StrikeOffReminderService>();
-        services.AddScoped<ISectionService, SectionService>();
         services.AddScoped<IDocumentContextBuilder, DocumentContextBuilder>();
         services.AddScoped<IDocumentRenderer, WordTemplateRenderer>();
         services.AddScoped<IWordDocumentGenerator, WordDocumentGenerator>();
@@ -135,10 +131,14 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdateLawyerCommand, LawyerListItemDto?>, UpdateLawyerCommandHandler>();
         services.AddScoped<ICommandHandler<CreateUserCommand, UserListItemDto>, CreateUserCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateUserCommand, UserListItemDto?>, UpdateUserCommandHandler>();
+        services.AddScoped<IQueryHandler<ListLawyersQuery, List<LawyerListItemDto>>, ListLawyersQueryHandler>();
+        services.AddScoped<IQueryHandler<ListUsersQuery, List<UserListItemDto>>, ListUsersQueryHandler>();
+        services.AddScoped<IQueryHandler<ListSuccessionQuery, List<HeadSuccessionDto>>, ListSuccessionQueryHandler>();
         services.AddScoped<ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto>, CreateManualHeadAlertCommandHandler>();
         services.AddScoped<ICommandHandler<RemoveAppealAlertRecipientCommand, int>, RemoveAppealAlertRecipientCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<ChangePasswordCommand, bool>, ChangePasswordCommandHandler>();
+        services.AddScoped<IQueryHandler<GetUserQuery, UserDto?>, GetUserQueryHandler>();
         services.AddScoped<ICommandHandler<DeletePendingRegistrationAlertsCommand, bool>, DeletePendingRegistrationAlertsCommandHandler>();
         services.AddScoped<IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>>, SearchReviewLettersQueryHandler>();
         services.AddScoped<IQueryHandler<GetReviewLetterQuery, ReviewLetterDto>, GetReviewLetterQueryHandler>();
@@ -242,6 +242,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<MarkForumReadCommand, int>, MarkForumReadCommandHandler>();
         services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
+        services.AddScoped<IQueryHandler<ListBranchesQuery, List<BranchDto>>, ListBranchesQueryHandler>();
         services.AddScoped<ICommandHandler<DeleteExecutionActionCommand, bool>, DeleteExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentInterventionCommand, bool>, DeleteDocumentInterventionCommandHandler>();
         services.AddScoped<ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto>, AddDocumentInterventionCommandHandler>();
@@ -253,6 +254,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteSectionCommand, bool>, DeleteSectionCommandHandler>();
         services.AddScoped<ICommandHandler<RenameSectionCommand, SectionDto?>, RenameSectionCommandHandler>();
         services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
+        services.AddScoped<IQueryHandler<ListSectionsQuery, List<SectionDto>>, ListSectionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetSectionQuery, SectionDto?>, GetSectionQueryHandler>();
         services.AddScoped<ICommandHandler<AddExecutionActionCommand, ExecutionActionDto>, AddExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?>, UpdateExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<ClearActionReminderCommand, bool>, ClearActionReminderCommandHandler>();

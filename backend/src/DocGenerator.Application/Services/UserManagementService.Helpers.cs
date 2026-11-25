@@ -6,7 +6,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class UserManagementService : IUserManagementService
+public sealed partial class UserManagementService
 {
     private static string NormalizeUsername(string username)
     {
@@ -34,28 +34,6 @@ public sealed partial class UserManagementService : IUserManagementService
         PasswordPolicy.EnsureValid(candidate, username);
         return candidate;
     }
-
-    private static LawyerListItemDto ToLawyerDto(User user) => new(
-        user.Id,
-        user.Username,
-        user.FullName,
-        user.IsActive,
-        user.BranchId,
-        user.Branch?.Name,
-        user.CreatedById,
-        user.Version);
-
-    private static UserListItemDto ToUserDto(User user) => new(
-        user.Id,
-        user.Username,
-        user.FullName,
-        user.Role.ToString().ToLowerInvariant(),
-        user.BranchId,
-        user.Branch?.Name,
-        user.IsActive,
-        user.SectionId,
-        user.Section?.Name,
-        user.Version);
 
     /// <summary>
     /// نسخة التحرير (إنشاء/تحديث): الكيان المتتبَّع بلا `Include` للشعبة —
