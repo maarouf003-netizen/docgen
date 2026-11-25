@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Sections;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -17,9 +16,10 @@ namespace DocGenerator.Application.Tests;
 /// إدارة الشعب (المرحلة 2أ — قرار §2 + §8): إنشاء/تسمية/تفعيل/حذف مع الوحدانية
 /// الاسمية × الفرع وحراس التفريغ وسجل التعاقب عند التسمية.
 ///
-public class SectionServiceTests : PostgresDbTest
+public class SectionManagementTests : PostgresDbTest
 {
-    private readonly ISectionService _service;
+    private readonly IQueryHandler<ListSectionsQuery, List<SectionDto>> _listSections;
+    private readonly IQueryHandler<GetSectionQuery, SectionDto?> _getSection;
     private readonly ICommandHandler<CreateSectionCommand, SectionDto> _createSection;
     private readonly ICommandHandler<DeleteSectionCommand, bool> _deleteSection;
     private readonly ICommandHandler<RenameSectionCommand, SectionDto?> _renameSection;
@@ -28,7 +28,7 @@ public class SectionServiceTests : PostgresDbTest
     private readonly int _damascusId;
     private readonly int _aleppoId;
 
-    public SectionServiceTests()
+    public SectionManagementTests()
     {
         _db.Branches.AddRange(
             new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" },
@@ -40,11 +40,18 @@ public class SectionServiceTests : PostgresDbTest
 
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new SectionService(
+        _listSections = new ListSectionsQueryHandler(
             new Repository<Section>(_db),
             new Repository<Branch>(_db),
             new Repository<ExecutionCircuit>(_db),
-            new UserRepository(_db));
+            new UserRepository(_db),
+            Array.Empty<IPipelineBehavior<ListSectionsQuery, List<SectionDto>>>());
+        _getSection = new GetSectionQueryHandler(
+            new Repository<Section>(_db),
+            new Repository<Branch>(_db),
+            new Repository<ExecutionCircuit>(_db),
+            new UserRepository(_db),
+            Array.Empty<IPipelineBehavior<GetSectionQuery, SectionDto?>>());
         _createSection = new CreateSectionCommandHandler(
             new Repository<Section>(_db),
             new Repository<Branch>(_db),
@@ -112,11 +119,12 @@ public class SectionServiceTests : PostgresDbTest
         var cache = new DocGenerator.Infrastructure.Caching.ReferenceDataCache(
             new Microsoft.Extensions.Caching.Memory.MemoryCache(
                 new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
-        var cachedService = new SectionService(
+        var cachedList = new ListSectionsQueryHandler(
             new Repository<Section>(_db),
             new Repository<Branch>(_db),
             new Repository<ExecutionCircuit>(_db),
             new UserRepository(_db),
+            Array.Empty<IPipelineBehavior<ListSectionsQuery, List<SectionDto>>>(),
             cache);
 
         var cachedCreate = new CreateSectionCommandHandler(
@@ -139,18 +147,18 @@ public class SectionServiceTests : PostgresDbTest
             Array.Empty<IPipelineBehavior<RenameSectionCommand, SectionDto?>>(),
             cache);
 
-        _ = await cachedService.ListSectionsAsync(_damascusId);
-        _ = await cachedService.ListSectionsAsync(_damascusId);
+        _ = await cachedList.HandleAsync(new ListSectionsQuery(_damascusId));
+        _ = await cachedList.HandleAsync(new ListSectionsQuery(_damascusId));
 
         var created = await cachedCreate.HandleAsync(
             new CreateSectionCommand(_damascusId, "شعبة الكاش", "admin"));
-        var afterCreate = await cachedService.ListSectionsAsync(_damascusId);
+        var afterCreate = await cachedList.HandleAsync(new ListSectionsQuery(_damascusId));
         Assert.Contains(afterCreate, s => s.Id == created.Id);
 
         var renamed = await cachedRename.HandleAsync(
             new RenameSectionCommand(created.Id, "شعبة الكاش 2", "admin", created.Version));
         Assert.NotNull(renamed);
-        var afterRename = await cachedService.ListSectionsAsync(_damascusId);
+        var afterRename = await cachedList.HandleAsync(new ListSectionsQuery(_damascusId));
         Assert.Contains(afterRename, s => s.Name == "شعبة الكاش 2");
     }
 
@@ -268,7 +276,7 @@ public class SectionServiceTests : PostgresDbTest
         await AddCircuitAsync("دائرة أخرى", _damascusId, section.Id, manager.Id);
         await AddHeadAsync("sub_masyaf", _damascusId, section.Id);
 
-        var list = await _service.ListSectionsAsync(_damascusId);
+        var list = await _listSections.HandleAsync(new ListSectionsQuery(_damascusId));
 
         var row = Assert.Single(list, s => s.Id == section.Id);
         Assert.Equal(2, row.CircuitCount);
@@ -279,13 +287,14 @@ public class SectionServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task List_UnknownBranch_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.ListSectionsAsync(999999));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _listSections.HandleAsync(new ListSectionsQuery(999999)));
     }
 
     [PostgresFact]
     public async Task GetSection_Missing_ReturnsNull()
     {
-        Assert.Null(await _service.GetSectionAsync(999999));
+        Assert.Null(await _getSection.HandleAsync(new GetSectionQuery(999999)));
     }
 
     [PostgresFact]

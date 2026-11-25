@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
@@ -62,13 +61,13 @@ public sealed class RenameSectionCommandHandler
         if (section is null)
             return null;
         OptimisticConcurrencyGuard.EnsureCurrent(section, command.Version, "الشعبة");
-        var trimmed = SectionService.NormalizeName(command.Name);
+        var trimmed = SectionProjection.NormalizeName(command.Name);
         if (section.Name == trimmed)
             return await ToDtoAsync(section, ct);
         var norm = ArabicNameNormalizer.Normalize(trimmed);
         if (string.IsNullOrEmpty(norm))
             throw new ArgumentException("اسم الشعبة مطلوب");
-        if (SectionService.NameExists(
+        if (SectionProjection.NameExists(
                 await _sections.ListAsync(ct), section.BranchId, norm, section.Id))
             throw new ArgumentException($"الشعبة «{trimmed}» موجودة مسبقًا في فرعك");
 
@@ -116,7 +115,7 @@ public sealed class RenameSectionCommandHandler
     private async Task<SectionDto> ToDtoAsync(Section section, CancellationToken ct)
     {
         var branch = await _branches.GetByIdAsync(section.BranchId, ct);
-        return SectionService.ToDto(
+        return SectionProjection.ToDto(
             section,
             branch?.Name,
             await _circuits.ListAsync(ct),

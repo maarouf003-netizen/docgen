@@ -3,7 +3,6 @@ using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Sections;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +14,8 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class SectionsController : ControllerBase
 {
-    private readonly ISectionService _sections;
+    private readonly IQueryHandler<ListSectionsQuery, List<SectionDto>> _listSections;
+    private readonly IQueryHandler<GetSectionQuery, SectionDto?> _getSection;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreateSectionCommand, SectionDto> _createSection;
     private readonly ICommandHandler<DeleteSectionCommand, bool> _deleteSection;
@@ -23,14 +23,16 @@ public class SectionsController : ControllerBase
     private readonly ICommandHandler<SetSectionActiveCommand, SectionDto?> _setSectionActive;
 
     public SectionsController(
-        ISectionService sections,
+        IQueryHandler<ListSectionsQuery, List<SectionDto>> listSections,
+        IQueryHandler<GetSectionQuery, SectionDto?> getSection,
         IUserCapabilities capabilities,
         ICommandHandler<CreateSectionCommand, SectionDto> createSection,
         ICommandHandler<DeleteSectionCommand, bool> deleteSection,
         ICommandHandler<RenameSectionCommand, SectionDto?> renameSection,
         ICommandHandler<SetSectionActiveCommand, SectionDto?> setSectionActive)
     {
-        _sections = sections;
+        _listSections = listSections;
+        _getSection = getSection;
         _capabilities = capabilities;
         _createSection = createSection;
         _deleteSection = deleteSection;
@@ -52,7 +54,7 @@ public class SectionsController : ControllerBase
                 ApiErrorCodes.ValidationFailed,
                 "حدد الفرع لعرض شعبه",
                 field: "branchId");
-        return Ok(await _sections.ListSectionsAsync(branchId.Value, ct));
+        return Ok(await _listSections.HandleAsync(new ListSectionsQuery(branchId.Value), ct));
     }
 
     /// <summary>إنشاء شعبة في فرع — مشرف/مدير (قرار §2.15).</summary>
@@ -80,7 +82,7 @@ public class SectionsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var section = await _sections.GetSectionAsync(id, ct);
+        var section = await _getSection.HandleAsync(new GetSectionQuery(id), ct);
         return section is null ? NotFound() : Ok(section);
     }
 

@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.UseCases.Sections;
@@ -49,12 +48,12 @@ public sealed class CreateSectionCommandHandler
     {
         var branch = await _branches.GetByIdAsync(command.BranchId, ct)
             ?? throw new ArgumentException("الفرع غير موجود");
-        var trimmed = SectionService.NormalizeName(command.Name);
+        var trimmed = SectionProjection.NormalizeName(command.Name);
         var norm = ArabicNameNormalizer.Normalize(trimmed);
         if (string.IsNullOrEmpty(norm))
             throw new ArgumentException("اسم الشعبة مطلوب");
 
-        if (SectionService.NameExists(
+        if (SectionProjection.NameExists(
                 await _sections.ListAsync(ct), command.BranchId, norm, excludeId: null))
             throw new ArgumentException($"الشعبة «{trimmed}» موجودة مسبقًا في فرعك");
 

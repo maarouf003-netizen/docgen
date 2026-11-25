@@ -14,7 +14,7 @@ namespace DocGenerator.Application.Tests;
 
 public class UserManagementServiceTests : PostgresDbTest
 {
-    private readonly IUserManagementService _service;
+    private readonly UserReadHandlers _reads;
     private readonly ICommandHandler<SetLawyerActiveCommand, bool> _setLawyerActive;
     private readonly ICommandHandler<CreateLawyerCommand, LawyerListItemDto> _createLawyer;
     private readonly ICommandHandler<UpdateLawyerCommand, LawyerListItemDto?> _updateLawyer;
@@ -35,9 +35,8 @@ public class UserManagementServiceTests : PostgresDbTest
         var sections = new Repository<Section>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new UserManagementService(
+        var service = new UserManagementService(
             users, branches, sections,
-            new Repository<ExecutionCircuit>(_db),
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
@@ -49,21 +48,22 @@ public class UserManagementServiceTests : PostgresDbTest
                 _audit,
                 new DbExceptionClassifier(),
                 tx),
-            uow, _hasher, tx, _audit);
+            uow, _audit);
+        _reads = UserReadHandlerFactory.Create(_db);
         _setLawyerActive = new SetLawyerActiveCommandHandler(
             users, uow, _audit,
             new IPipelineBehavior<SetLawyerActiveCommand, bool>[]
             {
                 new TransactionBehavior<SetLawyerActiveCommand, bool>(tx),
             });
-        var rules = (IUserManagementLawyerWriteRules)_service;
+        var rules = (IUserManagementLawyerWriteRules)service;
         _createLawyer = new CreateLawyerCommandHandler(
             rules, users, branches, uow, _hasher, tx, _audit,
             Array.Empty<IPipelineBehavior<CreateLawyerCommand, LawyerListItemDto>>());
         _updateLawyer = new UpdateLawyerCommandHandler(
             rules, users, uow, _hasher, tx, _audit,
             Array.Empty<IPipelineBehavior<UpdateLawyerCommand, LawyerListItemDto?>>());
-        var userRules = (IUserManagementUserWriteRules)_service;
+        var userRules = (IUserManagementUserWriteRules)service;
         _createUser = new CreateUserCommandHandler(
             userRules, users, new Repository<HeadSuccession>(_db), uow, _hasher, tx, _audit,
             Array.Empty<IPipelineBehavior<CreateUserCommand, UserListItemDto>>());
@@ -161,7 +161,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await AddUserAsync("d1", "محامي دمشق 1", UserRole.Lawyer, DamascusId);
         await AddUserAsync("a1", "محامي حلب", UserRole.Lawyer, AleppoId);
 
-        var lawyers = await _service.ListLawyersAsync(DamascusId);
+        var lawyers = await _reads.ListLawyersAsync(DamascusId);
 
         Assert.Single(lawyers);
         Assert.Equal("d1", lawyers[0].Username);
@@ -580,7 +580,7 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task ListLawyers_BranchMode_ReturnsFullBranch()
     {
         await AddUserAsync("محام أ", "محام أ", UserRole.Lawyer, DamascusId);
-        var list = await _service.ListLawyersAsync(DamascusId, "branch", 999, null, true, true);
+        var list = await _reads.ListLawyersAsync(DamascusId, "branch", 999, null, true, true);
 
         Assert.Contains(list, l => l.Username == "محام أ");
     }
@@ -589,7 +589,7 @@ public class UserManagementServiceTests : PostgresDbTest
     public async Task ListLawyers_BadMode_Throws()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ListLawyersAsync(DamascusId, "everyone", 999, null, true, true));
+            _reads.ListLawyersAsync(DamascusId, "everyone", 999, null, true, true));
         Assert.Contains("mine أو branch", ex.Message);
     }
 
@@ -617,7 +617,7 @@ public class UserManagementServiceTests : PostgresDbTest
             await _db.SaveChangesAsync();
         }
 
-        var mine = await _service.ListLawyersAsync(DamascusId, "mine", head.Id, null, true, true);
+        var mine = await _reads.ListLawyersAsync(DamascusId, "mine", head.Id, null, true, true);
         var names = mine.Select(l => l.Username).ToList();
 
         Assert.Contains("محام أ", names);
@@ -648,7 +648,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await AddFileAsync(own.Id, DamascusId, ownCircuit);
         await AddFileAsync(foreign.Id, DamascusId, foreignCircuit);
 
-        var mine = await _service.ListLawyersAsync(DamascusId, null, sub.Id, sectionId, true, true);
+        var mine = await _reads.ListLawyersAsync(DamascusId, null, sub.Id, sectionId, true, true);
         var names = mine.Select(l => l.Username).ToList();
 
         Assert.Contains("محام تابع", names);
@@ -660,7 +660,7 @@ public class UserManagementServiceTests : PostgresDbTest
     {
         await AddUserAsync("محام أ", "محام أ", UserRole.Lawyer, DamascusId);
 
-        var list = await _service.ListLawyersAsync(DamascusId, "mine", 999, null, false, true);
+        var list = await _reads.ListLawyersAsync(DamascusId, "mine", 999, null, false, true);
 
         Assert.Contains(list, l => l.Username == "محام أ");
     }
@@ -673,8 +673,8 @@ public class UserManagementServiceTests : PostgresDbTest
         stored.IsActive = false;
         await _db.SaveChangesAsync();
 
-        Assert.Empty(await _service.ListLawyersAsync(DamascusId, "branch", 999, null, false, false));
-        Assert.NotEmpty(await _service.ListLawyersAsync(DamascusId, "branch", 999, null, false, true));
+        Assert.Empty(await _reads.ListLawyersAsync(DamascusId, "branch", 999, null, false, false));
+        Assert.NotEmpty(await _reads.ListLawyersAsync(DamascusId, "branch", 999, null, false, true));
     }
 
     [PostgresFact]
@@ -1052,7 +1052,7 @@ public class UserManagementServiceTests : PostgresDbTest
         await _updateUser.UpdateUserAsync(
             head.Id, new UpdateUserRequest(null, null, null, false, null, null, successor.Id), 999, "admin");
 
-        var rows = await _service.ListSuccessionAsync(null);
+        var rows = await _reads.ListSuccessionAsync(null);
 
         Assert.Equal(3, rows.Count); // تعيين + تعطيل + إحلال.
         Assert.True(rows[0].At >= rows[1].At);

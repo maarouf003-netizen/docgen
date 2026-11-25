@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
@@ -36,10 +35,10 @@ public sealed class CreateBranchCommandHandler : CommandHandlerBase<CreateBranch
     protected override async Task<BranchDto> HandleCoreAsync(CreateBranchCommand command, CancellationToken ct)
     {
         var request = command.Request;
-        var name = BranchManagementService.NormalizeRequired(request.Name, "اسم الفرع مطلوب");
-        var code = BranchManagementService.NormalizeRequired(request.Code, "كود الفرع مطلوب");
+        var name = BranchProjection.NormalizeRequired(request.Name, "اسم الفرع مطلوب");
+        var code = BranchProjection.NormalizeRequired(request.Code, "كود الفرع مطلوب");
         // المحافظة إجبارية لأنها تحدد نطاق رئيس القسم في سجل الجهات العامة (Branches.Governorate).
-        var governorate = BranchManagementService.NormalizeRequired(
+        var governorate = BranchProjection.NormalizeRequired(
             request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
         if (!GovernorateCatalog.IsGovernorate(governorate))
             throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
@@ -53,8 +52,8 @@ public sealed class CreateBranchCommandHandler : CommandHandlerBase<CreateBranch
         {
             Name = name,
             Code = code,
-            Address = BranchManagementService.NormalizeOptional(request.Address),
-            Phone = BranchManagementService.NormalizeOptional(request.Phone),
+            Address = BranchProjection.NormalizeOptional(request.Address),
+            Phone = BranchProjection.NormalizeOptional(request.Phone),
             Governorate = governorate,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
@@ -66,6 +65,6 @@ public sealed class CreateBranchCommandHandler : CommandHandlerBase<CreateBranch
         await _audit.LogAsync(command.ActorName, "create_branch",
             details: $"أنشأ فرعاً: {branch.Name} ({branch.Code})", ct: ct);
 
-        return BranchManagementService.ToDto(branch, 0, 0);
+        return BranchProjection.ToDto(branch, 0, 0);
     }
 }

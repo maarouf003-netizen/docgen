@@ -1,7 +1,6 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Branches;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,20 +12,20 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class BranchesController : ControllerBase
 {
-    private readonly IBranchManagementService _branches;
+    private readonly IQueryHandler<ListBranchesQuery, List<BranchDto>> _listBranches;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
     private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
     private readonly ICommandHandler<UpdateBranchCommand, BranchDto?> _updateBranch;
 
     public BranchesController(
-        IBranchManagementService branches,
+        IQueryHandler<ListBranchesQuery, List<BranchDto>> listBranches,
         IUserCapabilities capabilities,
         ICommandHandler<DeleteBranchCommand, bool> deleteBranch,
         ICommandHandler<CreateBranchCommand, BranchDto> createBranch,
         ICommandHandler<UpdateBranchCommand, BranchDto?> updateBranch)
     {
-        _branches = branches;
+        _listBranches = listBranches;
         _capabilities = capabilities;
         _deleteBranch = deleteBranch;
         _createBranch = createBranch;
@@ -41,7 +40,7 @@ public class BranchesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<BranchDto>>> List(CancellationToken ct)
     {
-        return Ok(await _branches.ListBranchesAsync(ct));
+        return Ok(await _listBranches.HandleAsync(new ListBranchesQuery(), ct));
     }
 
     /// <summary>إنشاء فرع — المشرف والمدير (قرار §2.15).</summary>
@@ -57,7 +56,8 @@ public class BranchesController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var branch = (await _branches.ListBranchesAsync(ct)).FirstOrDefault(b => b.Id == id);
+        var branch = (await _listBranches.HandleAsync(new ListBranchesQuery(), ct))
+            .FirstOrDefault(b => b.Id == id);
         return branch is null ? NotFound() : Ok(branch);
     }
 

@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.UseCases.Sections;
@@ -71,7 +70,7 @@ public sealed class SetSectionActiveCommandHandler
             null, null,
             $"{(command.IsActive ? "فعّل" : "عطّل")} الشعبة «{section.Name}» — التعطيل إخفاء من القوائم فقط ولا يوقف عمل رئيسها", ct);
         var branch = await _branches.GetByIdAsync(section.BranchId, ct);
-        return SectionService.ToDto(
+        return SectionProjection.ToDto(
             section,
             branch?.Name,
             await _circuits.ListAsync(ct),

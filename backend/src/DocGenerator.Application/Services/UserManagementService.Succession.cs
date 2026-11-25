@@ -6,7 +6,7 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class UserManagementService : IUserManagementService
+public sealed partial class UserManagementService
 {
     private async Task<int?> ResolveBranchAsync(int? branchId, UserRole role, CancellationToken ct)
     {
@@ -171,35 +171,6 @@ public sealed partial class UserManagementService : IUserManagementService
             Reason = $"خلفًا لـ {predecessor.FullName} ({predecessor.Username})",
         }, ct);
         await _uow.SaveChangesAsync(ct);
-    }
-
-    public async Task<List<HeadSuccessionDto>> ListSuccessionAsync(int? branchId, CancellationToken ct = default)
-    {
-        var rows = await _successions.ListAsync(ct);
-        var branches = await _branches.ListAsync(ct);
-        var branchNames = branches.ToDictionary(b => b.Id, b => b.Name);
-        var sections = await _sections.ListAsync(ct);
-        var sectionNames = sections.ToDictionary(s => s.Id, s => s.Name);
-        var users = await _users.ListAllUsersAsync(ct);
-        var userNames = users.ToDictionary(u => u.Id, u => u.FullName);
-        return rows
-            .Where(h => branchId == null || h.BranchId == branchId.Value)
-            .OrderByDescending(h => h.At)
-            .ThenByDescending(h => h.Id)
-            .Select(h => new HeadSuccessionDto(
-                h.Id,
-                h.BranchId,
-                branchNames.GetValueOrDefault(h.BranchId),
-                h.SectionId,
-                h.SectionId.HasValue ? sectionNames.GetValueOrDefault(h.SectionId.Value) : null,
-                h.UserId,
-                userNames.GetValueOrDefault(h.UserId),
-                h.Role.ToString().ToLowerInvariant(),
-                h.Event,
-                h.At,
-                h.ActorName,
-                h.Reason))
-            .ToList();
     }
 
     /// <summary>

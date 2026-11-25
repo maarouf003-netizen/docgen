@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Auth;
 using DocGenerator.Api.Auth;
 using DocGenerator.Api.Filters;
@@ -20,7 +19,7 @@ namespace DocGenerator.Api.Controllers;
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly IAuthService _auth;
+    private readonly IQueryHandler<GetUserQuery, UserDto?> _getUser;
     private readonly ILoginRateLimiter _rateLimiter;
     private readonly RateLimitOptions _rateOptions;
     private readonly JwtOptions _jwt;
@@ -41,7 +40,7 @@ public class AuthController : ControllerBase
             .ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     public AuthController(
-        IAuthService auth,
+        IQueryHandler<GetUserQuery, UserDto?> getUser,
         ILoginRateLimiter rateLimiter,
         IOptions<RateLimitOptions> rateOptions,
         JwtOptions jwt,
@@ -50,7 +49,7 @@ public class AuthController : ControllerBase
         ICommandHandler<LoginCommand, LoginResult> login,
         ICommandHandler<ChangePasswordCommand, bool> changePassword)
     {
-        _auth = auth;
+        _getUser = getUser;
         _rateLimiter = rateLimiter;
         _rateOptions = rateOptions.Value;
         _jwt = jwt;
@@ -174,7 +173,7 @@ public class AuthController : ControllerBase
     [Authorize(Roles = "lawyer,head,subhead,manager,admin,entitymanager")]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
-        var user = await _auth.GetUserAsync(User.GetUserId(), ct);
+        var user = await _getUser.HandleAsync(new GetUserQuery(User.GetUserId()), ct);
         return user is null ? NotFound() : Ok(user);
     }
 }

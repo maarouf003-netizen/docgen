@@ -13,9 +13,9 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class BranchManagementServiceTests : PostgresDbTest
+public class BranchManagementTests : PostgresDbTest
 {
-    private readonly IBranchManagementService _service;
+    private readonly IQueryHandler<ListBranchesQuery, List<BranchDto>> _listBranches;
     private readonly ICommandHandler<DeleteBranchCommand, bool> _deleteBranch;
     private readonly ICommandHandler<CreateBranchCommand, BranchDto> _createBranch;
     private readonly ICommandHandler<UpdateBranchCommand, BranchDto?> _updateBranch;
@@ -23,7 +23,7 @@ public class BranchManagementServiceTests : PostgresDbTest
     private readonly int _damascusId;
     private readonly int _aleppoId;
 
-    public BranchManagementServiceTests()
+    public BranchManagementTests()
     {
         _db.Branches.AddRange(
             new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" },
@@ -35,7 +35,9 @@ public class BranchManagementServiceTests : PostgresDbTest
 
         var branches = new BranchRepository(_db);
         var uow = new UnitOfWork(_db);
-        _service = new BranchManagementService(branches, uow, _audit);
+        _listBranches = new ListBranchesQueryHandler(
+            branches,
+            Array.Empty<IPipelineBehavior<ListBranchesQuery, List<BranchDto>>>());
         _deleteBranch = new DeleteBranchCommandHandler(
             branches, uow, _audit, Array.Empty<IPipelineBehavior<DeleteBranchCommand, bool>>());
         _createBranch = new CreateBranchCommandHandler(
@@ -57,17 +59,18 @@ public class BranchManagementServiceTests : PostgresDbTest
         var cache = new DocGenerator.Infrastructure.Caching.ReferenceDataCache(
             new Microsoft.Extensions.Caching.Memory.MemoryCache(
                 new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
-        var cachedService = new BranchManagementService(
-            new BranchRepository(_db), new UnitOfWork(_db), _audit, cache);
+        var cachedList = new ListBranchesQueryHandler(
+            new BranchRepository(_db),
+            Array.Empty<IPipelineBehavior<ListBranchesQuery, List<BranchDto>>>(), cache);
 
         var cachedCreate = new CreateBranchCommandHandler(
             new BranchRepository(_db), new UnitOfWork(_db), _audit,
             Array.Empty<IPipelineBehavior<CreateBranchCommand, BranchDto>>(), cache);
 
-        _ = await cachedService.ListBranchesAsync();
+        _ = await cachedList.HandleAsync(new ListBranchesQuery());
         var created = await cachedCreate.HandleAsync(new CreateBranchCommand(
             new CreateBranchRequest("طرطوس", "TRT", null, null, "طرطوس"), "admin"));
-        var after = await cachedService.ListBranchesAsync();
+        var after = await cachedList.HandleAsync(new ListBranchesQuery());
 
         Assert.Contains(after, b => b.Id == created.Id);
     }
@@ -243,7 +246,7 @@ public class BranchManagementServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var branches = await _service.ListBranchesAsync();
+        var branches = await _listBranches.HandleAsync(new ListBranchesQuery());
 
         var damascus = branches.Single(b => b.Code == "DAM");
         Assert.Equal(1, damascus.UserCount);

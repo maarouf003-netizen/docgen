@@ -2,7 +2,6 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.UseCases.Branches;
@@ -48,11 +47,11 @@ public sealed class UpdateBranchCommandHandler
 
         OptimisticConcurrencyGuard.EnsureCurrent(branch, request.Version, "الفرع");
 
-        var name = BranchManagementService.NormalizeRequired(request.Name, "اسم الفرع مطلوب");
-        var code = BranchManagementService.NormalizeRequired(request.Code, "كود الفرع مطلوب");
+        var name = BranchProjection.NormalizeRequired(request.Name, "اسم الفرع مطلوب");
+        var code = BranchProjection.NormalizeRequired(request.Code, "كود الفرع مطلوب");
         // المحافظة إجبارية حتى في التعديل — إن كانت فرعًا قديمًا بلا محافظة فالتعديل يفرض اختيارها
         // (تُشفى البيانات القديمة تدريجيًا عبر نفس الشاشة بلا هجرة بيانات).
-        var governorate = BranchManagementService.NormalizeRequired(
+        var governorate = BranchProjection.NormalizeRequired(
             request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
         if (!GovernorateCatalog.IsGovernorate(governorate))
             throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
@@ -64,8 +63,8 @@ public sealed class UpdateBranchCommandHandler
 
         branch.Name = name;
         branch.Code = code;
-        branch.Address = BranchManagementService.NormalizeOptional(request.Address);
-        branch.Phone = BranchManagementService.NormalizeOptional(request.Phone);
+        branch.Address = BranchProjection.NormalizeOptional(request.Address);
+        branch.Phone = BranchProjection.NormalizeOptional(request.Phone);
         branch.Governorate = governorate;
         branch.IsActive = request.IsActive;
 
@@ -77,7 +76,7 @@ public sealed class UpdateBranchCommandHandler
         _cache?.Invalidate(ReferenceDataGroups.Branches);
         await _audit.LogAsync(command.ActorName, "update_branch",
             details: $"عدّل الفرع: {branch.Name} ({branch.Code})", ct: ct);
-        return BranchManagementService.ToDto(
+        return BranchProjection.ToDto(
             branch,
             userCounts.GetValueOrDefault(branch.Id),
             documentCounts.GetValueOrDefault(branch.Id));
