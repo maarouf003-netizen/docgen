@@ -14,25 +14,18 @@ internal static class RepositoryLayout
 {
     private const string SolutionRelativePath = "backend/DocGenerator.sln";
 
-    /// <summary>يعيد المسار المطلق لمجلد مصادر مشروع داخل <c>backend/src</c>.</summary>
-    /// <exception cref="InvalidOperationException">إذا لم يُعثر على الجذر أو المشروع.</exception>
-    internal static string ProjectSourceDirectory(string projectName)
+    /// <summary>
+    /// يعيد المسار المطلق لجذر المستودع (المجلد الذي يضم <c>backend/DocGenerator.sln</c>).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">إذا لم يُعثر على الجذر.</exception>
+    internal static string RepositoryRoot()
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(projectName);
-
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
             if (File.Exists(Path.Combine(directory.FullName, "backend", "DocGenerator.sln")))
             {
-                var projectDirectory = Path.Combine(directory.FullName, "backend", "src", projectName);
-                if (File.Exists(Path.Combine(projectDirectory, projectName + ".csproj")))
-                {
-                    return projectDirectory;
-                }
-
-                throw new InvalidOperationException(
-                    $"وُجد جذر المستودع في '{directory.FullName}' لكن مشروع '{projectName}' غير موجود في 'backend/src'.");
+                return directory.FullName;
             }
 
             directory = directory.Parent;
@@ -40,6 +33,23 @@ internal static class RepositoryLayout
 
         throw new InvalidOperationException(
             $"لم يُعثر على جذر المستودع (يُعرَّف بوجود '{SolutionRelativePath}') صعودًا من '{AppContext.BaseDirectory}'.");
+    }
+
+    /// <summary>يعيد المسار المطلق لمجلد مصادر مشروع داخل <c>backend/src</c>.</summary>
+    /// <exception cref="InvalidOperationException">إذا لم يُعثر على الجذر أو المشروع.</exception>
+    internal static string ProjectSourceDirectory(string projectName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectName);
+
+        var root = RepositoryRoot();
+        var projectDirectory = Path.Combine(root, "backend", "src", projectName);
+        if (File.Exists(Path.Combine(projectDirectory, projectName + ".csproj")))
+        {
+            return projectDirectory;
+        }
+
+        throw new InvalidOperationException(
+            $"وُجد جذر المستودع في '{root}' لكن مشروع '{projectName}' غير موجود في 'backend/src'.");
     }
 
     /// <summary>يسرد ملفات <c>.cs</c> المصدرية فقط، مستبعدًا مخرجات البناء والملفات المولّدة.</summary>
