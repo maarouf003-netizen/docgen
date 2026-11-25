@@ -43,58 +43,9 @@ public sealed record HeadAlertListQuery
 
 public interface IHeadAlertService
 {
-    /// <summary>
-    /// قائمة المستلَم حسب الدور (الخطة §9.3): المحامي استلامه الشخصي بلا قيد فرع،
-    /// ورئيس القسم/الشعبة ما استلمه في فرعه، والمدير/المشرف إشراف كل الفروع
-    /// (<c>IsRead=null</c> وبلا <c>unreadOnly</c>). ملخصات مرقّمة بلا نص كامل.
-    /// </summary>
-    Task<PagedResult<HeadAlertSummaryDto>> ListForActorAsync(
-        HeadAlertActor actor, HeadAlertListQuery query, CancellationToken ct = default);
-
-    /// <summary>
-    /// ما أصدره رئيس القسم/الشعبة في فرعه (تبويب «أرسلتها»): قراءة فقط —
-    /// بلا زر تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات.
-    /// <paramref name="cursor"/> غير الفارغ يثبّت موضع الصفحة (keyset)، ويُحلَّل
-    /// بعد فحص الدور/الفرع (403 قبل 400).
-    /// </summary>
-    Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
-        HeadAlertActor actor,
-        AlertArchiveFilter archive,
-        AlertPageRequest page,
-        string? cursor,
-        CancellationToken ct = default);
-
-    /// <summary>
-    /// تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») — نشطة فقط،
-    /// بعلامة قراءة بحسب المستخدم، وملخصات مرقّمة (قرار D1: page=1/pageSize=100 للشريط).
-    /// </summary>
-    Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
-        int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default);
-
-    /// <summary>
-    /// تفاصيل كاملة (الخطة §9.2): المستلم بأولوية مطلقة بلا شرط فرع، ثم المنشئ،
-    /// ثم المدير/المشرف؛ غير ذلك <c>null</c> (يُترجم إلى 404 بلا تسريب وجود).
-    /// </summary>
-    Task<HeadAlertDto?> GetDetailsAsync(int id, HeadAlertActor actor, CancellationToken ct = default);
-
-    /// <summary>
-    /// مستلمو التنبيه وحالة قراءتهم — للمنشئ أو المدير/المشرف فقط؛
-    /// غير ذلك <c>null</c> (يُترجم إلى 404).
-    /// </summary>
-    Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
-        int id, HeadAlertActor actor, CancellationToken ct = default);
-
-    /// <summary>
-    /// عدّاد غير المقروء لصفوف الفاعل نفسه (`D6`/`D7`): المحامي بلا قيد فرع،
-    /// ورئيس/شعبة داخل فرعه. المدير/المشرف يُرفضون <c>403</c>، ورئيس بلا فرع كذلك
-    /// (`D11`)، وقيمة نطاق غير معروفة <c>400</c>. (حُذف نطاق <c>received</c> في
-    /// <c>PR-6a</c> فلم يبقَ إلا <see cref="AlertUnreadScope.User"/>.)
-    /// </summary>
-    Task<int> CountUnreadAsync(
-        HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
-
     // ── المسار النظامي (الخطة §8.1) ──
-    /// <summary>    /// معالجة تنبيه نظامي — **معالج داخلي يعمل داخل معاملة مشغّل Outbox فقط**.
+    /// <summary>
+    /// معالجة تنبيه نظامي — **معالج داخلي يعمل داخل معاملة مشغّل Outbox فقط**.
     ///
     /// ينشئ/يحدّث التنبيه بمفتاح منع التكرار المركزي، ويعيد ضبط القراءة عند تغيّر النص
     /// فقط، ولا يعدّل <c>CreatedAt</c> أبدًا. يرفض العمل بلا معاملة نشطة.
@@ -130,16 +81,15 @@ public interface IHeadAlertService
 }
 
 /// <summary>
-/// تنبيهات رئيس القسم: الإصدار لفرعه فقط (رئيس القسم)، والاستلام بحسب الدور.
-/// الحذف النهائي للفرع/المستخدم مقيد بالعلاقات، والكتابة ضمن معاملة مع سجل التدقيق.
+/// تنبيهات رئيس القسم — **سطح الكتابة النظامية وحده**: الإصدار/إعادة التسمية/الأرشفة
+/// داخل معاملة المستدعي مع سجل التدقيق. قراءات التنبيهات الست انتقلت إلى
+/// <c>UseCases/Alerts</c> (`P4-01cw`)، والحذف النهائي للفرع/المستخدم مقيد بالعلاقات.
 /// </summary>
 public sealed partial class HeadAlertService : IHeadAlertService, IHeadAlertManualWriteRules
 {
     private readonly IHeadAlertRepository _alerts;
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
-    private readonly IRepository<Branch> _branches;
-    private readonly IDelegationRepository _delegations;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -149,8 +99,6 @@ public sealed partial class HeadAlertService : IHeadAlertService, IHeadAlertManu
         IHeadAlertRepository alerts,
         IDocumentRepository documents,
         IUserRepository users,
-        IRepository<Branch> branches,
-        IDelegationRepository delegations,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -159,8 +107,6 @@ public sealed partial class HeadAlertService : IHeadAlertService, IHeadAlertManu
         _alerts = alerts;
         _documents = documents;
         _users = users;
-        _branches = branches;
-        _delegations = delegations;
         _uow = uow;
         _tx = tx;
         _audit = audit;

@@ -1,8 +1,9 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+
+using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
@@ -14,7 +15,7 @@ namespace DocGenerator.Application.Tests;
 public class SubHeadAuditScopeTests : PostgresDbTest
 {
     private readonly AuditLogRepository _logs;
-    private readonly AuditLogService _service;
+    private readonly AuditLogReadHandlers _reads;
     private readonly Branch _branch;
     private readonly int _sectionA;
     private readonly int _sectionB;
@@ -46,7 +47,7 @@ public class SubHeadAuditScopeTests : PostgresDbTest
         _docNone = AddDocument(lawyer.Id, null);
 
         _logs = new AuditLogRepository(_db);
-        _service = new AuditLogService(_logs);
+        _reads = AuditLogReadHandlerFactory.Create(_db);
     }
 
 
@@ -157,7 +158,7 @@ public class SubHeadAuditScopeTests : PostgresDbTest
         AddEvent("lawyer1", _docA.Id);
         AddEvent("lawyer1", _docB.Id);
 
-        var page = await _service.SearchAsync(null, null, 1, 20, default, null, _sectionA);
+        var page = await _reads.SearchAsync(null, null, 1, 20, default, null, _sectionA);
 
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(_docA.Id, Assert.Single(page.Items).DocumentId);

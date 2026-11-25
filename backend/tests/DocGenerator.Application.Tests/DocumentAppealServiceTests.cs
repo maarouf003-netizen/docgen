@@ -23,6 +23,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
     private readonly IQueryHandler<GetAppealActionsQuery, List<AppealActionDto>> _appealActions;
     private readonly IQueryHandler<GetAppealRemindersQuery, List<AppealReminderDto>> _appealReminders;
     private readonly IHeadAlertService _alertService;
+    private readonly HeadAlertReadHandlers _alertReads;
     private readonly TransactionRunner _tx;
     private readonly HeadAlertOutbox _outbox;
     private readonly FakeAuditLogger _audit = new();
@@ -72,11 +73,10 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),
             new UserRepository(_db),
-            new Repository<Branch>(_db),
-            new DelegationRepository(_db),
             new UnitOfWork(_db),
             _tx,
             _audit);
+        _alertReads = HeadAlertReadHandlerFactory.Create(_db);
         _outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
 
         _service = new DocumentAppealService(new AppealRepository(_db));
@@ -171,7 +171,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
 
     /// <summary>قائمة المستلَم حسب دور المستخدم — صفحة كاملة للاختبار (PR-4: <c>ListForActorAsync</c>).</summary>
     private Task<PagedResult<HeadAlertSummaryDto>> ReceivedAlertsAsync(User user) =>
-        _alertService.ListForActorAsync(
+        _alertReads.ListForActorAsync(
             new HeadAlertActor(user.Id, user.Role, user.BranchId),
             new HeadAlertListQuery { Page = new AlertPageRequest { Page = 1, PageSize = AlertPageRequest.MaxPageSize } });
 

@@ -2,7 +2,7 @@
 
 - **الحالة:** معتمد
 - **التاريخ:** 2026-11-25
-- **المرجع:** `P4-01b` (إغلاق نموذج الملكية) — بعد `P4-01a` (الأساس) و`P4-01c…P4-01cu`
+- **المرجع:** `P4-01b` (إغلاق نموذج الملكية) — بعد `P4-01a` (الأساس) و`P4-01c…P4-01cw`
   (نقل use-cases كتابةً وقراءةً).
 - **يرتبط بـ:** [`0002-transactions-retry.md`](0002-transactions-retry.md)،
   [`0003-idempotency-all-writes.md`](0003-idempotency-all-writes.md)،
@@ -67,29 +67,28 @@
 | `IPortalService` | 2 | `GetFileAsync`/`ExportWorkbookAsync`: قراءتان تكتبان تدقيقًا (`view_entity_portal_files`/`export_entity_portal_excel`) فليستا قراءة صرفة (`P4-01co`) |
 | `IReferenceDataCache` | 2 | `GetOrCreateAsync`/`Invalidate`: كاش البيانات المرجعية البحتة مع إبطال بعد الكتابة |
 | `IExcelExportService` | 4 | مصنّفات `xlsx` نقية من صفوف جاهزة — تنسيق لا قراءة قاعدة ولا use-case |
-| `IAuditLogService` | 2 | قراءتان (`SearchAsync`/`GetDocumentChangesAsync`) — **دين قراءة معلن** (انظر §3) |
 
-### 2.4 سطح القراءة المتبقي (دين معلن، لا يمسّ إغلاق `P4-01b`)
+### 2.4 سطح القراءة المتبقي: **صفر** (`P4-01cw` أغلق الدين)
 
 `DoD` الخاص بـ`P4-01` هو **ملكية الكتابة**: كل نقطة كتابة = handler واحد، ولا معاملة
-مكررة في المتحكم. هذه الأسطح **قراءة صرفة** لم تُنقل بعد، وتُوثَّق صراحةً بدل ادّعاء
-اكتمالها:
+مكررة في المتحكم. وكانت هناك أسطح **قراءة صرفة** معلنة؛ أغلقها `P4-01cw` (2026-11-25):
 
-| العقد | القراءات المتبقية | الحالة |
+| العقد | القراءات المنقولة | المصير |
 |---|---:|---|
-| `IHeadAlertService` | 6 (`ListForActorAsync`/`ListSentAsync`/`ListByDelegationAsync`/`GetDetailsAsync`/`GetRecipientsAsync`/`CountUnreadAsync`) | بند متابعة `P4-01cw` (نقل قراءة، بلا تغيير سلوكي) |
-| `IStrikeOffReminderService` | 3 (`GetAsync`/`GetListAsync`/`GetCountAsync`) | بند متابعة `P4-01cw` |
-| `IAuditLogService` | 2 (`SearchAsync`/`GetDocumentChangesAsync`) | بند متابعة `P4-01cw` |
-| `IExcelExportService` | 4 مصنّفات | ليس قراءة قاعدة — يبقى كمساعد تنسيق |
+| `IHeadAlertService` | 6 (`ListForActorAsync`/`ListSentAsync`/`ListByDelegationAsync`/`GetDetailsAsync`/`GetRecipientsAsync`/`CountUnreadAsync`) | `UseCases/Alerts/` — وبقي على الواجهة **4** أعضاء كتابة نظامية |
+| `IStrikeOffReminderService` | 3 (`GetAsync`/`GetListAsync`/`GetCountAsync`) | `UseCases/Reminders/` — وحُذفت الواجهة والخدمة |
+| `IAuditLogService` | 2 (`SearchAsync`/`GetDocumentChangesAsync`) | `UseCases/Audit/` — وحُذفت الواجهة والخدمة (لا كاتب/احتفاظ عليهما) |
+| `IExcelExportService` | 4 مصنّفات | ليس قراءة قاعدة — بقي كمساعد تنسيق ولا يُحتسب دينًا |
 
-> **تصحيح موثّق:** ادّعاء «لا يبقى سطح قراءة صرف معلن» في خريطة `P4-01ct` كان غير دقيق؛
-> هذا القسم يصحّحه ويثبت الأعداد الفعلية بعد `P4-01cu`.
+> **تصحيح موثّق:** ادّعاء «لا يبقى سطح قراءة صرف معلن» في خريطة `P4-01ct` كان غير دقيق
+> وقتها؛ صُحّح في §2.4 من هذه الوثيقة، ثم أُغلق فعليًا في `P4-01cw`. الأعداد الفعلية
+> بعد `P4-01cw`: **11 → 0** قراءة على الخدمات، والدليل `docs/audit/246…248`.
 
 ## 3. الإنفاذ والتحقق
 
 1. **عدّ التسجيلات:** كل `IQueryHandler<,>`/`ICommandHandler<,>` مسجَّل مرة واحدة،
-   وعدد التسجيلات = عدد أصناف المعالجات = **218** (100 استعلامًا + 118 أمرًا) في
-   2026-11-25، بلا غير مسجَّل وبلا مكرر (تحقق آلي في لقطة الإغلاق).
+   وعدد التسجيلات = عدد أصناف المعالجات = **229** (**111** استعلامًا + **118** أمرًا) في
+   2026-11-25، بلا غير مسجَّل وبلا مكرر (تحقق آلي في لقطة `P4-01cw`).
 2. **لا خدمة قراءة ميتة:** الواجهات المحذوفة (`IForumService`/`IAppSuggestionService`/
    `IPersonalReminderService` وغيرها) لا تُسجَّل في `DI`، ولا موضع نداء لها في
    `backend/src` أو `backend/tests`.
@@ -105,4 +104,5 @@
 - الخدمات المتبقية صارت إما بنية تحتية/حرّاسًا أو مساعدات تنسيق — لا use-cases كتابة.
 - المتحكمات لا تعرف `DbContext` ولا `ITransactionRunner`؛ اختبارات المسار الكامل تبقى
   المرجع السلوكي.
-- الدين المعلن (قراءات §2.4) بند مستقل، لا يُخفى داخل «مغلق».
+- الدين المعلن (قراءات §2.4) كان بندًا مستقلًا ولم يُخفَ داخل «مغلق»، ثم أُغلق في
+  `P4-01cw`: لا سطح قراءة صرف على الخدمات، والدليل `docs/audit/246…248`.

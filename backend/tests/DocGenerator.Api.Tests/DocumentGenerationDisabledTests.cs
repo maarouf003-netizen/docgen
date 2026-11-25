@@ -25,7 +25,8 @@ public class DocumentGenerationDisabledTests
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!);
 
     [Fact]
     public async Task Generate_WhenDisabled_Returns503WithConfiguredMessage()

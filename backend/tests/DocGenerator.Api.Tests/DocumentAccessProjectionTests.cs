@@ -126,6 +126,8 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
             authorization,
             documents,
             null!,

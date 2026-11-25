@@ -202,14 +202,13 @@ public class DelegationConcurrencyTests : IAsyncLifetime
     {
         var documents = new DocumentRepository(db);
         var users = new UserRepository(db);
-        var branches = new Repository<Branch>(db);
         var registrationDates = new Repository<DocumentRegistrationDate>(db);
         var occurrences = new Repository<DocumentOccurrence>(db);
         var uow = new UnitOfWork(db);
         var tx = new TransactionRunner(db);
         var audit = new FakeAuditLogger();
         var alerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches, new DelegationRepository(db),
+            new HeadAlertRepository(db), documents, users,
             uow, tx, audit);
         var delegations = new GetDocumentDelegationsQueryHandler(
             documents,

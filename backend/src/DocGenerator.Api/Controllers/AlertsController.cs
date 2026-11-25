@@ -15,13 +15,18 @@ namespace DocGenerator.Api.Controllers;
 // الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة.
 //
 // قرار `D8` (مراجعة PR-4 `ح‑1`): هذا المتحكم يترجم HTTP فقط — لا فحص دور/فرع/طرف هنا
-// إطلاقًا، فالقرار كله في `HeadAlertService`: `ArgumentException` ⇒ 400،
+// إطلاقًا، فالقرار كله في معالجات استعلام التنبيهات: `ArgumentException` ⇒ 400،
 // `UnauthorizedAccessException` ⇒ 403. تكرار الفحص في الطبقتين هو ما جعل
-// `ListByDelegationAsync` آمنًا بحرس خارجي لا بعقده.
+// `ListHeadAlertsByDelegationQuery` آمنًا بحرس خارجي لا بعقده.
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AlertsController : ControllerBase
 {
-    private readonly IHeadAlertService _alerts;
+    private readonly IQueryHandler<ListHeadAlertsForActorQuery, PagedResult<HeadAlertSummaryDto>> _listForActor;
+    private readonly IQueryHandler<CountUnreadHeadAlertsQuery, int> _unreadCount;
+    private readonly IQueryHandler<ListSentHeadAlertsQuery, PagedResult<HeadAlertSummaryDto>> _sent;
+    private readonly IQueryHandler<GetHeadAlertDetailsQuery, HeadAlertDto?> _details;
+    private readonly IQueryHandler<GetHeadAlertRecipientsQuery, List<HeadAlertRecipientDto>?> _recipients;
+    private readonly IQueryHandler<ListHeadAlertsByDelegationQuery, PagedResult<HeadAlertSummaryDto>> _byDelegation;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
 
@@ -34,11 +39,21 @@ public class AlertsController : ControllerBase
     private const string NotFoundMessage = "التنبيه غير موجود أو لا تملك صلاحية عرضه";
 
     public AlertsController(
-        IHeadAlertService alerts,
+        IQueryHandler<ListHeadAlertsForActorQuery, PagedResult<HeadAlertSummaryDto>> listForActor,
+        IQueryHandler<CountUnreadHeadAlertsQuery, int> unreadCount,
+        IQueryHandler<ListSentHeadAlertsQuery, PagedResult<HeadAlertSummaryDto>> sent,
+        IQueryHandler<GetHeadAlertDetailsQuery, HeadAlertDto?> details,
+        IQueryHandler<GetHeadAlertRecipientsQuery, List<HeadAlertRecipientDto>?> recipients,
+        IQueryHandler<ListHeadAlertsByDelegationQuery, PagedResult<HeadAlertSummaryDto>> byDelegation,
         ICommandHandler<MarkHeadAlertReadCommand, bool> markRead,
         ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> createManual)
     {
-        _alerts = alerts;
+        _listForActor = listForActor;
+        _unreadCount = unreadCount;
+        _sent = sent;
+        _details = details;
+        _recipients = recipients;
+        _byDelegation = byDelegation;
         _markRead = markRead;
         _createManual = createManual;
     }
@@ -78,7 +93,8 @@ public class AlertsController : ControllerBase
                 Page = BuildPageRequest(page, pageSize),
                 Cursor = cursor,
             };
-            return Ok(await _alerts.ListForActorAsync(Actor, query, ct));
+            return Ok(await _listForActor.HandleAsync(
+                new ListHeadAlertsForActorQuery(Actor, query), ct));
         }
         catch (UnauthorizedAccessException)
         {
@@ -98,7 +114,9 @@ public class AlertsController : ControllerBase
     {
         try
         {
-            return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ParseUnreadScope(scope), ct) });
+            var count = await _unreadCount.HandleAsync(
+                new CountUnreadHeadAlertsQuery(Actor, ParseUnreadScope(scope)), ct);
+            return Ok(new { count });
         }
         catch (UnauthorizedAccessException)
         {
@@ -121,11 +139,12 @@ public class AlertsController : ControllerBase
     {
         try
         {
-            return Ok(await _alerts.ListSentAsync(
-                Actor,
-                ParseArchiveFilter(archived),
-                BuildPageRequest(page, pageSize),
-                cursor,
+            return Ok(await _sent.HandleAsync(
+                new ListSentHeadAlertsQuery(
+                    Actor,
+                    ParseArchiveFilter(archived),
+                    BuildPageRequest(page, pageSize),
+                    cursor),
                 ct));
         }
         catch (UnauthorizedAccessException)
@@ -157,7 +176,7 @@ public class AlertsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var alert = await _alerts.GetDetailsAsync(id, Actor, ct);
+        var alert = await _details.HandleAsync(new GetHeadAlertDetailsQuery(id, Actor), ct);
         return alert is null
             ? ApiProblem.Result(HttpContext, StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, NotFoundMessage)
             : Ok(alert);
@@ -170,7 +189,7 @@ public class AlertsController : ControllerBase
     [HttpGet("{id:int}/recipients")]
     public async Task<IActionResult> Recipients(int id, CancellationToken ct)
     {
-        var recipients = await _alerts.GetRecipientsAsync(id, Actor, ct);
+        var recipients = await _recipients.HandleAsync(new GetHeadAlertRecipientsQuery(id, Actor), ct);
         return recipients is null
             ? ApiProblem.Result(HttpContext, StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, NotFoundMessage)
             : Ok(recipients);
@@ -192,7 +211,8 @@ public class AlertsController : ControllerBase
             // قرار D1: الافتراضي للشريط صفحة واحدة بحد أقصى 100 — والترقيم صارم.
             // التحقق نفسه في الخدمة (بعد فحص الدور) كي لا يسبق 400 رفضَ الصلاحية.
             var request = BuildPageRequest(page, pageSize, AlertPageRequest.MaxPageSize);
-            return Ok(await _alerts.ListByDelegationAsync(delegationId, Actor, request, ct));
+            return Ok(await _byDelegation.HandleAsync(
+                new ListHeadAlertsByDelegationQuery(delegationId, Actor, request), ct));
         }
         catch (UnauthorizedAccessException)
         {

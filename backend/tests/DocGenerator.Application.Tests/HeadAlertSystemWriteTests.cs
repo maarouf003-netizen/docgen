@@ -71,8 +71,6 @@ public class HeadAlertSystemWriteTests : IAsyncLifetime
             new HeadAlertRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
             new DocumentRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
             new UserRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new Repository<Branch>(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new DelegationRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
             new UnitOfWork(sp.GetRequiredService<DocGeneratorDbContext>()),
             sp.GetRequiredService<ITransactionRunner>(),
             new FakeAuditLogger(),

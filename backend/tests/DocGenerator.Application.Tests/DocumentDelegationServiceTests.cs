@@ -75,8 +75,6 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new HeadAlertRepository(_db),
             documents,
             users,
-            branches,
-            new DelegationRepository(_db),
             uow,
             _tx,
             _audit);

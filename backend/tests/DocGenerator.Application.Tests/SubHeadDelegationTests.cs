@@ -58,15 +58,12 @@ public class SubHeadDelegationTests : PostgresDbTest
 
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
-        var branches = new Repository<Branch>(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
         _headAlerts = new HeadAlertService(
             new HeadAlertRepository(_db),
             documents,
             users,
-            branches,
-            new DelegationRepository(_db),
             uow,
             _tx,
             _audit);

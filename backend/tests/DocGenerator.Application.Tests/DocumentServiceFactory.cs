@@ -56,8 +56,6 @@ public static class DocumentServiceFactory
             new HeadAlertRepository(db),
             documentsValue,
             usersValue,
-            branches ?? new Repository<Branch>(db),
-            new DelegationRepository(db),
             uowValue,
             txValue,
             audit);
