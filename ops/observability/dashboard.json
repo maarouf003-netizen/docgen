@@ -576,7 +576,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "editorMode": "code",
-          "expr": "db_client_connection_count{state=\"used\"} / ignoring(state) (clamp_min(db_client_connection_max, 1))",
+          "expr": "sum(db_client_connection_count{state=\"used\"}) / clamp_min(sum(db_client_connection_max), 1)",
           "legendFormat": "used / max",
           "range": true,
           "refId": "A"

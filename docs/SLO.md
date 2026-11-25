@@ -231,12 +231,12 @@ outbox_healthy_ratio = avg_over_time(probe_success{job="docgen-outbox-ready"}[30
 
 ```
 db_pool_used_ratio =
-  db_client_connection_count{state="used"}
-  / ignoring(state) (clamp_min(db_client_connection_max, 1))
+  sum(db_client_connection_count{state="used"})
+  / clamp_min(sum(db_client_connection_max), 1)
 ```
 
-> `ignoring(state)` لازم لأن `connection.count` يحمل `state` بينما `connection.max` لا
-> يحمله؛ بدونها لا يتطابق المتجهان ولا تُنتج النسبة أي بيانات.
+> `sum` يجمع كل المجمّعات (التطبيق يستخدم مجمّعًا واحدًا افتراضيًا) ويمنع عدم تطابق
+> وسوم مثل `state` بين `connection.count` و`connection.max`؛ لا حاجة إلى `ignoring`.
 
 **الهدف:** `≤ 0.80` في `99%` من الدقائق شهريًا. **الميزانية:** `1%` من الدقائق.
 **الحالة الحالية:** **غير مقيس** — متر `Npgsql` غير مسجّل في `P5-01`؛ القواعد موجودة في

@@ -381,7 +381,7 @@ groups:
       # intentionally not wrapped in absent()/absent_over_time().
       - alert: DocGenDbPoolSaturationWarning
         expr: |
-          (db_client_connection_count{state="used"} / ignoring(state) (clamp_min(db_client_connection_max, 1))) > 0.8
+          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -398,7 +398,7 @@ groups:
 
       - alert: DocGenDbPoolSaturationCritical
         expr: |
-          (db_client_connection_count{state="used"} / ignoring(state) (clamp_min(db_client_connection_max, 1))) > 0.95
+          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.95
         for: 5m
         labels:
           severity: critical
