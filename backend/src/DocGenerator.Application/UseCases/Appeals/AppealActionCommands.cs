@@ -52,7 +52,7 @@ public sealed class AddAppealActionCommandHandler
         // (NormalizeAction/NormalizeReminder) بينما كان هذا المسار يقبل أي نص بطول مباح،
         // فتُخزَّن قيم تُفسَّر صفرًا أو بتاريخ الإنشاء بصمت وقت القراءة.
         ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
-        // مرآة قاعدة إجراءات الملف (`DocumentService.Actions`): الإجراء بلا تاريخ
+        // مرآة قاعدة إجراءات الملف: الإجراء بلا تاريخ
         // مرفوض (الملاحظة اختيارية) — بدل تخزين تاريخ ميت.
         var effectiveType = (request.Type ?? "action").Trim();
         if (effectiveType == "action" && string.IsNullOrWhiteSpace(request.ActionDate))

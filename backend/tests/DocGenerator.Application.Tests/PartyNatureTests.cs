@@ -20,7 +20,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class PartyNatureTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _service;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly FakeAuditLogger _audit = new();
 
@@ -45,7 +45,7 @@ public class PartyNatureTests : PostgresDbTest
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
-        _service = bundle.Documents;
+        _service = bundle.Reads.GetDocument;
         _create = bundle.CreateDocument;
     }
 

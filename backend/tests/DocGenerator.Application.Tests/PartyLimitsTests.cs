@@ -17,7 +17,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class PartyLimitsTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _service;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
@@ -34,7 +34,7 @@ public class PartyLimitsTests : PostgresDbTest
             PasswordHash = new PasswordHasher().Hash("123456"),
         });
         _db.SaveChanges();
-        _service = DocumentServiceFactory.Create(_db, _audit).Documents;
+        _service = DocumentServiceFactory.Create(_db, _audit).Reads.GetDocument;
         _create = DocumentServiceFactory.Create(_db, _audit).CreateDocument;
         _update = DocumentServiceFactory.Create(_db, _audit).UpdateDocument;
     }

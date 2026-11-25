@@ -7,7 +7,7 @@ namespace DocGenerator.Application.Services;
 /// <summary>
 /// خدمة الحالات (بقايا عقد مساعدات فقط بعد `P4-01bd`): انتقالات الحالة صارت أوامر
 /// تملك معاملاتها، وبقي هنا كاتبا الوقوعات/التجديد اللذان يُستدعيان داخل معاملة
-/// مستدعٍ خارجي (`UpdateDocumentCommand`/`DocumentService`) — لا يفتحان معاملة.
+/// مستدعٍ خارجي (`UpdateDocumentCommand`/`CreateDocumentCommand`) — لا يفتحان معاملة.
 /// التنفيذ الفعلي في `DocumentStatusRules` (مصدر واحد بلا تكرار).
 /// </summary>
 public sealed class DocumentStatusService : IDocumentStatusService

@@ -1,5 +1,5 @@
 using System.Reflection;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using NetArchTest.Rules;
 
@@ -16,7 +16,7 @@ namespace DocGenerator.Architecture.Tests;
 public class LayerBoundaryTests
 {
     private static readonly Assembly DomainAssembly = typeof(Document).Assembly;
-    private static readonly Assembly ApplicationAssembly = typeof(DocumentService).Assembly;
+    private static readonly Assembly ApplicationAssembly = typeof(GetDocumentQuery).Assembly;
     private static readonly Assembly InfrastructureAssembly =
         typeof(DocGenerator.Infrastructure.Persistence.DocGeneratorDbContext).Assembly;
 

@@ -6,7 +6,7 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Options;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.Interventions;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Http;
@@ -29,7 +29,7 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_UsesAccessProjection_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService();
+        var documents = new StubGetDocumentHandler();
         var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization
         {
@@ -48,7 +48,7 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_OtherLawyer_Forbids_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService();
+        var documents = new StubGetDocumentHandler();
         var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization
         {
@@ -67,7 +67,7 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task AddIntervention_MissingDocument_ReturnsNotFound_AndNeverLoadsFullDocument()
     {
-        var documents = new StubDocumentService();
+        var documents = new StubGetDocumentHandler();
         var add = new StubHandler<AddDocumentInterventionCommand, DocumentInterventionDto>(null!);
         var authorization = new StubDocumentAuthorization { AccessInfo = null };
         var controller = CreateController(documents, authorization, add);
@@ -83,7 +83,7 @@ public sealed class DocumentAccessProjectionTests
     [Fact]
     public async Task UpdateAndDeleteIntervention_UseAccessProjection_AndNeverLoadFullDocument()
     {
-        var documents = new StubDocumentService();
+        var documents = new StubGetDocumentHandler();
         var update = new StubHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?>(null);
         var delete = new StubHandler<DeleteDocumentInterventionCommand, bool>(false);
         var authorization = new StubDocumentAuthorization
@@ -105,7 +105,7 @@ public sealed class DocumentAccessProjectionTests
     }
 
     private static DocumentsController CreateController(
-        StubDocumentService documents,
+        StubGetDocumentHandler documents,
         StubDocumentAuthorization authorization,
         ICommandHandler<AddDocumentInterventionCommand, DocumentInterventionDto>? add = null,
         ICommandHandler<UpdateDocumentInterventionCommand, DocumentInterventionDto?>? update = null,
@@ -119,7 +119,6 @@ public sealed class DocumentAccessProjectionTests
         ], "test");
 
         return new DocumentsController(
-            documents,
             null!,
             null!,
             null!,
@@ -129,6 +128,11 @@ public sealed class DocumentAccessProjectionTests
             null!,
             null!,
             authorization,
+            documents,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -169,32 +173,16 @@ public sealed class DocumentAccessProjectionTests
     /// بديل صريح: أي استدعاء للتحميل الكامل أو لحلّ المورد من المتحكم يفشل الاختبار فورًا
     /// (حلّ المورد ملك السياسة).
     /// </summary>
-    private sealed class StubDocumentService : IDocumentService
+    private sealed class StubGetDocumentHandler : IQueryHandler<GetDocumentQuery, DocumentResponse?>
     {
         public bool GetAsyncCalled { get; private set; }
 
-        public Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)
+        public Task<DocumentResponse?> HandleAsync(GetDocumentQuery query, CancellationToken ct = default)
         {
             GetAsyncCalled = true;
             throw new InvalidOperationException(
                 "F-01: يجب ألا يستدعي المتحكم التحميل الكامل للمستند في مسار فحص الوصول");
         }
-
-        public Task<DocumentAccessInfo?> GetAccessInfoAsync(
-            int documentId, CancellationToken ct = default)
-            => throw new InvalidOperationException(
-                "P2-01a: حلّ المورد ملك سياسة IDocumentAuthorization لا المتحكم");
-
-        public Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null)
-            => throw new NotSupportedException();
-        public Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<List<BaseNumberHistoryDto>> GetDeletedBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
-            => throw new NotSupportedException();
     }
 
     /// <summary>

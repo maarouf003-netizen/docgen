@@ -160,7 +160,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// كتب الملف المنيب التي تنتقل معه إلى الملف المناب: ورود الملف وكتاب الجهة العامة
     /// ورقم تحت رفع وتاريخ إلقاء الحجز. حقلّا «ورود الإخطار التنفيذي»
     /// (FileReceiptNumber/FileReceiptDate) خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة
-    /// تنفيذ (DocumentService.Apply.cs)، فهما خارج عقد المرآة (B6) ولا يُنسخان هنا.
+    /// تنفيذ (DocumentUpsertMapper.cs)، فهما خارج عقد المرآة (B6) ولا يُنسخان هنا.
     /// </summary>
     private static void CopyBooks(Document source, Document target)
     {

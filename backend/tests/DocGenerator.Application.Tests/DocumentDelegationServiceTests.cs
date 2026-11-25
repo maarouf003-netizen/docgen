@@ -23,7 +23,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
     private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
     private readonly IQueryHandler<CountPendingDelegationsQuery, int> _pendingDelegationsCount;
-    private readonly IDocumentService _documentService;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _documentService;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _documentTransfer;
@@ -119,7 +119,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _delegationComplete = DelegationWriteHandlerFactory.Complete(_db, _audit);
 
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
-        _documentService = docBundle.Documents;
+        _documentService = docBundle.Reads.GetDocument;
         _documentUpdate = docBundle.UpdateDocument;
         _documentDelete = docBundle.DeleteDocument;
         _documentTransfer = docBundle.TransferDocument;
@@ -3928,7 +3928,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     }
 
     // ── منع حذف ملفٍ فيه إنابة أو استئناف (أي حالة) ──────────────────────────
-    // الحارس في DocumentService.DeleteAsync: إنابة صادرة (أي حالة) ← الرسالة 1،
+    // الحارس في DeleteDocumentCommand: إنابة صادرة (أي حالة) ← الرسالة 1،
     // ملف مناب ← الرسالة 2، أي استئناف (منظور/محسوم/مشطوب) ← الرسالة 3.
 
     private async Task<Document> CreateSourceWithDelegationAsync()

@@ -578,7 +578,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task Delete_CascadeRemovesDelegationOfPurgedDoc()
     {
-        // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DocumentService.DeleteAsync
+        // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DeleteDocumentCommand
         // يمنع حذف ملف له إنابة): إنابة مصدرها صف محذوف داخل الدائرة بلا ملف مناب مرتبط
         // (المناب لم يُسجَّل بعد — Documents.SourceDelegationId فريد على الكيان المرفوع حاليًا).
         // الخارجية (IsExternal=true) بلا DelegatedCircuitId فلا تدخل حلقة فصل الوارد

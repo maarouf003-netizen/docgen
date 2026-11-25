@@ -5,6 +5,7 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Appeals;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,7 +22,7 @@ namespace DocGenerator.Api.Controllers;
 public class AppealsController : ControllerBase
 {
     private readonly IDocumentAppealService _appeals;
-    private readonly IDocumentService _documents;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
     private readonly IUserCapabilities _capabilities;
     private readonly IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> _appealList;
     private readonly IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>> _appealSearch;
@@ -52,7 +53,7 @@ public class AppealsController : ControllerBase
 
     public AppealsController(
         IDocumentAppealService appeals,
-        IDocumentService documents,
+        IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
         IUserCapabilities capabilities,
         IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> appealList,
         IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>> appealSearch,
@@ -82,7 +83,7 @@ public class AppealsController : ControllerBase
         ICommandHandler<CorrectAppealBaseNumberCommand, bool> correctAppealBaseNumber)
     {
         _appeals = appeals;
-        _documents = documents;
+        _getDocument = getDocument;
         _capabilities = capabilities;
         _appealList = appealList;
         _appealSearch = appealSearch;
@@ -183,7 +184,7 @@ public class AppealsController : ControllerBase
     [HttpGet("documents/{documentId:int}/appeals")]
     public async Task<IActionResult> ListForDocument(int documentId, CancellationToken ct)
     {
-        var doc = await _documents.GetAsync(documentId, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(documentId), ct);
         if (doc is null)
             return ApiProblem.Result(
                             HttpContext,

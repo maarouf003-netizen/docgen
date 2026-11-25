@@ -6,7 +6,7 @@ namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// قواعد التحقق النقية لطلب إنشاء/تعديل الملف (بلا حالة ولا اعتماديات تخزين).
-/// استُخرجت من DocumentService ضمن إعادة الهيكلة المتدرجة — السلوك مطابق حرفيًا.
+/// استُخرجت من خدمة المستندات القديمة ضمن إعادة الهيكلة المتدرجة — السلوك مطابق حرفيًا.
 /// </summary>
 public static class DocumentValidator
 {

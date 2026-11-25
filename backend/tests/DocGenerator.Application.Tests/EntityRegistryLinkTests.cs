@@ -20,7 +20,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class EntityRegistryLinkTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _service;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
@@ -54,7 +54,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx);
-        _service = bundle.Documents;
+        _service = bundle.Reads.GetDocument;
         _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
     }

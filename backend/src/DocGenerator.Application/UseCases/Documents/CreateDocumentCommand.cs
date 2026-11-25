@@ -105,12 +105,12 @@ public sealed class CreateDocumentCommandHandler : CommandHandlerBase<CreateDocu
             UpdatedAt = DateTime.UtcNow,
         };
 
-        DocumentService.ApplyRequest(doc, request);
+        DocumentUpsertMapper.ApplyRequest(doc, request);
         // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
         var createCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
         DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
         DocumentText.FillDerivedFields(doc);
-        DocumentService.ApplyRegistrationDate(doc, request.FileRegistrationDate, _registrationDates);
+        DocumentUpsertMapper.ApplyRegistrationDate(doc, request.FileRegistrationDate, _registrationDates);
 
         // RF-011: حجز المفتاح بعد كل التحققات (المدخل الباطل 400 بلا حجز) وقبل أي
         // كتابة — التكرار بنفس البصمة يُعيد المخزن (`IdempotentReplayException`)،

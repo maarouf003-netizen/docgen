@@ -8,7 +8,7 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// خدمة البحث والتصدير (مستخرجة من `DocumentService` — المرحلة 2، نقل ميكانيكي بلا سلوك).
+/// خدمة البحث والتصدير (مستخرجة من خدمة المستندات القديمة — المرحلة 2، نقل ميكانيكي بلا سلوك).
 /// الاعتمادات الدقيقة: `_documents` و`_appeals` و`_audit` (التصدير يسجّل تدقيقًا)
 /// و`ExportOptions` (`_maxExportRows`) والساعة/المنطقة — وبلا `_tx`/`_uow`/`_users`.
 /// قرائية غالبًا (الكتابة الوحيدة: سجل تدقيق التصدير بحفظة واحدة بلا معاملة).

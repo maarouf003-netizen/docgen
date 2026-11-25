@@ -26,7 +26,7 @@ public class ExportProjectionTests : PostgresDbTest
     private int _userId;
 
 
-    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Build()
+    private (DocumentReadHandlers Reads, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Build()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -47,7 +47,7 @@ public class ExportProjectionTests : PostgresDbTest
     public async Task ExportAsync_ProjectsRelatedListsAndEffectiveIdentity()
     {
         var bundle = Build();
-        var svc = bundle.Documents;
+        var svc = bundle.Reads.GetDocument;
         var create = bundle.CreateDocument;
         var created = await create.CreateAsync(new DocumentUpsertRequest
         {
@@ -98,7 +98,7 @@ public class ExportProjectionTests : PostgresDbTest
         // عائلة «منفذ عليه»: الاسم المعروض أول طالب تنفيذ غير فارغ — الأول الفارغ
         // يُتخطى والثاني المسمّى يفوز، فيثبت حفظ الترتيب عبر الإسقاط إلى الورقة.
         var bundle = Build();
-        var svc = bundle.Documents;
+        var svc = bundle.Reads.GetDocument;
         var create = bundle.CreateDocument;
         var created = await create.CreateAsync(new DocumentUpsertRequest
         {
