@@ -1,0 +1,200 @@
+# ============================================================================
+# docgen-api — OpenTelemetry Collector (contrib) configuration
+# P5-02: OTLP receiver -> processors (redaction/sampling) -> exporters.
+#
+# This file is *deployment configuration*, not application runtime code:
+# the API stays opt-in and unchanged (P5-01). Nothing here is loaded by the
+# .NET process; the collector is a separate container/process.
+#
+# Tested against the otel/opentelemetry-collector-contrib distribution
+# (pin an exact image tag in deployment; see docs/runbooks/observability.md).
+# ============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: 0.0.0.0:4318
+
+connectors:
+  # SQL duration is derived from EF Core spans only. `span.name` is excluded
+  # because it can contain the full statement (high cardinality); SQL text is
+  # redacted below, so only low-cardinality database dimensions remain.
+  span_metrics:
+    namespace: docgen.db
+    histogram:
+      unit: s
+      explicit:
+        buckets: [1ms, 2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+    dimensions:
+      - name: db.system.name
+      - name: db.namespace
+    exclude_dimensions:
+      - span.name
+      - collector.instance.id
+    include_instrumentation_scope:
+      - OpenTelemetry.Instrumentation.EntityFrameworkCore
+    resource_metrics_key_attributes:
+      - service.name
+      - service.namespace
+      - deployment.environment
+    aggregation_cardinality_limit: 5000
+    metrics_flush_interval: 30s
+    metrics_expiration: 10m
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  resourcedetection:
+    detectors: [env, system]
+    system:
+      hostname_sources: [os]
+    override: false
+
+  resource:
+    attributes:
+      - key: service.namespace
+        value: docgen
+        action: upsert
+
+  # Defense in depth for PII: drop credentials, cookies, query strings and
+  # raw SQL text/parameters before anything reaches Tempo/Prometheus.
+  # The app already avoids bodies/passwords (P5-01), but collectors must not
+  # assume upstream instrumentation is perfect.
+  attributes/redact:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: http.request.header.set-cookie
+        action: delete
+      - key: http.response.header.set-cookie
+        action: delete
+      - key: url.query
+        action: delete
+      - key: url.path
+        action: delete
+      - key: http.target
+        action: delete
+      - key: db.query.text
+        action: delete
+      - key: db.statement
+        action: delete
+      - key: db.query.parameter
+        action: delete
+      - pattern: ^(db\.query\.parameter\..*|.*\.(password|passwd|secret|token|api_key|apikey|authorization))$
+        action: delete
+
+  # Health/readiness probes are operational noise for traces and for the
+  # request-rate panels; they are monitored by blackbox probes instead.
+  filter/health:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.route"] == "/healthz"'
+        - 'attributes["http.route"] == "/readyz"'
+        - 'attributes["http.route"] == "/healthz/outbox"'
+    metrics:
+      metric:
+        - 'attributes["http.route"] == "/healthz"'
+        - 'attributes["http.route"] == "/readyz"'
+        - 'attributes["http.route"] == "/healthz/outbox"'
+
+  # Keep every error and every slow trace, sample the rest at 10%.
+  # This is the standard "sane" baseline for a small legal-records API.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 50
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: baseline
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+  # One batch instance per pipeline: batching is stateful and must not be
+  # shared between pipelines.
+  batch/spanmetrics:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+  batch/traces:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+  batch/metrics:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+exporters:
+  # Traces -> Tempo (OTLP/gRPC). Override with TEMPO_OTLP_ENDPOINT.
+  otlp/tempo:
+    endpoint: "${env:TEMPO_OTLP_ENDPOINT:-http://tempo:4317}"
+    tls:
+      insecure: true
+    compression: gzip
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 60s
+
+  # Metrics -> Prometheus scrape endpoint (default :8889/metrics).
+  # add_metric_suffixes=true is the documented naming contract in docs/SLO.md.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+    metric_expiration: 10m
+    enable_open_metrics: true
+    add_metric_suffixes: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+  pipelines:
+    # Unsampled trace pipeline for derived SQL metrics. This keeps SQL p95
+    # exact even though full traces are tail-sampled below.
+    traces/spanmetrics:
+      receivers: [otlp]
+      processors:
+        [memory_limiter, resourcedetection, resource, attributes/redact, filter/health, batch/spanmetrics]
+      exporters: [span_metrics]
+
+    # Sampled traces for Tempo (10% baseline, 100% errors/slow).
+    traces:
+      receivers: [otlp]
+      processors:
+        [memory_limiter, resourcedetection, resource, attributes/redact, filter/health,
+         tail_sampling, batch/traces]
+      exporters: [otlp/tempo]
+
+    metrics:
+      receivers: [otlp, span_metrics]
+      processors: [memory_limiter, resourcedetection, resource, attributes/redact, filter/health, batch/metrics]
+      exporters: [prometheus]

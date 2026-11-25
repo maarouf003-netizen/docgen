@@ -530,6 +530,18 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - **بلا هجرات:** هذه الجولة لا تمسّ قاعدة البيانات؛ لا خطوة `dotnet ef database update` لها.
   التفاصيل: `docs/audit/255-p5-01-opentelemetry-20261126.md`.
 
+### الرصد و`SLO` (P5-02 — كرمز، لا تغيير وقت تشغيل)
+
+- **التعريف والأهداف:** [`docs/SLO.md`](docs/SLO.md) — الإتاحة 99.5%، قراءة `p95 ≤ 500ms`،
+  كتابة `p95 ≤ 1s`، `Outbox` (15 دقيقة)، المجمّع، المصادقة/حدّ المعدل، وميزانية الخطأ.
+- **ملفات جاهزة للاستيراد:** `ops/observability/otel-collector.yaml` (جامع `OTLP`)،
+  `alerts.yaml` (24 قاعدة `PrometheusRule`)، `dashboard.json` (13 لوحة `Grafana`).
+- **الدليل الكامل:** [`docs/runbooks/observability.md`](docs/runbooks/observability.md)
+  (التفعيل، `blackbox`، الاستيراد، التحقق، وإجراء لكل تنبيه).
+- **التحقق قبل الدمج:** `node scripts/observability-config-guard.mjs --self-test`.
+- **لا تغيير في التطبيق:** لا حزم/نقاط نهاية/هجرة؛ يبقى الرصد اختياريًا كما في `P5-01`.
+  `SLO-5` (مجمّع `Npgsql`) **غير مقيس** حتى تفعيل متر `Npgsql` في تغيير لاحق.
+
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > **حارس آلي (P7-02a):** `CI` (وظيفة `guards`) يشغّل `node scripts/migration-watchlist-guard.mjs`
