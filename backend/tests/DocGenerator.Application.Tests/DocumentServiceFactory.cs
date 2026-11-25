@@ -10,7 +10,7 @@ using DocGenerator.Infrastructure.Persistence;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// مصنع اختباري يعزل مواقع بناء `DocumentService` (مشروع الاختبارات فقط):
+/// مصنع اختباري يعزل مواقع بناء معالجات المستند وخدماته المساندة (مشروع الاختبارات فقط):
 /// كل مواقع الاستدعاء تستخدم معاملات مسماة/اختيارية، فيبقى أي تقليص لاحق للبواني
 /// داخل جسم المصنع فقط لا في مواقع الاستدعاء.
 /// المستودعات مغلفات عديمة الحالة فوق `DbContext` نفسه فسلوك المثيلات الجديدة
@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
+    public static (DocumentReadHandlers Reads, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -150,12 +150,28 @@ public static class DocumentServiceFactory
                 clockValue, timeZoneValue,
                 Array.Empty<IPipelineBehavior<RestoreStruckOffDocumentCommand, bool>>()));
 
-        var documentService = new DocumentService(
-            documentsValue,
-            usersValue,
-            numberRegistry,
-            clockValue,
-            timeZoneValue);
+        var reads = new DocumentReadHandlers(
+            new GetDocumentQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<GetDocumentQuery, DocumentResponse?>>()),
+            new GetDocumentAccessInfoQueryHandler(
+                documentsValue,
+                Array.Empty<IPipelineBehavior<GetDocumentAccessInfoQuery, DocumentAccessInfo?>>()),
+            new GetDeletedDocumentQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<GetDeletedDocumentQuery, DocumentResponse?>>()),
+            new CountFilesByOwnerQueryHandler(
+                usersValue, documentsValue,
+                Array.Empty<IPipelineBehavior<CountFilesByOwnerQuery, int>>()),
+            new GetDocumentRotationListQueryHandler(
+                documentsValue, numberRegistry, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>>>()),
+            new GetDocumentBaseNumberHistoryQueryHandler(
+                numberRegistry,
+                Array.Empty<IPipelineBehavior<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>>()),
+            new GetDeletedDocumentBaseNumberHistoryQueryHandler(
+                numberRegistry,
+                Array.Empty<IPipelineBehavior<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>>()));
 
         var createDocument = new CreateDocumentCommandHandler(
             documentsValue,
@@ -222,9 +238,22 @@ public static class DocumentServiceFactory
             numberRegistry,
             Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
 
-        return (documentService, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
+        return (reads, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
     }
 }
+
+/// <summary>
+/// معالجات قراءة المستند (`P4-01cq`) فوق سياق واحد ومصانع الخدمة نفسها — تُحقن
+/// صراحةً في الاختبارات بدل <c>IDocumentService</c> المحذوفة.
+/// </summary>
+public sealed record DocumentReadHandlers(
+    IQueryHandler<GetDocumentQuery, DocumentResponse?> GetDocument,
+    IQueryHandler<GetDocumentAccessInfoQuery, DocumentAccessInfo?> GetAccessInfo,
+    IQueryHandler<GetDeletedDocumentQuery, DocumentResponse?> GetDeletedDocument,
+    IQueryHandler<CountFilesByOwnerQuery, int> CountFilesByOwner,
+    IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> RotationList,
+    IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> BaseNumberHistory,
+    IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> DeletedBaseNumberHistory);
 
 /// <summary>معالجات انتقالات حالة المستند (`P4-01bd`) فوق سياق واحد ومصانع الخدمة نفسها.</summary>
 public sealed record DocumentStatusHandlers(

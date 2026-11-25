@@ -114,7 +114,7 @@ public sealed class UpdateDocumentCommandHandler
         var oldCourtNorm = doc.CourtNorm;
         var wasPending = doc.NeedsRegistration;
 
-        DocumentService.ApplyRequest(doc, request);
+        DocumentUpsertMapper.ApplyRequest(doc, request);
         // سجل الدوائر: تبديل الدائرة من التعديل مسموح (فحص 409) — يُحفظ القديم للوقوعتين.
         // القواعد: (1) بلا معرف ولا نص → إبقاء الحالي (توافق الطلبات الجزئية)؛
         // (2) نفس المعرف → إبقاء (قاعدة الجد: ملف الدائرة المعطلة يُعدَّل ويبقى عليها)؛
@@ -136,7 +136,7 @@ public sealed class UpdateDocumentCommandHandler
         if (wasPending && !string.IsNullOrWhiteSpace(doc.FileNumber) && !string.IsNullOrWhiteSpace(doc.FileYear))
             doc.NeedsRegistration = false;
         DocumentText.FillDerivedFields(doc);
-        DocumentService.ApplyRegistrationDate(doc, request.FileRegistrationDate, _registrationDates);
+        DocumentUpsertMapper.ApplyRegistrationDate(doc, request.FileRegistrationDate, _registrationDates);
         doc.UpdatedAt = DateTime.UtcNow;
 
         // RF-009 بتوقيع الدائرة: فحص التكرار بعد تطبيق الطلب.

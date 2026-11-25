@@ -159,7 +159,7 @@ public sealed partial class DocumentDelegationService
         changed |= CopyField(source.FileIncomingDate, target.FileIncomingDate, v => target.FileIncomingDate = v);
         changed |= CopyField(source.UnderFilingNumber, target.UnderFilingNumber, v => target.UnderFilingNumber = v);
         // حقلّا «ورود الإخطار التنفيذي» (FileReceiptNumber/FileReceiptDate) خارج عقد المرآة (B6):
-        // خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة تنفيذ (DocumentService.Apply.cs)، فلا
+        // خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة تنفيذ (DocumentUpsertMapper.cs)، فلا
         // يُنسخان هنا كما لا يُفحصان في الحارس.
         changed |= CopyField(source.SeizureDate, target.SeizureDate, v => target.SeizureDate = v);
         if (changed)

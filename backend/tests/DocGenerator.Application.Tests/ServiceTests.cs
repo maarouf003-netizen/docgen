@@ -15,9 +15,13 @@ using DocGenerator.Application.Tests.TestHelpers;
 
 namespace DocGenerator.Application.Tests;
 
-public class DocumentServiceTests : PostgresDbTest
+public class DocumentUseCaseTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _service;
+    private readonly IQueryHandler<GetDeletedDocumentQuery, DocumentResponse?> _getDeleted;
+    private readonly IQueryHandler<CountFilesByOwnerQuery, int> _countFilesByOwner;
+    private readonly IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> _rotationList;
+    private readonly IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> _baseNumberHistory;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
@@ -35,7 +39,7 @@ public class DocumentServiceTests : PostgresDbTest
     private readonly ICommandHandler<RestoreDocumentCommand, bool> _restore;
     private readonly FakeAuditLogger _audit = new();
 
-    public DocumentServiceTests()
+    public DocumentUseCaseTests()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -56,7 +60,11 @@ public class DocumentServiceTests : PostgresDbTest
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
-        _service = bundle.Documents;
+        _service = bundle.Reads.GetDocument;
+        _getDeleted = bundle.Reads.GetDeletedDocument;
+        _countFilesByOwner = bundle.Reads.CountFilesByOwner;
+        _rotationList = bundle.Reads.RotationList;
+        _baseNumberHistory = bundle.Reads.BaseNumberHistory;
         _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
         _delete = bundle.DeleteDocument;
@@ -1051,7 +1059,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _create.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _delete.DeleteAsync(doc.Id, "lawyer1");
 
-        var count = await _service.CountFilesByOwnerAsync(1, scopeBranchId: 1);
+        var count = await _countFilesByOwner.CountFilesByOwnerAsync(1, scopeBranchId: 1);
 
         Assert.Equal(1, count);
     }
@@ -1061,7 +1069,7 @@ public class DocumentServiceTests : PostgresDbTest
     {
         await _create.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.CountFilesByOwnerAsync(1, scopeBranchId: 2));
+        await Assert.ThrowsAsync<ArgumentException>(() => _countFilesByOwner.CountFilesByOwnerAsync(1, scopeBranchId: 2));
     }
 
     [PostgresFact]
@@ -2756,10 +2764,10 @@ public class DocumentServiceTests : PostgresDbTest
         var deleted = await _create.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _delete.DeleteAsync(deleted.Id, "head1");
 
-        Assert.Null(await _service.GetDeletedAsync(active.Id));
-        Assert.Null(await _service.GetDeletedAsync(99_999));
+        Assert.Null(await _getDeleted.GetDeletedAsync(active.Id));
+        Assert.Null(await _getDeleted.GetDeletedAsync(99_999));
 
-        var dto = await _service.GetDeletedAsync(deleted.Id);
+        var dto = await _getDeleted.GetDeletedAsync(deleted.Id);
         Assert.NotNull(dto);
         Assert.Equal(deleted.Id, dto!.Id);
         Assert.NotNull(dto.DeletedAt);
@@ -3398,7 +3406,7 @@ public class DocumentServiceTests : PostgresDbTest
         otherOwner.CreatedById = 2;
         await _db.SaveChangesAsync();
 
-        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var list = await _rotationList.GetRotationListAsync(1, 1, 100);
         var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
 
         Assert.Contains(active.Id, ids);
@@ -3469,7 +3477,7 @@ public class DocumentServiceTests : PostgresDbTest
 
         await _db.SaveChangesAsync();
 
-        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var list = await _rotationList.GetRotationListAsync(1, 1, 100);
         var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
 
         Assert.DoesNotContain(rotated.Id, ids);
@@ -3500,20 +3508,20 @@ public class DocumentServiceTests : PostgresDbTest
         var doc3 = await CreateDocForRotation(1);
         await AddPreviousYearBaseAsync(doc3.Id, "913");
 
-        var first = await _service.GetRotationListAsync(1, 1, 2);
+        var first = await _rotationList.GetRotationListAsync(1, 1, 2);
         Assert.Equal(3, first.TotalCount);
         Assert.Equal(1, first.Page);
         Assert.Equal(2, first.PerPage);
         Assert.Equal(2, first.Items.Count);
 
-        var second = await _service.GetRotationListAsync(1, 2, 2);
+        var second = await _rotationList.GetRotationListAsync(1, 2, 2);
         Assert.Equal(3, second.TotalCount);
         Assert.Equal(2, second.Page);
         var secondDoc = Assert.Single(second.Items);
         Assert.Contains(secondDoc.DocumentId, new[] { doc1.Id, doc2.Id, doc3.Id });
 
         // الصفحة خارج النطاق تُرجع قائمة فارغة دون خطأ.
-        var beyond = await _service.GetRotationListAsync(1, 10, 2);
+        var beyond = await _rotationList.GetRotationListAsync(1, 10, 2);
         Assert.Equal(3, beyond.TotalCount);
         Assert.Empty(beyond.Items);
     }
@@ -3547,7 +3555,7 @@ public class DocumentServiceTests : PostgresDbTest
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 1, BaseNumber = "900", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var history = await _service.GetBaseNumberHistoryAsync(doc.Id);
+        var history = await _baseNumberHistory.GetBaseNumberHistoryAsync(doc.Id);
 
         Assert.Equal(3, history.Count);
         Assert.Equal(new[] { current, current - 1, current - 2 }, history.Select(h => h.Year));
@@ -3568,7 +3576,7 @@ public class DocumentServiceTests : PostgresDbTest
             new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 1, BaseNumber = "900", CreatedById = 1, CreatedAt = new DateTime(2025, 1, 1), UpdatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var history = await _service.GetBaseNumberHistoryAsync(doc.Id);
+        var history = await _baseNumberHistory.GetBaseNumberHistoryAsync(doc.Id);
 
         Assert.Equal(3, history.Count);
         Assert.Equal("1501", history[0].BaseNumber);
@@ -3579,7 +3587,7 @@ public class DocumentServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task GetBaseNumberHistory_UnknownDocument_ReturnsEmpty()
     {
-        var history = await _service.GetBaseNumberHistoryAsync(999999);
+        var history = await _baseNumberHistory.GetBaseNumberHistoryAsync(999999);
         Assert.Empty(history);
     }
 
@@ -3592,7 +3600,7 @@ public class DocumentServiceTests : PostgresDbTest
         await AddPreviousYearBaseAsync(doc2.Id, "922");
 
         // page=0 يُعتبر الصفحة الأولى، و perPage أكبر من الحد الأقصى يُقصّ إلى 100.
-        var clamped = await _service.GetRotationListAsync(1, 0, 500);
+        var clamped = await _rotationList.GetRotationListAsync(1, 0, 500);
         Assert.Equal(1, clamped.Page);
         Assert.Equal(100, clamped.PerPage);
         Assert.Equal(2, clamped.TotalCount);
@@ -3609,7 +3617,7 @@ public class DocumentServiceTests : PostgresDbTest
         var deposit = await _create.CreateAsync(DepositSample(), 1, "lawyer1", 1);
         await AddPreviousYearBaseAsync(deposit.Id, "888");
 
-        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var list = await _rotationList.GetRotationListAsync(1, 1, 100);
         var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
 
         Assert.Contains(executed.Id, ids);
@@ -3642,7 +3650,7 @@ public class DocumentServiceTests : PostgresDbTest
         // عائلة متداولة لكن بدون رقم أساس لسنة سابقة → مخفية.
         var neverRotated = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var list = await _rotationList.GetRotationListAsync(1, 1, 100);
         var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
 
         Assert.DoesNotContain(executed.Id, ids);
@@ -3809,7 +3817,7 @@ public class DocumentServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         await AddPreviousYearBaseAsync(resp.Id, "999");
 
-        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var list = await _rotationList.GetRotationListAsync(1, 1, 100);
         Assert.Contains(resp.Id, list.Items.Select(r => r.DocumentId));
 
         await _saveBaseNumbers.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(resp.Id, "1500") }, "lawyer1");
@@ -5601,7 +5609,7 @@ public class AuthServiceTests : PostgresDbTest
 public class ConsiderDelegationExecutedTests : PostgresDbTest
 {
     private static int s_considerSeq;
-    private readonly IDocumentService _service;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _service;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _delete;
@@ -5629,7 +5637,7 @@ public class ConsiderDelegationExecutedTests : PostgresDbTest
             _tx,
             _audit);
         var considerBundle = DocumentServiceFactory.Create(_db, _audit, alertService: _alerts, tx: _tx);
-        _service = considerBundle.Documents;
+        _service = considerBundle.Reads.GetDocument;
         _create = considerBundle.CreateDocument;
         _update = considerBundle.UpdateDocument;
         _delete = considerBundle.DeleteDocument;

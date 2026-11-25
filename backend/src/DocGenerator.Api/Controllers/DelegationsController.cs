@@ -3,8 +3,8 @@ using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Delegations;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,7 +21,7 @@ namespace DocGenerator.Api.Controllers;
 [Authorize]
 public class DelegationsController : ControllerBase
 {
-    private readonly IDocumentService _documents;
+    private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
     private readonly IUserCapabilities _capabilities;
     private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
     private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
@@ -37,7 +37,7 @@ public class DelegationsController : ControllerBase
     private readonly ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> _completeDelegation;
 
     public DelegationsController(
-        IDocumentService documents,
+        IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
         IUserCapabilities capabilities,
         IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> documentDelegations,
         IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> pendingDelegations,
@@ -52,7 +52,7 @@ public class DelegationsController : ControllerBase
         ICommandHandler<RegisterDocumentDelegationCommand, DelegationDto?> registerDelegation,
         ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> completeDelegation)
     {
-        _documents = documents;
+        _getDocument = getDocument;
         _capabilities = capabilities;
         _documentDelegations = documentDelegations;
         _pendingDelegations = pendingDelegations;
@@ -130,7 +130,7 @@ public class DelegationsController : ControllerBase
     [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
     public async Task<IActionResult> ListForDocument(int documentId, CancellationToken ct)
     {
-        var doc = await _documents.GetAsync(documentId, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(documentId), ct);
         if (doc is null)
             return ApiProblem.Result(
                             HttpContext,

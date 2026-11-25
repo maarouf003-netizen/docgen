@@ -11,7 +11,7 @@ namespace DocGenerator.Application.Services;
 /// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في التعديل
 /// (§3-ج) وتنبيهين متعاكسين مدموجين (§3-ب). نسخ الحقول قيمي بلا سكيما؛ الاستثناء الوحيد
 /// سجل الإضافات المحلية على صف الإنابة (`LocalAddition*` في `DocumentDelegation`).
-/// (مدموج من `DocumentService` — المرحلة 3، نقل ميكانيكي بلا سلوك.)
+/// (مدموج من خدمة المستندات القديمة — المرحلة 3، نقل ميكانيكي بلا سلوك.)
 /// ثابت ملكية المعاملة: المزامنة داخل معاملة المستدعي، وإطلاق التنبيهات بعد تثبيتها —
 /// تُحفَظ المواضع حرفيًا (أي تبديل تغيير سلوكي). بلا `_tx` إطلاقًا في هذا الملف.
 /// </summary>
@@ -82,7 +82,7 @@ public sealed partial class DocumentDelegationService
         RequireSame(errors, "تاريخ كتاب الجهة العامة", r.FileIncomingDate, doc.FileIncomingDate);
         RequireSame(errors, "رقم تحت رفع", r.UnderFilingNumber, doc.UnderFilingNumber);
         // حقلّا «ورود الإخطار التنفيذي» (FileReceiptNumber/FileReceiptDate) خاصان بوضع «منفذ عليه»
-        // ويُصفَّران على طالبة تنفيذ عند التخزين (DocumentService.Apply.cs) — خارج عقد المرآة
+        // ويُصفَّران على طالبة تنفيذ عند التخزين (DocumentUpsertMapper.cs) — خارج عقد المرآة
         // (B6: لا يُفحص تكافؤهما بين النسخ والحارس ولا يُقفلان في الواجهة).
         RequireSame(errors, "تاريخ القاء الحجز", r.SeizureDate, doc.SeizureDate);
 
@@ -133,7 +133,7 @@ public sealed partial class DocumentDelegationService
 
         // الجهات العامة طالبة التنفيذ: استبدال كامل من المنيب — أي تغيّر مرفوض. تُطابَق القائمة
         // الافتراضية كما يخزّنها ApplyRequest على الجانبين معًا (تكرار التراجع إلى نص «طالب
-        // التنفيذ» كجهة واحدة عند غياب القائمة — DocumentService.Apply.cs) فلا يُرفض الحفظُ
+        // التنفيذ» كجهة واحدة عند غياب القائمة — DocumentUpsertMapper.cs) فلا يُرفض الحفظُ
         // المتطابق بفرقٍ وهمي من التراجع النصي نفسه، ويُعيَّن الفرقُ الحقيقي فقط (T4/B6).
         var requestedEntities = EffectiveApplicantEntities(
             DocumentText.NormalizeApplicantPublicEntities(r.ApplicantPublicEntities), r.Applicant);

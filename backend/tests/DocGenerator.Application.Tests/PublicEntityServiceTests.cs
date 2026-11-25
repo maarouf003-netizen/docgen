@@ -625,7 +625,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "وزارة التعليم", EntityNature = "public" });
         doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "هيئة أخرى", EntityNature = "public" });
         doc.Applicant = "وزارة التعليم - محافظة دمشق";
-        // DocumentService يبني نص البحث عند الإنشاء؛ نمثّل حالته الابتدائية الغنية.
+        // CreateDocumentCommand يبني نص البحث عند الإنشاء؛ نمثّل حالته الابتدائية الغنية.
         doc.SearchText = DocumentSearchTextBuilder.Build(doc);
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();

@@ -43,7 +43,6 @@ public static class DependencyInjection
         services.AddSingleton(ServerClock.ResolveTimeZone(timeZoneId));
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IDocumentService, DocumentService>();
         // P2-01a: بوابة القراءة الضيقة لسياسات الوصول إلى المستند (إسقاط F-01 + سؤالا
         // الاستئناف) — يستهلكها معالج السياسة في Api بدل استدعاء المستودعات مباشرة.
         services.AddScoped<IDocumentAccessReader, DocumentAccessReader>();
@@ -95,6 +94,12 @@ public static class DependencyInjection
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(AuditBehavior<,>));
         services.AddScoped<IQueryHandler<GetDocumentQuery, DocumentResponse?>, GetDocumentQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDocumentAccessInfoQuery, DocumentAccessInfo?>, GetDocumentAccessInfoQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDeletedDocumentQuery, DocumentResponse?>, GetDeletedDocumentQueryHandler>();
+        services.AddScoped<IQueryHandler<CountFilesByOwnerQuery, int>, CountFilesByOwnerQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>>, GetDocumentRotationListQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>, GetDocumentBaseNumberHistoryQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>, GetDeletedDocumentBaseNumberHistoryQueryHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentCommand, DocumentResponse>, CreateDocumentCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateDocumentCommand, DocumentResponse?>, UpdateDocumentCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentCommand, bool>, DeleteDocumentCommandHandler>();

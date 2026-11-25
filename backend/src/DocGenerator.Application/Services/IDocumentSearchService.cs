@@ -4,7 +4,7 @@ using DocGenerator.Application.DTOs;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// خدمة البحث والتصدير (مستخرجة من `DocumentService` — المرحلة 2): قرائية غالبًا —
+/// خدمة البحث والتصدير (مستخرجة من خدمة المستندات القديمة — المرحلة 2): قرائية غالبًا —
 /// أدنى المراحل خطرًا. التدوير (`GetRotationListAsync`/`GetBaseNumberHistoryAsync`/
 /// `SaveBaseNumbersAsync`) يبقى مع النواة (ترقيم/دوائر) لا مع البحث.
 /// تقسيم الزوج موثّق: `GetDeletedAsync` (قراءة مفردة بالمعرف) بالنواة، و`SearchDeletedAsync`

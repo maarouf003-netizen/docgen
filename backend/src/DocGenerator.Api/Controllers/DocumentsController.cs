@@ -35,7 +35,6 @@ public class DocumentsController : ControllerBase
     /// </summary>
     private const string DocumentNotFoundMessage = "المستند غير موجود";
 
-    private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
     private readonly IDocumentSearchService _search;
     private readonly IWordDocumentGenerator _generator;
@@ -46,6 +45,11 @@ public class DocumentsController : ControllerBase
     private readonly IAuditLogger _audit;
     private readonly IDocumentAuthorization _authorization;
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
+    private readonly IQueryHandler<GetDeletedDocumentQuery, DocumentResponse?> _getDeletedDocument;
+    private readonly IQueryHandler<CountFilesByOwnerQuery, int> _countFilesByOwner;
+    private readonly IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> _rotationList;
+    private readonly IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> _baseNumberHistory;
+    private readonly IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> _deletedBaseNumberHistory;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _updateDocument;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _deleteDocument;
@@ -75,7 +79,6 @@ public class DocumentsController : ControllerBase
     private readonly TimeZoneInfo _timeZone;
 
     public DocumentsController(
-        IDocumentService documents,
         IExecutionActionService executionActions,
         IDocumentSearchService search,
         IWordDocumentGenerator generator,
@@ -86,6 +89,11 @@ public class DocumentsController : ControllerBase
         IAuditLogger audit,
         IDocumentAuthorization authorization,
         IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
+        IQueryHandler<GetDeletedDocumentQuery, DocumentResponse?> getDeletedDocument,
+        IQueryHandler<CountFilesByOwnerQuery, int> countFilesByOwner,
+        IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> rotationList,
+        IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> baseNumberHistory,
+        IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> deletedBaseNumberHistory,
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
         ICommandHandler<UpdateDocumentCommand, DocumentResponse?> updateDocument,
         ICommandHandler<DeleteDocumentCommand, bool> deleteDocument,
@@ -114,7 +122,6 @@ public class DocumentsController : ControllerBase
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
-        _documents = documents;
         _executionActions = executionActions;
         _search = search;
         _generator = generator;
@@ -125,6 +132,11 @@ public class DocumentsController : ControllerBase
         _audit = audit;
         _authorization = authorization;
         _getDocument = getDocument;
+        _getDeletedDocument = getDeletedDocument;
+        _countFilesByOwner = countFilesByOwner;
+        _rotationList = rotationList;
+        _baseNumberHistory = baseNumberHistory;
+        _deletedBaseNumberHistory = deletedBaseNumberHistory;
         _createDocument = createDocument;
         _updateDocument = updateDocument;
         _deleteDocument = deleteDocument;
@@ -512,22 +524,23 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetBaseNumberHistory(int id, CancellationToken ct)
     {
         // تاريخ أرقام الأساس — بنفس صلاحيات العرض المفصّل للملف.
-        var doc = await _documents.GetAsync(id, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
         if (denied is not null) return denied;
-        return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
+        return Ok(await _baseNumberHistory.HandleAsync(new GetDocumentBaseNumberHistoryQuery(id), ct));
     }
 
     /// <summary>سجل أرقام ملف محذوف (مع الملغاة) — من صفحة المحذوفات بنفس صلاحياتها.</summary>
     [HttpGet("deleted/{id:int}/base-numbers")]
     public async Task<IActionResult> GetDeletedBaseNumberHistory(int id, CancellationToken ct)
     {
-        var doc = await _documents.GetDeletedAsync(id, ct);
+        var doc = await _getDeletedDocument.HandleAsync(new GetDeletedDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Read, ct);
         if (denied is not null) return denied;
-        return Ok(await _documents.GetDeletedBaseNumberHistoryAsync(id, ct));
+        return Ok(await _deletedBaseNumberHistory.HandleAsync(
+            new GetDeletedDocumentBaseNumberHistoryQuery(id), ct));
     }
 
     /// <summary>تصحيح رقم أساس سنة محددة موضعيًا (لا حذف ولا صف جديد).</summary>
@@ -668,7 +681,8 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanRotate))
             return Forbid();
 
-        return Ok(await _documents.GetRotationListAsync(User.GetUserId(), page, perPage, ct));
+        return Ok(await _rotationList.HandleAsync(
+            new GetDocumentRotationListQuery(User.GetUserId(), page, perPage), ct));
     }
 
     [HttpPut("rotate")]
@@ -698,7 +712,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Restore(int id, CancellationToken ct)
     {
         // استعادة المحذوف منطقياً من اختصاص المحامي صاحب الملف فقط.
-        var doc = await _documents.GetDeletedAsync(id, ct);
+        var doc = await _getDeletedDocument.HandleAsync(new GetDeletedDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Restore, ct);
         if (denied is not null) return denied;
@@ -816,7 +830,7 @@ public class DocumentsController : ControllerBase
                 "يرجى تحديد نوع المستند المطلوب توليده",
                 field: "template");
 
-        var doc = await _documents.GetAsync(id, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.Read, ct);
         if (denied is not null) return denied;
@@ -864,7 +878,8 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, scope.OwnerSectionId);
+        var count = await _countFilesByOwner.HandleAsync(
+            new CountFilesByOwnerQuery(lawyerId, scopeBranchId, scope.OwnerSectionId), ct);
         return Ok(new { count });
     }
 
@@ -943,7 +958,7 @@ public class DocumentsController : ControllerBase
     [HttpGet("{id:int}/actions")]
     public async Task<IActionResult> GetActions(int id, CancellationToken ct)
     {
-        var doc = await _documents.GetAsync(id, ct);
+        var doc = await _getDocument.HandleAsync(new GetDocumentQuery(id), ct);
         if (doc is null) return NotFound();
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
         if (denied is not null) return denied;

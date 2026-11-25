@@ -65,7 +65,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         ComputeBlockedIds(source.Assets, source.Delegations, excludeDelegationId);
 
     /// <summary>المطابقة نفسها على مجموعات مفكوكة — لقفل «الحجز بعد التسطير» في
-    /// DocumentService حيث تُجلب الإنابات مع مناباتها (لحالاتها فقط) بقراءة مستقلة.</summary>
+    /// خدمة المستندات القديمة حيث تُجلب الإنابات مع مناباتها (لحالاتها فقط) بقراءة مستقلة.</summary>
     internal static HashSet<int> ComputeBlockedIds(
         IEnumerable<Asset> assets, IEnumerable<DocumentDelegation> delegations, int? excludeDelegationId)
     {

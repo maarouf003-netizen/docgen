@@ -1,4 +1,3 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -7,7 +6,12 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class DocumentService : IDocumentService
+/// <summary>
+/// تطبيع طلبات إنشاء/تعديل المستند وتطبيقها على الكيان — منطق كتابة خالص يستهلكه
+/// معالجَا <c>CreateDocumentCommand</c>/<c>UpdateDocumentCommand</c>. كان ضمن خدمة
+/// المستندات قبل أن تنتقل قراءاتها إلى معالجات استعلام (`P4-01cq`).
+/// </summary>
+internal static class DocumentUpsertMapper
 {
     internal static void ApplyRequest(Document doc, DocumentUpsertRequest r)
     {

@@ -1218,10 +1218,28 @@
   `docs/audit/227-p4-01cp-statistics-reads-20261125.md` و
   `docs/audit/228-p4-01cp-critical-review-20261125.md` و
   `docs/audit/229-p4-01cp-followup-review-20261125.md`.
+  **`P4-01cq`:** اكتملت قراءات المستند — نُقلت أسطح القراءة الصرفة السبعة من
+  `IDocumentService` إلى سبعة استعلامات `IQuery<TResponse>` ومعالجات `QueryHandlerBase`
+  تحت `UseCases/Documents/`: ملف واحد، وإسقاط الوصول الخفيف (F-01)، وملف محذوف، وعدد
+  ملفات المحامي، وجدول التدوير، وتاريخ أرقام الأساس للملف الحالي والمحذوف — قراءة صرفة
+  بلا كتابة ولا معاملة ولا تدقيق، بحفاظ **19/21** جملة فعّالة (**0** فرق دلالي، سطران
+  لفّ ميكانيكيان) و**0** فرق في النصوص الحرفية؛ وحُذفت `IDocumentService` نهائيًا
+  (**7 → 0**) مع تسجيلها، وبقيت `IDocumentStatusService` كما هي (**2 → 2**) لأن عضويها
+  كاتبان داخل معاملة مستدعٍ خارجي، و`IDocumentSearchService` خارج النطاق للمرحلة التالية.
+  فُكِّك `DocumentService` (4 ملفات → 0): حُذفت ثلاثة partials، وحُوِّل ملف تطبيع
+  الإنشاء/التعديل إلى `Services/DocumentUpsertMapper.cs` (`internal static`)، وأُزيلت
+  `CurrentYear()` لصالح `ServerClock.CurrentYear`. صار `DocumentsController` يحقن خمسة
+  معالجات إضافية (منشئ **38 → 42**) و`DelegationsController`/`AppealsController`
+  يحقنان `GetDocumentQuery` بدل الخدمة بلا تغيير عدد المعاملات، وارتفع `DI` إلى
+  **179/179/0** (61 استعلامًا + 118 أمرًا)، وحُوِّل **137** موضع نداء اختباري عبر جسر
+  `DocumentReadQueryExtensions` مع سجل `DocumentReadHandlers` واختبارَي توصيل جديدين.
+  التفاصيل: `docs/audit/230-p4-01cq-document-reads-20261125.md` و
+  `docs/audit/231-p4-01cq-critical-review-20261125.md` و
+  `docs/audit/232-p4-01cq-followup-review-20261125.md`.
   **متبقٍ:** اكتمل مسح module-by-module للوحدات ذات الأسطح العامة — سجل الجهات
   كتابةً وقراءةً، والإنابات، والمطالعات، والاستئنافات، والمراسلات، والبوابة،
-  والإحصاءات؛ لا يبقى سطح قراءة صرف على خدمة عامة في هذا المسح. يبقى خارج نطاقه:
-  بقية أوامر `P4-01` المعلنة أعلاه، وتفكيك `P4-02` الجاري.
+  والإحصاءات، والمستندات. يبقى `IDocumentSearchService` للمرحلة التالية، وخارج نطاق
+  هذا المسح: بقية أوامر `P4-01` المعلنة أعلاه، وتفكيك `P4-02` الجاري.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.
