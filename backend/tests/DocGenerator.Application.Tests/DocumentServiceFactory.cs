@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (DocumentReadHandlers Reads, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
+    public static (DocumentReadHandlers Reads, IExecutionActionService Actions, DocumentSearchHandlers Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -69,17 +69,48 @@ public static class DocumentServiceFactory
             timeZoneValue);
 
         var appealsValue = appeals ?? new AppealRepository(db);
-        var searchService = new DocumentSearchService(
-            documentsValue,
-            appealsValue,
-            audit,
-            Microsoft.Extensions.Options.Options.Create(exportOptionsValue),
-            clockValue,
-            timeZoneValue,
-            new DocGenerator.Infrastructure.Security.KeysetCursorCodec(new JwtOptions
-            {
-                Secret = "test-keyset-secret-0123456789abcdef",
-            }));
+        var cursorCodec = new DocGenerator.Infrastructure.Security.KeysetCursorCodec(new JwtOptions
+        {
+            Secret = "test-keyset-secret-0123456789abcdef",
+        });
+        var search = new DocumentSearchHandlers(
+            new SearchDocumentsQueryHandler(
+                documentsValue, appealsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchDocumentsQuery, PagedResult<DocumentResponse>>>()),
+            new SearchDocumentListQueryHandler(
+                documentsValue, appealsValue, cursorCodec, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchDocumentListQuery, PagedResult<DocumentListItemDto>>>()),
+            new SearchDeletedDocumentsQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchDeletedDocumentsQuery, PagedResult<DocumentResponse>>>()),
+            new SearchDeletedDocumentListQueryHandler(
+                documentsValue, cursorCodec, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchDeletedDocumentListQuery, PagedResult<DocumentListItemDto>>>()),
+            new SearchStruckOffDocumentsQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchStruckOffDocumentsQuery, PagedResult<DocumentResponse>>>()),
+            new SearchStruckOffDocumentListQueryHandler(
+                documentsValue, cursorCodec, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchStruckOffDocumentListQuery, PagedResult<DocumentListItemDto>>>()),
+            new SearchExecutedDocumentsQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchExecutedDocumentsQuery, PagedResult<DocumentResponse>>>()),
+            new SearchExecutedDocumentListQueryHandler(
+                documentsValue, cursorCodec, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchExecutedDocumentListQuery, PagedResult<DocumentListItemDto>>>()),
+            new SearchReferredToStartDocumentsQueryHandler(
+                documentsValue, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>>>()),
+            new SearchReferredToStartDocumentListQueryHandler(
+                documentsValue, cursorCodec, clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<SearchReferredToStartDocumentListQuery, PagedResult<DocumentListItemDto>>>()),
+            new ExportDocumentsQueryHandler(
+                documentsValue, audit, Microsoft.Extensions.Options.Options.Create(exportOptionsValue),
+                clockValue, timeZoneValue,
+                Array.Empty<IPipelineBehavior<ExportDocumentsQuery, List<DocumentExportRow>>>()),
+            new GetDocumentFilterOptionsQueryHandler(
+                documentsValue,
+                Array.Empty<IPipelineBehavior<GetDocumentFilterOptionsQuery, DocumentFilterOptions>>()));
 
         var delegationsValue = delegations ?? new DelegationRepository(db);
         var registrationDatesValue = registrationDates ?? new Repository<DocumentRegistrationDate>(db);
@@ -238,7 +269,7 @@ public static class DocumentServiceFactory
             numberRegistry,
             Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
 
-        return (reads, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
+        return (reads, actionService, search, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
     }
 }
 
@@ -254,6 +285,24 @@ public sealed record DocumentReadHandlers(
     IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> RotationList,
     IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> BaseNumberHistory,
     IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> DeletedBaseNumberHistory);
+
+/// <summary>
+/// معالجات قراءة البحث/القوائم/التصدير (`P4-01cr`) فوق سياق واحد ومصانع الخدمة نفسها —
+/// تُحقن صراحةً في الاختبارات بدل خدمة البحث القديمة المحذوفة.
+/// </summary>
+public sealed record DocumentSearchHandlers(
+    IQueryHandler<SearchDocumentsQuery, PagedResult<DocumentResponse>> Search,
+    IQueryHandler<SearchDocumentListQuery, PagedResult<DocumentListItemDto>> SearchList,
+    IQueryHandler<SearchDeletedDocumentsQuery, PagedResult<DocumentResponse>> SearchDeleted,
+    IQueryHandler<SearchDeletedDocumentListQuery, PagedResult<DocumentListItemDto>> SearchDeletedList,
+    IQueryHandler<SearchStruckOffDocumentsQuery, PagedResult<DocumentResponse>> SearchStruckOff,
+    IQueryHandler<SearchStruckOffDocumentListQuery, PagedResult<DocumentListItemDto>> SearchStruckOffList,
+    IQueryHandler<SearchExecutedDocumentsQuery, PagedResult<DocumentResponse>> SearchExecuted,
+    IQueryHandler<SearchExecutedDocumentListQuery, PagedResult<DocumentListItemDto>> SearchExecutedList,
+    IQueryHandler<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>> SearchReferredToStart,
+    IQueryHandler<SearchReferredToStartDocumentListQuery, PagedResult<DocumentListItemDto>> SearchReferredToStartList,
+    IQueryHandler<ExportDocumentsQuery, List<DocumentExportRow>> Export,
+    IQueryHandler<GetDocumentFilterOptionsQuery, DocumentFilterOptions> FilterOptions);
 
 /// <summary>معالجات انتقالات حالة المستند (`P4-01bd`) فوق سياق واحد ومصانع الخدمة نفسها.</summary>
 public sealed record DocumentStatusHandlers(

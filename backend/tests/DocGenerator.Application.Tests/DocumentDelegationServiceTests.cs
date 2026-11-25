@@ -28,7 +28,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _documentTransfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _documentTransferAll;
-    private readonly IDocumentSearchService _documentSearch;
+    private readonly DocumentSearchHandlers _documentSearch;
     private readonly DocumentStatusHandlers _documentStatusCommands;
     private readonly FakeAuditLogger _audit = new();
     private readonly HeadAlertService _headAlerts;

@@ -50,7 +50,6 @@ public static class DependencyInjection
         services.AddSingleton(new NumberRegistryOptions());
         services.AddScoped<IDocumentNumberRegistry, DocumentNumberRegistry>();
         services.AddScoped<IExecutionActionService, ExecutionActionService>();
-        services.AddScoped<IDocumentSearchService, DocumentSearchService>();
         services.AddScoped<IDocumentStatusService, DocumentStatusService>();
         services.AddScoped<IDocumentWriteGuard, DocumentWriteGuard>();
         services.AddScoped<IAuditLogService, AuditLogService>();
@@ -100,6 +99,18 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>>, GetDocumentRotationListQueryHandler>();
         services.AddScoped<IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>, GetDocumentBaseNumberHistoryQueryHandler>();
         services.AddScoped<IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>>, GetDeletedDocumentBaseNumberHistoryQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchDocumentsQuery, PagedResult<DocumentResponse>>, SearchDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchDocumentListQuery, PagedResult<DocumentListItemDto>>, SearchDocumentListQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchDeletedDocumentsQuery, PagedResult<DocumentResponse>>, SearchDeletedDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchDeletedDocumentListQuery, PagedResult<DocumentListItemDto>>, SearchDeletedDocumentListQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchStruckOffDocumentsQuery, PagedResult<DocumentResponse>>, SearchStruckOffDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchStruckOffDocumentListQuery, PagedResult<DocumentListItemDto>>, SearchStruckOffDocumentListQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchExecutedDocumentsQuery, PagedResult<DocumentResponse>>, SearchExecutedDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchExecutedDocumentListQuery, PagedResult<DocumentListItemDto>>, SearchExecutedDocumentListQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>>, SearchReferredToStartDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchReferredToStartDocumentListQuery, PagedResult<DocumentListItemDto>>, SearchReferredToStartDocumentListQueryHandler>();
+        services.AddScoped<IQueryHandler<ExportDocumentsQuery, List<DocumentExportRow>>, ExportDocumentsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDocumentFilterOptionsQuery, DocumentFilterOptions>, GetDocumentFilterOptionsQueryHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentCommand, DocumentResponse>, CreateDocumentCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateDocumentCommand, DocumentResponse?>, UpdateDocumentCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentCommand, bool>, DeleteDocumentCommandHandler>();

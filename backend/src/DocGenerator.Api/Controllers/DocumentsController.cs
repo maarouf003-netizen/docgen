@@ -36,7 +36,6 @@ public class DocumentsController : ControllerBase
     private const string DocumentNotFoundMessage = "المستند غير موجود";
 
     private readonly IExecutionActionService _executionActions;
-    private readonly IDocumentSearchService _search;
     private readonly IWordDocumentGenerator _generator;
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
@@ -50,6 +49,18 @@ public class DocumentsController : ControllerBase
     private readonly IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> _rotationList;
     private readonly IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> _baseNumberHistory;
     private readonly IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> _deletedBaseNumberHistory;
+    private readonly IQueryHandler<SearchDocumentsQuery, PagedResult<DocumentResponse>> _searchDocuments;
+    private readonly IQueryHandler<SearchDocumentListQuery, PagedResult<DocumentListItemDto>> _searchDocumentList;
+    private readonly IQueryHandler<SearchDeletedDocumentsQuery, PagedResult<DocumentResponse>> _searchDeletedDocuments;
+    private readonly IQueryHandler<SearchDeletedDocumentListQuery, PagedResult<DocumentListItemDto>> _searchDeletedDocumentList;
+    private readonly IQueryHandler<SearchStruckOffDocumentsQuery, PagedResult<DocumentResponse>> _searchStruckOffDocuments;
+    private readonly IQueryHandler<SearchStruckOffDocumentListQuery, PagedResult<DocumentListItemDto>> _searchStruckOffDocumentList;
+    private readonly IQueryHandler<SearchExecutedDocumentsQuery, PagedResult<DocumentResponse>> _searchExecutedDocuments;
+    private readonly IQueryHandler<SearchExecutedDocumentListQuery, PagedResult<DocumentListItemDto>> _searchExecutedDocumentList;
+    private readonly IQueryHandler<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>> _searchReferredToStartDocuments;
+    private readonly IQueryHandler<SearchReferredToStartDocumentListQuery, PagedResult<DocumentListItemDto>> _searchReferredToStartDocumentList;
+    private readonly IQueryHandler<ExportDocumentsQuery, List<DocumentExportRow>> _exportDocuments;
+    private readonly IQueryHandler<GetDocumentFilterOptionsQuery, DocumentFilterOptions> _documentFilterOptions;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _createDocument;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _updateDocument;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _deleteDocument;
@@ -80,7 +91,6 @@ public class DocumentsController : ControllerBase
 
     public DocumentsController(
         IExecutionActionService executionActions,
-        IDocumentSearchService search,
         IWordDocumentGenerator generator,
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
@@ -94,6 +104,18 @@ public class DocumentsController : ControllerBase
         IQueryHandler<GetDocumentRotationListQuery, PagedResult<RotationDocumentDto>> rotationList,
         IQueryHandler<GetDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> baseNumberHistory,
         IQueryHandler<GetDeletedDocumentBaseNumberHistoryQuery, List<BaseNumberHistoryDto>> deletedBaseNumberHistory,
+        IQueryHandler<SearchDocumentsQuery, PagedResult<DocumentResponse>> searchDocuments,
+        IQueryHandler<SearchDocumentListQuery, PagedResult<DocumentListItemDto>> searchDocumentList,
+        IQueryHandler<SearchDeletedDocumentsQuery, PagedResult<DocumentResponse>> searchDeletedDocuments,
+        IQueryHandler<SearchDeletedDocumentListQuery, PagedResult<DocumentListItemDto>> searchDeletedDocumentList,
+        IQueryHandler<SearchStruckOffDocumentsQuery, PagedResult<DocumentResponse>> searchStruckOffDocuments,
+        IQueryHandler<SearchStruckOffDocumentListQuery, PagedResult<DocumentListItemDto>> searchStruckOffDocumentList,
+        IQueryHandler<SearchExecutedDocumentsQuery, PagedResult<DocumentResponse>> searchExecutedDocuments,
+        IQueryHandler<SearchExecutedDocumentListQuery, PagedResult<DocumentListItemDto>> searchExecutedDocumentList,
+        IQueryHandler<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>> searchReferredToStartDocuments,
+        IQueryHandler<SearchReferredToStartDocumentListQuery, PagedResult<DocumentListItemDto>> searchReferredToStartDocumentList,
+        IQueryHandler<ExportDocumentsQuery, List<DocumentExportRow>> exportDocuments,
+        IQueryHandler<GetDocumentFilterOptionsQuery, DocumentFilterOptions> documentFilterOptions,
         ICommandHandler<CreateDocumentCommand, DocumentResponse> createDocument,
         ICommandHandler<UpdateDocumentCommand, DocumentResponse?> updateDocument,
         ICommandHandler<DeleteDocumentCommand, bool> deleteDocument,
@@ -123,7 +145,6 @@ public class DocumentsController : ControllerBase
         TimeZoneInfo timeZone)
     {
         _executionActions = executionActions;
-        _search = search;
         _generator = generator;
         _generationOptions = generationOptions;
         _excel = excel;
@@ -137,6 +158,18 @@ public class DocumentsController : ControllerBase
         _rotationList = rotationList;
         _baseNumberHistory = baseNumberHistory;
         _deletedBaseNumberHistory = deletedBaseNumberHistory;
+        _searchDocuments = searchDocuments;
+        _searchDocumentList = searchDocumentList;
+        _searchDeletedDocuments = searchDeletedDocuments;
+        _searchDeletedDocumentList = searchDeletedDocumentList;
+        _searchStruckOffDocuments = searchStruckOffDocuments;
+        _searchStruckOffDocumentList = searchStruckOffDocumentList;
+        _searchExecutedDocuments = searchExecutedDocuments;
+        _searchExecutedDocumentList = searchExecutedDocumentList;
+        _searchReferredToStartDocuments = searchReferredToStartDocuments;
+        _searchReferredToStartDocumentList = searchReferredToStartDocumentList;
+        _exportDocuments = exportDocuments;
+        _documentFilterOptions = documentFilterOptions;
         _createDocument = createDocument;
         _updateDocument = updateDocument;
         _deleteDocument = deleteDocument;
@@ -232,8 +265,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _searchDocuments.HandleAsync(new SearchDocumentsQuery(
+            q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, scope.OwnerSectionId), ct);
         return OkSanitized(result);
     }
 
@@ -259,8 +293,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchListAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
+        var result = await _searchDocumentList.HandleAsync(new SearchDocumentListQuery(
+            q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+            page, perPage, scope.VisibleBranchId, scope.VisibleUserId, scope.OwnerSectionId, cursor), ct);
         return Ok(result);
     }
 
@@ -274,9 +309,10 @@ public class DocumentsController : ControllerBase
     {
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
-        var options = await _search.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
+        var options = await _documentFilterOptions.HandleAsync(new GetDocumentFilterOptionsQuery(
+            status, applicant, court, lawyer, branch,
             administrativeBranch, executedEntity, publicEntityBranch,
-            scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+            scope.VisibleBranchId, scope.VisibleUserId, scope.OwnerSectionId), ct);
         return Ok(new
         {
             applicants = options.Applicants,
@@ -309,8 +345,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var items = await _search.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            scope.VisibleBranchId, scope.VisibleUserId, ct, ActorName, ownerSectionId: scope.OwnerSectionId);
+        var items = await _exportDocuments.HandleAsync(new ExportDocumentsQuery(
+            q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+            scope.VisibleBranchId, scope.VisibleUserId, ActorName, scope.OwnerSectionId), ct);
         // بلا Sanitize هنا: ورقة التصدير لا تحمل أي عدّاد (لا مشاهدة ولا طباعة) — فلا شيء يُعقَّم.
 
         var stream = _excel.BuildDocumentsWorkbook(
@@ -334,7 +371,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchDeletedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _searchDeletedDocuments.HandleAsync(new SearchDeletedDocumentsQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId), ct);
         return OkSanitized(result);
     }
 
@@ -354,7 +393,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchDeletedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
+        var result = await _searchDeletedDocumentList.HandleAsync(new SearchDeletedDocumentListQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId, cursor), ct);
         return Ok(result);
     }
 
@@ -371,7 +412,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchStruckOffAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _searchStruckOffDocuments.HandleAsync(new SearchStruckOffDocumentsQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId), ct);
         return OkSanitized(result);
     }
 
@@ -388,7 +431,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchStruckOffListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
+        var result = await _searchStruckOffDocumentList.HandleAsync(new SearchStruckOffDocumentListQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId, cursor), ct);
         return Ok(result);
     }
 
@@ -402,7 +447,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchExecutedAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _searchExecutedDocuments.HandleAsync(new SearchExecutedDocumentsQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId), ct);
         return OkSanitized(result);
     }
 
@@ -416,7 +463,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchExecutedListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
+        var result = await _searchExecutedDocumentList.HandleAsync(new SearchExecutedDocumentListQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId, cursor), ct);
         return Ok(result);
     }
 
@@ -430,7 +479,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchReferredToStartAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId);
+        var result = await _searchReferredToStartDocuments.HandleAsync(new SearchReferredToStartDocumentsQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId), ct);
         return OkSanitized(result);
     }
 
@@ -444,7 +495,9 @@ public class DocumentsController : ControllerBase
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();
 
-        var result = await _search.SearchReferredToStartListAsync(q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId, ct, ownerSectionId: scope.OwnerSectionId, cursor: cursor);
+        var result = await _searchReferredToStartDocumentList.HandleAsync(new SearchReferredToStartDocumentListQuery(
+            q, page, perPage, scope.VisibleBranchId, scope.VisibleUserId,
+            scope.OwnerSectionId, cursor), ct);
         return Ok(result);
     }
 

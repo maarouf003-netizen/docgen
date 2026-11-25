@@ -29,7 +29,7 @@ public class DocumentUseCaseTests : PostgresDbTest
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
     private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
     private readonly IExecutionActionService _actions;
-    private readonly IDocumentSearchService _search;
+    private readonly DocumentSearchHandlers _search;
     private readonly DocumentStatusHandlers _statusCommands;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
