@@ -60,8 +60,6 @@ public static class DependencyInjection
         services.AddScoped<IHeadAlertManualWriteRules>(sp => sp.GetRequiredService<HeadAlertService>());
         services.AddScoped<IHeadAlertSuccessionService, HeadAlertSuccessionService>();
         services.AddScoped<IHeadAlertOutbox, HeadAlertOutbox>();
-        services.AddScoped<IPersonalReminderService, PersonalReminderService>();
-        services.AddScoped<IAppSuggestionService, AppSuggestionService>();
         services.AddScoped<PublicEntityService>();
         services.AddScoped<IPublicEntityWriteRules>(sp => sp.GetRequiredService<PublicEntityService>());
         services.AddScoped<IPortalService, PortalService>();
@@ -72,7 +70,6 @@ public static class DependencyInjection
         services.AddScoped<IReviewLetterCreateWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<CorrespondenceService>();
         services.AddScoped<ICorrespondenceWriteRules>(sp => sp.GetRequiredService<CorrespondenceService>());
-        services.AddScoped<IForumService, ForumService>();
         services.AddScoped<IForumRetentionService, ForumRetentionService>();
         services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();
@@ -240,6 +237,16 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<PostForumMessageCommand, ForumMessageDto>, PostForumMessageCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateForumMessageCommand, ForumMessageDto>, UpdateForumMessageCommandHandler>();
         services.AddScoped<ICommandHandler<MarkForumReadCommand, int>, MarkForumReadCommandHandler>();
+        services.AddScoped<IQueryHandler<ListForumMessagesQuery, ForumMessagesPageDto>, ListForumMessagesQueryHandler>();
+        services.AddScoped<IQueryHandler<GetForumMessageQuery, ForumMessageDto?>, GetForumMessageQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPinnedForumMessageQuery, ForumMessageDto?>, GetPinnedForumMessageQueryHandler>();
+        services.AddScoped<IQueryHandler<GetForumMessageReadersQuery, List<ForumReaderDto>>, GetForumMessageReadersQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchForumUsersQuery, List<ForumUserLookupDto>>, SearchForumUsersQueryHandler>();
+        services.AddScoped<IQueryHandler<CountUnreadForumMessagesQuery, int>, CountUnreadForumMessagesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListMyAppSuggestionsQuery, List<AppSuggestionDto>>, ListMyAppSuggestionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAppSuggestionQuery, AppSuggestionDto?>, GetAppSuggestionQueryHandler>();
+        services.AddScoped<IQueryHandler<ListAppSuggestionsForAdminQuery, PagedResult<AppSuggestionDto>>, ListAppSuggestionsForAdminQueryHandler>();
+        services.AddScoped<IQueryHandler<CountUnreadAppSuggestionsQuery, int>, CountUnreadAppSuggestionsQueryHandler>();
         services.AddScoped<ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?>, SetPersonalReminderOccurrenceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateBranchCommand, BranchDto>, CreateBranchCommandHandler>();
         services.AddScoped<IQueryHandler<ListBranchesQuery, List<BranchDto>>, ListBranchesQueryHandler>();
@@ -250,6 +257,8 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdateBranchCommand, BranchDto?>, UpdateBranchCommandHandler>();
         services.AddScoped<ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto>, CreatePersonalReminderCommandHandler>();
         services.AddScoped<ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?>, UpdatePersonalReminderCommandHandler>();
+        services.AddScoped<IQueryHandler<ListPersonalRemindersQuery, List<PersonalReminderDto>>, ListPersonalRemindersQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPersonalReminderQuery, PersonalReminderDto?>, GetPersonalReminderQueryHandler>();
         services.AddScoped<ICommandHandler<CreateSectionCommand, SectionDto>, CreateSectionCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteSectionCommand, bool>, DeleteSectionCommandHandler>();
         services.AddScoped<ICommandHandler<RenameSectionCommand, SectionDto?>, RenameSectionCommandHandler>();

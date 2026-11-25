@@ -1,8 +1,6 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -14,7 +12,7 @@ namespace DocGenerator.Application.Tests;
 
 public class PersonalReminderServiceTests : PostgresDbTest
 {
-    private readonly IPersonalReminderService _service;
+    private readonly PersonalReminderReadHandlers _reads;
     private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
     private readonly ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> _setOccurrence;
     private readonly ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> _createReminder;
@@ -47,7 +45,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
         _db.Users.AddRange(_lawyer1, _lawyer2);
         _db.SaveChanges();
 
-        _service = new PersonalReminderService(new PersonalReminderRepository(_db));
+        _reads = PersonalReminderReadHandlerFactory.Create(_db);
         _deleteReminder = new DeletePersonalReminderCommandHandler(
             new PersonalReminderRepository(_db),
             new UnitOfWork(_db),
@@ -245,13 +243,13 @@ public class PersonalReminderServiceTests : PostgresDbTest
     {
         var created = await CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");
 
-        var found = await _service.GetByIdAsync(created.Id, _lawyer1.Id);
+        var found = await _reads.GetByIdAsync(created.Id, _lawyer1.Id);
         Assert.NotNull(found);
         Assert.Equal(created.Id, found.Id);
         Assert.Equal("مراجعة الملف", found.Title);
 
-        Assert.Null(await _service.GetByIdAsync(created.Id, _lawyer2.Id));
-        Assert.Null(await _service.GetByIdAsync(999999, _lawyer1.Id));
+        Assert.Null(await _reads.GetByIdAsync(created.Id, _lawyer2.Id));
+        Assert.Null(await _reads.GetByIdAsync(999999, _lawyer1.Id));
     }
 
     [PostgresFact]
@@ -299,7 +297,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
                 "lawyer1"));
 
         Assert.Contains("التذكير الشخصي", ex.Message);
-        Assert.Equal("مراجعة الملف", (await _service.GetByIdAsync(dto.Id, _lawyer1.Id))!.Title);
+        Assert.Equal("مراجعة الملف", (await _reads.GetByIdAsync(dto.Id, _lawyer1.Id))!.Title);
         Assert.DoesNotContain("personal-reminder.update", _audit.Actions);
     }
 
@@ -328,7 +326,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
         await Assert.ThrowsAsync<DocumentConflictException>(() =>
             SetOccurrenceAsync(dto.Id, "2026-08-09", true, _lawyer1.Id, dto.Version + 1));
 
-        Assert.Empty((await _service.GetByIdAsync(dto.Id, _lawyer1.Id))!.CompletedOccurrenceKeys);
+        Assert.Empty((await _reads.GetByIdAsync(dto.Id, _lawyer1.Id))!.CompletedOccurrenceKeys);
     }
 
     [PostgresFact]
@@ -341,8 +339,8 @@ public class PersonalReminderServiceTests : PostgresDbTest
             _lawyer1.Id,
             "lawyer1");
 
-        Assert.Empty(await _service.ListAsync(_lawyer1.Id, includeArchived: false));
-        Assert.Single(await _service.ListAsync(_lawyer1.Id, includeArchived: true));
+        Assert.Empty(await _reads.ListAsync(_lawyer1.Id, includeArchived: false));
+        Assert.Single(await _reads.ListAsync(_lawyer1.Id, includeArchived: true));
     }
 
     [PostgresFact]
@@ -387,7 +385,7 @@ public class PersonalReminderServiceTests : PostgresDbTest
 
         Assert.False(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer2.Id, "lawyer2")));
         Assert.True(await _deleteReminder.HandleAsync(new DeletePersonalReminderCommand(dto.Id, _lawyer1.Id, "lawyer1")));
-        Assert.Empty(await _service.ListAsync(_lawyer1.Id, includeArchived: true));
+        Assert.Empty(await _reads.ListAsync(_lawyer1.Id, includeArchived: true));
         Assert.Contains("personal-reminder.delete", _audit.Actions);
         Assert.Contains(_audit.Details, d => d is not null && d.StartsWith("حذف تذكيره الشخصي:", StringComparison.Ordinal));
     }

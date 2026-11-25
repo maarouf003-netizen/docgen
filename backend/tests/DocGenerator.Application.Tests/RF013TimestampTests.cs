@@ -1,6 +1,5 @@
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -18,7 +17,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class RF013TimestampTests : PostgresDbTest
 {
-    private readonly IPersonalReminderService _service;
+    private readonly PersonalReminderReadHandlers _reads;
     private readonly ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> _createReminder;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -38,7 +37,7 @@ public class RF013TimestampTests : PostgresDbTest
         _db.Users.Add(_lawyer);
         _db.SaveChanges();
 
-        _service = new PersonalReminderService(new PersonalReminderRepository(_db));
+        _reads = PersonalReminderReadHandlerFactory.Create(_db);
         _createReminder = new CreatePersonalReminderCommandHandler(
             new PersonalReminderRepository(_db),
             new UnitOfWork(_db),
@@ -92,7 +91,7 @@ public class RF013TimestampTests : PostgresDbTest
         Assert.Equal("2026-01-01", dto.DueDate);
         Assert.Equal("2026-01-01", dto.RecurrenceEnd);
 
-        var reread = await _service.GetByIdAsync(dto.Id, _lawyer.Id);
+        var reread = await _reads.GetByIdAsync(dto.Id, _lawyer.Id);
         Assert.Equal("2026-01-01", reread!.DueDate);
         Assert.Equal("2026-01-01", reread.RecurrenceEnd);
     }

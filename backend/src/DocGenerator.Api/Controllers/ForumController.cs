@@ -4,7 +4,6 @@ using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Forum;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +21,12 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class ForumController : ControllerBase
 {
-    private readonly IForumService _forum;
+    private readonly IQueryHandler<ListForumMessagesQuery, ForumMessagesPageDto> _listMessages;
+    private readonly IQueryHandler<GetForumMessageQuery, ForumMessageDto?> _getMessage;
+    private readonly IQueryHandler<GetPinnedForumMessageQuery, ForumMessageDto?> _getPinned;
+    private readonly IQueryHandler<GetForumMessageReadersQuery, List<ForumReaderDto>> _getReaders;
+    private readonly IQueryHandler<SearchForumUsersQuery, List<ForumUserLookupDto>> _searchUsers;
+    private readonly IQueryHandler<CountUnreadForumMessagesQuery, int> _countUnread;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
     private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
@@ -31,7 +35,12 @@ public class ForumController : ControllerBase
     private readonly ICommandHandler<MarkForumReadCommand, int> _markRead;
 
     public ForumController(
-        IForumService forum,
+        IQueryHandler<ListForumMessagesQuery, ForumMessagesPageDto> listMessages,
+        IQueryHandler<GetForumMessageQuery, ForumMessageDto?> getMessage,
+        IQueryHandler<GetPinnedForumMessageQuery, ForumMessageDto?> getPinned,
+        IQueryHandler<GetForumMessageReadersQuery, List<ForumReaderDto>> getReaders,
+        IQueryHandler<SearchForumUsersQuery, List<ForumUserLookupDto>> searchUsers,
+        IQueryHandler<CountUnreadForumMessagesQuery, int> countUnread,
         IUserCapabilities capabilities,
         ICommandHandler<DeleteForumMessageCommand, bool> deleteMessage,
         ICommandHandler<ToggleForumPinCommand, ForumMessageDto> togglePin,
@@ -39,7 +48,12 @@ public class ForumController : ControllerBase
         ICommandHandler<UpdateForumMessageCommand, ForumMessageDto> updateMessage,
         ICommandHandler<MarkForumReadCommand, int> markRead)
     {
-        _forum = forum;
+        _listMessages = listMessages;
+        _getMessage = getMessage;
+        _getPinned = getPinned;
+        _getReaders = getReaders;
+        _searchUsers = searchUsers;
+        _countUnread = countUnread;
         _capabilities = capabilities;
         _deleteMessage = deleteMessage;
         _togglePin = togglePin;
@@ -63,13 +77,14 @@ public class ForumController : ControllerBase
         [FromQuery] int limit = 30, [FromQuery] int? before = null,
         [FromQuery] int? after = null,
         CancellationToken ct = default)
-        => Ok(await _forum.ListAsync(UserId, limit, before, after, ct));
+        => Ok(await _listMessages.HandleAsync(
+            new ListForumMessagesQuery(UserId, limit, before, after), ct));
 
     /// <summary>رسالة واحدة بالمعرف.</summary>
     [HttpGet("messages/{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var dto = await _forum.GetByIdAsync(id, UserId, ct);
+        var dto = await _getMessage.HandleAsync(new GetForumMessageQuery(id, UserId), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 
@@ -77,7 +92,7 @@ public class ForumController : ControllerBase
     [HttpGet("pinned")]
     public async Task<IActionResult> GetPinned(CancellationToken ct)
     {
-        var dto = await _forum.GetPinnedAsync(UserId, ct);
+        var dto = await _getPinned.HandleAsync(new GetPinnedForumMessageQuery(UserId), ct);
         return dto is null ? NoContent() : Ok(dto);
     }
 
@@ -184,7 +199,8 @@ public class ForumController : ControllerBase
     {
         try
         {
-            return Ok(await _forum.GetReadersAsync(id, UserId, ct));
+            return Ok(await _getReaders.HandleAsync(
+                new GetForumMessageReadersQuery(id, UserId), ct));
         }
         catch (KeyNotFoundException e)
         {
@@ -200,14 +216,14 @@ public class ForumController : ControllerBase
     [HttpGet("users/lookup")]
     public async Task<IActionResult> SearchUsers([FromQuery] string? q, CancellationToken ct)
     {
-        return Ok(await _forum.SearchUsersAsync(q, UserId, ct));
+        return Ok(await _searchUsers.HandleAsync(new SearchForumUsersQuery(q, UserId), ct));
     }
 
     /// <summary>العدّاد — رسائل بلا إيصال لي (شارة أيقونة المنتدى).</summary>
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
     {
-        var count = await _forum.CountUnreadAsync(UserId, ct);
+        var count = await _countUnread.HandleAsync(new CountUnreadForumMessagesQuery(UserId), ct);
         return Ok(new { count });
     }
 }

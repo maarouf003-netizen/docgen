@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Forum;
+using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,7 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class ForumServiceTests : PostgresDbTest
 {
     private readonly FakeTimeProvider _clock;
-    private readonly IForumService _service;
+    private readonly ForumReadHandlers _reads;
     private readonly ICommandHandler<DeleteForumMessageCommand, bool> _deleteMessage;
     private readonly ICommandHandler<ToggleForumPinCommand, ForumMessageDto> _togglePin;
     private readonly ICommandHandler<PostForumMessageCommand, ForumMessageDto> _post;
@@ -68,7 +69,7 @@ public class ForumServiceTests : PostgresDbTest
         _db.Users.AddRange(_admin, _manager, _head, _subHead, _brokenSubHead, _lawyer1, _lawyer2, _delegate);
         _db.SaveChanges();
 
-        _service = BuildService();
+        _reads = ForumReadHandlerFactory.Create(_db);
         _deleteMessage = new DeleteForumMessageCommandHandler(
             new ForumRepository(_db),
             new UserRepository(_db),
@@ -123,13 +124,6 @@ public class ForumServiceTests : PostgresDbTest
     private Task<bool> DeleteMessageAsync(int id, int actorUserId)
         => _deleteMessage.HandleAsync(new DeleteForumMessageCommand(id, actorUserId));
 
-
-    private ForumService BuildService(TimeProvider? clock = null)
-    {
-        return new ForumService(
-            new ForumRepository(_db),
-            new UserRepository(_db));
-    }
 
     private ForumRetentionService BuildRetention(int months, TimeProvider? clock = null)
         => new(
@@ -252,7 +246,7 @@ public class ForumServiceTests : PostgresDbTest
 
         await DeleteMessageAsync(original.Id, _lawyer1.Id);
 
-        var reloaded = await _service.GetByIdAsync(reply.Id, _lawyer2.Id);
+        var reloaded = await _reads.GetByIdAsync(reply.Id, _lawyer2.Id);
         Assert.NotNull(reloaded);
         Assert.Null(reloaded.QuotedMessageId);
         Assert.Equal("المحامي الأول", reloaded.QuotedAuthorName);
@@ -268,7 +262,7 @@ public class ForumServiceTests : PostgresDbTest
         await PostAsync(_lawyer1, "2");
         await PostAsync(_lawyer1, "3");
 
-        var page = await _service.ListAsync(_lawyer1.Id, 2, null, null);
+        var page = await _reads.ListAsync(_lawyer1.Id, 2, null, null);
 
         Assert.Equal(new[] { "2", "3" }, page.Items.Select(m => m.Body));
         Assert.True(page.HasOlder);
@@ -280,9 +274,9 @@ public class ForumServiceTests : PostgresDbTest
         var first = await PostAsync(_lawyer1, "1");
         await PostAsync(_lawyer1, "2");
         await PostAsync(_lawyer1, "3");
-        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null);
+        var tail = await _reads.ListAsync(_lawyer1.Id, 2, null, null);
 
-        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
+        var older = await _reads.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
 
         Assert.Equal(new[] { first.Id }, older.Items.Select(m => m.Id));
         Assert.False(older.HasOlder);
@@ -293,11 +287,11 @@ public class ForumServiceTests : PostgresDbTest
     {
         await PostAsync(_lawyer1, "1");
         await PostAsync(_lawyer1, "2");
-        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null);
+        var tail = await _reads.ListAsync(_lawyer1.Id, 2, null, null);
         var fresh = await PostAsync(_lawyer1, "3");
 
-        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
-        var newer = await _service.ListAsync(_lawyer1.Id, 10, null, tail.Items[^1].Id);
+        var older = await _reads.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
+        var newer = await _reads.ListAsync(_lawyer1.Id, 10, null, tail.Items[^1].Id);
 
         var walked = older.Items.Concat(tail.Items).Select(m => m.Id).ToList();
         Assert.Equal(walked.Count, walked.Distinct().Count());
@@ -310,7 +304,7 @@ public class ForumServiceTests : PostgresDbTest
     {
         await PostAsync(_lawyer2, "من دمشق");
 
-        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null);
+        var page = await _reads.ListAsync(_lawyer1.Id, 30, null, null);
 
         Assert.Contains(page.Items, m => m.Body == "من دمشق" && m.AuthorLocation == "دمشق");
     }
@@ -356,7 +350,7 @@ public class ForumServiceTests : PostgresDbTest
 
         await DeleteMessageAsync(posted.Id, _lawyer1.Id);
 
-        Assert.Null(await _service.GetByIdAsync(posted.Id, _lawyer1.Id));
+        Assert.Null(await _reads.GetByIdAsync(posted.Id, _lawyer1.Id));
         Assert.Empty(_db.ForumMessageReads.Where(r => r.MessageId == posted.Id));
     }
 
@@ -386,7 +380,7 @@ public class ForumServiceTests : PostgresDbTest
 
         await DeleteMessageAsync(posted.Id, _admin.Id);
 
-        Assert.Null(await _service.GetByIdAsync(posted.Id, _admin.Id));
+        Assert.Null(await _reads.GetByIdAsync(posted.Id, _admin.Id));
     }
 
     [PostgresFact]
@@ -404,13 +398,13 @@ public class ForumServiceTests : PostgresDbTest
         var second = await PostAsync(_lawyer1, "ثانية");
 
         await TogglePinAsync(first.Id, _admin.Id);
-        Assert.True((await _service.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
+        Assert.True((await _reads.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
 
         await TogglePinAsync(second.Id, _admin.Id);
-        Assert.False((await _service.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
-        Assert.True((await _service.GetByIdAsync(second.Id, _admin.Id))!.IsPinned);
+        Assert.False((await _reads.GetByIdAsync(first.Id, _admin.Id))!.IsPinned);
+        Assert.True((await _reads.GetByIdAsync(second.Id, _admin.Id))!.IsPinned);
 
-        var pinned = await _service.GetPinnedAsync(_admin.Id);
+        var pinned = await _reads.GetPinnedAsync(_admin.Id);
         Assert.Equal(second.Id, pinned!.Id);
     }
 
@@ -423,7 +417,7 @@ public class ForumServiceTests : PostgresDbTest
         var result = await TogglePinAsync(posted.Id, _admin.Id);
 
         Assert.False(result.IsPinned);
-        Assert.Null(await _service.GetPinnedAsync(_admin.Id));
+        Assert.Null(await _reads.GetPinnedAsync(_admin.Id));
     }
 
     [PostgresFact]
@@ -457,7 +451,7 @@ public class ForumServiceTests : PostgresDbTest
         // موسومًا في الذاكرة — نُفرغ المتعقِّب (عرف اختبارات الاحتفاظ) قبل
         // الجزم بأنه لم يُثبَّت شيء في القاعدة فعلًا.
         _db.ChangeTracker.Clear();
-        Assert.False((await _service.GetByIdAsync(posted.Id, _admin.Id))!.IsPinned);
+        Assert.False((await _reads.GetByIdAsync(posted.Id, _admin.Id))!.IsPinned);
     }
 
     /// <summary>
@@ -564,8 +558,8 @@ public class ForumServiceTests : PostgresDbTest
     {
         await PostAsync(_lawyer1, "لي");
 
-        Assert.Equal(0, await _service.CountUnreadAsync(_lawyer1.Id));
-        Assert.Equal(1, await _service.CountUnreadAsync(_lawyer2.Id));
+        Assert.Equal(0, await _reads.CountUnreadAsync(_lawyer1.Id));
+        Assert.Equal(1, await _reads.CountUnreadAsync(_lawyer2.Id));
     }
 
     [PostgresFact]
@@ -574,7 +568,7 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
         await MarkReadAsync(_lawyer1.Id, "المحامي الأول", posted.Id);
 
-        var readers = await _service.GetReadersAsync(posted.Id, _lawyer1.Id);
+        var readers = await _reads.GetReadersAsync(posted.Id, _lawyer1.Id);
 
         Assert.Empty(readers);
     }
@@ -640,11 +634,11 @@ public class ForumServiceTests : PostgresDbTest
         await PostAsync(_lawyer1, "1");
         var second = await PostAsync(_lawyer1, "2");
 
-        Assert.Equal(2, await _service.CountUnreadAsync(_lawyer2.Id));
+        Assert.Equal(2, await _reads.CountUnreadAsync(_lawyer2.Id));
 
         await MarkReadAsync(_lawyer2.Id, "محامي دمشق", second.Id);
 
-        Assert.Equal(0, await _service.CountUnreadAsync(_lawyer2.Id));
+        Assert.Equal(0, await _reads.CountUnreadAsync(_lawyer2.Id));
     }
 
     [PostgresFact]
@@ -653,14 +647,14 @@ public class ForumServiceTests : PostgresDbTest
         var posted = await PostAsync(_lawyer1);
         await MarkReadAsync(_lawyer2.Id, "محامي دمشق", posted.Id);
 
-        var readers = await _service.GetReadersAsync(posted.Id, _lawyer1.Id);
+        var readers = await _reads.GetReadersAsync(posted.Id, _lawyer1.Id);
 
         Assert.Single(readers);
         Assert.Equal(_lawyer2.Id, readers[0].UserId);
         Assert.Equal("محامي دمشق", readers[0].UserName);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.GetReadersAsync(posted.Id, _lawyer2.Id));
+            () => _reads.GetReadersAsync(posted.Id, _lawyer2.Id));
     }
 
     [PostgresFact]
@@ -672,14 +666,14 @@ public class ForumServiceTests : PostgresDbTest
         _lawyer2.FullName = "اسم جديد";
         await _db.SaveChangesAsync();
 
-        var readers = await _service.GetReadersAsync(posted.Id, _lawyer1.Id);
+        var readers = await _reads.GetReadersAsync(posted.Id, _lawyer1.Id);
         Assert.Equal("محامي دمشق", readers[0].UserName);
     }
 
     [PostgresFact]
     public async Task Readers_MissingMessage_ThrowsNotFound()
     {
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetReadersAsync(9999, _lawyer1.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => _reads.GetReadersAsync(9999, _lawyer1.Id));
     }
 
     [PostgresFact]
@@ -690,7 +684,7 @@ public class ForumServiceTests : PostgresDbTest
         // اطلاع الغير على رسالتي (لا اطلاعي أنا — قراءة الذات لا توثَّق).
         await MarkReadAsync(_lawyer2.Id, "محامي دمشق", 100);
 
-        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null);
+        var page = await _reads.ListAsync(_lawyer1.Id, 30, null, null);
 
         var mine = page.Items.Single(m => m.AuthorId == _lawyer1.Id);
         var others = page.Items.Single(m => m.AuthorId == _lawyer2.Id);
@@ -782,7 +776,7 @@ public class ForumServiceTests : PostgresDbTest
         _delegate.IsActive = false;
         await _db.SaveChangesAsync();
 
-        var results = await _service.SearchUsersAsync("محامي", _lawyer1.Id);
+        var results = await _reads.SearchUsersAsync("محامي", _lawyer1.Id);
 
         Assert.Contains(results, u => u.Id == _lawyer2.Id && u.Role == "lawyer" && u.Location == "دمشق" && u.Section == null);
         Assert.DoesNotContain(results, u => u.Id == _lawyer1.Id);
@@ -792,7 +786,7 @@ public class ForumServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchUsers_ExcludesDelegates_EvenWhenActive()
     {
-        var results = await _service.SearchUsersAsync(null, _lawyer1.Id);
+        var results = await _reads.SearchUsersAsync(null, _lawyer1.Id);
 
         Assert.NotEmpty(results);
         Assert.DoesNotContain(results, u => u.Role == "entitymanager");
@@ -802,7 +796,7 @@ public class ForumServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchUsers_SubHeadCarriesSection()
     {
-        var results = await _service.SearchUsersAsync("الشعبة", _lawyer1.Id);
+        var results = await _reads.SearchUsersAsync("الشعبة", _lawyer1.Id);
 
         var sub = Assert.Single(results, u => u.Id == _subHead.Id);
         Assert.Equal("subhead", sub.Role);
@@ -813,7 +807,7 @@ public class ForumServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchUsers_DelegateCaller_ThrowsUnauthorized()
     {
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchUsersAsync(null, _delegate.Id));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _reads.SearchUsersAsync(null, _delegate.Id));
     }
 
     // ---------- الاحتفاظ ----------
@@ -883,7 +877,7 @@ public class ForumServiceTests : PostgresDbTest
 
         await BuildRetention(6).ExecuteOnceAsync();
 
-        var reloaded = await _service.GetByIdAsync(quoter.Id, _lawyer2.Id);
+        var reloaded = await _reads.GetByIdAsync(quoter.Id, _lawyer2.Id);
         Assert.NotNull(reloaded);
         Assert.Null(reloaded.QuotedMessageId);
         Assert.Equal(stale.AuthorName, reloaded.QuotedAuthorName);
