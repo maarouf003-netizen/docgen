@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.UseCases.Appeals;
 using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -201,7 +202,7 @@ public sealed partial class PortalService : IPortalService
         if (doc is null)
             return null;
 
-        var appeals = await _appealService.ListForDocumentAsync(documentId, ct);
+        var appeals = await _appealReads.HandleAsync(new ListAppealsForDocumentQuery(documentId), ct);
 
         // رأي المحامي الداخلي (دفاعه) وملاحظاته الحرة لا يظهران للمندوب (ق10 الموسّعة) —
         // حقلان حرّان من إدخال المحامي بلا ضمان بنيوي بأنهما وقائع قضية، فيُصفَّران معًا.

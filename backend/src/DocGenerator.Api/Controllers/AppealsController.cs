@@ -23,6 +23,13 @@ public class AppealsController : ControllerBase
     private readonly IDocumentAppealService _appeals;
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
+    private readonly IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> _appealList;
+    private readonly IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>> _appealSearch;
+    private readonly IQueryHandler<GetAppealQuery, AppealDto?> _appealGet;
+    private readonly IQueryHandler<CountAssigneeAppealsForHeadQuery, int> _appealCountForHead;
+    private readonly IQueryHandler<GetAppealBaseNumberHistoryQuery, List<AppealBaseNumberHistoryDto>> _appealHistory;
+    private readonly IQueryHandler<GetAppealActionsQuery, List<AppealActionDto>> _appealActions;
+    private readonly IQueryHandler<GetAppealRemindersQuery, List<AppealReminderDto>> _appealReminders;
     private readonly ICommandHandler<DeleteDocumentAppealCommand, bool> _deleteAppeal;
     private readonly ICommandHandler<CreateDocumentAppealCommand, AppealDto> _createAppeal;
     private readonly ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> _updateAppeal;
@@ -47,6 +54,13 @@ public class AppealsController : ControllerBase
         IDocumentAppealService appeals,
         IDocumentService documents,
         IUserCapabilities capabilities,
+        IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> appealList,
+        IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>> appealSearch,
+        IQueryHandler<GetAppealQuery, AppealDto?> appealGet,
+        IQueryHandler<CountAssigneeAppealsForHeadQuery, int> appealCountForHead,
+        IQueryHandler<GetAppealBaseNumberHistoryQuery, List<AppealBaseNumberHistoryDto>> appealHistory,
+        IQueryHandler<GetAppealActionsQuery, List<AppealActionDto>> appealActions,
+        IQueryHandler<GetAppealRemindersQuery, List<AppealReminderDto>> appealReminders,
         ICommandHandler<DeleteDocumentAppealCommand, bool> deleteAppeal,
         ICommandHandler<CreateDocumentAppealCommand, AppealDto> createAppeal,
         ICommandHandler<UpdateDocumentAppealCommand, AppealDto?> updateAppeal,
@@ -70,6 +84,13 @@ public class AppealsController : ControllerBase
         _appeals = appeals;
         _documents = documents;
         _capabilities = capabilities;
+        _appealList = appealList;
+        _appealSearch = appealSearch;
+        _appealGet = appealGet;
+        _appealCountForHead = appealCountForHead;
+        _appealHistory = appealHistory;
+        _appealActions = appealActions;
+        _appealReminders = appealReminders;
         _deleteAppeal = deleteAppeal;
         _createAppeal = createAppeal;
         _updateAppeal = updateAppeal;
@@ -173,7 +194,7 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _appeals.ListForDocumentAsync(documentId, ct));
+            return Ok(await _appealList.HandleAsync(new ListAppealsForDocumentQuery(documentId), ct));
         }
         catch (ArgumentException e)
         {
@@ -206,7 +227,8 @@ public class AppealsController : ControllerBase
         CancellationToken ct = default)
     {
         if (HasFullAccess)
-            return Ok(await _appeals.SearchAsync(q, status, null, null, null, page, perPage, ct));
+            return Ok(await _appealSearch.HandleAsync(
+                new SearchAppealsQuery(q, status, null, null, null, page, perPage), ct));
 
         if (IsHeadOrSubHead)
         {
@@ -226,10 +248,12 @@ public class AppealsController : ControllerBase
                 if (section is null)
                     return Forbid();
             }
-            return Ok(await _appeals.SearchAsync(q, status, branch, null, section, page, perPage, ct));
+            return Ok(await _appealSearch.HandleAsync(
+                new SearchAppealsQuery(q, status, branch, null, section, page, perPage), ct));
         }
 
-        return Ok(await _appeals.SearchAsync(q, status, null, User.GetUserId(), null, page, perPage, ct));
+        return Ok(await _appealSearch.HandleAsync(
+            new SearchAppealsQuery(q, status, null, User.GetUserId(), null, page, perPage), ct));
     }
 
     /// <summary>تفاصيل استئناف كاملة.</summary>
@@ -238,7 +262,7 @@ public class AppealsController : ControllerBase
     {
         if (!await CanViewAppealAsync(id))
             return Forbid();
-        var dto = await _appeals.GetAsync(id, ct);
+        var dto = await _appealGet.HandleAsync(new GetAppealQuery(id), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 
@@ -390,7 +414,11 @@ public class AppealsController : ControllerBase
             if (section is null)
                 return Forbid();
         }
-        return Ok(new { count = await _appeals.CountByAssigneeForHeadAsync(lawyerId, branchId, section, ct) });
+        return Ok(new
+        {
+            count = await _appealCountForHead.HandleAsync(
+                new CountAssigneeAppealsForHeadQuery(lawyerId, branchId, section), ct)
+        });
     }
 
     // ── الإحالة لرئيس القسم والتراجع عنها (شعبة → قسم، اتجاه واحد — §6) ────
@@ -465,7 +493,7 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _appeals.GetBaseNumberHistoryAsync(id, ct));
+            return Ok(await _appealHistory.HandleAsync(new GetAppealBaseNumberHistoryQuery(id), ct));
         }
         catch (ArgumentException e)
         {
@@ -510,7 +538,7 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _appeals.GetActionsAsync(id, ct));
+            return Ok(await _appealActions.HandleAsync(new GetAppealActionsQuery(id), ct));
         }
         catch (ArgumentException e)
         {
@@ -594,5 +622,5 @@ public class AppealsController : ControllerBase
     [HttpGet("appeals/reminders")]
     [Authorize(Roles = "lawyer")]
     public async Task<IActionResult> Reminders(CancellationToken ct)
-        => Ok(await _appeals.GetRemindersAsync(User.GetUserId(), ct));
+        => Ok(await _appealReminders.HandleAsync(new GetAppealRemindersQuery(User.GetUserId()), ct));
 }

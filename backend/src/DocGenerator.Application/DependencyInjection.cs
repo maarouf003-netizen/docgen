@@ -170,6 +170,13 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>>, GetDocumentDelegationsQueryHandler>();
         services.AddScoped<IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>>, GetPendingDelegationsQueryHandler>();
         services.AddScoped<IQueryHandler<CountPendingDelegationsQuery, int>, CountPendingDelegationsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>>, ListAppealsForDocumentQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>>, SearchAppealsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAppealQuery, AppealDto?>, GetAppealQueryHandler>();
+        services.AddScoped<IQueryHandler<CountAssigneeAppealsForHeadQuery, int>, CountAssigneeAppealsForHeadQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAppealBaseNumberHistoryQuery, List<AppealBaseNumberHistoryDto>>, GetAppealBaseNumberHistoryQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAppealActionsQuery, List<AppealActionDto>>, GetAppealActionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAppealRemindersQuery, List<AppealReminderDto>>, GetAppealRemindersQueryHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

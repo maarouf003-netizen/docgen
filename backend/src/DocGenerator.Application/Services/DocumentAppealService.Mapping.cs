@@ -1,7 +1,5 @@
 using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -34,10 +32,6 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
 
     /// <summary>اسم عرض للملف — مصدره الموحّد `DocumentDisplayName`.</summary>
     internal static string DocumentTitle(Document doc) => DocumentDisplayName.Build(doc);
-
-    /// <summary>عنوان موجز للاستئناف في التذكيرات.</summary>
-    private static string AppealTitleOf(DocumentAppeal appeal)
-        => $"استئناف قرار رئيس التنفيذ — {AppealDirectionCatalog.ToLabel(appeal.Direction)}";
 
     internal static AppealActionDto ToActionDto(AppealAction action) => new(
         action.Id,

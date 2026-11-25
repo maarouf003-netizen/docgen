@@ -1,30 +1,30 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.Appeals;
 
-public sealed partial class DocumentAppealService : IDocumentAppealService
+/// <summary>تذكيرات إجراءات الاستئنافات التي يتابعها المحامي (بطاقة التذكيرات).</summary>
+public sealed record GetAppealRemindersQuery(int UserId) : IQuery<List<AppealReminderDto>>;
+
+internal sealed class GetAppealRemindersQueryHandler
+    : QueryHandlerBase<GetAppealRemindersQuery, List<AppealReminderDto>>
 {
-    // ── الإجراءات والملاحظات المستقلة ─────────────────────────────────────
+    private readonly IAppealRepository _appeals;
 
-    public async Task<List<AppealActionDto>> GetActionsAsync(int appealId, CancellationToken ct = default)
-    {
-        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
-            ?? throw new ArgumentException("الاستئناف غير موجود");
-        return appeal.Actions
-            .OrderByDescending(a => a.CreatedAt)
-            .Select(a => ToActionDto(a))
-            .ToList();
-    }
+    public GetAppealRemindersQueryHandler(
+        IAppealRepository appeals,
+        IEnumerable<IPipelineBehavior<GetAppealRemindersQuery, List<AppealReminderDto>>> behaviors)
+        : base(behaviors)
+        => _appeals = appeals;
 
-    public async Task<List<AppealReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)
+    protected override async Task<List<AppealReminderDto>> HandleCoreAsync(
+        GetAppealRemindersQuery query, CancellationToken ct)
     {
-        var rows = await ListReminderRowsAsync(userId, ct);
+        var rows = await ListReminderRowsAsync(query.UserId, ct);
         return rows
             .Select(r =>
             {
@@ -68,4 +68,8 @@ public sealed partial class DocumentAppealService : IDocumentAppealService
         }
         return rows;
     }
+
+    /// <summary>عنوان موجز للاستئناف في التذكيرات.</summary>
+    private static string AppealTitleOf(DocumentAppeal appeal)
+        => $"استئناف قرار رئيس التنفيذ — {AppealDirectionCatalog.ToLabel(appeal.Direction)}";
 }

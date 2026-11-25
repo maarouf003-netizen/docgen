@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.UseCases.Appeals;
 using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -60,7 +61,7 @@ public sealed partial class PortalService : IPortalService
     private readonly IPortalRepository _portal;
     private readonly IRepository<Document> _documents;
     private readonly IAppealRepository _appeals;
-    private readonly IDocumentAppealService _appealService;
+    private readonly IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> _appealReads;
     private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _delegationReads;
     private readonly IExcelExportService _excel;
     private readonly IAuditLogger _audit;
@@ -72,7 +73,7 @@ public sealed partial class PortalService : IPortalService
         IPortalRepository portal,
         IRepository<Document> documents,
         IAppealRepository appeals,
-        IDocumentAppealService appealService,
+        IQueryHandler<ListAppealsForDocumentQuery, List<AppealDto>> appealReads,
         IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> delegationReads,
         IExcelExportService excel,
         IAuditLogger audit,
@@ -83,7 +84,7 @@ public sealed partial class PortalService : IPortalService
         _portal = portal;
         _documents = documents;
         _appeals = appeals;
-        _appealService = appealService;
+        _appealReads = appealReads;
         _delegationReads = delegationReads;
         _excel = excel;
         _audit = audit;

@@ -279,7 +279,6 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
 
 public class RescheduleAppealReminderTests : PostgresDbTest
 {
-    private readonly IDocumentAppealService _service;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -299,25 +298,6 @@ public class RescheduleAppealReminderTests : PostgresDbTest
         _head1 = User(_branch.Id, "head1", "رئيس قسم دمشق", UserRole.Head);
         _db.Users.AddRange(_lawyer1, _lawyer2, _head1);
         _db.SaveChanges();
-
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        var alerts = new HeadAlertService(
-            new HeadAlertRepository(_db),
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Branch>(_db),
-            new DelegationRepository(_db),
-            uow, tx, _audit);
-
-        _service = new DocumentAppealService(
-            new AppealRepository(_db),
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            uow, tx, _audit, alerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TestClock.Provider,
-            TestClock.TimeZone);
     }
 
 

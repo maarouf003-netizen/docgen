@@ -21,7 +21,7 @@ public class DocumentGenerationDisabledTests
                 Enabled = enabled,
                 DisabledMessage = "الميزة معطلة حاليًا لحين توحيد النماذج المولدة",
             }),
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, null!);
 

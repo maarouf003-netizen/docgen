@@ -41,7 +41,6 @@ public class DocumentsController : ControllerBase
     private readonly IWordDocumentGenerator _generator;
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
-    private readonly IDocumentAppealService _appeals;
     private readonly IStrikeOffReminderService _strikeOffReminders;
     private readonly IAuditLogService _auditLogs;
     private readonly IAuditLogger _audit;
@@ -82,7 +81,6 @@ public class DocumentsController : ControllerBase
         IWordDocumentGenerator generator,
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
-        IDocumentAppealService appeals,
         IStrikeOffReminderService strikeOffReminders,
         IAuditLogService auditLogs,
         IAuditLogger audit,
@@ -122,7 +120,6 @@ public class DocumentsController : ControllerBase
         _generator = generator;
         _generationOptions = generationOptions;
         _excel = excel;
-        _appeals = appeals;
         _strikeOffReminders = strikeOffReminders;
         _auditLogs = auditLogs;
         _audit = audit;
