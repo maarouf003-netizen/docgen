@@ -1,5 +1,10 @@
 # P4-06 — تنسيق موحّد وبوابة `dotnet format --verify-no-changes` (CI: backend).
 # القاعدة: الملفات المولّدة/الهجرات تُستثنى من التنسيق اليدوي.
+#
+# P4-06d — تقييم Roslynator/StyleCop انتهى إلى **التأجيل** بدليل مقيس
+# (docs/audit/252): لا تُضف `dotnet_diagnostic.<RCS|SA|SX>.severity` هنا قبل أن
+# تشير المشاريع إلى حزمة المحلّل؛ الإعداد بلا حزمة لا يفحص شيئًا (خضرة كاذبة)،
+# ويحرس ذلك `AnalyzerConfigurationTests` في DocGenerator.Architecture.Tests.
 
 root = true
 
