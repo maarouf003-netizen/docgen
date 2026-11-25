@@ -43,6 +43,8 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
     private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
+    private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
+    private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -61,7 +63,9 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<MovePublicEntityEntryCommand, MoveEntryResponse> moveEntry,
         ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> moveAllEntries,
         ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> commitMerge,
-        ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> renameGroup)
+        ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> renameGroup,
+        ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> abolishAndReplace,
+        ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> proposeEdit)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -80,6 +84,8 @@ public class EntityRegistryController : ControllerBase
         _moveAllEntries = moveAllEntries;
         _commitMerge = commitMerge;
         _renameGroup = renameGroup;
+        _abolishAndReplace = abolishAndReplace;
+        _proposeEdit = proposeEdit;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -165,7 +171,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.IsLawyer))
             return Forbid();
-        var updated = await _registry.ProposeEditAsync(id, request, Actor, ct);
+        var updated = await _proposeEdit.HandleAsync(
+            new ProposePublicEntityEditCommand(id, request, Actor), ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -411,7 +418,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.AbolishAndReplaceAsync(request, Actor, ct));
+        return Ok(await _abolishAndReplace.HandleAsync(
+            new AbolishAndReplacePublicEntityGroupCommand(request, Actor), ct));
     }
 
     /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7)؛ رئيس القسم يرى محافظته (جبر خادمي).</summary>
