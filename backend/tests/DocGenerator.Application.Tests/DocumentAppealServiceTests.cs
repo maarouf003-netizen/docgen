@@ -16,6 +16,12 @@ namespace DocGenerator.Application.Tests;
 public class DocumentAppealServiceTests : PostgresDbTest
 {
     private readonly IDocumentAppealService _service;
+    private readonly IQueryHandler<SearchAppealsQuery, PagedResult<AppealDto>> _appealSearch;
+    private readonly IQueryHandler<GetAppealQuery, AppealDto?> _appealGet;
+    private readonly IQueryHandler<CountAssigneeAppealsForHeadQuery, int> _appealCountForHead;
+    private readonly IQueryHandler<GetAppealBaseNumberHistoryQuery, List<AppealBaseNumberHistoryDto>> _appealHistory;
+    private readonly IQueryHandler<GetAppealActionsQuery, List<AppealActionDto>> _appealActions;
+    private readonly IQueryHandler<GetAppealRemindersQuery, List<AppealReminderDto>> _appealReminders;
     private readonly IHeadAlertService _alertService;
     private readonly TransactionRunner _tx;
     private readonly HeadAlertOutbox _outbox;
@@ -73,17 +79,25 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _audit);
         _outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
 
-        _service = new DocumentAppealService(
+        _service = new DocumentAppealService(new AppealRepository(_db));
+        _appealSearch = new SearchAppealsQueryHandler(
+            new AppealRepository(_db), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SearchAppealsQuery, PagedResult<AppealDto>>>());
+        _appealGet = new GetAppealQueryHandler(
+            new AppealRepository(_db), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetAppealQuery, AppealDto?>>());
+        _appealCountForHead = new CountAssigneeAppealsForHeadQueryHandler(
             new AppealRepository(_db),
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new UnitOfWork(_db),
-            _tx,
-            _audit,
-            _alertService,
-            _outbox,
-            TestClock.Provider,
-            TestClock.TimeZone);
+            Array.Empty<IPipelineBehavior<CountAssigneeAppealsForHeadQuery, int>>());
+        _appealHistory = new GetAppealBaseNumberHistoryQueryHandler(
+            new AppealRepository(_db), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetAppealBaseNumberHistoryQuery, List<AppealBaseNumberHistoryDto>>>());
+        _appealActions = new GetAppealActionsQueryHandler(
+            new AppealRepository(_db),
+            Array.Empty<IPipelineBehavior<GetAppealActionsQuery, List<AppealActionDto>>>());
+        _appealReminders = new GetAppealRemindersQueryHandler(
+            new AppealRepository(_db),
+            Array.Empty<IPipelineBehavior<GetAppealRemindersQuery, List<AppealReminderDto>>>());
         _appealDelete = new DeleteDocumentAppealCommandHandler(
             new AppealRepository(_db), _alertService, new UnitOfWork(_db), _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteDocumentAppealCommand, bool>>());
@@ -389,7 +403,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             d => d == $"عدّل الاستئناف (رقم {created.Id}) على الملف (رقم {doc.Id})");
 
         Assert.True(await _appealDelete.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
-        Assert.Null(await _service.GetAsync(created.Id));
+        Assert.Null(await _appealGet.GetAsync(created.Id));
         // تثبيت نص التدقيق حرفيًا.
         Assert.Contains(_audit.Details,
             d => d == $"حذف الاستئناف (رقم {created.Id}) من الملف (رقم {doc.Id})");
@@ -573,7 +587,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer2.Id, "lawyer2");
 
         // قبل التدوير: رقم لسنة سابقة بلا رقم سنة حالية ← يحتاج تدويرًا.
-        var before = await _service.GetAsync(created.Id);
+        var before = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(before);
         Assert.True(before!.NeedsRotation);
         Assert.Equal("900", before.CurrentBaseNumber);
@@ -584,11 +598,11 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 new(TestClock.Today.Year.ToString()),
             }), _lawyer2.Id, "lawyer2");
 
-        var after = await _service.GetAsync(created.Id);
+        var after = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(after);
         Assert.False(after!.NeedsRotation);
         Assert.Equal(TestClock.Today.Year.ToString(), after.CurrentBaseNumber);
-        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, h => h.BaseNumber == "900");
 
@@ -605,12 +619,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, TestClock.Today.Year,
             new CorrectAppealBaseNumberRequest("1450"), _lawyer2.Id, "lawyer2");
 
-        var after2 = await _service.GetAsync(created.Id);
+        var after2 = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(after2);
         Assert.False(after2!.NeedsRotation);
         Assert.Equal("1450", after2.CurrentBaseNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), after2.CurrentBaseYear);
-        var history2 = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history2 = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history2.Count);
         // ترتيب تصاعدي بالسنوات: القيد السابق ثم رقم السنة الحالية المصحّح.
         Assert.Equal("900", history2[0].BaseNumber);
@@ -653,7 +667,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         Assert.NotNull(updated);
         Assert.Equal("1450", updated!.CurrentBaseNumber);
         Assert.False(updated.NeedsRotation);
-        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Equal("900", history[0].BaseNumber);
         Assert.Equal("1450", history[1].BaseNumber);
@@ -707,7 +721,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("مُدارة آليًا", ex.Message);
 
-        var dto = await _service.GetAsync(created.Id);
+        var dto = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("1000", dto!.CurrentBaseNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
@@ -740,10 +754,10 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("مُدارة آليًا", ex.Message);
 
-        var dto = await _service.GetAsync(created.Id);
+        var dto = await _appealGet.GetAsync(created.Id);
         Assert.Equal("1000", dto!.CurrentBaseNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
-        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, h => h.Year == previousYear && h.BaseNumber == "900");
         Assert.Contains(history, h => h.Year == TestClock.Today.Year && h.BaseNumber == "1000");
@@ -924,7 +938,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, previousYear,
             new CorrectAppealBaseNumberRequest("950"), _lawyer2.Id, "lawyer2");
 
-        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal("950", Assert.Single(history).BaseNumber);
     }
 
@@ -944,12 +958,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         entity.AppealYear = "عام غير محدد";
         await _db.SaveChangesAsync();
 
-        var dto = await _service.GetAsync(created.Id);
+        var dto = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("777", dto!.CurrentBaseNumber);
         Assert.Null(dto.CurrentBaseYear);
         Assert.True(dto.NeedsRotation);
-        Assert.Empty(await _service.GetBaseNumberHistoryAsync(created.Id));
+        Assert.Empty(await _appealHistory.GetBaseNumberHistoryAsync(created.Id));
     }
 
     [PostgresFact]
@@ -976,7 +990,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         entity.AppealYear = TestClock.Today.Year.ToString();
         await _db.SaveChangesAsync();
 
-        var dto = await _service.GetAsync(created.Id);
+        var dto = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("500", dto!.CurrentBaseNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), dto.CurrentBaseYear);
@@ -1007,7 +1021,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealCorrectBaseNumber.CorrectBaseNumberAsync(created.Id, previousYear,
             new CorrectAppealBaseNumberRequest("950"), _lawyer2.Id, "lawyer2");
 
-        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        var history = await _appealHistory.GetBaseNumberHistoryAsync(created.Id);
         Assert.Single(history);
         Assert.Equal("950", history[0].BaseNumber);
         Assert.False(history[0].IsCurrent);
@@ -1036,7 +1050,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var before = await _service.GetAsync(created.Id);
+        var before = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(before);
         Assert.True(before!.NeedsRotation);
         Assert.Equal("777", before.CurrentBaseNumber);
@@ -1047,7 +1061,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
                 new(TestClock.Today.Year.ToString()),
             }), _lawyer2.Id, "lawyer2");
 
-        var after = await _service.GetAsync(created.Id);
+        var after = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(after);
         Assert.False(after!.NeedsRotation);
     }
@@ -1110,13 +1124,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        var before = await _service.GetAsync(created.Id);
+        var before = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(before);
         Assert.True(before!.NeedsRotation);
 
         await _appealSaveBaseNumbers.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2");
 
-        var after = await _service.GetAsync(created.Id);
+        var after = await _appealGet.GetAsync(created.Id);
         Assert.NotNull(after);
         Assert.Equal("100", after!.CurrentBaseNumber);
         Assert.False(after.NeedsRotation);
@@ -1161,19 +1175,19 @@ public class DocumentAppealServiceTests : PostgresDbTest
             d => d == $"ضبط تذكير إجراء على الاستئناف (رقم {created.Id}) (شهر — أصفر)");
 
         // تذكير يظهر للمتابع فقط.
-        var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
+        var reminders = await _appealReminders.GetRemindersAsync(_lawyer2.Id);
         Assert.Contains(reminders, r => r.ActionId == action.Id && r.AppealId == created.Id);
-        var otherReminders = await _service.GetRemindersAsync(_lawyer1.Id);
+        var otherReminders = await _appealReminders.GetRemindersAsync(_lawyer1.Id);
         Assert.DoesNotContain(otherReminders, r => r.ActionId == action.Id);
 
         Assert.True(await _appealClearReminder.ClearReminderAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
-        Assert.DoesNotContain(await _service.GetRemindersAsync(_lawyer2.Id), r => r.ActionId == action.Id);
+        Assert.DoesNotContain(await _appealReminders.GetRemindersAsync(_lawyer2.Id), r => r.ActionId == action.Id);
         // تثبيت نص تدقيق الإلغاء حرفيًا.
         Assert.Contains(_audit.Details,
             d => d == $"ألغى تذكير إجراء على الاستئناف (رقم {created.Id})");
 
         Assert.True(await _appealDeleteAction.DeleteActionAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
-        Assert.Empty(await _service.GetActionsAsync(created.Id));
+        Assert.Empty(await _appealActions.GetActionsAsync(created.Id));
         // تثبيت نص تدقيق حذف الإجراء حرفيًا.
         Assert.Contains(_audit.Details,
             d => d == $"حذف إجراءً من الاستئناف (رقم {created.Id})");
@@ -1203,7 +1217,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
             new AddAppealActionRequest("action", "متابعة", "3/8/2026", "أسبوع", "أحمر"),
             _lawyer2.Id, "lawyer2");
 
-        var reminder = Assert.Single(await _service.GetRemindersAsync(_lawyer2.Id),
+        var reminder = Assert.Single(await _appealReminders.GetRemindersAsync(_lawyer2.Id),
             r => r.ActionId == action.Id);
 
         Assert.Equal("شركة بركات التجارية", reminder.DocumentLabel);
@@ -1342,7 +1356,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         tracked.ReminderBaseDate = new DateTime(2026, 11, 5);
         await _db.SaveChangesAsync();
 
-        var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
+        var reminders = await _appealReminders.GetRemindersAsync(_lawyer2.Id);
         var reminder = Assert.Single(reminders, r => r.ActionId == action.Id);
         Assert.Equal(new DateTime(2026, 11, 5), reminder.DueDate.Date);
         Assert.False(reminder.DueDateSuspect);
@@ -1463,8 +1477,8 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var count = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, null, "head1");
         Assert.Equal(0, count);
-        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(first.Id))!.AssignedLawyerId);
-        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(second.Id))!.AssignedLawyerId);
+        Assert.Equal(_lawyer2.Id, (await _appealGet.GetAsync(first.Id))!.AssignedLawyerId);
+        Assert.Equal(_lawyer2.Id, (await _appealGet.GetAsync(second.Id))!.AssignedLawyerId);
     }
 
     [PostgresFact]
@@ -1497,19 +1511,19 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
         await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
-        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
+        Assert.Equal(1, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
+        Assert.Equal(0, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
 
         // استئناف محسوم مسند لنفس المحامي لا يدخل العدّاد (المنظورة فقط — R5/C3).
         await _appealAssign.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _appealDecide.DecideAsync(second.Id,
             new DecideAppealRequest("قرار-2", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
-        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
+        Assert.Equal(1, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
 
         // رئيس قسم بلا فرع يُرفض بدل تسريب العدّادات.
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CountByAssigneeForHeadAsync(_lawyer2.Id, null, null));
+            () => _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer2.Id, null, null));
         Assert.True(second.Id > 0);
     }
 
@@ -1526,17 +1540,17 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealAssign.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // بحث بالاسم المستأنف (من اللقطة).
-        var byName = await _service.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, null, 1, 20);
+        var byName = await _appealSearch.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, null, 1, 20);
         Assert.Single(byName.Items);
 
         // نطاق المحامي المسند إليه يرى الاستئناف؛ والمنشئ غير المسند لا يراه (R6).
-        var followerScope = await _service.SearchAsync(null, null, null, _lawyer2.Id, null, 1, 20);
+        var followerScope = await _appealSearch.SearchAsync(null, null, null, _lawyer2.Id, null, 1, 20);
         Assert.Single(followerScope.Items);
-        var creatorScope = await _service.SearchAsync(null, null, null, _lawyer1.Id, null, 1, 20);
+        var creatorScope = await _appealSearch.SearchAsync(null, null, null, _lawyer1.Id, null, 1, 20);
         Assert.Empty(creatorScope.Items);
 
         // فلتر الحالة.
-        var pendingOnly = await _service.SearchAsync(null, AppealStatusCatalog.Pending, null, null, null, 1, 20);
+        var pendingOnly = await _appealSearch.SearchAsync(null, AppealStatusCatalog.Pending, null, null, null, 1, 20);
         Assert.Single(pendingOnly.Items);
     }
 
@@ -1565,7 +1579,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var rotated = await _service.GetAsync(dto.Id);
+        var rotated = await _appealGet.GetAsync(dto.Id);
         Assert.Equal("1500", rotated!.DocumentEffectiveNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), rotated.DocumentEffectiveYear);
     }
@@ -1591,7 +1605,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var list = await _service.GetAsync(dto.Id);
+        var list = await _appealGet.GetAsync(dto.Id);
 
         // لا يوجد رقم أساس فعّال حتى الآن (المستقبلي لا يُحتسب) → لا يُعرض رقم مستقبلي أبدًا.
         Assert.Null(list!.CurrentBaseNumber);
@@ -1926,7 +1940,7 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var headCount = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(1, headCount);
-        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, sectionId));
+        Assert.Equal(0, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, sectionId));
     }
 
     [PostgresFact]
@@ -1960,26 +1974,26 @@ public class DocumentAppealServiceTests : PostgresDbTest
         var appealSection = await CreatePendingAppealAsync(docSection.Id, sectionCircuit);
 
         // العزل: القسم يرى قسمه دون الشعبة، والشعبة ترى شعبته دون القسم.
-        var headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        var headResults = await _appealSearch.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
         Assert.Contains(headResults.Items, a => a.Id == appealDivision.Id);
         Assert.DoesNotContain(headResults.Items, a => a.Id == appealSection.Id);
-        var subResults = await _service.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
+        var subResults = await _appealSearch.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
         Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
         Assert.DoesNotContain(subResults.Items, a => a.Id == appealDivision.Id);
 
         // الاستثناء القرائي (22′): المحال المنظور يظهر للقسم، وبعد الحسم يختفي.
         await _appealForward.ForwardAsync(appealSection.Id, new ForwardAppealRequest(), sub.Id, "sub");
-        headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        headResults = await _appealSearch.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
         Assert.Contains(headResults.Items, a => a.Id == appealSection.Id);
 
         await _appealAssign.AssignAsync(appealSection.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _appealDecide.DecideAsync(appealSection.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
-        headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        headResults = await _appealSearch.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
         Assert.DoesNotContain(headResults.Items, a => a.Id == appealSection.Id);
         // مالك النطاق (الشعبة) يبقى يرى ملفه بعد الحسم.
-        subResults = await _service.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
+        subResults = await _appealSearch.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
         Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
     }
 
@@ -1997,12 +2011,12 @@ public class DocumentAppealServiceTests : PostgresDbTest
         await _appealForward.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
         await _appealAssign.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
 
-        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
+        Assert.Equal(1, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
 
         var moved = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(1, moved);
-        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(appeal.Id))!.AssignedLawyerId);
+        Assert.Equal(_lawyer2.Id, (await _appealGet.GetAsync(appeal.Id))!.AssignedLawyerId);
     }
 
     [PostgresFact]
@@ -2021,13 +2035,13 @@ public class DocumentAppealServiceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
 
         // المحسوم مستبعد من العدّ والنقل ولو كان محالًا (قيد `Pending` الأصلي).
-        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
+        Assert.Equal(0, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
         var moved = await _appealTransferAll.TransferAllAsync(
             new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
         Assert.Equal(0, moved);
 
         // فرع الشعبة بلا تغيير: المحال خارج شعبته لا يدخل نطاقها.
         var otherSection = await AddSectionAsync("شعبة أخرى", _branch.Id);
-        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, otherSection));
+        Assert.Equal(0, await _appealCountForHead.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, otherSection));
     }
 }

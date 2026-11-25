@@ -1,6 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Appeals;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -145,23 +148,13 @@ public class SearchServerYearTests : PostgresDbTest
             new Domain.Entities.AppealBaseNumber { AppealId = appeal2.Id, Year = 2025, BaseNumber = "A-25-2", CreatedById = userId, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         _db.SaveChanges();
 
-        var tx = new TransactionRunner(_db);
-        var alerts = new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db),
-            new UserRepository(_db), new Repository<Branch>(_db), new DelegationRepository(_db),
-            new UnitOfWork(_db), tx, _audit);
-        var service = new DocumentAppealService(
+        var search = new SearchAppealsQueryHandler(
             new AppealRepository(_db),
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new UnitOfWork(_db),
-            tx,
-            _audit,
-            alerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             Clock,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SearchAppealsQuery, PagedResult<AppealDto>>>());
 
-        var page = await service.SearchAsync(null, null, null, userId, null, page: 1, perPage: 100);
+        var page = await search.SearchAsync(null, null, null, userId, null, page: 1, perPage: 100);
 
         Assert.Equal(2, page.TotalCount);
         foreach (var row in page.Items)

@@ -24,7 +24,7 @@ public sealed class TransferBranchGuardTests
     private static DocumentsController BranchlessHeadController()
     {
         var controller = new DocumentsController(
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!,
             new CatalogAuthorization(),
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,

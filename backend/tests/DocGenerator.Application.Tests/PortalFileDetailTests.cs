@@ -1,10 +1,8 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -21,7 +19,6 @@ public class PortalFileDetailTests : PostgresDbTest
 {
     private readonly FakeAuditLogger _audit = new();
     private readonly IPortalService _portal;
-    private readonly IDocumentAppealService _appealService;
     private readonly int _entryAId;
     private readonly int _delegateGroupId;
     private readonly int _lawyerId;
@@ -51,19 +48,6 @@ public class PortalFileDetailTests : PostgresDbTest
         _delegateGroupId = delegateGroup.Id;
 
         _portal = PortalServiceFactory.Create(_db, _audit);
-
-        var documents = new DocumentRepository(_db);
-        var users = new UserRepository(_db);
-        var branches = new Repository<Branch>(_db);
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(_db), documents, users, branches,
-            new DelegationRepository(_db), uow, tx, _audit);
-        _appealService = new DocumentAppealService(
-            new AppealRepository(_db), documents, users, uow, tx, _audit, headAlerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TestClock.Provider, TestClock.TimeZone);
     }
 
 

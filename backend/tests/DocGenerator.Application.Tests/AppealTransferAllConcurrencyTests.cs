@@ -1,9 +1,6 @@
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -26,27 +23,6 @@ public class AppealTransferAllConcurrencyTests : IAsyncLifetime
     public async Task InitializeAsync() => _pg = await PostgresTestDb.CreateAsync();
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
-
-    private static IDocumentAppealService AppealService(DocGeneratorDbContext db)
-    {
-        var audit = new FakeAuditLogger();
-        var uow = new UnitOfWork(db);
-        var tx = new TransactionRunner(db);
-        var alerts = new HeadAlertService(
-            new HeadAlertRepository(db),
-            new DocumentRepository(db),
-            new UserRepository(db),
-            new Repository<Branch>(db),
-            new DelegationRepository(db),
-            uow, tx, audit);
-        return new DocumentAppealService(
-            new AppealRepository(db),
-            new DocumentRepository(db),
-            new UserRepository(db),
-            uow, tx, audit, alerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TestClock.Provider, TestClock.TimeZone);
-    }
 
     private async Task<(int BranchId, int SourceId, int TargetId)> SeedAsync()
     {

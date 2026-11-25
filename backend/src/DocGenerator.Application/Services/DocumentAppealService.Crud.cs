@@ -1,7 +1,5 @@
 using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -11,48 +9,6 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentAppealService : IDocumentAppealService
 {
     // ── التسطير والتعديل قبل الإسناد ───────────────────────────────────────
-
-    // ── القراءة والقوائم ───────────────────────────────────────────────────
-
-    public async Task<List<AppealDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default)
-    {
-        // فحص وجود رخيص (بلا تحميل الشجرة الكاملة للملف).
-        if (!await _documents.ExistsAsync(documentId, ct))
-            throw new ArgumentException("الملف غير موجود");
-        var items = await _appeals.ListByDocumentAsync(documentId, ct);
-        return items.Select(a => ToDto(a, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
-    }
-
-    public Task<PagedResult<AppealDto>> SearchAsync(
-        string? query, string? status, int? visibleBranchId, int? visibleUserId,
-        int? ownerSectionId, int page, int perPage, CancellationToken ct = default)
-    {
-        page = Math.Max(1, page);
-        perPage = Math.Clamp(perPage, 1, 100);
-        return SearchCoreAsync(query, status, visibleBranchId, visibleUserId, ownerSectionId, page, perPage, ct);
-    }
-
-    private async Task<PagedResult<AppealDto>> SearchCoreAsync(
-        string? query, string? status, int? visibleBranchId, int? visibleUserId,
-        int? ownerSectionId, int page, int perPage, CancellationToken ct)
-    {
-        var (total, items) = await _appeals.SearchAsync(
-            query, status, visibleBranchId, visibleUserId, ownerSectionId, page, perPage, ct);
-
-        return new PagedResult<AppealDto>
-        {
-            Items = items.Select(a => ToDto(a, ServerClock.CurrentYear(_clock, _timeZone))).ToList(),
-            Page = page,
-            PerPage = perPage,
-            TotalCount = total,
-        };
-    }
-
-    public async Task<AppealDto?> GetAsync(int appealId, CancellationToken ct = default)
-    {
-        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct);
-        return appeal is null ? null : ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
-    }
 
     /// <summary>كيان الاستئناف بروابطه — يُستخدم داخليًا للتحقق من الصلاحيات في المتحكم.</summary>
     public Task<DocumentAppeal?> GetEntityAsync(int appealId, CancellationToken ct = default)
