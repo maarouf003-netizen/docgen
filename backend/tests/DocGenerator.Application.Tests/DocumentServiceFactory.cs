@@ -110,7 +110,6 @@ public static class DocumentServiceFactory
             circuits);
         var delegationService = new DocumentDelegationService(
             delegationsValue,
-            documentsValue,
             uowValue,
             txValue,
             audit,

@@ -162,6 +162,9 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<FindSimilarPublicEntityGroupsQuery, SimilarToResponse>, FindSimilarPublicEntityGroupsQueryHandler>();
         services.AddScoped<IQueryHandler<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>>, ListPublicEntityGroupEntriesQueryHandler>();
         services.AddScoped<IQueryHandler<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>>, ListParentEditSuggestionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>>, GetDocumentDelegationsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>>, GetPendingDelegationsQueryHandler>();
+        services.AddScoped<IQueryHandler<CountPendingDelegationsQuery, int>, CountPendingDelegationsQueryHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

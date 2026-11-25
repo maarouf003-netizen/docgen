@@ -15,7 +15,6 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentDelegationService : IDocumentDelegationService
 {
     private readonly IDelegationRepository _delegations;
-    private readonly IDocumentRepository _documents;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -26,7 +25,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
-        IDocumentRepository documents,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -36,7 +34,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         TimeZoneInfo timeZone)
     {
         _delegations = delegations;
-        _documents = documents;
         _uow = uow;
         _tx = tx;
         _audit = audit;

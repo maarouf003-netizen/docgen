@@ -1,7 +1,3 @@
-using System.Globalization;
-using System.Text.Json;
-using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -88,33 +84,4 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             HeadAlertKindCatalog.DelegationAssignedToLawyer,
             HeadAlertKindCatalog.DelegationTransferredToLawyer,
         };
-
-    public async Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default)
-    {
-        var doc = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new ArgumentException("الملف غير موجود");
-
-        // الملف المناب: يُعرض «تشعباته» من إنابته (المصدر)، والملف المنيب: إناباته الصادرة.
-        var delegations = doc.SourceDelegationId is not null
-            ? await ListOfTargetAsync(doc.Id, ct)
-            : await _delegations.ListBySourceAsync(doc.Id, ct);
-
-        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        // ملاحظة الإضافات المحلية تُقرأ من صف الإنابة نفسه (سجل دائم) لا من تنبيهات المرآة
-        // النشطة — فأرشفة التنبيه أو تنظيفه لا تمحو أثر الإضافة من «تشعبات الملف».
-        return delegations
-            .Select(d => ToDto(d, d.SourceDocument, currentYear))
-            .ToList();
-    }
-
-    public async Task<List<DelegationDto>> ListPendingForHeadAsync(
-        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
-    {
-        var delegations = await _delegations.ListPendingByBranchAsync(branchId, ownerSectionId, rejectedOnly, ct);
-        return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
-    }
-
-    public Task<int> CountPendingForHeadAsync(
-        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
-        => _delegations.CountPendingByBranchAsync(branchId, ownerSectionId, rejectedOnly, ct);
 }

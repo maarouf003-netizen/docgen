@@ -2,7 +2,9 @@ using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -59,7 +61,7 @@ public sealed partial class PortalService : IPortalService
     private readonly IRepository<Document> _documents;
     private readonly IAppealRepository _appeals;
     private readonly IDocumentAppealService _appealService;
-    private readonly IDocumentDelegationService _delegationService;
+    private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _delegationReads;
     private readonly IExcelExportService _excel;
     private readonly IAuditLogger _audit;
     private readonly int _maxExportRows;
@@ -71,7 +73,7 @@ public sealed partial class PortalService : IPortalService
         IRepository<Document> documents,
         IAppealRepository appeals,
         IDocumentAppealService appealService,
-        IDocumentDelegationService delegationService,
+        IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> delegationReads,
         IExcelExportService excel,
         IAuditLogger audit,
         IOptions<ExportOptions> exportOptions,
@@ -82,7 +84,7 @@ public sealed partial class PortalService : IPortalService
         _documents = documents;
         _appeals = appeals;
         _appealService = appealService;
-        _delegationService = delegationService;
+        _delegationReads = delegationReads;
         _excel = excel;
         _audit = audit;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);

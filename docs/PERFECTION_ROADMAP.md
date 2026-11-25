@@ -1069,7 +1069,10 @@
   `docs/audit/208-p4-01ci-create-document-ownership-20261125.md` و
   `docs/audit/209-p4-01ci-followup-review-20261125.md` و
   `docs/audit/210-p4-01cj-public-entity-reads-20261125.md` و
-  `docs/audit/211-p4-01cj-followup-review-20261125.md`.
+  `docs/audit/211-p4-01cj-followup-review-20261125.md` و
+  `docs/audit/212-p4-01ck-delegation-reads-20261125.md` و
+  `docs/audit/213-p4-01ck-critical-review-20261125.md` و
+  `docs/audit/214-p4-01ck-followup-review-20261125.md`.
   **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
   (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
   منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
@@ -1109,9 +1112,24 @@
   وحُوِّل **59** موضع نداء اختباري عبر جسر واحد. التفاصيل:
   `docs/audit/210-p4-01cj-public-entity-reads-20261125.md` و
   `docs/audit/211-p4-01cj-followup-review-20261125.md`.
-  **متبقٍ:** مسح module-by-module لبقية الوحدات (المطالعات/الإنابات/الاستئنافات/البوابة/
+  **`P4-01ck`:** اكتملت قراءات الإنابات — نُقلت أسطح القراءة الثلاثة من
+  `IDocumentDelegationService` إلى ثلاثة استعلامات `IQuery<TResponse>` ومعالجات
+  `QueryHandlerBase` تحت `UseCases/Delegations/`: إنابات ملف (المنيب/المناب)، وطلبات
+  الإنابة المعلّقة لنطاق الرئيس، وعدّها (`rejectedOnly` كما هو) — قراءة صرفة بلا
+  كتابة ولا معاملة ولا تدقيق، بحفاظ سطي **17/17** سطرًا (`diffs = 0` بعد استثناء سطر
+  ربط واحد ونص تأهيل واحد) وبلا فرق في النطاق/الصلاحيات/الرسائل/رموز الحالة؛ وأُزيلت
+  الأعضاء الثلاثة من الواجهة (**11 → 8**) وحُذف `IDocumentRepository _documents` من
+  الخدمة (**9 → 8** حقولًا ومنشئًا)، ونُقل `ListOfTargetAsync` إلى معالج القائمة (تعريف
+  واحد)، وحُذفت الطرق الثلاث من `DocumentDelegationService.Crud.cs` بإبقاء
+  `SyncTargetsTransferredAsync`؛
+  وصار `PortalService` يستدعي معالج القائمة بدل الخدمة؛ وارتفع `DI` إلى **137/137/0**،
+  وحُوِّل **49** موضع نداء اختباري عبر جسر واحد، ونُظّف مزيّف/حقل/مساعد/متغيرات/استيرادات
+  ميتة. التفاصيل: `docs/audit/212-p4-01ck-delegation-reads-20261125.md` و
+  `docs/audit/213-p4-01ck-critical-review-20261125.md` و
+  `docs/audit/214-p4-01ck-followup-review-20261125.md`.
+  **متبقٍ:** مسح module-by-module لبقية الوحدات (المطالعات/الاستئنافات/البوابة/
   الإحصاءات) للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية —
-  اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً.
+  اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً، واكتملت قراءات الإنابات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.
