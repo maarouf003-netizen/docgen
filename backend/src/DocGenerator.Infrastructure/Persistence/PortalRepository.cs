@@ -226,7 +226,7 @@ public class PortalRepository : IPortalRepository
     /// بناء الاستعلام المقيّد بالفلاتر — يُترجم إلى SQL كاملًا.
     /// صرامة فلتر الحالة ضد المصدر الوحيد (`ExecutionStatusCatalog.IsValidPortalFilter`):
     /// التقليم أولًا ثم رفض الغريب (`ArgumentException` → `400`) بدل السقوط الصامت.
-    /// الفروع الخمسة مرآة حرفية للمصنّف `PortalService.ClassifyPortalBucket` (عبر ثوابت
+    /// الفروع الخمسة مرآة حرفية للمصنّف `GetPortalStatsQueryHandler.ClassifyPortalBucket` (عبر ثوابت
     /// الكتالوج نفسها — التركيب مكرر لتعذّر ترجمة استدعاءات الدوال في SQL):
     /// - «منفذ» = `IsExecuted` (تسوية/إنابة/مسترد/جبريا غير جزئي) — «منفذ جبريا +
     ///   منفذ جزئيا» متداول دائمًا بقرار المالك (كلوحة المدير وآلة الحالات).

@@ -14,6 +14,7 @@ using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Application.UseCases.Forum;
 using DocGenerator.Application.UseCases.Interventions;
+using DocGenerator.Application.UseCases.Portal;
 using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
@@ -249,6 +250,14 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<DeleteExecutionCircuitCommand, bool>, DeleteExecutionCircuitCommandHandler>();
         services.AddScoped<ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto>, TransferExecutionCircuitCommandHandler>();
         services.AddScoped<ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult>, ReferCircuitFilesCommandHandler>();
+        services.AddScoped<IQueryHandler<GetPortalScopeQuery, PortalScopeDto?>, GetPortalScopeQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalFilesQuery, PagedResult<PortalFileListItemDto>>, ListPortalFilesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalAppealsQuery, IReadOnlyList<PortalAppealDto>?>, ListPortalAppealsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalExecutionActionsQuery, IReadOnlyList<PortalExecutionActionDto>?>, ListPortalExecutionActionsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalDelegationsQuery, IReadOnlyList<DelegationDto>?>, ListPortalDelegationsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalAppealDetailsQuery, IReadOnlyList<AppealDto>?>, ListPortalAppealDetailsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPortalBaseNumbersQuery, IReadOnlyList<BaseNumberHistoryDto>?>, ListPortalBaseNumbersQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPortalStatsQuery, PortalStatsDto>, GetPortalStatsQueryHandler>();
         return services;
     }
 }

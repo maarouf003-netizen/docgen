@@ -7,6 +7,7 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Correspondences;
+using DocGenerator.Application.UseCases.Portal;
 using DocGenerator.Application.UseCases.PublicEntities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,6 +35,14 @@ public class PortalController : ControllerBase
     private readonly IQueryHandler<CountUnseenCorrespondencesQuery, int> _correspondenceUnseenCount;
     private readonly IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> _getCorrespondence;
     private readonly IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> _fileCorrespondence;
+    private readonly IQueryHandler<GetPortalScopeQuery, PortalScopeDto?> _scope;
+    private readonly IQueryHandler<ListPortalFilesQuery, PagedResult<PortalFileListItemDto>> _files;
+    private readonly IQueryHandler<ListPortalAppealsQuery, IReadOnlyList<PortalAppealDto>?> _portalAppeals;
+    private readonly IQueryHandler<ListPortalExecutionActionsQuery, IReadOnlyList<PortalExecutionActionDto>?> _executionActions;
+    private readonly IQueryHandler<ListPortalDelegationsQuery, IReadOnlyList<DelegationDto>?> _portalDelegations;
+    private readonly IQueryHandler<ListPortalAppealDetailsQuery, IReadOnlyList<AppealDto>?> _appealDetails;
+    private readonly IQueryHandler<ListPortalBaseNumbersQuery, IReadOnlyList<BaseNumberHistoryDto>?> _baseNumbers;
+    private readonly IQueryHandler<GetPortalStatsQuery, PortalStatsDto> _portalStats;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -48,6 +57,14 @@ public class PortalController : ControllerBase
         IQueryHandler<CountUnseenCorrespondencesQuery, int> correspondenceUnseenCount,
         IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> getCorrespondence,
         IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> fileCorrespondence,
+        IQueryHandler<GetPortalScopeQuery, PortalScopeDto?> scope,
+        IQueryHandler<ListPortalFilesQuery, PagedResult<PortalFileListItemDto>> files,
+        IQueryHandler<ListPortalAppealsQuery, IReadOnlyList<PortalAppealDto>?> portalAppeals,
+        IQueryHandler<ListPortalExecutionActionsQuery, IReadOnlyList<PortalExecutionActionDto>?> executionActions,
+        IQueryHandler<ListPortalDelegationsQuery, IReadOnlyList<DelegationDto>?> portalDelegations,
+        IQueryHandler<ListPortalAppealDetailsQuery, IReadOnlyList<AppealDto>?> appealDetails,
+        IQueryHandler<ListPortalBaseNumbersQuery, IReadOnlyList<BaseNumberHistoryDto>?> baseNumbers,
+        IQueryHandler<GetPortalStatsQuery, PortalStatsDto> portalStats,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -61,6 +78,14 @@ public class PortalController : ControllerBase
         _correspondenceUnseenCount = correspondenceUnseenCount;
         _getCorrespondence = getCorrespondence;
         _fileCorrespondence = fileCorrespondence;
+        _scope = scope;
+        _files = files;
+        _portalAppeals = portalAppeals;
+        _executionActions = executionActions;
+        _portalDelegations = portalDelegations;
+        _appealDetails = appealDetails;
+        _baseNumbers = baseNumbers;
+        _portalStats = portalStats;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -71,7 +96,7 @@ public class PortalController : ControllerBase
     /// <summary>ما يُسمح للمندوب برؤيته: الهوية/الفرع المربوط بحسابه وفروعه النهائية.</summary>
     [HttpGet("my-scope")]
     public async Task<IActionResult> MyScope(CancellationToken ct)
-        => Ok(await _portal.GetMyScopeAsync(UserId, ct));
+        => Ok(await _scope.HandleAsync(new GetPortalScopeQuery(UserId), ct));
 
     /// <summary>قائمة ملفات الجهة (قراءة فقط) بنفس فلاتر القائمة الأساسية + فلتر فرع ضمن النطاق.</summary>
     [HttpGet("files")]
@@ -83,7 +108,8 @@ public class PortalController : ControllerBase
         [FromQuery] int? entryId = null,
         CancellationToken ct = default)
     {
-        return Ok(await _portal.ListFilesAsync(UserId, q, status, page, perPage, ct, entryId));
+        return Ok(await _files.HandleAsync(
+            new ListPortalFilesQuery(UserId, q, status, page, perPage, entryId), ct));
     }
 
     /// <summary>تفاصيل ملف قراءةً — 404 عند الخروج عن النطاق دون كشف الوجود.</summary>
@@ -98,7 +124,7 @@ public class PortalController : ControllerBase
     [HttpGet("files/{id:int}/appeals")]
     public async Task<IActionResult> Appeals(int id, CancellationToken ct)
     {
-        var appeals = await _portal.ListAppealsAsync(UserId, id, ct);
+        var appeals = await _portalAppeals.HandleAsync(new ListPortalAppealsQuery(UserId, id), ct);
         return appeals is null ? NotFound() : Ok(appeals);
     }
 
@@ -106,7 +132,7 @@ public class PortalController : ControllerBase
     [HttpGet("files/{id:int}/execution-actions")]
     public async Task<IActionResult> ExecutionActions(int id, CancellationToken ct)
     {
-        var actions = await _portal.ListExecutionActionsAsync(UserId, id, ct);
+        var actions = await _executionActions.HandleAsync(new ListPortalExecutionActionsQuery(UserId, id), ct);
         return actions is null ? NotFound() : Ok(actions);
     }
 
@@ -114,7 +140,7 @@ public class PortalController : ControllerBase
     [HttpGet("files/{id:int}/delegations")]
     public async Task<IActionResult> Delegations(int id, CancellationToken ct)
     {
-        var delegations = await _portal.ListDelegationsAsync(UserId, id, ct);
+        var delegations = await _portalDelegations.HandleAsync(new ListPortalDelegationsQuery(UserId, id), ct);
         return delegations is null ? NotFound() : Ok(delegations);
     }
 
@@ -122,7 +148,7 @@ public class PortalController : ControllerBase
     [HttpGet("files/{id:int}/appeals/details")]
     public async Task<IActionResult> AppealDetails(int id, CancellationToken ct)
     {
-        var appeals = await _portal.ListAppealDetailsAsync(UserId, id, ct);
+        var appeals = await _appealDetails.HandleAsync(new ListPortalAppealDetailsQuery(UserId, id), ct);
         return appeals is null ? NotFound() : Ok(appeals);
     }
 
@@ -130,7 +156,7 @@ public class PortalController : ControllerBase
     [HttpGet("files/{id:int}/base-numbers")]
     public async Task<IActionResult> BaseNumbers(int id, CancellationToken ct)
     {
-        var history = await _portal.ListBaseNumbersAsync(UserId, id, ct);
+        var history = await _baseNumbers.HandleAsync(new ListPortalBaseNumbersQuery(UserId, id), ct);
         return history is null ? NotFound() : Ok(history);
     }
 
@@ -139,7 +165,7 @@ public class PortalController : ControllerBase
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Stats([FromQuery] int? entryId = null, CancellationToken ct = default)
     {
-        return Ok(await _portal.GetStatsAsync(UserId, ct, entryId));
+        return Ok(await _portalStats.HandleAsync(new GetPortalStatsQuery(UserId, entryId), ct));
     }
 
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>

@@ -1,7 +1,5 @@
 using System.Data.Common;
 using System.Diagnostics;
-using DocGenerator.Application.Common;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -134,10 +132,10 @@ public sealed class PortalSearchMeasurementTests : IAsyncLifetime
         Assert.Contains(plan, line => line.Contains("Guarantors", StringComparison.OrdinalIgnoreCase));
 
         // المسار الكامل عبر الخدمة (نطاق المندوب + الاستعلام) — نفس النتيجة والعزل.
-        var portal = PortalServiceFactory.Create(db, new FakeAuditLogger());
+        var files = PortalReadHandlerFactory.Create(db).Files;
         _capture.Reset();
         sw.Restart();
-        var page = await portal.ListFilesAsync(
+        var page = await files.ListFilesAsync(
             _delegateUserId, "كفيل فريد", null, 1, 20);
         sw.Stop();
 

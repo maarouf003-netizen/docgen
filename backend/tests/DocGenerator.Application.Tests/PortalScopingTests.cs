@@ -8,7 +8,6 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 using DocGenerator.Application.Tests.TestHelpers;
 
@@ -21,6 +20,7 @@ namespace DocGenerator.Application.Tests;
 public class PortalScopingTests : PostgresDbTest
 {
     private readonly IPortalService _portal;
+    private readonly PortalReadHandlers _reads;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
@@ -67,6 +67,7 @@ public class PortalScopingTests : PostgresDbTest
         _delegateEntryAId = delegateEntry.Id;
 
         _portal = PortalServiceFactory.Create(_db, _audit);
+        _reads = PortalReadHandlerFactory.Create(_db);
 
         var tx = new TransactionRunner(_db);
         var entities = new PublicEntityService(
@@ -150,7 +151,7 @@ public class PortalScopingTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var result = await _portal.ListFilesAsync(_delegateGroupId, "اسم كفيل مخفي", null, 1, 20);
+        var result = await _reads.Files.ListFilesAsync(_delegateGroupId, "اسم كفيل مخفي", null, 1, 20);
 
         Assert.Contains(result.Items, i => i.Id == id);
     }
@@ -164,7 +165,7 @@ public class PortalScopingTests : PostgresDbTest
         // ملف مرتبط بهوية أخرى لا يدخل نطاق هوية «وزارة التعليم».
         var docOtherGroup = await SeedDocumentAsync("ملف غير متعلق", executedLink: (_entryBId, false));
 
-        var page = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var page = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
 
         Assert.Equal(2, page.TotalCount);
         Assert.Contains(page.Items, i => i.Id == docApplicant);
@@ -178,7 +179,7 @@ public class PortalScopingTests : PostgresDbTest
         await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
         var docOther = await SeedDocumentAsync("ملف منفذ", executedLink: (_entryBId, false));
 
-        var page = await _portal.ListFilesAsync(_delegateEntryAId, null, null, 1, 20);
+        var page = await _reads.Files.ListFilesAsync(_delegateEntryAId, null, null, 1, 20);
 
         Assert.Equal(1, page.TotalCount);
         Assert.DoesNotContain(page.Items, i => i.Id == docOther);
@@ -191,7 +192,7 @@ public class PortalScopingTests : PostgresDbTest
         // RegistryId تاريخيًا في صف قديم، لا يدخل الملف نطاق مندوب الجهة.
         var doc = await SeedDocumentAsync("ملف طالب تنفيذ اعتباري", executionApplicantLink: (_entryAId, true));
 
-        var page = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var page = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
 
         Assert.DoesNotContain(page.Items, i => i.Id == doc);
     }
@@ -201,7 +202,7 @@ public class PortalScopingTests : PostgresDbTest
     {
         await SeedDocumentAsync("ملف بانتظار الاعتماد", applicantRegistryId: _entryPendingId);
 
-        var before = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var before = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.Equal(0, before.TotalCount);
 
         // الاعتماد يحوّل القيد إلى نهائي فيظهر الملف تلقائيًا (د4).
@@ -209,7 +210,7 @@ public class PortalScopingTests : PostgresDbTest
         entry.Status = EntityStatusCatalog.Final;
         await _db.SaveChangesAsync();
 
-        var after = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var after = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.Equal(1, after.TotalCount);
     }
 
@@ -241,8 +242,8 @@ public class PortalScopingTests : PostgresDbTest
     {
         var docId = await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
 
-        Assert.Null(await _portal.ListAppealsAsync(_delegateEntryAId, 999_999));
-        var inScope = await _portal.ListAppealsAsync(_delegateGroupId, docId);
+        Assert.Null(await _reads.Appeals.ListAppealsAsync(_delegateEntryAId, 999_999));
+        var inScope = await _reads.Appeals.ListAppealsAsync(_delegateGroupId, docId);
         Assert.NotNull(inScope);
         Assert.Empty(inScope);
     }
@@ -264,8 +265,8 @@ public class PortalScopingTests : PostgresDbTest
         _db.Documents.Add(executedDoc);
         await _db.SaveChangesAsync();
 
-        var executed = await _portal.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.ExecutedFilter, 1, 20);
-        var all = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var executed = await _reads.Files.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.ExecutedFilter, 1, 20);
+        var all = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
 
         Assert.Equal(1, executed.TotalCount);
         Assert.Equal(executedDoc.Id, executed.Items[0].Id);
@@ -310,8 +311,8 @@ public class PortalScopingTests : PostgresDbTest
         await _db.SaveChangesAsync();
         await SeedDocumentAsync("ملف طالب", applicantRegistryId: _entryAId);
 
-        var scope = await _portal.GetMyScopeAsync(unbound.Id);
-        var files = await _portal.ListFilesAsync(unbound.Id, null, null, 1, 20);
+        var scope = await _reads.Scope.GetMyScopeAsync(unbound.Id);
+        var files = await _reads.Files.ListFilesAsync(unbound.Id, null, null, 1, 20);
 
         Assert.NotNull(scope);
         Assert.Empty(files.Items);
@@ -352,7 +353,7 @@ public class PortalScopingTests : PostgresDbTest
         await SeedDocumentAsync("ملف بانتظار مراجعة", applicantRegistryId: pendingId);
 
         // قبل الاعتماد: لا يظهر الملف للمندوب (DoD#5) رغم أن Status=Final.
-        var before = await _portal.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
+        var before = await _reads.Files.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
         Assert.Equal(0, before.TotalCount);
 
         // الاعتماد (approve-review) يقفل NeedsReview فيظهر الملف للمندوب لحظيًا.
@@ -360,7 +361,7 @@ public class PortalScopingTests : PostgresDbTest
         entry.NeedsReview = false;
         await _db.SaveChangesAsync();
 
-        var after = await _portal.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
+        var after = await _reads.Files.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
         Assert.Equal(1, after.TotalCount);
     }
 
@@ -381,7 +382,7 @@ public class PortalScopingTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var pendingId = pendingEntry.Id;
 
-        var scope = await _portal.GetMyScopeAsync(_delegateGroupId);
+        var scope = await _reads.Scope.GetMyScopeAsync(_delegateGroupId);
 
         Assert.NotNull(scope);
         Assert.DoesNotContain(scope.Entries, e => e.Id == pendingId);
@@ -404,7 +405,7 @@ public class PortalScopingTests : PostgresDbTest
         Assert.Equal("وزارة التربية", rename.NewCanonicalName);
 
         // بعد الريّن: ملف القيد النهائي يظهر للمندوب فورًا (لا NeedsReview).
-        var afterRename = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var afterRename = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.Contains(afterRename.Items, i => i.Id == doc);
 
         // اقتراح محامٍ جديد داخل الهوية المُعاد تسميتها: قيد Final + NeedsReview=true
@@ -422,14 +423,14 @@ public class PortalScopingTests : PostgresDbTest
         await _db.SaveChangesAsync();
         var pendingDoc = await SeedDocumentAsync("ملف مقترح بانتظار المراجعة", applicantRegistryId: propEntry.Id);
 
-        var pendingFiles = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var pendingFiles = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.DoesNotContain(pendingFiles.Items, i => i.Id == pendingDoc);
 
         // الاعتماد يقفل NeedsReview فيظهر الملف فورًا.
         propEntry.NeedsReview = false;
         await _db.SaveChangesAsync();
 
-        var afterApproval = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var afterApproval = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.Contains(afterApproval.Items, i => i.Id == pendingDoc);
     }
 }

@@ -19,6 +19,7 @@ public class PortalFileDetailTests : PostgresDbTest
 {
     private readonly FakeAuditLogger _audit = new();
     private readonly IPortalService _portal;
+    private readonly PortalReadHandlers _reads;
     private readonly int _entryAId;
     private readonly int _delegateGroupId;
     private readonly int _lawyerId;
@@ -48,6 +49,7 @@ public class PortalFileDetailTests : PostgresDbTest
         _delegateGroupId = delegateGroup.Id;
 
         _portal = PortalServiceFactory.Create(_db, _audit);
+        _reads = PortalReadHandlerFactory.Create(_db);
     }
 
 
@@ -134,7 +136,7 @@ public class PortalFileDetailTests : PostgresDbTest
         await AddExecutionActionAsync(doc.Id, "action", "الإجراء الأحدث",
             new DateTime(2026, 8, 2, 10, 0, 0, DateTimeKind.Utc), actionDate: "2/8/2026");
 
-        var actions = await _portal.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
+        var actions = await _reads.ExecutionActions.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
 
         Assert.NotNull(actions);
         var list = Assert.IsAssignableFrom<IReadOnlyList<PortalExecutionActionDto>>(actions);
@@ -153,7 +155,7 @@ public class PortalFileDetailTests : PostgresDbTest
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
 
-        var actions = await _portal.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
+        var actions = await _reads.ExecutionActions.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
 
         Assert.Null(actions);
     }
@@ -167,7 +169,7 @@ public class PortalFileDetailTests : PostgresDbTest
         await AddExecutionActionAsync(doc.Id, "action", "الإجراء الأول", sameInstant);
         await AddExecutionActionAsync(doc.Id, "action", "الإجراء الثاني", sameInstant);
 
-        var actions = await _portal.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
+        var actions = await _reads.ExecutionActions.ListExecutionActionsAsync(_delegateGroupId, doc.Id);
 
         Assert.NotNull(actions);
         var list = Assert.IsAssignableFrom<IReadOnlyList<PortalExecutionActionDto>>(actions);
@@ -225,7 +227,7 @@ public class PortalFileDetailTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         // القائمة تستبعد المشطوب فعلًا (والملف الشاهد يثبت أن الاستبعاد سببه الشطب لا النطاق).
-        var list = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        var list = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
         Assert.DoesNotContain(list.Items, i => i.Id == struck.Id);
         Assert.Contains(list.Items, i => i.Id == normal.Id);
 
@@ -246,7 +248,7 @@ public class PortalFileDetailTests : PostgresDbTest
     {
         var doc = await SeedInScopeDocAsync("ملف التشعبات");
 
-        var delegations = await _portal.ListDelegationsAsync(_delegateGroupId, doc.Id);
+        var delegations = await _reads.Delegations.ListDelegationsAsync(_delegateGroupId, doc.Id);
 
         Assert.NotNull(delegations);
         Assert.Empty(delegations);
@@ -257,7 +259,7 @@ public class PortalFileDetailTests : PostgresDbTest
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
 
-        var delegations = await _portal.ListDelegationsAsync(_delegateGroupId, doc.Id);
+        var delegations = await _reads.Delegations.ListDelegationsAsync(_delegateGroupId, doc.Id);
 
         Assert.Null(delegations);
     }
@@ -273,7 +275,7 @@ public class PortalFileDetailTests : PostgresDbTest
 
         await AppealWriteHandlerFactory.Create(_db).CreateAsync(doc.Id, Request(entityId), _lawyerId, "محامي دمشق");
 
-        var appeals = await _portal.ListAppealDetailsAsync(_delegateGroupId, doc.Id);
+        var appeals = await _reads.AppealDetails.ListAppealDetailsAsync(_delegateGroupId, doc.Id);
 
         Assert.NotNull(appeals);
         var appeal = Assert.Single(appeals);
@@ -293,7 +295,7 @@ public class PortalFileDetailTests : PostgresDbTest
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
 
-        var appeals = await _portal.ListAppealDetailsAsync(_delegateGroupId, doc.Id);
+        var appeals = await _reads.AppealDetails.ListAppealDetailsAsync(_delegateGroupId, doc.Id);
 
         Assert.Null(appeals);
     }
@@ -310,7 +312,7 @@ public class PortalFileDetailTests : PostgresDbTest
             (2025, "ب/2025", new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc)),
             (2025, "ج/2025", new DateTime(2025, 7, 1, 0, 0, 0, DateTimeKind.Utc)));
 
-        var history = await _portal.ListBaseNumbersAsync(_delegateGroupId, doc.Id);
+        var history = await _reads.BaseNumbers.ListBaseNumbersAsync(_delegateGroupId, doc.Id);
 
         Assert.NotNull(history);
         var list = Assert.IsAssignableFrom<IReadOnlyList<BaseNumberHistoryDto>>(history);
@@ -328,7 +330,7 @@ public class PortalFileDetailTests : PostgresDbTest
     {
         var doc = await SeedOutOfScopeDocAsync("ملف خارج النطاق");
 
-        var history = await _portal.ListBaseNumbersAsync(_delegateGroupId, doc.Id);
+        var history = await _reads.BaseNumbers.ListBaseNumbersAsync(_delegateGroupId, doc.Id);
 
         Assert.Null(history);
     }
@@ -473,7 +475,7 @@ public class PortalFileDetailTests : PostgresDbTest
         var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
         var cellBranches = dataRow[2].Split(" · ", StringSplitOptions.None).ToList();
 
-        var scope = await _portal.GetMyScopeAsync(_delegateGroupId);
+        var scope = await _reads.Scope.GetMyScopeAsync(_delegateGroupId);
         Assert.NotNull(scope);
         var matchedIds = new HashSet<int>();
         foreach (var a in doc.ApplicantPublicEntities)

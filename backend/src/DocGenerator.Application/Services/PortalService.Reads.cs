@@ -1,61 +1,15 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.UseCases.Appeals;
-using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
-using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Services;
 
 public sealed partial class PortalService : IPortalService
 {
-    public async Task<PortalScopeDto?> GetMyScopeAsync(int userId, CancellationToken ct = default)
-    {
-        var scope = await _portal.ResolveForUserAsync(userId, ct);
-        if (scope is null || scope.GroupId == 0)
-            return scope is null ? null : new PortalScopeDto("group", 0, string.Empty, PublicEntityTypeCatalog.Ministry,
-                Array.Empty<PortalScopeEntryDto>());
-
-        return new PortalScopeDto(scope.ScopeType, scope.GroupId, scope.CanonicalName, scope.EntityType,
-            scope.Entries.Select(e => new PortalScopeEntryDto(e.Id, e.Governorate, e.BranchName, e.IsActive)).ToList());
-    }
-
-    public async Task<PagedResult<PortalFileListItemDto>> ListFilesAsync(
-        int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default, int? entryId = null)
-    {
-        var scope = await _portal.ResolveForUserAsync(userId, ct);
-        page = Math.Max(1, page);
-        perPage = Math.Clamp(perPage <= 0 ? 20 : perPage, 1, 100);
-
-        var effectiveIds = ResolveEffectiveIds(scope, entryId);
-        var (total, items) = await _portal.SearchScopedAsync(effectiveIds, query, status, page, perPage, ct);
-        var result = new PagedResult<PortalFileListItemDto> { Page = page, PerPage = perPage, TotalCount = total };
-        result.Items = items.Select(d => ToListItem(d, scope)).ToList();
-        return result;
-    }
-
-    /// <summary>
-    /// معرّفات الفروع الفعّالة: كامل النطاق افتراضيًا، أو الفرع المختار وحده بعد التحقق
-    /// أنه ضمن نطاق المندوب (تقاطع لا توسيع — خارج النطاق يُرفض).
-    /// </summary>
-    private static List<int> ResolveEffectiveIds(PortalScopeResolution? scope, int? entryId)
-    {
-        var ids = scope?.EntryIds?.ToList() ?? new List<int>();
-        if (!entryId.HasValue)
-            return ids;
-        if (!ids.Contains(entryId.Value))
-            throw new UnauthorizedAccessException("الفرع المختار خارج نطاقك");
-        return new List<int> { entryId.Value };
-    }
-
     public async Task<DocumentResponse?> GetFileAsync(int userId, int documentId, string? viewerName, CancellationToken ct = default)
     {
-        if (!await IsInScopeAsync(userId, documentId, ct))
+        if (!await IsInScopeAsync(_portal, userId, documentId, ct))
             return null;
 
         var doc = await _documents.GetByIdAsync(documentId, ct);
@@ -69,7 +23,7 @@ public sealed partial class PortalService : IPortalService
         // ق7 سلكيًا لا عرضيًا: كل حقل لا تستهلكه واجهة البوابة (`PortalFileDetail`
         // وكل المشتركات المعروضة فيه — مُدقَّق حقلًا بحقل ضد الاستهلاك الفعلي) يُحجب
         // قبل مغادرة الخادم — الواجهة ليست خط الدفاع الوحيد.
-        // المحجوب: الملاحظات الداخلية (`Notes`/`ImmediateActions`)، العدّادات
+        // المحجوب: الملاحظات الداخلية (`Notes`/`ImmediateActions`), العدّادات
         // التشغيلية (`PrintCount`)، الهوية الإدارية (`AdministrativeBranchName`/
         // `BranchId`)، هوية المنشئ (`CreatedById`/`CreatedByName`)، حقل `Lawyer` الحر،
         // وشارات قوائم المحامين (`NeedsRotation`/`HasAppeals`/`MatchedAppealId`)، ورابط
@@ -144,141 +98,35 @@ public sealed partial class PortalService : IPortalService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<PortalAppealDto>?> ListAppealsAsync(int userId, int documentId, CancellationToken ct = default)
+    /// <summary>
+    /// معرّفات الفروع الفعّالة: كامل النطاق افتراضيًا، أو الفرع المختار وحده بعد التحقق
+    /// أنه ضمن نطاق المندوب (تقاطع لا توسيع — خارج النطاق يُرفض).
+    /// </summary>
+    internal static List<int> ResolveEffectiveIds(PortalScopeResolution? scope, int? entryId)
     {
-        if (!await IsInScopeAsync(userId, documentId, ct))
-            return null;
-
-        var appeals = await _appeals.ListByDocumentAsync(documentId, ct);
-        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        return appeals.Select(a =>
-        {
-            // البوابة تعرض الهوية الفعّالة (رقم السنة الحالية أو آخر رقم مسجّل) لا القيد الأصلي.
-            var identity = AppealBaseNumberPolicy.ResolveCurrent(a, currentYear);
-            return new PortalAppealDto(
-                a.Id,
-                a.Direction,
-                a.Status,
-                a.AppealTypeLabel,
-                identity?.Number,
-                identity?.Year?.ToString(CultureInfo.InvariantCulture),
-                a.CreatedAt,
-                a.DecisionDate,
-                a.DecisionRuling);
-        }).ToList();
+        var ids = scope?.EntryIds?.ToList() ?? new List<int>();
+        if (!entryId.HasValue)
+            return ids;
+        if (!ids.Contains(entryId.Value))
+            throw new UnauthorizedAccessException("الفرع المختار خارج نطاقك");
+        return new List<int> { entryId.Value };
     }
 
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<PortalExecutionActionDto>?> ListExecutionActionsAsync(int userId, int documentId, CancellationToken ct = default)
+    internal static async Task<bool> IsInScopeAsync(
+        IPortalRepository portal, int userId, int documentId, CancellationToken ct)
     {
-        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
-        if (doc is null)
-            return null;
-
-        // النوع action فقط (الملاحظات الداخلية لا تصل إلى البوابة أصلًا) والأحدث أولًا،
-        // وكسر التعادل الزمني بـ Id الأحدث (ف11: CreatedAt ثم Id).
-        return doc.ExecutionActions
-            .Where(a => a.Type == "action")
-            .OrderByDescending(a => a.CreatedAt)
-            .ThenByDescending(a => a.Id)
-            .Select(a => new PortalExecutionActionDto(a.Id, a.Text, a.ActionDate, a.CreatedBy?.FullName, a.CreatedAt))
-            .ToList();
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<DelegationDto>?> ListDelegationsAsync(int userId, int documentId, CancellationToken ct = default)
-    {
-        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
-        if (doc is null)
-            return null;
-
-        return await _delegationReads.HandleAsync(new GetDocumentDelegationsQuery(documentId), ct);
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<AppealDto>?> ListAppealDetailsAsync(int userId, int documentId, CancellationToken ct = default)
-    {
-        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
-        if (doc is null)
-            return null;
-
-        var appeals = await _appealReads.HandleAsync(new ListAppealsForDocumentQuery(documentId), ct);
-
-        // رأي المحامي الداخلي (دفاعه) وملاحظاته الحرة لا يظهران للمندوب (ق10 الموسّعة) —
-        // حقلان حرّان من إدخال المحامي بلا ضمان بنيوي بأنهما وقائع قضية، فيُصفَّران معًا.
-        // بقية الحقول (اسم المحامي المتابع وسطر «سطّره») تبقى ظاهرة (ق9).
-        return appeals.Select(a => a with { DefenseOpinion = null, Notes = null }).ToList();
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<BaseNumberHistoryDto>?> ListBaseNumbersAsync(int userId, int documentId, CancellationToken ct = default)
-    {
-        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
-        if (doc is null)
-            return null;
-
-        return DocumentBaseNumberPolicy.BuildHistory(
-            doc, doc.BaseNumbers, ServerClock.CurrentYear(_clock, _timeZone));
-    }
-
-
-    private static PortalScopeResolution? NarrowScope(
-        PortalScopeResolution? scope, IReadOnlyCollection<int> entryIds)
-    {
-        if (scope is null)
-            return null;
-        return scope with
-        {
-            Entries = scope.Entries.Where(e => entryIds.Contains(e.Id)).ToList(),
-        };
-    }
-
-    private async Task<bool> IsInScopeAsync(int userId, int documentId, CancellationToken ct)
-    {
-        var scope = await _portal.ResolveForUserAsync(userId, ct);
-        return await _portal.IsDocumentInScopeAsync(documentId, scope?.EntryIds ?? new List<int>(), ct);
+        var scope = await portal.ResolveForUserAsync(userId, ct);
+        return await portal.IsDocumentInScopeAsync(documentId, scope?.EntryIds ?? new List<int>(), ct);
     }
 
     /// <summary>ملف داخل نطاق المندوب (لا يكشف الوجود خارج النطاق) — null عند خروجه أو غيابه.</summary>
-    private async Task<Document?> GetScopedDocumentAsync(int userId, int documentId, CancellationToken ct)
+    internal static async Task<Document?> GetScopedDocumentAsync(
+        IPortalRepository portal, IRepository<Document> documents, int userId, int documentId, CancellationToken ct)
     {
-        if (!await IsInScopeAsync(userId, documentId, ct))
+        if (!await IsInScopeAsync(portal, userId, documentId, ct))
             return null;
 
-        return await _documents.GetByIdAsync(documentId, ct);
-    }
-
-    private static PortalFileListItemDto ToListItem(PortalListRow d, PortalScopeResolution? scope = null)
-    {
-        // أحدث رقم أساس دائمًا (غير مقيّد بسنة الفحص) — وإلا رقم الملف/سنة قيده الأصلية.
-        // انحراف مقصود وموثّق عن بقية النظام (as-of السنة الحالية): قرار صاحب المشروع
-        // «دائمًا أحدث رقم أساس مع السنة» — فرقم بسنة مستقبلية (خطأ إدخال) يظهر هنا
-        // دون قوائم المحامين؛ مثبّت باختبار سنة مستقبلية قصدًا لا سهوًا.
-        var latestBase = EffectiveFileIdentity.LatestFrom(d.BaseNumbers, int.MaxValue, d.ExecutionCircuitId);
-        var displayNumber = latestBase?.BaseNumber ?? d.FileNumber;
-        var displayYear = latestBase is not null ? latestBase.Year.ToString(CultureInfo.InvariantCulture) : d.FileYear;
-        return new(
-            d.Id,
-            d.DocumentType ?? string.Empty,
-            d.IsDraft,
-            d.BorrowerName,
-            d.Applicant,
-            ExecutedSummary(d),
-            d.AmountNumeric,
-            d.Currency,
-            d.ExecStatus,
-            d.CreatedAt,
-            d.UpdatedAt,
-            d.BorrowerFather,
-            d.BorrowerFamily,
-            d.FileType,
-            d.Court,
-            displayNumber,
-            displayYear,
-            BuildMatchedEntries(d, scope),
-            // شارة البطاقة من المصدر الوحيد (`DocumentStatusResolver`) — لا منطق
-            // تصنيف في الواجهة: الخام (`ExecStatus`) للفلترة، والمعروض للشارة.
-            DocumentStatusResolver.Resolve(d));
+        return await documents.GetByIdAsync(documentId, ct);
     }
 
     /// <summary>
@@ -292,13 +140,13 @@ public sealed partial class PortalService : IPortalService
     /// (2) لا يخرج عن نطاق المندوب أبدًا، فالبوابة عاجزة بنيويًا عن عرض فرع جهة
     /// أخرى (فرع إداري أو فرع طرف ثالث) مهما بلغ عدد أطراف الملف.
     /// </summary>
-    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(PortalListRow d, PortalScopeResolution? scope)
+    internal static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(PortalListRow d, PortalScopeResolution? scope)
         => BuildMatchedEntries(
             d.ApplicantEntities.Select(a => a.RegistryId),
             d.ExecutedEntities.Select(e => e.RegistryId),
             scope);
 
-    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(
+    internal static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(
         IEnumerable<int?> applicantRegistryIds,
         IEnumerable<int?> executedRegistryIds,
         PortalScopeResolution? scope)
@@ -322,10 +170,4 @@ public sealed partial class PortalService : IPortalService
             .Select(e => new PortalScopeEntryDto(e.Id, e.Governorate, e.BranchName, e.IsActive))
             .ToList();
     }
-
-    private static string ExecutedSummary(PortalListRow d) =>
-        string.Join("؛ ", d.ExecutedEntities
-            .Where(e => e.Nature == PartyNatureCatalog.PublicEntity)
-            .Select(e => string.Join(' ', new[] { e.EntityName, e.EntityBranch }.Where(p => !string.IsNullOrWhiteSpace(p))))
-            .Where(v => v.Length > 0));
 }
