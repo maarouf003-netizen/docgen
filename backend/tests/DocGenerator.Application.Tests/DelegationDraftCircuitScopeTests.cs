@@ -1,10 +1,8 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using DocGenerator.Infrastructure.Persistence;
 
 using DocGenerator.Application.Tests.TestHelpers;
 
@@ -16,7 +14,6 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class DelegationDraftCircuitScopeTests : PostgresDbTest
 {
-    private readonly IDocumentDelegationService _service;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branchA;
@@ -41,34 +38,6 @@ public class DelegationDraftCircuitScopeTests : PostgresDbTest
         };
         _db.Users.Add(_lawyer);
         _db.SaveChanges();
-
-        var documents = new DocumentRepository(_db);
-        var users = new UserRepository(_db);
-        var branches = new Repository<Branch>(_db);
-        var registrationDates = new Repository<DocumentRegistrationDate>(_db);
-        var occurrences = new Repository<DocumentOccurrence>(_db);
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(_db),
-            documents,
-            users,
-            branches,
-            new DelegationRepository(_db),
-            uow,
-            tx,
-            _audit);
-
-        _service = new DocumentDelegationService(
-            new DelegationRepository(_db),
-            documents,
-            uow,
-            tx,
-            _audit,
-            headAlerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            TestClock.Provider,
-            TestClock.TimeZone);
     }
 
 

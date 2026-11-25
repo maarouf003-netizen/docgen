@@ -21,7 +21,9 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class SubHeadDelegationTests : PostgresDbTest
 {
-    private readonly IDocumentDelegationService _service;
+    private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
+    private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
+    private readonly IQueryHandler<CountPendingDelegationsQuery, int> _pendingDelegationsCount;
     private readonly ICommandHandler<RedirectDocumentDelegationCommand, DelegationDto?> _redirectDelegation;
     private readonly ICommandHandler<RecallDelegationRedirectCommand, DelegationDto?> _recallRedirect;
     private readonly ICommandHandler<RejectDocumentDelegationCommand, DelegationDto?> _rejectDelegation;
@@ -57,8 +59,6 @@ public class SubHeadDelegationTests : PostgresDbTest
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var branches = new Repository<Branch>(_db);
-        var registrationDates = new Repository<DocumentRegistrationDate>(_db);
-        var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
         _headAlerts = new HeadAlertService(
@@ -71,18 +71,17 @@ public class SubHeadDelegationTests : PostgresDbTest
             _tx,
             _audit);
 
-        _service = new DocumentDelegationService(
-            new DelegationRepository(_db),
-            documents,
-            uow,
-            _tx,
-            _audit,
-            _headAlerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
-            TestClock.Provider,
-            TestClock.TimeZone);
-
         var delegations = new DelegationRepository(_db);
+        _documentDelegations = new GetDocumentDelegationsQueryHandler(
+            documents, delegations, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetDocumentDelegationsQuery, List<DelegationDto>>>());
+        _pendingDelegations = new GetPendingDelegationsQueryHandler(
+            delegations, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetPendingDelegationsQuery, List<DelegationDto>>>());
+        _pendingDelegationsCount = new CountPendingDelegationsQueryHandler(
+            delegations,
+            Array.Empty<IPipelineBehavior<CountPendingDelegationsQuery, int>>());
+
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         var dbErrors = new DbExceptionClassifier();
         _redirectDelegation = new RedirectDocumentDelegationCommandHandler(
@@ -322,8 +321,8 @@ public class SubHeadDelegationTests : PostgresDbTest
             _lawyer1.Id, "lawyer1");
 
         // قبل التوجيه: رئيس القسم يراها والشعبة لا.
-        Assert.Contains(await _service.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
-        Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
+        Assert.Contains(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
+        Assert.DoesNotContain(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
 
         // التوجيه لرئيس الشعبة حصرًا بيد رئيس القسم.
         var subRedirectEx = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -335,8 +334,8 @@ public class SubHeadDelegationTests : PostgresDbTest
         Assert.Contains("redirect_delegation", _audit.Actions);
 
         // بعد التوجيه: الشعبة تراها والقسم لا، والاعتماد لرئيس الشعبة.
-        Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
-        Assert.Contains(await _service.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
+        Assert.DoesNotContain(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
+        Assert.Contains(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
         var headAssignEx = await Assert.ThrowsAsync<ArgumentException>(() =>
             _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_otherLawyer.Id), _otherHead.Id, _otherBranch.Id, "head2"));
         Assert.Contains("نطاقك", headAssignEx.Message);
@@ -359,8 +358,8 @@ public class SubHeadDelegationTests : PostgresDbTest
         var recalled = await _recallRedirect.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
         Assert.NotNull(recalled);
         Assert.Null(recalled!.RedirectedToSectionId);
-        Assert.Contains(await _service.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
-        Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
+        Assert.Contains(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id), d => d.Id == created.Id);
+        Assert.DoesNotContain(await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id, sectionId), d => d.Id == created.Id);
     }
 
     [PostgresFact]
@@ -389,19 +388,19 @@ public class SubHeadDelegationTests : PostgresDbTest
         Assert.Contains("سبب الإعادة", rejectionAlert.Message);
 
         // المرفوضة خارج الاعتماد الافتراضي، حاضرة بفلترها، والاعتماد مرفوض.
-        Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
-        var rejectedOnly = await _service.ListPendingForHeadAsync(_branch.Id, null, true);
+        Assert.DoesNotContain(await _pendingDelegations.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
+        var rejectedOnly = await _pendingDelegations.ListPendingForHeadAsync(_branch.Id, null, true);
         Assert.Contains(rejectedOnly, d => d.Id == created.Id);
-        Assert.Equal(1, await _service.CountPendingForHeadAsync(_branch.Id, null, true));
+        Assert.Equal(1, await _pendingDelegationsCount.CountPendingForHeadAsync(_branch.Id, null, true));
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _delegationAssign.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
 
         // بطاقة الملف تُظهر السبب للمحامي، وتصحيحه يحرّرها للاعتماد.
-        var card = await _service.ListForDocumentAsync(doc.Id);
+        var card = await _documentDelegations.ListForDocumentAsync(doc.Id);
         Assert.Equal("الدائرة غير مختصة مكانيًا", Assert.Single(card).RejectReason);
         var updated = await DelegationWriteHandlerFactory.Update(_db, _audit).UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
         Assert.Null(updated!.RejectReason);
-        Assert.Contains(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
+        Assert.Contains(await _pendingDelegations.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
     }
     [PostgresFact]
     public async Task Create_CrossBranchCircuit_AlertTargetsCircuitBranchOwner()
@@ -535,14 +534,14 @@ public class SubHeadDelegationTests : PostgresDbTest
         var appealA = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(docA.Id, CircuitRequest(divisionCircuit, assetA), _lawyer1.Id, "lawyer1");
         var appealB = await DelegationWriteHandlerFactory.Create(_db, _audit).CreateAsync(docB.Id, CircuitRequest(sectionCircuit, assetB), _lawyer1.Id, "lawyer1");
 
-        var headPending = await _service.ListPendingForHeadAsync(_branch.Id);
+        var headPending = await _pendingDelegations.ListPendingForHeadAsync(_branch.Id);
         Assert.Contains(headPending, d => d.Id == appealA.Id);
         Assert.DoesNotContain(headPending, d => d.Id == appealB.Id);
 
-        var subPending = await _service.ListPendingForHeadAsync(_branch.Id, sectionId);
+        var subPending = await _pendingDelegations.ListPendingForHeadAsync(_branch.Id, sectionId);
         Assert.Contains(subPending, d => d.Id == appealB.Id);
         Assert.DoesNotContain(subPending, d => d.Id == appealA.Id);
-        Assert.Equal(1, await _service.CountPendingForHeadAsync(_branch.Id, sectionId));
-        Assert.Equal(0, await _service.CountPendingForHeadAsync(_branch.Id, sectionId, true));
+        Assert.Equal(1, await _pendingDelegationsCount.CountPendingForHeadAsync(_branch.Id, sectionId));
+        Assert.Equal(0, await _pendingDelegationsCount.CountPendingForHeadAsync(_branch.Id, sectionId, true));
     }
 }

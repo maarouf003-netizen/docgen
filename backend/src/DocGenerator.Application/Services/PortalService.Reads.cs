@@ -2,7 +2,9 @@ using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -189,7 +191,7 @@ public sealed partial class PortalService : IPortalService
         if (doc is null)
             return null;
 
-        return await _delegationService.ListForDocumentAsync(documentId, ct);
+        return await _delegationReads.HandleAsync(new GetDocumentDelegationsQuery(documentId), ct);
     }
 
     /// <inheritdoc />

@@ -214,12 +214,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RepresentativeAddress = h.RepresentativeAddress,
     };
 
-    private async Task<List<DocumentDelegation>> ListOfTargetAsync(int targetDocumentId, CancellationToken ct)
-    {
-        var delegation = await _delegations.FindByTargetAsync(targetDocumentId, ct);
-        return delegation is null ? new List<DocumentDelegation>() : new List<DocumentDelegation> { delegation };
-    }
-
     internal static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

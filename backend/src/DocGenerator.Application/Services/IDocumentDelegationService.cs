@@ -10,9 +10,6 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public interface IDocumentDelegationService
 {
-    /// <summary>إنابات ملف (المنيب: المصدر؛ أو المناب: إنابته) — بطاقة «تشعبات الملف».</summary>
-    Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
-
     /// <summary>
     /// مزامنة المحامي المختص للإنابات المرتبطة بملفات منابة نُقلت ملكيتها (داخل معاملة
     /// النقل): الحقل المخزّن على الإنابة يصبح المالك الجديد بدل أول محامٍ أُسندت إليه.
@@ -20,19 +17,6 @@ public interface IDocumentDelegationService
     /// </summary>
     Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId,
         string? actorName, int? actorUserId = null, CancellationToken ct = default);
-
-    /// <summary>
-    /// طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1): رئيس القسم (دوائر القسم وبلا
-    /// دائرة + الخارجية غير الموجَّهة في فرعه)، ورئيس الشعبة (دوائر شعبته +
-    /// الخارجية الموجَّهة لشعبته). `rejectedOnly` لفلتر «مرفوض بانتظار التصحيح» (§7.4).
-    /// </summary>
-    Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
-
-    /// <summary>
-    /// عدد طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1 + §7.4) — نفس نطاق
-    /// <see cref="ListPendingForHeadAsync"/> دون تحميل القوائم المرتبطة.
-    /// </summary>
-    Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
     /// <summary>
     /// حارس تعديل الملف المناب («الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية في الحقول

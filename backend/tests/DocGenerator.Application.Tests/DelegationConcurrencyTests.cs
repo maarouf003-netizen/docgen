@@ -33,29 +33,6 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    private static IDocumentDelegationService BuildService(DocGeneratorDbContext db)
-    {
-        var documents = new DocumentRepository(db);
-        var users = new UserRepository(db);
-        var branches = new Repository<Branch>(db);
-        var uow = new UnitOfWork(db);
-        var tx = new TransactionRunner(db);
-        var audit = new FakeAuditLogger();
-        var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches, new DelegationRepository(db),
-            uow, new TransactionRunner(db), audit);
-        return new DocumentDelegationService(
-            new DelegationRepository(db),
-            documents,
-            uow,
-            tx,
-            audit,
-            headAlerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
-            TestClock.Provider,
-            TestClock.TimeZone);
-    }
-
     private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync()
     {
         await using var db = _pg.CreateContext();
@@ -220,7 +197,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
     }
 
     /// <summary>خدمات سياقٍ واحد: كل سياق = «مستخدم» مستقل في اختبار السباق.</summary>
-    private static (IDocumentDelegationService Delegations, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, IHeadAlertService Alerts)
+    private static (IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> Delegations, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, IHeadAlertService Alerts)
         BuildServices(DocGeneratorDbContext db)
     {
         var documents = new DocumentRepository(db);
@@ -234,16 +211,12 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         var alerts = new HeadAlertService(
             new HeadAlertRepository(db), documents, users, branches, new DelegationRepository(db),
             uow, tx, audit);
-        var delegations = new DocumentDelegationService(
-            new DelegationRepository(db),
+        var delegations = new GetDocumentDelegationsQueryHandler(
             documents,
-            uow,
-            tx,
-            audit,
-            alerts,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
+            new DelegationRepository(db),
             TestClock.Provider,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetDocumentDelegationsQuery, List<DelegationDto>>>());
         var bundle = DocumentServiceFactory.Create(
             db, audit, documents: documents, users: users, registrationDates: registrationDates,
             occurrences: occurrences, uow: uow, tx: tx, alertService: alerts);

@@ -21,9 +21,11 @@ namespace DocGenerator.Api.Controllers;
 [Authorize]
 public class DelegationsController : ControllerBase
 {
-    private readonly IDocumentDelegationService _delegations;
     private readonly IDocumentService _documents;
     private readonly IUserCapabilities _capabilities;
+    private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
+    private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
+    private readonly IQueryHandler<CountPendingDelegationsQuery, int> _pendingDelegationsCount;
     private readonly ICommandHandler<DeleteDocumentDelegationCommand, bool> _deleteDelegation;
     private readonly ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> _createDelegation;
     private readonly ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> _updateDelegation;
@@ -35,9 +37,11 @@ public class DelegationsController : ControllerBase
     private readonly ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> _completeDelegation;
 
     public DelegationsController(
-        IDocumentDelegationService delegations,
         IDocumentService documents,
         IUserCapabilities capabilities,
+        IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> documentDelegations,
+        IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> pendingDelegations,
+        IQueryHandler<CountPendingDelegationsQuery, int> pendingDelegationsCount,
         ICommandHandler<DeleteDocumentDelegationCommand, bool> deleteDelegation,
         ICommandHandler<CreateDocumentDelegationCommand, DelegationDto> createDelegation,
         ICommandHandler<UpdateDocumentDelegationCommand, DelegationDto?> updateDelegation,
@@ -48,9 +52,11 @@ public class DelegationsController : ControllerBase
         ICommandHandler<RegisterDocumentDelegationCommand, DelegationDto?> registerDelegation,
         ICommandHandler<CompleteDocumentDelegationCommand, DelegationDto?> completeDelegation)
     {
-        _delegations = delegations;
         _documents = documents;
         _capabilities = capabilities;
+        _documentDelegations = documentDelegations;
+        _pendingDelegations = pendingDelegations;
+        _pendingDelegationsCount = pendingDelegationsCount;
         _deleteDelegation = deleteDelegation;
         _createDelegation = createDelegation;
         _updateDelegation = updateDelegation;
@@ -135,7 +141,7 @@ public class DelegationsController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _delegations.ListForDocumentAsync(documentId, ct));
+            return Ok(await _documentDelegations.HandleAsync(new GetDocumentDelegationsQuery(documentId), ct));
         }
         catch (ArgumentException e)
         {
@@ -198,7 +204,8 @@ public class DelegationsController : ControllerBase
         var error = RequireApproverScope(out var branchId, out var ownerSectionId);
         if (error is not null)
             return error;
-        return Ok(await _delegations.ListPendingForHeadAsync(branchId, ownerSectionId, rejectedOnly, ct));
+        return Ok(await _pendingDelegations.HandleAsync(
+            new GetPendingDelegationsQuery(branchId, ownerSectionId, rejectedOnly), ct));
     }
 
     /// <summary>
@@ -216,8 +223,10 @@ public class DelegationsController : ControllerBase
             return error;
         return Ok(new
         {
-            count = await _delegations.CountPendingForHeadAsync(branchId, ownerSectionId, false, ct),
-            rejectedCount = await _delegations.CountPendingForHeadAsync(branchId, ownerSectionId, true, ct),
+            count = await _pendingDelegationsCount.HandleAsync(
+                new CountPendingDelegationsQuery(branchId, ownerSectionId, false), ct),
+            rejectedCount = await _pendingDelegationsCount.HandleAsync(
+                new CountPendingDelegationsQuery(branchId, ownerSectionId, true), ct),
         });
     }
 

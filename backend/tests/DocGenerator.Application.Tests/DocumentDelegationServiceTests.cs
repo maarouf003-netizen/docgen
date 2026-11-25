@@ -20,6 +20,9 @@ namespace DocGenerator.Application.Tests;
 public class DocumentDelegationServiceTests : PostgresDbTest
 {
     private readonly IDocumentDelegationService _service;
+    private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
+    private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
+    private readonly IQueryHandler<CountPendingDelegationsQuery, int> _pendingDelegationsCount;
     private readonly IDocumentService _documentService;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
@@ -80,7 +83,6 @@ public class DocumentDelegationServiceTests : PostgresDbTest
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            documents,
             uow,
             _tx,
             _audit,
@@ -88,6 +90,15 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TestClock.Provider,
             TestClock.TimeZone);
+        _documentDelegations = new GetDocumentDelegationsQueryHandler(
+            documents, new DelegationRepository(_db), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetDocumentDelegationsQuery, List<DelegationDto>>>());
+        _pendingDelegations = new GetPendingDelegationsQueryHandler(
+            new DelegationRepository(_db), TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetPendingDelegationsQuery, List<DelegationDto>>>());
+        _pendingDelegationsCount = new CountPendingDelegationsQueryHandler(
+            new DelegationRepository(_db),
+            Array.Empty<IPipelineBehavior<CountPendingDelegationsQuery, int>>());
         _delegationDelete = new DeleteDocumentDelegationCommandHandler(
             new DelegationRepository(_db), _headAlerts, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteDocumentDelegationCommand, bool>>());
@@ -812,7 +823,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
 
         // 3) بطاقة الإنابة (جهة المناب) تعرض الدائرة الحيّة.
-        var card = await _service.ListForDocumentAsync(targetId);
+        var card = await _documentDelegations.ListForDocumentAsync(targetId);
         Assert.Equal("دائرة تنفيذ حماة", card.Single(d => d.Id == created.Id).DelegatedCourt);
     }
 
@@ -1070,7 +1081,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head1.Id, _branch.Id, "head1");
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
         await _delegationComplete.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
             _lawyer2.Id, "lawyer2");
@@ -1079,7 +1090,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         Assert.NotNull(second);
         Assert.True(second.BlocksAssets);
 
-        var card = await _service.ListForDocumentAsync(source.Id);
+        var card = await _documentDelegations.ListForDocumentAsync(source.Id);
         Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
         Assert.Equal(assigned!.TargetDocumentId, card.Single(d => d.Id == created.Id).TargetDocumentId);
     }
@@ -1100,7 +1111,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
         await _db.SaveChangesAsync();
 
-        var card = await _service.ListForDocumentAsync(source.Id);
+        var card = await _documentDelegations.ListForDocumentAsync(source.Id);
         Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
 
         var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
@@ -1125,7 +1136,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.ExecStatus = terminalStatus;
         await _db.SaveChangesAsync();
 
-        var card = await _service.ListForDocumentAsync(source.Id);
+        var card = await _documentDelegations.ListForDocumentAsync(source.Id);
         Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
 
         var second = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
@@ -1151,7 +1162,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.ExecStatus = terminalStatus;
         await _db.SaveChangesAsync();
 
-        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        var dto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.True(dto.TargetTerminal);
         Assert.False(dto.BlocksAssets);
     }
@@ -1198,7 +1209,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         await _db.SaveChangesAsync();
 
-        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        var dto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.True(dto.TargetTerminal);
         Assert.False(dto.BlocksAssets);
     }
@@ -1211,7 +1222,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var pending = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        var pending = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.False(pending.TargetTerminal);
         Assert.True(pending.BlocksAssets);
 
@@ -1220,7 +1231,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        var registered = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        var registered = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.False(registered.TargetTerminal);
         Assert.True(registered.BlocksAssets);
     }
@@ -1290,7 +1301,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var listed = await _service.ListForDocumentAsync(source.Id);
+        var listed = await _documentDelegations.ListForDocumentAsync(source.Id);
 
         var assigned = Assert.Single(listed);
         Assert.Equal("1500", assigned.TargetFileNumber);
@@ -1310,7 +1321,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         target.FileYear = "2025";
         await _db.SaveChangesAsync();
 
-        var listed = await _service.ListForDocumentAsync(source.Id);
+        var listed = await _documentDelegations.ListForDocumentAsync(source.Id);
 
         var assigned = Assert.Single(listed);
         Assert.Equal("300", assigned.TargetFileNumber);
@@ -1342,7 +1353,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var listed = await _service.ListForDocumentAsync(targetId);
+        var listed = await _documentDelegations.ListForDocumentAsync(targetId);
 
         var assigned = Assert.Single(listed);
         Assert.Equal("1500", assigned.TargetFileNumber);
@@ -1609,12 +1620,12 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        var delegationDto = (await _service.ListForDocumentAsync(source.Id)).Single();
+        var delegationDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single();
         Assert.Equal("متداول", delegationDto.SourceFileType);
         Assert.Equal("دمشق", delegationDto.SourceCourt);
 
         // مسار الملف المناب (FindByTargetAsync): الدائرة المنيبة حاضرة أيضًا في بطاقته.
-        var targetDelegationDto = (await _service.ListForDocumentAsync(targetId)).Single();
+        var targetDelegationDto = (await _documentDelegations.ListForDocumentAsync(targetId)).Single();
         Assert.Equal("دمشق", targetDelegationDto.SourceCourt);
 
         var response = await _documentService.GetAsync(targetId);
@@ -1777,7 +1788,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
         var dto = await _delegationComplete.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto>
             {
@@ -1809,7 +1820,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head1.Id, _branch.Id, "head1");
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _delegationComplete.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
@@ -1844,7 +1855,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head2.Id, _otherBranch.Id, "head2");
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _externalLawyer.Id, "externalLawyer");
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _delegationComplete.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
@@ -1873,7 +1884,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head1.Id, _branch.Id, "head1");
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         var noDate = await Assert.ThrowsAsync<ArgumentException>(() =>
             _delegationComplete.CompleteAsync(created.Id,
@@ -1969,7 +1980,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         source.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
         await _db.SaveChangesAsync();
 
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
         var dto = await _delegationComplete.CompleteAsync(id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
             _lawyer2.Id, "lawyer2");
@@ -2097,7 +2108,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
         Assert.Equal(ExecutionStatusCatalog.Recovered, target.ExecStatus);
 
-        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        var dto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
         Assert.Equal(DelegationStatusCatalog.Registered, dto.Status);
         Assert.True(dto.TargetTerminal);
         Assert.False(dto.BlocksAssets);
@@ -2225,7 +2236,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         };
         await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
-        var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
+        var snap = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
         Assert.Equal("عقار رقم 77", snap.AssetLabel);
         Assert.False(snap.SnapshotAdjusted);
 
@@ -2255,7 +2266,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         request.Assets = new List<AssetDto> { template with { PropertyNumber = "771" } };
         await _documentUpdate.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
 
-        var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
+        var snap = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
         Assert.Equal("عقار رقم 771", snap.AssetLabel);
         Assert.True(snap.SnapshotAdjusted);
     }
@@ -2366,11 +2377,11 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             SampleRequest(ids[1]) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
-        var damPending = await _service.ListPendingForHeadAsync(_branch.Id);
+        var damPending = await _pendingDelegations.ListPendingForHeadAsync(_branch.Id);
         Assert.Contains(damPending, d => d.Id == internalDelegation.Id);
         Assert.DoesNotContain(damPending, d => d.Id == externalDelegation.Id);
 
-        var latPending = await _service.ListPendingForHeadAsync(_otherBranch.Id);
+        var latPending = await _pendingDelegations.ListPendingForHeadAsync(_otherBranch.Id);
         Assert.Contains(latPending, d => d.Id == externalDelegation.Id);
         Assert.DoesNotContain(latPending, d => d.Id == internalDelegation.Id);
     }
@@ -2504,7 +2515,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _head1.Id, _branch.Id, "head1");
         await _delegationRegister.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
-        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var assetDto = (await _documentDelegations.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _delegationComplete.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
@@ -2541,7 +2552,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             _delegationUpdate.UpdateAsync(created.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
         Assert.Contains("غير موجودة", exUpdate.Message);
 
-        Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
+        Assert.DoesNotContain(await _pendingDelegations.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
     }
 
     [PostgresFact]
@@ -2559,7 +2570,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         // الملف المناب النشط لا يرى إنابة مصدرها محذوف (بطاقة «تشعبات الملف» فارغة دون انهيار).
-        var delegations = await _service.ListForDocumentAsync(targetId);
+        var delegations = await _documentDelegations.ListForDocumentAsync(targetId);
         Assert.Empty(delegations);
     }
 
@@ -2599,7 +2610,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _delegationCreate.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
-        var listed1 = await _service.ListForDocumentAsync(source.Id);
+        var listed1 = await _documentDelegations.ListForDocumentAsync(source.Id);
         Assert.Equal("520", Assert.Single(listed1).SourceFileNumber);
 
         _db.BaseNumbers.Add(new DocumentBaseNumber
@@ -2611,7 +2622,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var listed2 = await _service.ListForDocumentAsync(source.Id);
+        var listed2 = await _documentDelegations.ListForDocumentAsync(source.Id);
         Assert.Equal("1500", Assert.Single(listed2).SourceFileNumber);
         Assert.Equal(TestClock.Today.Year.ToString(), Assert.Single(listed2).SourceFileYear);
     }
@@ -2910,7 +2921,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             a.DelegationId == created.Id && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition);
         Assert.Contains("أُضيف الممثل الشرعي للوريث محمود سامي الحلبي", alert.Message);
 
-        var sourceDtos = await _service.ListForDocumentAsync(source.Id);
+        var sourceDtos = await _documentDelegations.ListForDocumentAsync(source.Id);
         var dto = Assert.Single(sourceDtos);
         Assert.NotNull(dto.LocalAddition);
         Assert.Equal(1, dto.LocalAddition!.Count);
@@ -2980,7 +2991,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
             && !a.IsArchived);
         Assert.Equal(0, activeAlerts);
 
-        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        var dto = Assert.Single(await _documentDelegations.ListForDocumentAsync(source.Id));
         Assert.NotNull(dto.LocalAddition);
         Assert.Equal(1, dto.LocalAddition!.Count);
         Assert.Contains("الممثل الشرعي للوريث", dto.LocalAddition.LastMessage);
@@ -3046,7 +3057,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _documentUpdate.UpdateAsync(targetId, second, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
-        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        var dto = Assert.Single(await _documentDelegations.ListForDocumentAsync(source.Id));
         Assert.NotNull(dto.LocalAddition);
         Assert.Equal(2, dto.LocalAddition!.Count);
         Assert.Contains("أُضيف الوريث سامر حسن العلي", dto.LocalAddition.LastMessage);
@@ -3081,7 +3092,7 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         await _documentUpdate.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
         await FlushAlertsAsync();
 
-        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        var dto = Assert.Single(await _documentDelegations.ListForDocumentAsync(source.Id));
         Assert.NotNull(dto.LocalAddition);
         Assert.Equal(12, dto.LocalAddition!.Count);
         Assert.True(dto.LocalAddition.LastMessage.Length <= 1000);

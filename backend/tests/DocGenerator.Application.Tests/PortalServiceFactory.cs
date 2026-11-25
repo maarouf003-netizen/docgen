@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Delegations;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
@@ -47,16 +49,12 @@ public static class PortalServiceFactory
             TestClock.Provider,
             TestClock.TimeZone);
 
-        var delegations = new DocumentDelegationService(
-            new DelegationRepository(db),
+        var delegations = new GetDocumentDelegationsQueryHandler(
             documents,
-            uow,
-            tx,
-            audit,
-            headAlerts,
-            headAlertsOutbox,
+            new DelegationRepository(db),
             TestClock.Provider,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetDocumentDelegationsQuery, List<DelegationDto>>>());
 
         return new PortalService(
             new PortalRepository(db),
