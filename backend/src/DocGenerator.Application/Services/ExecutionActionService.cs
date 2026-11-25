@@ -8,15 +8,15 @@ namespace DocGenerator.Application.Services;
 
 /// <summary>
 /// خدمة إجراءات التنفيذ (مستخرجة من خدمة المستندات القديمة — المرحلة 1، نقل ميكانيكي بلا سلوك):
-/// بقيت فيها القراءة و`SeedInitialActionsAsync` التي تنضم لمعاملة حفظ المستند (داخل معاملة
+/// بقيت فيها `SeedInitialActionsAsync` التي تنضم لمعاملة حفظ المستند (داخل معاملة
 /// المستدعي حصرًا) والمساعدات المشتركة مع معالجات `P4-01` (تطبيع/إسقاط/تفريغ تذكير).
-/// كل نقاط الكتابة المستقلة مملوكة لأوامر: الإضافة/التعديل/الحذف/التذكيرات الثلاثة.
-/// الاعتمادات: `_actions` و`_documents` و`_uow` و`_audit` والساعة/المنطقة فقط.
+/// كل نقاط الكتابة المستقلة مملوكة لأوامر: الإضافة/التعديل/الحذف/التذكيرات الثلاثة،
+/// والقراءة صارت استعلام `GetExecutionActionsQuery` (`P4-01ct`).
+/// الاعتمادات: `_actions` و`_uow` و`_audit` والساعة/المنطقة فقط.
 /// </summary>
 public sealed class ExecutionActionService : IExecutionActionService
 {
     private readonly IRepository<ExecutionAction> _actions;
-    private readonly IDocumentRepository _documents;
     private readonly IUnitOfWork _uow;
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
@@ -24,29 +24,16 @@ public sealed class ExecutionActionService : IExecutionActionService
 
     public ExecutionActionService(
         IRepository<ExecutionAction> actions,
-        IDocumentRepository documents,
         IUnitOfWork uow,
         IAuditLogger audit,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
         _actions = actions;
-        _documents = documents;
         _uow = uow;
         _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
-    }
-
-    public async Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default)
-    {
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            return new List<ExecutionActionDto>();
-        return doc.ExecutionActions
-            .OrderByDescending(a => a.CreatedAt)
-            .Select(a => ToDto(a, a.CreatedBy?.FullName))
-            .ToList();
     }
 
     /// <summary>

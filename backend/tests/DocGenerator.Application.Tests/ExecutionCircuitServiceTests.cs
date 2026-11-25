@@ -22,7 +22,8 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class ExecutionCircuitServiceTests : PostgresDbTest
 {
-    private readonly IExecutionCircuitService _circuits;
+    private readonly ExecutionCircuitReadHandlers _circuits;
+    private readonly ExecutionCircuitService _circuitAlerts;
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _documents;
     private readonly DocumentStatusHandlers _documentStatusCommands;
     private readonly IHeadAlertService _headAlerts;
@@ -64,13 +65,32 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         var classifier = new DbExceptionClassifier();
         var circuitsRepo = new Repository<ExecutionCircuit>(_db);
         var branchesRepo = new Repository<Branch>(_db);
+        var sectionsRepo = new Repository<Section>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var alertsRepo = new HeadAlertRepository(_db);
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
-        _circuits = new ExecutionCircuitService(
-            circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
-            alertsRepo, users, uow, _tx, outbox);
+        _circuitAlerts = new ExecutionCircuitService(
+            documents, alertsRepo, users, uow, _tx, outbox);
+        _circuits = new ExecutionCircuitReadHandlers(
+            new ListMineExecutionCircuitsQueryHandler(
+                branchesRepo, circuitsRepo, documents, sectionsRepo,
+                Array.Empty<IPipelineBehavior<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>>>()),
+            new ListCircuitFilesQueryHandler(
+                branchesRepo, circuitsRepo, documents,
+                Array.Empty<IPipelineBehavior<ListCircuitFilesQuery, List<CircuitFileDto>>>()),
+            new ListExecutionCircuitsForLawyerQueryHandler(
+                circuitsRepo, sectionsRepo,
+                Array.Empty<IPipelineBehavior<ListExecutionCircuitsForLawyerQuery, List<ExecutionCircuitDto>>>()),
+            new ListExecutionCircuitsForDelegationQueryHandler(
+                branchesRepo, circuitsRepo,
+                Array.Empty<IPipelineBehavior<ListExecutionCircuitsForDelegationQuery, List<ExecutionCircuitDto>>>()),
+            new ListMyPendingRegistrationsQueryHandler(
+                documents, circuitsRepo,
+                Array.Empty<IPipelineBehavior<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>>>()),
+            new GetCircuitStatsQueryHandler(
+                circuitsRepo, branchesRepo, sectionsRepo, documents,
+                Array.Empty<IPipelineBehavior<GetCircuitStatsQuery, List<CircuitStatsDto>>>()));
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         _createCircuit = new CreateExecutionCircuitCommandHandler(
@@ -892,7 +912,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
 
         await _transferDocument.TransferAsync(docId, _lawyer2Id, "head1");
-        await _circuits.SyncPendingAlertsAfterTransferAsync(_lawyer1Id, _lawyer2Id, _branchId, _headId);
+        await _circuitAlerts.SyncPendingAlertsAfterTransferAsync(_lawyer1Id, _lawyer2Id, _branchId, _headId);
         await FlushAlertsAsync();
 
         Assert.Empty(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
@@ -1595,19 +1615,31 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new IdempotencyStore(_db));
     }
 
-    private IExecutionCircuitService BuildServiceWithCache(IReferenceDataCache cache)
+    private ExecutionCircuitReadHandlers BuildServiceWithCache(IReferenceDataCache cache)
     {
         var documents = new DocumentRepository(_db);
-        var users = new UserRepository(_db);
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        return new ExecutionCircuitService(
-            new Repository<ExecutionCircuit>(_db), new Repository<Branch>(_db),
-            new Repository<Section>(_db),
-            documents, new DelegationRepository(_db),
-            new HeadAlertRepository(_db), users,
-            uow, tx, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            cache);
+        var circuitsRepo = new Repository<ExecutionCircuit>(_db);
+        var branchesRepo = new Repository<Branch>(_db);
+        var sectionsRepo = new Repository<Section>(_db);
+        return new ExecutionCircuitReadHandlers(
+            new ListMineExecutionCircuitsQueryHandler(
+                branchesRepo, circuitsRepo, documents, sectionsRepo,
+                Array.Empty<IPipelineBehavior<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>>>(), cache),
+            new ListCircuitFilesQueryHandler(
+                branchesRepo, circuitsRepo, documents,
+                Array.Empty<IPipelineBehavior<ListCircuitFilesQuery, List<CircuitFileDto>>>()),
+            new ListExecutionCircuitsForLawyerQueryHandler(
+                circuitsRepo, sectionsRepo,
+                Array.Empty<IPipelineBehavior<ListExecutionCircuitsForLawyerQuery, List<ExecutionCircuitDto>>>(), cache),
+            new ListExecutionCircuitsForDelegationQueryHandler(
+                branchesRepo, circuitsRepo,
+                Array.Empty<IPipelineBehavior<ListExecutionCircuitsForDelegationQuery, List<ExecutionCircuitDto>>>(), cache),
+            new ListMyPendingRegistrationsQueryHandler(
+                documents, circuitsRepo,
+                Array.Empty<IPipelineBehavior<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>>>(), cache),
+            new GetCircuitStatsQueryHandler(
+                circuitsRepo, branchesRepo, sectionsRepo, documents,
+                Array.Empty<IPipelineBehavior<GetCircuitStatsQuery, List<CircuitStatsDto>>>(), cache));
     }
 
     [PostgresFact]

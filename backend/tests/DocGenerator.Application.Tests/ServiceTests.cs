@@ -28,7 +28,7 @@ public class DocumentUseCaseTests : PostgresDbTest
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly ICommandHandler<TransferAllDocumentsCommand, int> _transferAll;
     private readonly ICommandHandler<SaveDocumentBaseNumbersCommand, bool> _saveBaseNumbers;
-    private readonly IExecutionActionService _actions;
+    private readonly ExecutionActionHandlers _actions;
     private readonly DocumentSearchHandlers _search;
     private readonly DocumentStatusHandlers _statusCommands;
     private readonly ICommandHandler<DeleteExecutionActionCommand, bool> _deleteAction;

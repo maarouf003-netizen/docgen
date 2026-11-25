@@ -7,25 +7,12 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.UseCases.Sections;
 
 /// <summary>
-/// مساعدات الشعب المشتركة (`P4-01cs`): قراءة مرجعية مخزّنة، وتطبيع الاسم،
-/// ووحدانية الاسم × الفرع، والإسقاط الموحّد — نقطة واحدة لمعالجَي القراءة
-/// ومعالجات الإنشاء/التسمية/التفعيل بلا تكرار.
+/// مساعدات الشعب المشتركة (`P4-01cs`): تطبيع الاسم، ووحدانية الاسم × الفرع،
+/// والإسقاط الموحّد — نقطة واحدة لمعالجَي القراءة ومعالجات الإنشاء/التسمية/التفعيل
+/// بلا تكرار. القراءات المرجعية المخزّنة في `ReferenceDataQueries` المشترك.
 /// </summary>
 internal static class SectionProjection
 {
-    // قراءات مرجعية بحتة — العدّادات الحيّة (الدوائر/الرؤساء) تُحسب خارج الكاش.
-    internal static Task<List<Section>> ListSectionsAsync(
-        IRepository<Section> sections, IReferenceDataCache? cache, CancellationToken ct)
-        => cache is null
-            ? sections.ListAsync(ct)
-            : cache.GetOrCreateAsync(ReferenceDataGroups.Sections, "all", sections.ListNoTrackingAsync, ct);
-
-    internal static Task<List<ExecutionCircuit>> ListCircuitsAsync(
-        IRepository<ExecutionCircuit> circuits, IReferenceDataCache? cache, CancellationToken ct)
-        => cache is null
-            ? circuits.ListAsync(ct)
-            : cache.GetOrCreateAsync(ReferenceDataGroups.Circuits, "all", circuits.ListNoTrackingAsync, ct);
-
     internal static string NormalizeName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

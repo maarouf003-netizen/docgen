@@ -66,7 +66,6 @@ public static class DependencyInjection
         services.AddScoped<IPublicEntityWriteRules>(sp => sp.GetRequiredService<PublicEntityService>());
         services.AddScoped<IPortalService, PortalService>();
         services.AddScoped<EntityDelegateService>();
-        services.AddScoped<IEntityDelegateService>(sp => sp.GetRequiredService<EntityDelegateService>());
         services.AddScoped<IEntityDelegateWriteRules>(sp => sp.GetRequiredService<EntityDelegateService>());
         services.AddScoped<ReviewLetterService>();
         services.AddScoped<IReviewLetterReplyWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
@@ -125,6 +124,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?>, UpdatePublicEntityCommandHandler>();
         services.AddScoped<ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?>, AddPublicEntityAliasCommandHandler>();
         services.AddScoped<ICommandHandler<ApprovePublicEntityReviewCommand, PublicEntityEntryDto?>, ApprovePublicEntityReviewCommandHandler>();
+        services.AddScoped<IQueryHandler<ListEntityDelegatesQuery, List<DelegateDto>>, ListEntityDelegatesQueryHandler>();
         services.AddScoped<ICommandHandler<CreateEntityDelegateCommand, DelegateDto>, CreateEntityDelegateCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?>, UpdateEntityDelegateCommandHandler>();
         services.AddScoped<ICommandHandler<CreateLawyerCommand, LawyerListItemDto>, CreateLawyerCommandHandler>();
@@ -256,12 +256,19 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<SetSectionActiveCommand, SectionDto?>, SetSectionActiveCommandHandler>();
         services.AddScoped<IQueryHandler<ListSectionsQuery, List<SectionDto>>, ListSectionsQueryHandler>();
         services.AddScoped<IQueryHandler<GetSectionQuery, SectionDto?>, GetSectionQueryHandler>();
+        services.AddScoped<IQueryHandler<GetExecutionActionsQuery, List<ExecutionActionDto>>, GetExecutionActionsQueryHandler>();
         services.AddScoped<ICommandHandler<AddExecutionActionCommand, ExecutionActionDto>, AddExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<UpdateExecutionActionCommand, ExecutionActionDto?>, UpdateExecutionActionCommandHandler>();
         services.AddScoped<ICommandHandler<ClearActionReminderCommand, bool>, ClearActionReminderCommandHandler>();
         services.AddScoped<ICommandHandler<SetActionReminderCommand, ExecutionActionDto>, SetActionReminderCommandHandler>();
         services.AddScoped<ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto>, RescheduleActionReminderCommandHandler>();
         services.AddScoped<ICommandHandler<RestoreDocumentCommand, bool>, RestoreDocumentCommandHandler>();
+        services.AddScoped<IQueryHandler<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>>, ListMineExecutionCircuitsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListCircuitFilesQuery, List<CircuitFileDto>>, ListCircuitFilesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListExecutionCircuitsForLawyerQuery, List<ExecutionCircuitDto>>, ListExecutionCircuitsForLawyerQueryHandler>();
+        services.AddScoped<IQueryHandler<ListExecutionCircuitsForDelegationQuery, List<ExecutionCircuitDto>>, ListExecutionCircuitsForDelegationQueryHandler>();
+        services.AddScoped<IQueryHandler<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>>, ListMyPendingRegistrationsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetCircuitStatsQuery, List<CircuitStatsDto>>, GetCircuitStatsQueryHandler>();
         services.AddScoped<ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto>, CreateExecutionCircuitCommandHandler>();
         services.AddScoped<ICommandHandler<SetExecutionCircuitActiveCommand, ExecutionCircuitDto>, SetExecutionCircuitActiveCommandHandler>();
         services.AddScoped<ICommandHandler<RenameExecutionCircuitCommand, ExecutionCircuitDto>, RenameExecutionCircuitCommandHandler>();

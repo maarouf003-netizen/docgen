@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using DocGenerator.Api.Controllers;
-using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,27 +12,12 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public sealed class ExecutionCircuitsBranchGuardTests
 {
-    private sealed class FakeCircuitService : IExecutionCircuitService
-    {
-        public Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null) => throw new NotImplementedException();
-        public Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<int> CompleteRegistrationsAsync(int lawyerId, string? actorName, CompleteRegistrationsRequest request, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<bool> DeleteByPendingRegistrationAsync(int lawyerId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task SyncPendingAlertsAfterTransferAsync(int sourceOwnerId, int targetOwnerId, int branchId, int actorUserId, CancellationToken ct = default) => throw new NotImplementedException();
-    }
-
     private static ExecutionCircuitsController ControllerWith(string role)
     {
+        // المعالجات غير مبلوغة: الحارس (غياب claim الفرع) يسبق أي استعلام.
         var controller = new ExecutionCircuitsController(
-            new FakeCircuitService(), null!, null!, ApiTestClock.Provider, TimeZoneInfo.Utc,
+            null!, null!, null!, null!, null!,
+            null!, null!, ApiTestClock.Provider, TimeZoneInfo.Utc,
             new DocGenerator.Api.Authorization.UserCapabilities(), null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {

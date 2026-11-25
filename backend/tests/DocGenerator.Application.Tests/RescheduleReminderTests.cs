@@ -22,7 +22,6 @@ namespace DocGenerator.Application.Tests;
 public class RescheduleDocumentReminderTests : PostgresDbTest
 {
     private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
-    private readonly IExecutionActionService _actions;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
     private readonly ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> _reschedule;
     private readonly FakeAuditLogger _audit = new();
@@ -41,7 +40,6 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         _db.SaveChanges();
         var bundle = DocumentServiceFactory.Create(_db, _audit);
         _create = bundle.CreateDocument;
-        _actions = bundle.Actions;
         _addAction = new AddExecutionActionCommandHandler(
             new Repository<ExecutionAction>(_db),
             new DocumentRepository(_db),

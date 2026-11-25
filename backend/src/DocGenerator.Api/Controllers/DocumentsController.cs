@@ -35,7 +35,7 @@ public class DocumentsController : ControllerBase
     /// </summary>
     private const string DocumentNotFoundMessage = "المستند غير موجود";
 
-    private readonly IExecutionActionService _executionActions;
+    private readonly IQueryHandler<GetExecutionActionsQuery, List<ExecutionActionDto>> _executionActions;
     private readonly IWordDocumentGenerator _generator;
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
@@ -90,7 +90,7 @@ public class DocumentsController : ControllerBase
     private readonly TimeZoneInfo _timeZone;
 
     public DocumentsController(
-        IExecutionActionService executionActions,
+        IQueryHandler<GetExecutionActionsQuery, List<ExecutionActionDto>> executionActions,
         IWordDocumentGenerator generator,
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
@@ -1016,7 +1016,7 @@ public class DocumentsController : ControllerBase
         var denied = await RequireDocumentAccessAsync(doc, DocumentAction.ReadOrFollow, ct);
         if (denied is not null) return denied;
 
-        var actions = await _executionActions.GetExecutionActionsAsync(id, ct);
+        var actions = await _executionActions.HandleAsync(new GetExecutionActionsQuery(id), ct);
         return Ok(actions);
     }
 

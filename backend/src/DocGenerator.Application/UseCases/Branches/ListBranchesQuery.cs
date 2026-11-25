@@ -26,9 +26,7 @@ internal sealed class ListBranchesQueryHandler : QueryHandlerBase<ListBranchesQu
 
     // الأسماء/الترتيب مرجعي؛ عدّادات المستخدمين/المستندات تُحسب حيّة بعد القراءة.
     private Task<List<Branch>> ListBranchesTrackedAsync(CancellationToken ct)
-        => _cache is null
-            ? _branches.ListAsync(ct)
-            : _cache.GetOrCreateAsync(ReferenceDataGroups.Branches, "all", _branches.ListNoTrackingAsync, ct);
+        => ReferenceDataQueries.ListBranchesAsync(_branches, _cache, ct);
 
     protected override async Task<List<BranchDto>> HandleCoreAsync(
         ListBranchesQuery query, CancellationToken ct)

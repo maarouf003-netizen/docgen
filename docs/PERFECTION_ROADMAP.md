@@ -1268,9 +1268,30 @@
   `docs/audit/236-p4-01cs-org-structure-reads-20261125.md` و
   `docs/audit/237-p4-01cs-critical-review-20261125.md` و
   `docs/audit/238-p4-01cs-followup-review-20261125.md`.
+  **`P4-01ct`:** اكتملت قراءات الدوائر/الإجراءات/المندوبين — نُقلت ثمانية أسطح قراءة
+  صرفة من `IExecutionCircuitService` (ستة: قوائم الدوائر الأربع، وملفات الدائرة،
+  والمعلقات، والإحصاءات)، و`IExecutionActionService` (قراءة الإجراءات)، و
+  `IEntityDelegateService` (قائمة المندوبين) إلى ثمانية استعلامات `IQuery<TResponse>`
+  ومعالجات `QueryHandlerBase` تحت `UseCases/{ExecutionCircuits,ExecutionActions,PublicEntities}/`:
+  قراءة صرفة بلا كتابة ولا معاملة ولا تدقيق، بحفاظ **103/110** سطرًا فعّالًا (**0** فرق
+  دلالي، سبعة أسطر لفّ ميكانيكية) و**41/42** للمساعدات المرقّاة (`ReferenceDataQueries`
+  المشترك + `ExecutionCircuitProjection` + `EntityDelegateProjection`) و**2/2** نصًا
+  حرفيًا (0 فرق)؛ بقيت القراءتان الكاتبتان (`SyncPendingAlertsAfterTransferAsync` و
+  `SeedInitialActionsAsync`) في خدمتيهما، وحُذفت واجهة `IEntityDelegateService`
+  (**10 → 2** عضوًا إجمالًا) مع تسجيلها، وحُذف `_circuits`/`_branches`/`_sections`/
+  `_delegations`/`_documents`/`_users` و`_hasher`/`_uow`/`_tx`/`_audit` الميتة (منشئو الخدمات **11 → 7** و**6 → 5**
+  و**7 → 2**)، وارتفع `DI` من **198/198/0** إلى **206/206/0** (88 استعلامًا + 118 أمرًا)،
+  وصار `ExecutionCircuitsController` يحقن خمسة معالجات إضافية (منشئ **12 → 16**) وبقية
+  المتحكمات نفس عدد المعاملات بتبديل النوع، بلا تغيير المسارات والحرّاس والأجسام،
+  وحُوِّلت **35** موضع نداء اختباري عبر ثلاثة جسور (`ExecutionCircuitReadQueryExtensions`،
+  `ExecutionActionReadQueryExtensions`، `EntityDelegateReadQueryExtensions`) مع اختبار
+  توصيل جديد. التفاصيل:
+  `docs/audit/239-p4-01ct-circuit-action-delegate-reads-20261125.md` و
+  `docs/audit/240-p4-01ct-critical-review-20261125.md` و
+  `docs/audit/241-p4-01ct-followup-review-20261125.md`.
   **متبقٍ:** اكتمل مسح module-by-module للوحدات ذات الأسطح العامة — سجل الجهات
   كتابةً وقراءةً، والإنابات، والمطالعات، والاستئنافات، والمراسلات، والبوابة،
-  والإحصاءات، والمستندات، والبحث/القوائم/التصدير، والهيكل التنظيمي. لا يبقى سطح
+  والإحصاءات، والمستندات، والبحث/القوائم/التصدير، والهيكل التنظيمي، والدوائر/الإجراءات/المندوبين. لا يبقى سطح
   قراءة صرف معلن (`IDocumentStatusService` عضوان كاتبان داخل معاملات مستدعين)، وخارج
   نطاق هذا المسح: بقية أوامر `P4-01` المعلنة أعلاه، وتفكيك `P4-02` الجاري.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
