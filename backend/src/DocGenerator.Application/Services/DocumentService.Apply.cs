@@ -442,12 +442,9 @@ public sealed partial class DocumentService : IDocumentService
         return value is "إضافة لتركة" or "أصالة وإضافة" ? value : "أصالة";
     }
 
-    private void ApplyRegistrationDate(Document doc, string? value)
-        => ApplyRegistrationDate(doc, value, _registrationDates);
-
     /// <summary>
     /// تطبيق تاريخ التسجيل الحر (نص) على كيان `DocumentRegistrationDate` — مشترك بين
-    /// الإنشاء (الخدمة) والتعديل (المعالج) بالمنطق نفسه: الفارغ يُزيل الصف، وغيره يُنشئه
+    /// الإنشاء والتعديل (معالجَيهما) بالمنطق نفسه: الفارغ يُزيل الصف، وغيره يُنشئه
     /// أو يحدّثه ويحلّل `DateParsed` عبر `ActionDateParser`.
     /// </summary>
     internal static void ApplyRegistrationDate(

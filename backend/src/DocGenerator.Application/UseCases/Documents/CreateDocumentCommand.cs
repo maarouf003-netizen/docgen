@@ -1,12 +1,17 @@
+using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.UseCases.Documents;
 
 /// <summary>
-/// إنشاء ملف جديد: الأمر يحمل سياق الفاعل ومفتاح عدم التكرار، والمعالج يفوض
-/// `IDocumentService` (المالك الحالي للمعاملة والتدقيق) بلا تغيير سلوكي.
+/// إنشاء ملف جديد: الأمر يحمل سياق الفاعل ومفتاح عدم التكرار، والمعالج يملك
+/// التحققات والترقيم وسجل الأرقام والأطراف والأصول والورثة والمعاملة والتدقيق
+/// ومفتاح `RF-011` بلا تغيير سلوكي.
 /// </summary>
 public sealed record CreateDocumentCommand(
     DocumentUpsertRequest Request,
@@ -17,15 +22,145 @@ public sealed record CreateDocumentCommand(
 
 public sealed class CreateDocumentCommandHandler : CommandHandlerBase<CreateDocumentCommand, DocumentResponse>
 {
-    private readonly IDocumentService _documents;
+    private readonly IDocumentRepository _documents;
+    private readonly IUserRepository _users;
+    private readonly IRepository<DocumentRegistrationDate> _registrationDates;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IExecutionActionService _actionService;
+    private readonly IDocumentStatusService _statusService;
+    private readonly IDocumentWriteGuard _writeGuard;
+    private readonly IDocumentNumberRegistry _numberRegistry;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+    private readonly IIdempotencyStore? _idempotency;
 
     public CreateDocumentCommandHandler(
-        IDocumentService documents,
-        IEnumerable<IPipelineBehavior<CreateDocumentCommand, DocumentResponse>> behaviors)
+        IDocumentRepository documents,
+        IUserRepository users,
+        IRepository<DocumentRegistrationDate> registrationDates,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IExecutionActionService actionService,
+        IDocumentStatusService statusService,
+        IDocumentWriteGuard writeGuard,
+        IDocumentNumberRegistry numberRegistry,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<CreateDocumentCommand, DocumentResponse>> behaviors,
+        IIdempotencyStore? idempotency = null)
         : base(behaviors)
-        => _documents = documents;
+    {
+        _documents = documents;
+        _users = users;
+        _registrationDates = registrationDates;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _actionService = actionService;
+        _statusService = statusService;
+        _writeGuard = writeGuard;
+        _numberRegistry = numberRegistry;
+        _clock = clock;
+        _timeZone = timeZone;
+        _idempotency = idempotency;
+    }
 
-    protected override Task<DocumentResponse> HandleCoreAsync(CreateDocumentCommand command, CancellationToken ct)
-        => _documents.CreateAsync(command.Request, command.UserId, command.ActorName, command.BranchId, ct,
-            command.IdempotencyKey);
+    protected override async Task<DocumentResponse> HandleCoreAsync(CreateDocumentCommand command, CancellationToken ct)
+    {
+        var request = command.Request;
+        var userId = command.UserId;
+        var actorName = command.ActorName;
+        var branchId = command.BranchId;
+        var idempotencyKey = command.IdempotencyKey;
+
+        if (string.IsNullOrWhiteSpace(request.BorrowerName)
+            && (request.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
+                || string.IsNullOrEmpty(request.GeneralEntitySide)))
+            throw new ArgumentException("اسم المقترض مطلوب");
+
+        DocumentValidator.NormalizeCollections(request);
+        DocumentValidator.ValidateSide(request);
+        DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateGuarantorCount(request);
+        DocumentValidator.ValidateRegistrationDate(request);
+        DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
+        DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
+        DocumentValidator.ValidateAnnexes(request);
+
+        // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
+        // باسمه الكامل (وليس من الطلب)، ويبقى محصّناً من أي كتابة عبر نموذج التعديل.
+        var actor = await _users.GetByIdAsync(userId, ct);
+        if (actor is null)
+            throw new ArgumentException("المستخدم الذي ينشئ الملف غير موجود");
+
+        var doc = new Document
+        {
+            BranchId = branchId,
+            CreatedById = userId,
+            Lawyer = string.IsNullOrWhiteSpace(actor.FullName) ? actor.Username : actor.FullName,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        DocumentService.ApplyRequest(doc, request);
+        // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
+        var createCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
+        DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
+        DocumentText.FillDerivedFields(doc);
+        DocumentService.ApplyRegistrationDate(doc, request.FileRegistrationDate, _registrationDates);
+
+        // RF-011: حجز المفتاح بعد كل التحققات (المدخل الباطل 400 بلا حجز) وقبل أي
+        // كتابة — التكرار بنفس البصمة يُعيد المخزن (`IdempotentReplayException`)،
+        // والقيد المعالَج يُرفَض `409`، والبصمة المختلفة نية جديدة تُنفَّذ طازجة.
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "documents.create",
+            userId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+
+        DocumentResponse result;
+        try
+        {
+            result = await CreateCoreAsync(doc, request, userId, actor, actorName, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct: ct);
+        return result;
+    }
+
+    /// <summary>نواة الإنشاء (فحص الترقيم + المعاملة) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
+    private async Task<DocumentResponse> CreateCoreAsync(
+        Document doc, DocumentUpsertRequest request, int userId, User actor, string? actorName, CancellationToken ct)
+    {
+        // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
+            doc.FileNumber, doc.FileType, doc.FileYear, ct);
+
+        return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        {
+            await _documents.AddAsync(doc, token);
+            await _uow.SaveChangesAsync(token);
+            // الكاتب الوحيد: مزامنة صف القيد بعد حصول المستند على معرّفه (داخل المعاملة).
+            await _numberRegistry.SyncRegistrationAsync(doc, userId, actorName, request.WarningToken, token, isNewDocument: true);
+            // أول سجل تعاقب: منشئ الملف (Lawyer هو اسم المنشئ عند الإنشاء).
+            await _documents.AddAssignmentAsync(doc.Id, AssignmentKindCatalog.Create,
+                doc.Lawyer ?? actor.Username, null, DateTime.UtcNow, token);
+            await _audit.LogAsync(actorName, "create", doc.Id, doc.DocumentType,
+                DocumentText.AuditWithActor($"أنشأ المستند (رقم {doc.Id})", doc), token);
+            // ملف أُنشئ مشطوبًا من البداية: يُسجَّل وقعة شطب تلقائيًا ليتسق سجل الوقوعات
+            // مع البيانات المُرحَّلة (بعد حفظ المستند فيُعرف رقمه داخل المعاملة نفسها).
+            if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
+                await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
+            await _uow.SaveChangesAsync(token);
+            await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
+            return DocumentResponse.FromEntity(doc, CurrentYear());
+        }, ct), doc.FileNumber);
+    }
+
+    private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
 }

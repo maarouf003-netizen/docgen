@@ -1,7 +1,9 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class PartyNatureTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly FakeAuditLogger _audit = new();
 
     public PartyNatureTests()
@@ -41,7 +44,9 @@ public class PartyNatureTests : PostgresDbTest
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _create = bundle.CreateDocument;
     }
 
 
@@ -92,7 +97,7 @@ public class PartyNatureTests : PostgresDbTest
         req.BorrowerRepresentativeName = "وصي زائد";
         req.BorrowerRepresentativeCapacity = "وصي";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(PartyNatureCatalog.Legal, loaded!.BorrowerNature);
@@ -118,7 +123,7 @@ public class PartyNatureTests : PostgresDbTest
         req.BorrowerNature = PartyNatureCatalog.Natural;
         req.BorrowerRegistrationNumber = "يجب أن يُصفَّر";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(PartyNatureCatalog.Natural, loaded!.BorrowerNature);
@@ -148,7 +153,7 @@ public class PartyNatureTests : PostgresDbTest
                 RepresentedBy: "وكيلها"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var g = Assert.Single(loaded!.Guarantors);
@@ -182,7 +187,7 @@ public class PartyNatureTests : PostgresDbTest
                 Address: "محامي الشركة"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var a = Assert.Single(loaded!.ExecutionApplicants);
@@ -215,7 +220,7 @@ public class PartyNatureTests : PostgresDbTest
                 Governorate: "حلب"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var e = Assert.Single(loaded!.ExecutedPublicEntities);
@@ -241,7 +246,7 @@ public class PartyNatureTests : PostgresDbTest
             new ExecutedPublicEntityDto(null, "المصرف العقاري", "فرع المزة", Governorate: "دمشق"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var e = Assert.Single(loaded!.ExecutedPublicEntities);
@@ -259,7 +264,7 @@ public class PartyNatureTests : PostgresDbTest
     {
         var req = ExecutedSample();
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var e = Assert.Single(loaded!.ExecutedPublicEntities);
@@ -280,7 +285,7 @@ public class PartyNatureTests : PostgresDbTest
         req.BorrowerNature = "قيمة غير صالحة";
         req.BorrowerRegistrationNumber = "يُصفَّر";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(PartyNatureCatalog.Natural, loaded!.BorrowerNature);

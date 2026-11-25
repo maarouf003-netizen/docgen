@@ -24,7 +24,7 @@ public class ExportCapTests : PostgresDbTest
     private int _userId;
 
 
-    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Build(int maxRows)
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Build(int maxRows)
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -41,7 +41,7 @@ public class ExportCapTests : PostgresDbTest
         return DocumentServiceFactory.Create(_db, _audit, exportOptions: new ExportOptions { MaxRows = maxRows });
     }
 
-    private async Task CreateDocsAsync(IDocumentService svc, int count)
+    private async Task CreateDocsAsync(ICommandHandler<CreateDocumentCommand, DocumentResponse> svc, int count)
     {
         for (var i = 0; i < count; i++)
         {
@@ -63,7 +63,7 @@ public class ExportCapTests : PostgresDbTest
     public async Task ExportAsync_WhenResultsExceedCap_ThrowsWithFriendlyMessage()
     {
         var bundle = Build(maxRows: 1);
-        await CreateDocsAsync(bundle.Documents, 2);
+        await CreateDocsAsync(bundle.CreateDocument, 2);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null));
@@ -76,7 +76,7 @@ public class ExportCapTests : PostgresDbTest
     public async Task ExportAsync_AtExactCap_Passes()
     {
         var bundle = Build(maxRows: 2);
-        await CreateDocsAsync(bundle.Documents, 2);
+        await CreateDocsAsync(bundle.CreateDocument, 2);
 
         var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
 
@@ -87,7 +87,7 @@ public class ExportCapTests : PostgresDbTest
     public async Task ExportAsync_UnderCap_Passes()
     {
         var bundle = Build(maxRows: 10);
-        await CreateDocsAsync(bundle.Documents, 1);
+        await CreateDocsAsync(bundle.CreateDocument, 1);
 
         var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
 

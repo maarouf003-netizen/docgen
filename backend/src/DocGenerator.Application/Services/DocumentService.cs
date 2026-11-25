@@ -1,9 +1,6 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -15,7 +12,6 @@ public interface IDocumentService
     /// </summary>
     Task<DocumentAccessInfo?> GetAccessInfoAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default);
-    Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null);
     /// <summary>عدد ملفات المحامي غير المحذوفة (للمعاينة قبل النقل الجماعي).</summary>
     Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
@@ -32,58 +28,22 @@ public sealed partial class DocumentService : IDocumentService
 {
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
-    private readonly IRepository<DocumentBaseNumber> _baseNumbers;
-    private readonly IRepository<DocumentRegistrationDate> _registrationDates;
-    private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
-    private readonly IExecutionActionService _actionService;
-    private readonly IDocumentDelegationService _delegationService;
-    private readonly IDocumentStatusService _statusService;
-    private readonly IDocumentWriteGuard _writeGuard;
     private readonly IDocumentNumberRegistry _numberRegistry;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
-    private readonly IIdempotencyStore? _idempotency;
-    private readonly IRepository<ExecutionCircuit> _circuits;
-    private readonly IExecutionCircuitService? _executionCircuits;
 
     public DocumentService(
         IDocumentRepository documents,
         IUserRepository users,
-        IRepository<DocumentBaseNumber> baseNumbers,
-        IRepository<DocumentRegistrationDate> registrationDates,
-        IUnitOfWork uow,
-        ITransactionRunner tx,
-        IAuditLogger audit,
-        TimeProvider clock,
-        TimeZoneInfo timeZone,
-        IExecutionActionService actionService,
-        IDocumentDelegationService delegationService,
-        IDocumentStatusService statusService,
-        IDocumentWriteGuard writeGuard,
         IDocumentNumberRegistry numberRegistry,
-        IIdempotencyStore? idempotency = null,
-        IRepository<ExecutionCircuit>? circuits = null,
-        IExecutionCircuitService? executionCircuits = null)
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
-        _circuits = circuits ?? new UnconfiguredCircuitRepository();
-        _executionCircuits = executionCircuits;
         _documents = documents;
         _users = users;
-        _baseNumbers = baseNumbers;
-        _registrationDates = registrationDates;
-        _uow = uow;
-        _tx = tx;
-        _audit = audit;
-        _actionService = actionService;
-        _delegationService = delegationService;
-        _statusService = statusService;
-        _writeGuard = writeGuard;
         _numberRegistry = numberRegistry;
         _clock = clock;
         _timeZone = timeZone;
-        _idempotency = idempotency;
     }
 
     public async Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)

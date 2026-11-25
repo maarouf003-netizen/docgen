@@ -188,29 +188,13 @@ public sealed class DocumentAccessProjectionTests
 
         public Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default)
             => throw new NotSupportedException();
-        public Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null)
-            => throw new NotSupportedException();
-        public Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null)
-            => throw new NotSupportedException();
         public Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null)
-            => throw new NotSupportedException();
-        public Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null, int? actorUserId = null)
             => throw new NotSupportedException();
         public Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<List<BaseNumberHistoryDto>> GetDeletedBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task CorrectBaseNumberAsync(int documentId, int year, CorrectBaseNumberRequest request, int userId, string? actorName, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task UndoRotationAsync(int documentId, int year, int userId, string? actorName, CancellationToken ct = default)
-            => throw new NotSupportedException();
-        public Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, string? warningToken = null, CancellationToken ct = default)
             => throw new NotSupportedException();
     }
 

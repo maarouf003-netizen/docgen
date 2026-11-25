@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -20,7 +21,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class RescheduleDocumentReminderTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly IExecutionActionService _actions;
     private readonly ICommandHandler<AddExecutionActionCommand, ExecutionActionDto> _addAction;
     private readonly ICommandHandler<RescheduleActionReminderCommand, ExecutionActionDto> _reschedule;
@@ -39,7 +40,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         });
         _db.SaveChanges();
         var bundle = DocumentServiceFactory.Create(_db, _audit);
-        _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _actions = bundle.Actions;
         _addAction = new AddExecutionActionCommandHandler(
             new Repository<ExecutionAction>(_db),
@@ -95,7 +96,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
         string? color = "أحمر",
         string type = "action")
     {
-        var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        var doc = await _create.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
         var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
@@ -197,7 +198,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     [PostgresFact]
     public async Task Reschedule_NoReminder_Throws()
     {
-        var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        var doc = await _create.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
         var action = await AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة بلا تذكير" },
             userId: 1, actorName: "lawyer1");
@@ -211,7 +212,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     public async Task Reschedule_UnknownLegacyDuration_ThrowsInsteadOfSilencingSuspect()
     {
         // مدة قديمة خارج الأربع لا يمكن زرعها عبر الخدمة (مرفوضة كتابةً) — تُزرع مباشرة.
-        var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        var doc = await _create.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
         var legacy = new ExecutionAction
         {
             DocumentId = doc.Id,
@@ -265,7 +266,7 @@ public class RescheduleDocumentReminderTests : PostgresDbTest
     public async Task Reschedule_MissingActionOrMismatchedParent_ThrowsKeyNotFound()
     {
         var (documentId, action) = await SeedActionAsync();
-        var other = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        var other = await _create.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => RescheduleReminderAsync(documentId, 999999, "10/8/2026", "lawyer1"));

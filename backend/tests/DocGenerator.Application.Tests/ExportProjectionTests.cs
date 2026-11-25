@@ -26,7 +26,7 @@ public class ExportProjectionTests : PostgresDbTest
     private int _userId;
 
 
-    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Build()
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Build()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -48,7 +48,8 @@ public class ExportProjectionTests : PostgresDbTest
     {
         var bundle = Build();
         var svc = bundle.Documents;
-        var created = await svc.CreateAsync(new DocumentUpsertRequest
+        var create = bundle.CreateDocument;
+        var created = await create.CreateAsync(new DocumentUpsertRequest
         {
             BorrowerName = "مقترض الإسقاط",
             Applicant = "المصرف",
@@ -98,7 +99,8 @@ public class ExportProjectionTests : PostgresDbTest
         // يُتخطى والثاني المسمّى يفوز، فيثبت حفظ الترتيب عبر الإسقاط إلى الورقة.
         var bundle = Build();
         var svc = bundle.Documents;
-        var created = await svc.CreateAsync(new DocumentUpsertRequest
+        var create = bundle.CreateDocument;
+        var created = await create.CreateAsync(new DocumentUpsertRequest
         {
             BorrowerName = "مقترض الترتيب",
             Guarantors = new List<GuarantorDto>(),

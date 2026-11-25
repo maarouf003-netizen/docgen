@@ -20,6 +20,7 @@ namespace DocGenerator.Application.Tests;
 public class ApplicantAndAssignmentTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly ICommandHandler<TransferDocumentCommand, DocumentResponse> _transfer;
     private readonly FakeAuditLogger _audit = new();
@@ -54,6 +55,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
         _transfer = bundle.TransferDocument;
     }
@@ -91,7 +93,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         req.FileArrivalNumber = "ر-100";
         req.FileArrivalDate = "5/1/2024";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(2, loaded!.ApplicantPublicEntities.Count);
@@ -117,7 +119,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
             new ApplicantPublicEntityDto(null, longName, "فرع 3", "حمص"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.NotNull(loaded);
@@ -131,7 +133,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         var req = ApplicantSample();
         req.Applicant = "المدعي القديم";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var e = Assert.Single(loaded!.ApplicantPublicEntities);
@@ -146,7 +148,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         req.ApplicantPublicEntities = new() { new ApplicantPublicEntityDto(null, "جهة زائدة", null) };
         req.FileArrivalNumber = "يجب أن يُصفَّر";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Empty(loaded!.ApplicantPublicEntities);
@@ -162,7 +164,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         var req = ExecutedSample();
         req.Applicant = "مدعي قديم";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Empty(loaded!.ApplicantPublicEntities);
@@ -172,7 +174,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_StruckOffApplicant_PreservesStruckOffDate()
     {
-        var created = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
+        var created = await _create.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
         var stored = await _db.Documents.SingleAsync(d => d.Id == created.Id);
         stored.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
         stored.StruckOffDate = new DateTime(2026, 1, 1);
@@ -190,7 +192,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
     [PostgresFact]
     public async Task CreateAsync_RecordsCreateAssignment()
     {
-        var doc = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var create = Assert.Single(loaded!.Assignments);
@@ -202,7 +204,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
     [PostgresFact]
     public async Task TransferAsync_RecordsTransferAssignment()
     {
-        var doc = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
 
         await _transfer.TransferAsync(doc.Id, 2, "lawyer1");
 
@@ -224,7 +226,7 @@ public class ApplicantAndAssignmentTests : PostgresDbTest
         };
         req.FileArrivalNumber = "ر-777";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var stored = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
 
         // `PB-001`: البلوب مطبَّع.

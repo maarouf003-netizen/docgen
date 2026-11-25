@@ -18,7 +18,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class DocumentUpdateChangeLogTests : PostgresDbTest
 {
-    private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
@@ -42,7 +42,7 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users);
-        _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
     }
 
@@ -61,7 +61,7 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_WithChangedFields_LogsFieldRows()
     {
-        var created = await _service.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
+        var created = await _create.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
             branchId: _lawyer.BranchId!.Value);
 
         var editRequest = Sample();
@@ -86,7 +86,7 @@ public class DocumentUpdateChangeLogTests : PostgresDbTest
     [PostgresFact]
     public async Task Update_WithoutChanges_LogsPlainUpdateOnly()
     {
-        var created = await _service.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
+        var created = await _create.CreateAsync(Sample(), _lawyer.Id, "المحامي الأول",
             branchId: _lawyer.BranchId!.Value);
 
         await _update.UpdateAsync(created.Id, Sample(), "المحامي الأول", _lawyer.Id);
