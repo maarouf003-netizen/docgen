@@ -36,6 +36,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<MoveAllPublicEntityEntriesCommand, MoveAllEntriesResponse> _moveAllEntries;
     private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
+    private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
+    private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -137,6 +139,12 @@ public class PublicEntityServiceTests : PostgresDbTest
         _renameGroup = new RenamePublicEntityGroupCommandHandler(
             rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<RenamePublicEntityGroupCommand, RenameGroupResponse>>());
+        _abolishAndReplace = new AbolishAndReplacePublicEntityGroupCommandHandler(
+            rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse>>());
+        _proposeEdit = new ProposePublicEntityEditCommandHandler(
+            rules, entityRepository, uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<ProposePublicEntityEditCommand, PublicEntityEntryDto?>>());
     }
 
 
@@ -2694,7 +2702,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ProposeEdit_ByLawyer_SucceedsWithoutAlert()
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var proposed = await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة مقترحة جديدة"), LawyerActor());
+        var proposed = await _proposeEdit.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة مقترحة جديدة"), LawyerActor());
         Assert.NotNull(proposed);
         Assert.Equal("جهة مقترحة جديدة", proposed!.CanonicalName);
         Assert.True(proposed.NeedsReview);
@@ -2709,7 +2717,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ProposeEdit_ByNonLawyer_Throws()
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أخرى", "ministry", "دمشق", "فرع 2"), ManagerActor());
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "تعديل"), ManagerActor()));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _proposeEdit.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "تعديل"), ManagerActor()));
     }
 
     [PostgresFact]
@@ -2717,7 +2725,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var dto1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 2"), ManagerActor());
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
+        await Assert.ThrowsAsync<ArgumentException>(() => _proposeEdit.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
     }
 
     [PostgresFact]
@@ -2726,7 +2734,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ثابتة", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
         var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة ترقية", IsParentEntity: true), LawyerActor()));
+            _proposeEdit.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة ترقية", IsParentEntity: true), LawyerActor()));
         Assert.Equal("لا يُغيَّر وضع «الجهة الأم» عبر الاقتراحات — للإدارة فقط", ex.Message);
 
         // الحارس قبل أي كتابة: لا ترقية ولا اقتراح ولا حدث.
@@ -2742,7 +2750,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة تغيير فرع", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
-        var proposed = await _service.ProposeEditAsync(
+        var proposed = await _proposeEdit.ProposeEditAsync(
             dto.Id, new ProposeEditRequest(BranchName: "الجهة الأم"), LawyerActor());
 
         Assert.NotNull(proposed);
@@ -2764,7 +2772,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // — التجميد يحفظ الاتجاهين (لا ترقية ولا تخفيض) عبر الاقتراحات.
         var entryId = await SeedParentEntityAsync("وزارة الأم المقترح عليها", "دمشق", "الفرع الرئيسي");
 
-        var proposed = await _service.ProposeEditAsync(
+        var proposed = await _proposeEdit.ProposeEditAsync(
             entryId, new ProposeEditRequest(CanonicalName: "وزارة الأم (تعديل مقترح)"), LawyerActor());
 
         Assert.NotNull(proposed);
@@ -2855,7 +2863,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed1.GroupId, absorbed2.GroupId },
                 "المؤسسة الجديدة", "authority", "دمشق",
@@ -2883,7 +2891,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحل أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AbolishAndReplaceAsync(
+            _abolishAndReplace.AbolishAndReplaceAsync(
                 new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق"), ManagerActor()));
         Assert.Contains("نوع المرجع", ex.Message);
     }
@@ -2893,7 +2901,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var absorbed = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الحل ب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.AbolishAndReplaceAsync(
+            _abolishAndReplace.AbolishAndReplaceAsync(
                 new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق",
                     DecreeKind: "قرار", DecreeNumber: "1", DecreeDate: "1/1/2026"), HeadDamascusActor()));
     }
@@ -2913,7 +2921,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "الجهة البديلة", "authority", "دمشق",
                 DecreeKind: "قرار", DecreeNumber: "9", DecreeDate: "3/4/2026"), ManagerActor());
 
@@ -2939,7 +2947,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Users.Add(delegateUser);
         await _db.SaveChangesAsync();
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "الجهة البديلة القيد", "authority", "دمشق",
                 DecreeKind: "قرار", DecreeNumber: "9", DecreeDate: "3/4/2026"), ManagerActor());
 
@@ -3005,7 +3013,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "المركز الوطني للصحة") },
             new List<AppealPartyDto>());
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "هيئة الصحة العامة", "authority", "دمشق",
@@ -3045,7 +3053,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         appeal.AppellantsJson = corrupted;
         await _db.SaveChangesAsync();
 
-        await _service.AbolishAndReplaceAsync(
+        await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "هيئة اللقطة البديلة", "authority", "دمشق",
@@ -3078,7 +3086,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "مصلحة الضرائب") },
             new List<AppealPartyDto>());
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "الهيئة الضريبية الوطنية", "authority", "دمشق",
@@ -3104,7 +3112,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "الجهة البديلة الوحيدة", "authority", "دمشق",
@@ -3130,7 +3138,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // لقطة بلا أطراف ([] أو فارغة)
         var appeal = await SeedAppealAsync(doc.Id, new List<AppealPartyDto>(), new List<AppealPartyDto>());
 
-        await _service.AbolishAndReplaceAsync(
+        await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "الجهة الجديدة الفارغة", "authority", "دمشق",
@@ -3160,7 +3168,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id + 1000, "شركة البناء الحديثة") },
             new List<AppealPartyDto>());
 
-        await _service.AbolishAndReplaceAsync(
+        await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed.GroupId },
                 "الجهة الجديدة", "authority", "دمشق",
@@ -3410,7 +3418,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        var result = await _service.AbolishAndReplaceAsync(
+        var result = await _abolishAndReplace.AbolishAndReplaceAsync(
             new AbolishAndReplaceRequest(
                 new[] { absorbed1.GroupId, absorbed2.GroupId },
                 "المؤسسة الجديدة", "authority", "دمشق",

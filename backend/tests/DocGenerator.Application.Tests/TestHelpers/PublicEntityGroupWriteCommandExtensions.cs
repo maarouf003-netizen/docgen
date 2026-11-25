@@ -5,7 +5,7 @@ using DocGenerator.Application.UseCases.PublicEntities;
 
 namespace DocGenerator.Application.Tests.TestHelpers;
 
-/// <summary>جسر اختباري ضيق لتوقيعَي `CommitMergeAsync`/`RenameGroupAsync` القديمين (`P4-01cb`/`P4-01cc`).</summary>
+/// <summary>جسور نداء أوامر كتابات هوية الجهة العامة (`P4-01cb`/`P4-01cc`/`P4-01cd`/`P4-01ce`).</summary>
 public static class PublicEntityGroupWriteCommandExtensions
 {
     public static Task<MergeCommitResponse> CommitMergeAsync(
@@ -22,4 +22,19 @@ public static class PublicEntityGroupWriteCommandExtensions
         EntityRegistryActor actor,
         CancellationToken ct = default)
         => handler.HandleAsync(new RenamePublicEntityGroupCommand(request, actor), ct);
+
+    public static Task<AbolishAndReplaceResponse> AbolishAndReplaceAsync(
+        this ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> handler,
+        AbolishAndReplaceRequest request,
+        EntityRegistryActor actor,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new AbolishAndReplacePublicEntityGroupCommand(request, actor), ct);
+
+    public static Task<PublicEntityEntryDto?> ProposeEditAsync(
+        this ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> handler,
+        int entryId,
+        ProposeEditRequest request,
+        EntityRegistryActor actor,
+        CancellationToken ct = default)
+        => handler.HandleAsync(new ProposePublicEntityEditCommand(entryId, request, actor), ct);
 }

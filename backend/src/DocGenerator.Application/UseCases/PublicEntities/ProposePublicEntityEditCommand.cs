@@ -1,22 +1,52 @@
-using System.Globalization;
-using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.PublicEntities;
 
-public sealed partial class PublicEntityService
+/// <summary>اقتراح تعديل فردي من المحامي على قيد جهة (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
+public sealed record ProposePublicEntityEditCommand(
+    int EntryId,
+    ProposeEditRequest Request,
+    EntityRegistryActor Actor) : ICommand<PublicEntityEntryDto?>;
+
+internal sealed class ProposePublicEntityEditCommandHandler
+    : CommandHandlerBase<ProposePublicEntityEditCommand, PublicEntityEntryDto?>
 {
-    /// <inheritdoc/>
-    public async Task<PublicEntityEntryDto?> ProposeEditAsync(int entryId, ProposeEditRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    private readonly IPublicEntityWriteRules _rules;
+    private readonly IPublicEntityRepository _entities;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+
+    public ProposePublicEntityEditCommandHandler(
+        IPublicEntityWriteRules rules,
+        IPublicEntityRepository entities,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IEnumerable<IPipelineBehavior<ProposePublicEntityEditCommand, PublicEntityEntryDto?>> behaviors)
+        : base(behaviors)
     {
+        _rules = rules;
+        _entities = entities;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+    }
+
+    protected override async Task<PublicEntityEntryDto?> HandleCoreAsync(
+        ProposePublicEntityEditCommand command, CancellationToken ct)
+    {
+        var request = command.Request;
+        var actor = command.Actor;
         if (actor.Role != UserRole.Lawyer)
             throw new UnauthorizedAccessException("اقتراح التعديل متاح للمحامي فقط");
 
-        var entry = await _entities.GetEntryWithDetailsAsync(entryId, ct);
+        var entry = await _entities.GetEntryWithDetailsAsync(command.EntryId, ct);
         if (entry is null) return null;
         var group = entry.Group;
 
@@ -29,33 +59,33 @@ public sealed partial class PublicEntityService
         if (!string.IsNullOrWhiteSpace(request.CanonicalName)
             && !string.Equals(request.CanonicalName.Trim(), group.CanonicalName, StringComparison.Ordinal))
         {
-            newCanonical = Required(request.CanonicalName, "اسم الجهة مطلوب", 200);
-            await EnsureCanonicalAvailableAsync(newCanonical, group.Id, ct);
+            newCanonical = _rules.Required(request.CanonicalName, "اسم الجهة مطلوب", 200);
+            await _rules.EnsureCanonicalAvailableAsync(newCanonical, group.Id, ct);
         }
 
         var newGovernorate = entry.Governorate;
         if (!string.IsNullOrWhiteSpace(request.Governorate))
-            newGovernorate = Required(request.Governorate, "المحافظة مطلوبة", 100);
+            newGovernorate = _rules.Required(request.Governorate, "المحافظة مطلوبة", 100);
 
         var newBranchName = entry.BranchName;
         if (!string.IsNullOrWhiteSpace(request.BranchName))
-            newBranchName = RequiredWithFallback(request.BranchName, DefaultBranchName, 200);
+            newBranchName = _rules.RequiredWithFallback(request.BranchName, PublicEntityBranchCatalog.ParentBranchName, 200);
 
         if (!string.IsNullOrWhiteSpace(request.EntityType))
-            group.EntityType = ValidEntityType(request.EntityType);
+            group.EntityType = _rules.ValidEntityType(request.EntityType);
         if (!string.IsNullOrWhiteSpace(request.CitationFormula))
-            entry.CitationFormula = ValidCitationFormula(request.CitationFormula, entry.CitationFormula);
+            entry.CitationFormula = _rules.ValidCitationFormula(request.CitationFormula, entry.CitationFormula);
         if (request.CoverageLabel is not null)
-            entry.CoverageLabel = ValidateCoverageLabel(request.CoverageLabel);
+            entry.CoverageLabel = _rules.ValidateCoverageLabel(request.CoverageLabel);
 
-        await EnsureNoDuplicateEntryAsync(entry.Id, newCanonical ?? group.CanonicalName, newGovernorate, newBranchName, ct);
+        await _rules.EnsureNoDuplicateEntryAsync(entry.Id, newCanonical ?? group.CanonicalName, newGovernorate, newBranchName, ct);
 
         var oldCanonical = group.CanonicalName;
         var oldGov = entry.Governorate;
         var oldBranch = entry.BranchName;
 
         if (newCanonical is not null) group.CanonicalName = newCanonical;
-        SetGroupNorm(group);
+        _rules.SetGroupNorm(group);
         entry.Governorate = newGovernorate;
         entry.BranchName = newBranchName;
 
@@ -87,13 +117,13 @@ public sealed partial class PublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await TrackChangeEventAsync(changeEvent, token);
+            await _rules.TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "propose_public_entity_edit",
                 details: $"اقترح تعديل جهة: «{oldCanonical}» → «{group.CanonicalName}» ({entry.Governorate}/{entry.BranchName})", ct: token);
 
-            return ToEntryDto(group, entry);
+            return _rules.ToEntryDto(group, entry);
         }, ct);
     }
 }

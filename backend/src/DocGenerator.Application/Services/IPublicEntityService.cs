@@ -65,17 +65,11 @@ public interface IPublicEntityService
     /// <summary>قيود مجموعة واحدة — لرئيس القسم (محافظته فقط) ولوحة إدارة الفروع.</summary>
     Task<IReadOnlyList<PublicEntityEntryDto>> ListEntriesByGroupAsync(int groupId, EntityRegistryActor actor, CancellationToken ct = default);
 
-    /// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
-    Task<PublicEntityEntryDto?> ProposeEditAsync(int entryId, ProposeEditRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
     /// <summary>معاينة إعادة تسمية هوية أم على مستوى المجموعة (المدير/المشرف — قبل التنفيذ).</summary>
     Task<RenameGroupPreviewResponse> PreviewRenameGroupAsync(RenameGroupPreviewRequest request, CancellationToken ct = default);
 
     /// <summary>معاينة إلغاء عدة هويات أم واستبدالها بهوية جديدة (المدير/المشرف — قبل التنفيذ).</summary>
     Task<AbolishReplacePreviewResponse> PreviewAbolishAndReplaceAsync(AbolishReplacePreviewRequest request, CancellationToken ct = default);
-
-    /// <summary>إلغاء عدة هويات أم واستبدالها بهوية أم جديدة بمرسوم إلزامي (المدير/المشرف).</summary>
-    Task<AbolishAndReplaceResponse> AbolishAndReplaceAsync(AbolishAndReplaceRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>معاينة موحدة لأي عملية فرع (تعديل تسمية/دمج/إلغاء/توحيد) قبل الاعتماد — بلا كتابة.</summary>
     Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
