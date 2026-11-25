@@ -1483,8 +1483,31 @@
 
 #### `P5-01` — OpenTelemetry
 
+- **الحالة (2026-11-26):** **منفّذ جزئيًا (الخادم)** — PR
+  [`#363`](https://github.com/maarouf003-netizen/docgen/pull/363). التفاصيل:
+  [`docs/audit/255-p5-01-opentelemetry-20261126.md`](audit/255-p5-01-opentelemetry-20261126.md)،
+  والمراجعتان [`256`](audit/256-p5-01-critical-review-20261126.md) و[`257`](audit/257-p5-01-adversarial-review-20261126.md):
+  - **حزم مركزية:** `OpenTelemetry` 1.21.0 + Extensions.Hosting/AspNetCore/Http/Runtime
+    + OTLP Exporter، و`OpenTelemetry.Instrumentation.EntityFrameworkCore`
+    **1.21.0-beta.2** (لا يوجد مستقر لها إطلاقًا؛ أحدث Beta يستهدف `net10.0`).
+    الأقفال حُدِّثت بـ`dotnet restore --use-lock-file` و`--locked-mode` أخضر.
+  - **اختياري بالكامل:** التفعيل بنقطة نهاية `Observability:OtlpEndpoint` أو
+    `OTEL_EXPORTER_OTLP_ENDPOINT`؛ الغياب/الفراغ ⇒ لا `AddOpenTelemetry`، ولا مزوّد،
+    ولا مُصدِّر، ولا خدمة استضافة (مُبرهن بعدّ تسجيلات `DI`).
+  - **تتبّع:** `AspNetCore` + `HttpClient` + `EF Core` + `ActivitySource` باسم
+    `DocGenerator.Application` حول كل `CommandHandlerBase`/`QueryHandlerBase`، بوسوم
+    اسم الطلب/المعالج/النتيجة فقط (بلا PII)، وتصحيح الحالة `Ok`/`Error` وإعادة رمي
+    الاستثناء نفسه. المسار السريع بلا مستمع لا يدخل `async` إضافيًا.
+  - **مقاييس:** `AspNetCore` + `HttpClient` + `Runtime` عبر `OTLP/gRPC`.
+  - **ارتباط السجلات:** `TraceContextEnricher` يضيف `TraceId`/`SpanId` عند وجود نشاط
+    فقط (بدل حقن `ILogger` في نحو 200 مُنشئ معالج) — بلا تغيير نص أي رسالة.
+  - **اختبارات:** 17 حالة جديدة (6 `Application` + 11 `Api`)، ولا هجرة.
+- **المتبقي:** ربط `traceparent` من الواجهة، ودعم `OTLP/HTTP` وترويسات مصادقة الجامع،
+  والعينة المخصّصة/اللوحات والتنبيهات (`P5-02`)، واختبار تصدير فعلي إلى جامع.
 - **العمل:** `OpenTelemetry.Extensions.Hosting` + AspNetCore/EFCore/Http/Runtime؛ OTLP exporter (Grafana/Tempo)؛ `ActivitySource` للأوامر؛ correlation id؛ Serilog enricher.
-- **DoD:** trace واحد من الواجهة إلى SQL، وmetrics لكل نقطة.
+- **DoD:** trace واحد من الواجهة إلى SQL، وmetrics لكل نقطة — **متحقق جزئيًا:** سلسلة
+  الخادم (طلب → معالج → SQL) مبنية ومختبرة بنيويًا، والمقاييس مسجّلة ومُصدَّرة عند التفعيل؛
+  **ينقص** رابط الواجهة (`traceparent`) ولوحات `P5-02`.
 
 #### `P5-02` — لوحات وتنبيهات وSLOs
 

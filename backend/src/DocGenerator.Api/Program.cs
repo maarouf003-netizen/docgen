@@ -4,6 +4,7 @@ using DocGenerator.Api.Auth;
 using DocGenerator.Api.Authorization.Documents;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
+using DocGenerator.Api.Observability;
 using DocGenerator.Api.Security;
 using DocGenerator.Application;
 using DocGenerator.Application.Common;
@@ -152,6 +153,8 @@ try
         .MinimumLevel.Is(serilogMinimum)
         .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
         .Enrich.FromLogContext()
+        // P5-01: TraceId/SpanId تلقائيًا عند وجود نشاط مرصود فقط — بلا أثر إن كان الرصد معطَّلًا.
+        .Enrich.With<TraceContextEnricher>()
         .Enrich.WithMachineName();
     if (isDevelopmentHost)
         serilogConfig.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
@@ -165,6 +168,10 @@ try
         rollOnFileSizeLimit: true,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
     builder.Services.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
+
+    // P5-01: رصد اختياري حصرًا — بلا `Observability:OtlpEndpoint` (أو متغيّر
+    // `OTEL_EXPORTER_OTLP_ENDPOINT`) لا يُسجَّل مزوّد تتبع/مقاييس ولا مُصدِّر إطلاقًا.
+    builder.Services.AddDocGeneratorObservability(builder.Configuration, builder.Environment);
 
     builder.Services
         .AddSingleton(jwt)

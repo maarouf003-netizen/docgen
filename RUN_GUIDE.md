@@ -506,6 +506,30 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - **إعداد النشر (إلزامي):** `Health Check Path = /readyz` في `Render` (مثبّت في
   `render.yaml`). لا تُضبط `⁦/healthz⁩` كفحص جهوزية.
 
+### الرصد والتتبع (P5-01 — اختياري، معطَّل افتراضيًا)
+
+- **التفعيل:** عيّن نقطة نهاية `OTLP` بإحدى طريقتين (الأولى تتقدّم):
+  1. `Observability:OtlpEndpoint` في الإعدادات (أو `Observability__OtlpEndpoint` بيئيًا).
+  2. `OTEL_EXPORTER_OTLP_ENDPOINT` (المتغيّر القياسي في `OpenTelemetry`).
+- **التعطيل:** القيمة الفارغة/الفراغ فقط (وهي الافتراضي في `appsettings.json`) ⇒ **لا** يُسجَّل
+  مزوّد تتبع/مقاييس ولا مُصدِّر ولا يُفتح أي اتصال، وسلوك التطبيق وتكلفته كما هما.
+- **الصيغة:** عنوان مطلق `http(s)` بصيغة `gRPC` (عادةً `http://collector:4317`). أي قيمة
+  غير صالحة تُفشل الإقلاع صراحةً برسالة تسمّي المفتاح — لا تجاوز صامت.
+- **اسم الخدمة:** `Observability:ServiceName` (افتراضي `docgen-api`). تُضاف سمة
+  `service.version` من `InformationalVersion` وسمة `deployment.environment` من
+  `ASPNETCORE_ENVIRONMENT`.
+- **ما يُرسَل عند التفعيل:** تتبّع لطلبات `ASP.NET Core`، و`HttpClient`، واستعلامات `EF Core`،
+  وأنشطة معالجات `Application` (أوامر/استعلامات)؛ ومقاييس `ASP.NET Core` و`HttpClient`
+  و`Runtime`. **لا** تُصدَّر سجلات التطبيق عبر `OTLP` (تبقى على `Serilog`).
+- **الارتباط:** عندما يوجد نشاط حالي تُضاف `TraceId`/`SpanId` إلى حدث السجل تلقائيًا
+  (عبر `TraceContextEnricher`)؛ بلا نشاط لا تُضاف أي خاصية. لا تُغيَّر نصوص الرسائل.
+- **الخصوصية (PII) — إلزامي:** لا تضع أجسام الطلبات أو كلمات المرور أو قيم الحقول في
+  وسوم الأنشطة. الوسوم المضافة هنا محصورة باسم نوع الطلب واسم المعالج والنتيجة
+  (`success`/`exception`)، ونص الاستثناء لا يُسجَّل في وسم. لا تفعّل التقاط
+  الترويسات/الأجسام في حزم الأدوات عند تطوير الإعداد.
+- **بلا هجرات:** هذه الجولة لا تمسّ قاعدة البيانات؛ لا خطوة `dotnet ef database update` لها.
+  التفاصيل: `docs/audit/255-p5-01-opentelemetry-20261126.md`.
+
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > **حارس آلي (P7-02a):** `CI` (وظيفة `guards`) يشغّل `node scripts/migration-watchlist-guard.mjs`
