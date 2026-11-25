@@ -1,8 +1,4 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
@@ -169,6 +165,38 @@ public sealed partial class PublicEntityService
             throw new ArgumentException("تسمية التغطية لا تقبل أرقامًا عربية-هندية");
         return trimmed;
     }
+    /// <summary>
+    /// تحقق شروط الدمج/الطيّ القاسية بين قيدين (المجموعة + المحافظة + النشاط + نطاق
+    /// رئيس القسم + بلا NeedsReview). يملأ الأخطاء/التحذيرات بلا رمي (للشروط) أو يرمي
+    /// UnauthorizedAccessException (للنطاق/حارس الأم).
+    /// </summary>
+    internal static async Task ValidateMergeablePairAsync(
+        IPublicEntityWriteRules rules,
+        int groupId,
+        PublicEntity? source,
+        PublicEntity? target,
+        int targetId,
+        EntityRegistryActor actor,
+        CancellationToken ct,
+        List<string> errors,
+        List<string> warnings)
+    {
+        if (source is null || target is null) { errors.Add("الفرع غير موجود"); return; }
+        if (source.GroupId != groupId || target.GroupId != groupId) { errors.Add("الفروع المحددة ليست ضمن نفس المجموعة"); return; }
+        if (source.Id == targetId) { errors.Add("لا يمكن دمج الفرع مع نفسه"); return; }
+        if (!source.IsActive || !target.IsActive) { errors.Add("أحد الفروع غير نشط"); return; }
+        if (source.NeedsReview || target.NeedsReview) { errors.Add("لا يمكن الدمج لوجود قيد بانتظار المراجعة"); return; }
+        if (!string.Equals(source.Governorate, target.Governorate, StringComparison.Ordinal))
+        { errors.Add("المحافظتان مختلفتان — الدمج يتطلب نفس المحافظة"); return; }
+        rules.GuardNotParentEntry(source);
+        rules.GuardNotParentEntry(target);
+        rules.GuardHeadCannotEditParent(actor, source);
+        rules.GuardHeadCannotEditParent(actor, target);
+        // النطاق يُرمى كـ Unauthorized — لا يُعرض كخطأ قابل للتجاوز في المعاينة.
+        await rules.EnsureHeadScopeAsync(actor, source, source.Governorate, ct);
+        await rules.EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
+    }
+
     private static string? Clamp(string? value)
         => value is null ? null : DocumentSearchTextBuilder.Truncate(value);
 

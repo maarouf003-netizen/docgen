@@ -45,6 +45,12 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
     private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
+    private readonly ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> _suggestParentEdit;
+    private readonly IQueryHandler<PreviewMergeQuery, MergePreviewResponse> _previewMerge;
+    private readonly IQueryHandler<PreviewUnifyQuery, UnifyNamesPreviewResponse> _previewUnify;
+    private readonly IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse> _previewRenameGroup;
+    private readonly IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse> _previewAbolishAndReplace;
+    private readonly IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> _previewBranchAction;
 
     public EntityRegistryController(
         IPublicEntityService registry,
@@ -65,7 +71,13 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> commitMerge,
         ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> renameGroup,
         ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> abolishAndReplace,
-        ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> proposeEdit)
+        ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> proposeEdit,
+        ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> suggestParentEdit,
+        IQueryHandler<PreviewMergeQuery, MergePreviewResponse> previewMerge,
+        IQueryHandler<PreviewUnifyQuery, UnifyNamesPreviewResponse> previewUnify,
+        IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse> previewRenameGroup,
+        IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse> previewAbolishAndReplace,
+        IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> previewBranchAction)
     {
         _registry = registry;
         _capabilities = capabilities;
@@ -86,6 +98,12 @@ public class EntityRegistryController : ControllerBase
         _renameGroup = renameGroup;
         _abolishAndReplace = abolishAndReplace;
         _proposeEdit = proposeEdit;
+        _suggestParentEdit = suggestParentEdit;
+        _previewMerge = previewMerge;
+        _previewUnify = previewUnify;
+        _previewRenameGroup = previewRenameGroup;
+        _previewAbolishAndReplace = previewAbolishAndReplace;
+        _previewBranchAction = previewBranchAction;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -314,7 +332,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.PreviewUnifyAsync(request, ct));
+        return Ok(await _previewUnify.HandleAsync(new PreviewUnifyQuery(request), ct));
     }
 
     /// <summary>تنفيذ توحيد التسمية N←1 (المدير/المشرف — ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات).</summary>
@@ -344,7 +362,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanMergeEntities))
             return Forbid();
-        return Ok(await _registry.PreviewMergeAsync(request, ct));
+        return Ok(await _previewMerge.HandleAsync(new PreviewMergeQuery(request), ct));
     }
 
     /// <summary>تنفيذ اعتماد الدمج (د5 §4).</summary>
@@ -381,7 +399,8 @@ public class EntityRegistryController : ControllerBase
                 ApiErrorCodes.ValidationFailed,
                 "تعارض معرف المجموعة في المسار",
                 field: "groupId");
-        return Ok(await _registry.PreviewRenameGroupAsync(request, ct));
+        return Ok(await _previewRenameGroup.HandleAsync(
+            new PreviewRenameGroupQuery(request), ct));
     }
 
     /// <summary>تنفيذ إعادة تسمية هوية أم واحدة بموجب مرجع (المدير/المشرف).</summary>
@@ -409,7 +428,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.PreviewAbolishAndReplaceAsync(request, ct));
+        return Ok(await _previewAbolishAndReplace.HandleAsync(
+            new PreviewAbolishAndReplaceQuery(request), ct));
     }
 
     /// <summary>تنفيذ الحلول: إلغاء عدة هويات أم واستبدالها بهوية أم جديدة (المدير/المشرف).</summary>
@@ -467,7 +487,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.PreviewBranchActionAsync(groupId, request, Actor, ct));
+        return Ok(await _previewBranchAction.HandleAsync(
+            new PreviewBranchActionQuery(groupId, request, Actor), ct));
     }
 
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
@@ -518,7 +539,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.IsHeadOrSubHead))
             return Forbid();
-        return Ok(await _registry.SuggestParentEditAsync(entryId, request, Actor, ct));
+        return Ok(await _suggestParentEdit.HandleAsync(
+            new SuggestPublicEntityParentEditCommand(entryId, request, Actor), ct));
     }
 
     /// <summary>قائمة اقتراحات تعديل الجهة الأم — المدير/المشرف (الكل) ورئيس القسم (اقتراحاته فقط).</summary>

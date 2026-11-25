@@ -1,9 +1,5 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
@@ -47,35 +43,17 @@ public interface IPublicEntityService
 
     Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default);
 
-    /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
-    Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default);
-
     /// <summary>قائمة المجموعات (الهويات الأم) مع ترقيم وبحث — للعرض المستقل وتوحيد التسمية/إدارة الفروع.</summary>
     Task<PagedResult<PublicEntityGroupDto>> ListGroupsAsync(EntityGroupListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة).</summary>
     Task<SimilarToResponse> FindSimilarToGroupAsync(int groupId, double threshold, int maxResults, CancellationToken ct = default);
 
-    /// <summary>معاينة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات).</summary>
-    Task<UnifyNamesPreviewResponse> PreviewUnifyAsync(UnifyNamesPreviewRequest request, CancellationToken ct = default);
-
     /// <summary>تنفيذ توحيد التسمية N←1 (المدير/المشرف — ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات).</summary>
     Task<UnifyNamesResponse> UnifyNamesAsync(UnifyNamesRequest request, EntityRegistryActor actor, CancellationToken ct = default, string? idempotencyKey = null);
 
     /// <summary>قيود مجموعة واحدة — لرئيس القسم (محافظته فقط) ولوحة إدارة الفروع.</summary>
     Task<IReadOnlyList<PublicEntityEntryDto>> ListEntriesByGroupAsync(int groupId, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>معاينة إعادة تسمية هوية أم على مستوى المجموعة (المدير/المشرف — قبل التنفيذ).</summary>
-    Task<RenameGroupPreviewResponse> PreviewRenameGroupAsync(RenameGroupPreviewRequest request, CancellationToken ct = default);
-
-    /// <summary>معاينة إلغاء عدة هويات أم واستبدالها بهوية جديدة (المدير/المشرف — قبل التنفيذ).</summary>
-    Task<AbolishReplacePreviewResponse> PreviewAbolishAndReplaceAsync(AbolishReplacePreviewRequest request, CancellationToken ct = default);
-
-    /// <summary>معاينة موحدة لأي عملية فرع (تعديل تسمية/دمج/إلغاء/توحيد) قبل الاعتماد — بلا كتابة.</summary>
-    Task<BranchActionPreviewResponse> PreviewBranchActionAsync(int groupId, PreviewBranchActionRequest request, EntityRegistryActor actor, CancellationToken ct = default);
-
-    /// <summary>اقتراح تعديل بيانات الجهة الأم من رئيس القسم (بلا أي كتابة على القيد).</summary>
-    Task<ParentEditSuggestionDto> SuggestParentEditAsync(int entryId, SuggestParentEditRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>قائمة اقتراحات تعديل الجهة الأم (تبويب الإدارة / حالة المعلّق في نافذة الفروع).</summary>
     Task<PagedResult<ParentEditSuggestionDto>> ListParentEditSuggestionsAsync(ParentEditSuggestionListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
