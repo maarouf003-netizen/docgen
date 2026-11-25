@@ -23,7 +23,7 @@ namespace DocGenerator.Application.Tests;
 public class ExecutionCircuitServiceTests : PostgresDbTest
 {
     private readonly IExecutionCircuitService _circuits;
-    private readonly IDocumentService _documents;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _documents;
     private readonly DocumentStatusHandlers _documentStatusCommands;
     private readonly IHeadAlertService _headAlerts;
     private readonly ICommandHandler<CreateExecutionCircuitCommand, ExecutionCircuitDto> _createCircuit;
@@ -125,7 +125,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
                 new TransactionBehavior<ReferCircuitFilesCommand, ReferCircuitFilesResult>(_tx),
             });
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
-        _documents = docBundle.Documents;
+        _documents = docBundle.CreateDocument;
         _documentStatusCommands = docBundle.StatusCommands;
         _transferDocument = docBundle.TransferDocument;
     }

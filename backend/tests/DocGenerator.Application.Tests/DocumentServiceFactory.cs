@@ -19,7 +19,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -154,20 +154,25 @@ public static class DocumentServiceFactory
         var documentService = new DocumentService(
             documentsValue,
             usersValue,
-            baseNumbersValue,
+            numberRegistry,
+            clockValue,
+            timeZoneValue);
+
+        var createDocument = new CreateDocumentCommandHandler(
+            documentsValue,
+            usersValue,
             registrationDatesValue,
             uowValue,
             txValue,
             audit,
-            clockValue,
-            timeZoneValue,
             actionService,
-            delegationService,
             statusService,
             writeGuard,
             numberRegistry,
-            idempotency,
-            circuits);
+            clockValue,
+            timeZoneValue,
+            Array.Empty<IPipelineBehavior<CreateDocumentCommand, DocumentResponse>>(),
+            idempotency);
 
         var updateDocument = new UpdateDocumentCommandHandler(
             documentsValue,
@@ -218,7 +223,7 @@ public static class DocumentServiceFactory
             numberRegistry,
             Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
 
-        return (documentService, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers);
+        return (documentService, actionService, searchService, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
     }
 }
 

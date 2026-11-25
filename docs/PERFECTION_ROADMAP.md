@@ -1065,7 +1065,9 @@
   `docs/audit/204-p4-01cg-public-entity-preview-queries-20261125.md` و
   `docs/audit/205-p4-01cf-cg-followup-review-20261125.md` و
   `docs/audit/206-p4-01ch-unify-names-command-20261125.md` و
-  `docs/audit/207-p4-01ch-followup-review-20261125.md`.
+  `docs/audit/207-p4-01ch-followup-review-20261125.md` و
+  `docs/audit/208-p4-01ci-create-document-ownership-20261125.md` و
+  `docs/audit/209-p4-01ci-followup-review-20261125.md`.
   **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
   (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
   منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
@@ -1086,8 +1088,14 @@
   `UnifyNamesAsync` من `IPublicEntityService` (11 → 10، قراءات فقط)، وحُذف الحقل الميت
   `_idempotency` من الخدمة، وحُذف `PublicEntityService.Unify.cs` بعد إفراغه بـ`git rm`؛
   ولم يُضف أي عضو إلى `IPublicEntityWriteRules` (كل المساعدات كانت مُسجَّلة).
-  **متبقٍ:** ملكية `CreateDocumentCommand` (أكبر مسار كتابة ما زال يعتمد على
-  `IDocumentService`)، ثم مسح module-by-module لبقية الوحدات بلا كسر عقود خارجية.
+  **`P4-01ci`:** `CreateDocumentCommandHandler` يملك إنشاء المستند كاملًا — التحققات الثماني،
+  جلب الفاعل، بناء الكيان، خرائط الأطراف/الأصول/الورثة، اشتقاق الدائرة والمشتقات، تاريخ التسجيل،
+  حجز `RF-011` (قبل المعاملة عمدًا)، فحص الترقيم، المعاملة الواحدة، مزامنة صف القيد، سجل التعاقب،
+  التدقيق، وقعة الشطب، وزرع الإجراءات — بحفاظ حرفي (50/50 و22/22)؛ وأُزيل `CreateAsync` من
+  `IDocumentService` (8 → 7 قراءات)، وحُذف `DocumentService.Crud.cs` بعد إفراغه، وتقلّصت
+  `DocumentService` إلى 5 حقول/5 معاملات، ونُقلت **356** موضع نداء اختباري إلى المعالج عبر جسر.
+  **متبقٍ:** مسح module-by-module لبقية الوحدات (المطالعات/الإنابات/الاستئنافات/البوابة/
+  الإحصاءات) للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

@@ -21,6 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class EntityRegistryLinkTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _entryAId;
@@ -54,6 +55,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
     }
 
@@ -77,7 +79,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
             new ApplicantPublicEntityDto(null, "وزارة التعليم", "الفرع الرئيسي", "دمشق", _entryAId),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var row = Assert.Single(loaded!.ApplicantPublicEntities);
@@ -95,7 +97,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
             new ApplicantPublicEntityDto(null, "وزارة التعليم", "الفرع الرئيسي", "دمشق", _entryAId),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(_entryAId, loaded!.ApplicantRegistryId);
@@ -109,7 +111,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         {
             new ApplicantPublicEntityDto(null, "وزارة التعليم", "الفرع الرئيسي", "دمشق", _entryAId),
         };
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         _audit.ChangeLogs.Clear();
 
         var update = ApplicantSample();
@@ -138,7 +140,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
         {
             new ApplicantPublicEntityDto(null, "وزارة التعليم", "الفرع الرئيسي", "دمشق", _entryAId),
         };
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         _audit.ChangeLogs.Clear();
 
         var update = ApplicantSample();
@@ -173,7 +175,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
             new ExecutedPublicEntityDto(null, "وزارة التعليم", "فرع التنفيذ", PartyNatureCatalog.PublicEntity, null, null, null, null, "دمشق", _entryAId),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var row = Assert.Single(loaded!.ExecutedPublicEntities);
@@ -198,7 +200,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
             new ExecutedPublicEntityDto(null, "شركة الأمل", null, PartyNatureCatalog.Legal, "1234", null, null, null, null, _entryAId),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var row = Assert.Single(loaded!.ExecutedPublicEntities);
@@ -226,7 +228,7 @@ public class EntityRegistryLinkTests : PostgresDbTest
                 null, PartyNatureCatalog.Legal, "1234", "المدير", "موطن مختار", "دمشق"),
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         var row = Assert.Single(loaded!.ExecutionApplicants);

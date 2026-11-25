@@ -22,6 +22,7 @@ namespace DocGenerator.Application.Tests;
 public class OccurrenceTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly DocumentStatusHandlers _statusCommands;
     private readonly FakeAuditLogger _audit = new();
@@ -48,6 +49,7 @@ public class OccurrenceTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
         _statusCommands = bundle.StatusCommands;
     }
@@ -79,7 +81,7 @@ public class OccurrenceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateExecutedStatus_ToStruckOff_RecordsStruckOffOccurrence()
     {
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
         var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
@@ -101,7 +103,7 @@ public class OccurrenceTests : PostgresDbTest
     {
         var req = ExecutedSample();
         req.FileType = "قضية تنفيذ";
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var ok = await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
@@ -126,7 +128,7 @@ public class OccurrenceTests : PostgresDbTest
         req.BorrowerFamily = "الخطيب";
         req.FileRegistrationDate = "1/1/2026";
         req.FileType = "قضية تنفيذ";
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var ok = await _statusCommands.UpdateStatus.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
@@ -146,7 +148,7 @@ public class OccurrenceTests : PostgresDbTest
     {
         // وقعة الشطب يجب أن تحمل الهوية الفعّالة وقت الشطب (آخر رقم أساس ≤ سنة الشطب عبر
         // المحلل المركزي) لا رقم الملف الأصلي — فيظهر رقم التدوير الأحدث عند عرض الوقعة.
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,
@@ -179,7 +181,7 @@ public class OccurrenceTests : PostgresDbTest
         req.BorrowerFamily = "الخطيب";
         req.FileRegistrationDate = "1/1/2026";
         req.FileType = "قضية تنفيذ";
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = doc.Id,
@@ -207,7 +209,7 @@ public class OccurrenceTests : PostgresDbTest
     [PostgresFact]
     public async Task RestoreStruckOff_RecordsRenewalOccurrence_AndKeepsStruckOffOccurrence()
     {
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var ok = await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest
@@ -239,7 +241,7 @@ public class OccurrenceTests : PostgresDbTest
     [PostgresFact]
     public async Task UpdateAsync_ToStruckOff_RecordsStruckOffOccurrence()
     {
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -258,7 +260,7 @@ public class OccurrenceTests : PostgresDbTest
     public async Task UpdateAsync_ReStrikeAfterRenewal_RecordsSecondStruckOffOccurrence()
     {
         // شطب ثم تجديد ثم شطب من جديد: يُسجَّل وقعتا شطب معًا في السجل الزمني.
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _statusCommands.RestoreStruckOff.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
@@ -281,7 +283,7 @@ public class OccurrenceTests : PostgresDbTest
     [PostgresFact]
     public async Task GetAsync_OrdersOccurrencesByEventDateAscending()
     {
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         // بذر مباشر في القاعدة (الإدخال اليدوي عبر الخدمة أُلغي مع نقاط النهاية) —
         // السجل الزمني يبقى مقروءًا ومرتبًا زمنيًا في الاستجابة.
         await _db.DocumentOccurrences.AddRangeAsync(
@@ -321,7 +323,7 @@ public class OccurrenceTests : PostgresDbTest
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
         req.StruckOffDate = "10/6/2024";
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
@@ -358,7 +360,7 @@ public class OccurrenceTests : PostgresDbTest
     public async Task UpdateAsync_EditStruckOffToExecuted_Direct_Throws()
     {
         // §4.6 حارس: مشطوب → منفذ مباشر عبر نموذج التعديل ممنوع — يجب الإعادة إلى المتداول أولًا.
-        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         await _statusCommands.UpdateExecutedStatus.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var req = ExecutedSample();
@@ -378,7 +380,7 @@ public class OccurrenceTests : PostgresDbTest
         // §4.6: الإبقاء على «منفذ» دون تغيير يبقى مقبولًا في نموذج التعديل (حواري مستقر).
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
         Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
@@ -390,7 +392,7 @@ public class OccurrenceTests : PostgresDbTest
         // §4.6: وضع «منفذ» في صفة «الجهة العامة منفذ عليها» نهائي — لا يُشطب بالتحرير.
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var edit = ExecutedSample();
         edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -410,7 +412,7 @@ public class OccurrenceTests : PostgresDbTest
         // §4.6: «عرض وايداع» من وضع «منفذ» لا يُشطب في نموذج التعديل.
         var req = DepositSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var edit = DepositSample();
         edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -426,7 +428,7 @@ public class OccurrenceTests : PostgresDbTest
         // §4.6: إرجاع «عرض وايداع» من «منفذ» إلى المتداول عبر التحرير ممنوع (كتاب السير بالنافذة حصرًا).
         var req = DepositSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var edit = DepositSample();
         edit.ExecutedStatus = null;

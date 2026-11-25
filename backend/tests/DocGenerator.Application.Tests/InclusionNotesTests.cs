@@ -18,6 +18,7 @@ namespace DocGenerator.Application.Tests;
 public class InclusionNotesTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
 
@@ -43,6 +44,7 @@ public class InclusionNotesTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
+        _create = bundle.CreateDocument;
         _update = bundle.UpdateDocument;
     }
 
@@ -77,7 +79,7 @@ public class InclusionNotesTests : PostgresDbTest
         var req = ApplicantSample();
         req.InclusionNotes = "القرار الثاني رقم 5 لعام 2024";
 
-        var created = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var created = await _create.CreateAsync(req, 1, "lawyer1", 1);
         Assert.Equal("القرار الثاني رقم 5 لعام 2024", created.InclusionNotes);
         Assert.Equal("خلاصة القرار الأول", created.InclusionText);
 
@@ -93,7 +95,7 @@ public class InclusionNotesTests : PostgresDbTest
         var req = ExecutedSample(side);
         req.InclusionNotes = "قرارات أخرى: 12 و 13";
 
-        var created = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var created = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(created.Id);
 
         Assert.Equal("قرارات أخرى: 12 و 13", loaded!.InclusionNotes);
@@ -104,7 +106,7 @@ public class InclusionNotesTests : PostgresDbTest
     {
         var req = ApplicantSample();
         req.InclusionNotes = "ملاحظة أولى";
-        var created = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var created = await _create.CreateAsync(req, 1, "lawyer1", 1);
 
         var edit = ApplicantSample();
         edit.FileNumber = "520";
@@ -119,7 +121,7 @@ public class InclusionNotesTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_WithoutNotes_ReturnsNullOrEmpty()
     {
-        var created = await _service.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
+        var created = await _create.CreateAsync(ApplicantSample(), 1, "lawyer1", 1);
         Assert.True(string.IsNullOrEmpty(created.InclusionNotes));
     }
 }

@@ -18,6 +18,7 @@ namespace DocGenerator.Application.Tests;
 public class PartyLimitsTests : PostgresDbTest
 {
     private readonly IDocumentService _service;
+    private readonly ICommandHandler<CreateDocumentCommand, DocumentResponse> _create;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _update;
     private readonly FakeAuditLogger _audit = new();
 
@@ -34,6 +35,7 @@ public class PartyLimitsTests : PostgresDbTest
         });
         _db.SaveChanges();
         _service = DocumentServiceFactory.Create(_db, _audit).Documents;
+        _create = DocumentServiceFactory.Create(_db, _audit).CreateDocument;
         _update = DocumentServiceFactory.Create(_db, _audit).UpdateDocument;
     }
 
@@ -73,7 +75,7 @@ public class PartyLimitsTests : PostgresDbTest
     [PostgresFact]
     public async Task Create_WithMaxGuarantors_SucceedsAndRoundTrips()
     {
-        var doc = await _service.CreateAsync(Sample(PartyLimitsCatalog.MaxGuarantors), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(Sample(PartyLimitsCatalog.MaxGuarantors), 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(PartyLimitsCatalog.MaxGuarantors, loaded!.Guarantors.Count);
@@ -84,14 +86,14 @@ public class PartyLimitsTests : PostgresDbTest
     public async Task Create_AboveMaxGuarantors_ThrowsWithLimitMessage()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(Sample(PartyLimitsCatalog.MaxGuarantors + 1), 1, "lawyer1", 1));
+            () => _create.CreateAsync(Sample(PartyLimitsCatalog.MaxGuarantors + 1), 1, "lawyer1", 1));
         Assert.Contains(PartyLimitsCatalog.MaxTotalDebtors.ToString(), ex.Message);
     }
 
     [PostgresFact]
     public async Task Update_AboveMaxGuarantors_ThrowsWithLimitMessage()
     {
-        var doc = await _service.CreateAsync(Sample(1), 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(Sample(1), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => _update.UpdateAsync(doc.Id, Sample(PartyLimitsCatalog.MaxGuarantors + 1), "lawyer1", 1));
@@ -105,7 +107,7 @@ public class PartyLimitsTests : PostgresDbTest
         req.Guarantors[1] = req.Guarantors[0] with { Name = "مكرر" };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+            () => _create.CreateAsync(req, 1, "lawyer1", 1));
         Assert.Contains("مكرر", ex.Message);
     }
 
@@ -142,7 +144,7 @@ public class PartyLimitsTests : PostgresDbTest
             },
         };
 
-        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var doc = await _create.CreateAsync(req, 1, "lawyer1", 1);
         var loaded = await _service.GetAsync(doc.Id);
 
         Assert.Equal(PartyLimitsCatalog.MaxGuarantors, loaded!.Guarantors.Count);

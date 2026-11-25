@@ -3,6 +3,7 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -64,8 +65,8 @@ public class PB001NormalizationTests : PostgresDbTest
 
     private EntityRegistryActor ManagerActor() => new(_managerId, "المدير", UserRole.Manager, null);
 
-    private IDocumentService NewDocumentService() =>
-        DocumentServiceFactory.Create(_db, _audit).Documents;
+    private ICommandHandler<CreateDocumentCommand, DocumentResponse> NewDocumentCreator() =>
+        DocumentServiceFactory.Create(_db, _audit).CreateDocument;
 
     private static DocumentUpsertRequest DocRequest(string borrower, string? number = null) => new()
     {
@@ -107,7 +108,7 @@ public class PB001NormalizationTests : PostgresDbTest
     public async Task Search_VariantName_Finds()
     {
         // بحث «احمد» يجد ملف «أحمد»: اليوم فوات؛ بعده إصابة عبر البلوب المطبَّع.
-        var service = NewDocumentService();
+        var service = NewDocumentCreator();
         await service.CreateAsync(DocRequest("أحمد"), _lawyerId, "tester", _damascusId);
 
         var search = DocumentServiceFactory.Create(_db, _audit).Search;
@@ -119,7 +120,7 @@ public class PB001NormalizationTests : PostgresDbTest
     public async Task Numbering_CourtVariant_Conflict()
     {
         // نفس الرقم بدائرتين متغيرتين إملائيًا: اليوم نجاح مكرر؛ بعده `409`.
-        var service = NewDocumentService();
+        var service = NewDocumentCreator();
         await service.CreateAsync(DocRequest("الأول", "555"), _lawyerId, "tester", _damascusId);
 
         var second = DocRequest("الثاني", "555");
@@ -132,7 +133,7 @@ public class PB001NormalizationTests : PostgresDbTest
     public async Task Display_StaysRaw()
     {
         // توصيف (يخضر قبل/بعد): العرض يبقى بالإملاء الأصلي دائمًا.
-        var service = NewDocumentService();
+        var service = NewDocumentCreator();
         var created = await service.CreateAsync(DocRequest("أحمد"), _lawyerId, "tester", _damascusId);
 
         Assert.Equal("أحمد", created.BorrowerName);
