@@ -218,7 +218,7 @@ internal sealed class CommitPublicEntityMergeCommandHandler
             }
 
             // عدد الملفات المتأثرة = اتحاد المترحلة عبر RegistryId والمُلتقطة بالمزامنة الاسمية،
-            // ليوحّد العداد مع السلوك في UnifyNamesAsync بدل اقتِصاره على المترحلة فقط (اتساق 7-و).
+            // ليوحّد العداد مع السلوك في `UnifyPublicEntityNamesCommand` بدل اقتِصاره على المترحلة فقط (اتساق 7-و).
             totalAffectedDocs = PublicEntityService.CountUniqueDocuments(nameMatchedDocs, affectedDocsById);
 
             // أعد بناء نصوص المستندات المتأثرة بالترحيل (RegistryId) التي لم تُلتقط بالمزامنة الاسمية.

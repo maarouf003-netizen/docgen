@@ -34,7 +34,7 @@ internal sealed class PreviewUnifyQueryHandler : QueryHandlerBase<PreviewUnifyQu
 
         var targetEntries = await _entities.ListEntriesByGroupAsync(targetGroup.Id, ct);
         var activeTarget = targetEntries.Where(e => e.IsActive).ToList();
-        // بركة الناجين: محاكاة مطابقة لحلقة التنفيذ في UnifyNamesAsync — تبدأ بنسخ القيود
+        // بركة الناجين: محاكاة مطابقة لحلقة التنفيذ في `UnifyPublicEntityNamesCommand` — تبدأ بنسخ القيود
         // النشطة للهدف ويُلحق بها كل قيد يُنقل؛ المطابقة خام (Ordinal) على (المحافظة/الفرع).
         var survivorPool = new List<PublicEntity>(activeTarget);
 

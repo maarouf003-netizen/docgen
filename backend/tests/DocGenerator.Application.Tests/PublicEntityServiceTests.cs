@@ -37,6 +37,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
+    private readonly ICommandHandler<UnifyPublicEntityNamesCommand, UnifyNamesResponse> _unifyNames;
     private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
     private readonly ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> _suggestParentEdit;
     private readonly IQueryHandler<PreviewMergeQuery, MergePreviewResponse> _previewMerge;
@@ -148,6 +149,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _abolishAndReplace = new AbolishAndReplacePublicEntityGroupCommandHandler(
             rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse>>());
+        _unifyNames = new UnifyPublicEntityNamesCommandHandler(
+            rules, entityRepository, new Repository<DocumentOccurrence>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<UnifyPublicEntityNamesCommand, UnifyNamesResponse>>());
         _proposeEdit = new ProposePublicEntityEditCommandHandler(
             rules, entityRepository, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<ProposePublicEntityEditCommand, PublicEntityEntryDto?>>());
@@ -2341,7 +2345,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Unify_MovesEntriesAndDeactivatesGroupsAndLogsEvent()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
-        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
+        var result = await _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
 
         Assert.Equal(1, result.GroupsUnified);
         Assert.Equal(1, result.EntriesMoved);
@@ -2366,7 +2370,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Unify_KeepsOldNamesAsSearchOnlyAliases()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
-        await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
+        await _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
 
         // الأسماء الممتصة تُحفظ أسماءً بديلة «للبحث فقط» على قيود الهدف الممتصة (المُنقلة)
         // كي يبقى البحث بالاسم القديم يجد الجهة بعد التوحيد.
@@ -2392,7 +2396,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        var result = await _service.UnifyNamesAsync(
+        var result = await _unifyNames.UnifyNamesAsync(
             new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor());
 
         Assert.Equal(1, result.GroupsUnified);
@@ -2471,7 +2475,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new User { Username = "del.moved", FullName = "مندوب المنقول", Role = UserRole.EntityManager, PortalEntryId = movedEntry.Id, PasswordHash = "x" });
         await _db.SaveChangesAsync();
 
-        var result = await _service.UnifyNamesAsync(
+        var result = await _unifyNames.UnifyNamesAsync(
             new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor());
 
         Assert.Equal(1, result.EntriesFolded);
@@ -2522,7 +2526,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var first = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
         var second = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        var result = await _service.UnifyNamesAsync(
+        var result = await _unifyNames.UnifyNamesAsync(
             new UnifyNamesRequest(target.GroupId, new[] { first.GroupId, second.GroupId }), ManagerActor());
 
         Assert.Equal(1, result.EntriesMoved);
@@ -2543,7 +2547,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var third = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثالثة", "ministry", "حلب", "فرع حلب"), ManagerActor());
         var fourth = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الرابعة", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        var result2 = await _service.UnifyNamesAsync(
+        var result2 = await _unifyNames.UnifyNamesAsync(
             new UnifyNamesRequest(target2.GroupId, new[] { fourth.GroupId, third.GroupId }), ManagerActor());
 
         Assert.Equal(1, result2.EntriesMoved);
@@ -2564,14 +2568,14 @@ public class PublicEntityServiceTests : PostgresDbTest
         absorbedEntry.NeedsReview = true;
         await _db.SaveChangesAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor()));
+        await Assert.ThrowsAsync<ArgumentException>(() => _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor()));
     }
 
     [PostgresFact]
     public async Task Unify_SelfUnify_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { target }), ManagerActor()));
+        await Assert.ThrowsAsync<ArgumentException>(() => _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { target }), ManagerActor()));
     }
 
     [PostgresFact]
@@ -2614,7 +2618,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Unify_WithDecree_SucceedsAndStoresDecree()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
-        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeKind: "قرار وزاري", DecreeNumber: "99", DecreeDate: "15/3/2026"), ManagerActor());
+        var result = await _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeKind: "قرار وزاري", DecreeNumber: "99", DecreeDate: "15/3/2026"), ManagerActor());
         Assert.Equal(1, result.GroupsUnified);
         var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
         Assert.Equal("قرار وزاري", evt.DecreeKind);
@@ -2626,7 +2630,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task Unify_WithInvalidDecreeDate_Throws()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "not-a-date-xyz"), ManagerActor()));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "not-a-date-xyz"), ManagerActor()));
         Assert.Contains("تاريخ المرسوم", ex.Message);
     }
 
@@ -2635,7 +2639,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
         // أرقام عربية-هندية ١٥/٣/٢٠٢٦
-        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "١٥/٣/٢٠٢٦"), ManagerActor());
+        var result = await _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "١٥/٣/٢٠٢٦"), ManagerActor());
         Assert.Equal(1, result.GroupsUnified);
         var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
         Assert.NotNull(evt.DecreeDate);
@@ -2666,7 +2670,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
+        await _unifyNames.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
 
         // وقعة entity-change أُنشئت للملف المتأثر (نص الاسم الممتص غدا التسمية الموحدة)
         var occ = await _db.DocumentOccurrences.SingleOrDefaultAsync(o => o.DocumentId == doc.Id);
