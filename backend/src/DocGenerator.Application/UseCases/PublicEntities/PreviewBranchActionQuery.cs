@@ -1,24 +1,40 @@
-using System.Globalization;
-using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.PublicEntities;
 
-public sealed partial class PublicEntityService
+/// <summary>معاينة موحدة لأي عملية فرع (تعديل تسمية/دمج/إلغاء/توحيد) — قراءة صرفة.</summary>
+public sealed record PreviewBranchActionQuery(
+    int GroupId,
+    PreviewBranchActionRequest Request,
+    EntityRegistryActor Actor) : IQuery<BranchActionPreviewResponse>;
+
+internal sealed class PreviewBranchActionQueryHandler
+    : QueryHandlerBase<PreviewBranchActionQuery, BranchActionPreviewResponse>
 {
-    // ── عمليات فروع رئيس القسم (ضمن محافظته — بلا مرسوم) ──
+    private readonly IPublicEntityWriteRules _rules;
+    private readonly IPublicEntityRepository _entities;
 
-    /// <inheritdoc/>
-    public async Task<BranchActionPreviewResponse> PreviewBranchActionAsync(
-        int groupId,
-        PreviewBranchActionRequest request,
-        EntityRegistryActor actor,
-        CancellationToken ct = default)
+    public PreviewBranchActionQueryHandler(
+        IPublicEntityWriteRules rules,
+        IPublicEntityRepository entities,
+        IEnumerable<IPipelineBehavior<PreviewBranchActionQuery, BranchActionPreviewResponse>> behaviors)
+        : base(behaviors)
     {
+        _rules = rules;
+        _entities = entities;
+    }
+
+    protected override async Task<BranchActionPreviewResponse> HandleCoreAsync(
+        PreviewBranchActionQuery query, CancellationToken ct)
+    {
+        var groupId = query.GroupId;
+        var request = query.Request;
+        var actor = query.Actor;
         var group = await _entities.GetGroupAsync(groupId, ct)
             ?? throw new ArgumentException("المجموعة غير موجودة");
         if (!group.IsActive)
@@ -44,14 +60,14 @@ public sealed partial class PublicEntityService
                     if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
                     try
                     {
-                        GuardNotParentEntry(entry);
-                        GuardHeadCannotEditParent(actor, entry);
-                        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
-                        var newBranch = Required(request.NewBranchName, "اسم الفرع مطلوب", 200);
+                        _rules.GuardNotParentEntry(entry);
+                        _rules.GuardHeadCannotEditParent(actor, entry);
+                        await _rules.EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
+                        var newBranch = _rules.Required(request.NewBranchName, "اسم الفرع مطلوب", 200);
                         if (string.Equals(newBranch, entry.BranchName, StringComparison.Ordinal))
                             errors.Add("الاسم الجديد مطابق للاسم الحالي");
                         else
-                            await EnsureNoDuplicateEntryAsync(entry.Id, entry.Group.CanonicalName, entry.Governorate, newBranch, ct);
+                            await _rules.EnsureNoDuplicateEntryAsync(entry.Id, entry.Group.CanonicalName, entry.Governorate, newBranch, ct);
                         var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
                         targetBranch = newBranch;
                         totalAffected = count;
@@ -68,7 +84,7 @@ public sealed partial class PublicEntityService
                     var target = await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct);
                     try
                     {
-                        await ValidateMergeablePairAsync(groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
+                        await PublicEntityService.ValidateMergeablePairAsync(_rules, groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
                     }
                     catch (ArgumentException ex) { errors.Add(ex.Message); break; }
                     if (errors.Count == 0)
@@ -91,9 +107,9 @@ public sealed partial class PublicEntityService
                     if (!entry.IsActive) { errors.Add("القيد غير نشط"); break; }
                     try
                     {
-                        GuardNotParentEntry(entry);
-                        GuardHeadCannotEditParent(actor, entry);
-                        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
+                        _rules.GuardNotParentEntry(entry);
+                        _rules.GuardHeadCannotEditParent(actor, entry);
+                        await _rules.EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
                         var count = (await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, ct)).Count;
                         PublicEntity? target = request.TargetId.HasValue
                             ? await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct)
@@ -104,7 +120,7 @@ public sealed partial class PublicEntityService
                         }
                         else if (target is not null)
                         {
-                            await ValidateMergeablePairAsync(groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
+                            await PublicEntityService.ValidateMergeablePairAsync(_rules, groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
                         }
                         targetBranch = target?.BranchName ?? entry.BranchName;
                         totalAffected = count;
@@ -124,14 +140,14 @@ public sealed partial class PublicEntityService
                     if (absorbed.Count == 0) { errors.Add("لا توجد فروع محددة للتوحيد (فرع واحد على الأقل غير الهدف)"); break; }
                     try
                     {
-                        GuardNotParentEntry(target);
-                        GuardHeadCannotEditParent(actor, target);
-                        await EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
+                        _rules.GuardNotParentEntry(target);
+                        _rules.GuardHeadCannotEditParent(actor, target);
+                        await _rules.EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
                         var absorbedDocIds = new Dictionary<int, Document>();
                         foreach (var absorbedId in absorbed)
                         {
                             var ae = await _entities.GetEntryWithDetailsAsync(absorbedId, ct);
-                            await ValidateMergeablePairAsync(groupId, ae, target, target.Id, actor, ct, errors, warnings);
+                            await PublicEntityService.ValidateMergeablePairAsync(_rules, groupId, ae, target, target.Id, actor, ct, errors, warnings);
                             if (errors.Count > 0) break;
                             foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(ae!.Id, ct))
                                 absorbedDocIds[doc.Id] = doc;
@@ -144,10 +160,10 @@ public sealed partial class PublicEntityService
                             if (!string.IsNullOrWhiteSpace(request.CorrectedName)
                                 && !string.Equals(request.CorrectedName.Trim(), target.BranchName, StringComparison.Ordinal))
                             {
-                                var corrected = Required(request.CorrectedName, "اسم الفرع مطلوب", 200);
+                                var corrected = _rules.Required(request.CorrectedName, "اسم الفرع مطلوب", 200);
                                 try
                                 {
-                                    await EnsureNoDuplicateEntryAsync(target.Id, target.Group.CanonicalName, target.Governorate, corrected, ct);
+                                    await _rules.EnsureNoDuplicateEntryAsync(target.Id, target.Group.CanonicalName, target.Governorate, corrected, ct);
                                 }
                                 catch (ArgumentException ex) { errors.Add(ex.Message); }
                                 finalBranch = corrected;
@@ -174,35 +190,5 @@ public sealed partial class PublicEntityService
             totalAffected,
             warnings,
             errors);
-    }
-    /// <summary>
-    /// تحقق شروط الدمج/الطيّ القاسية بين قيدين (المجموعة + المحافظة + النشاط + نطاق
-    /// رئيس القسم + بلا NeedsReview). يملأ الأخطاء/التحذيرات بلا رمي (للشروط) أو يرمي
-    /// UnauthorizedAccessException (للنطاق/حارس الأم).
-    /// </summary>
-    private async Task ValidateMergeablePairAsync(
-        int groupId,
-        PublicEntity? source,
-        PublicEntity? target,
-        int targetId,
-        EntityRegistryActor actor,
-        CancellationToken ct,
-        List<string> errors,
-        List<string> warnings)
-    {
-        if (source is null || target is null) { errors.Add("الفرع غير موجود"); return; }
-        if (source.GroupId != groupId || target.GroupId != groupId) { errors.Add("الفروع المحددة ليست ضمن نفس المجموعة"); return; }
-        if (source.Id == targetId) { errors.Add("لا يمكن دمج الفرع مع نفسه"); return; }
-        if (!source.IsActive || !target.IsActive) { errors.Add("أحد الفروع غير نشط"); return; }
-        if (source.NeedsReview || target.NeedsReview) { errors.Add("لا يمكن الدمج لوجود قيد بانتظار المراجعة"); return; }
-        if (!string.Equals(source.Governorate, target.Governorate, StringComparison.Ordinal))
-        { errors.Add("المحافظتان مختلفتان — الدمج يتطلب نفس المحافظة"); return; }
-        GuardNotParentEntry(source);
-        GuardNotParentEntry(target);
-        GuardHeadCannotEditParent(actor, source);
-        GuardHeadCannotEditParent(actor, target);
-        // النطاق يُرمى كـ Unauthorized — لا يُعرض كخطأ قابل للتجاوز في المعاينة.
-        await EnsureHeadScopeAsync(actor, source, source.Governorate, ct);
-        await EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
     }
 }

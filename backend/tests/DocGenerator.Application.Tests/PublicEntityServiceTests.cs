@@ -38,6 +38,12 @@ public class PublicEntityServiceTests : PostgresDbTest
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
     private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
+    private readonly ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> _suggestParentEdit;
+    private readonly IQueryHandler<PreviewMergeQuery, MergePreviewResponse> _previewMerge;
+    private readonly IQueryHandler<PreviewUnifyQuery, UnifyNamesPreviewResponse> _previewUnify;
+    private readonly IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse> _previewRenameGroup;
+    private readonly IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse> _previewAbolishAndReplace;
+    private readonly IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> _previewBranchAction;
     private readonly IHeadAlertService _headAlerts;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -145,6 +151,24 @@ public class PublicEntityServiceTests : PostgresDbTest
         _proposeEdit = new ProposePublicEntityEditCommandHandler(
             rules, entityRepository, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<ProposePublicEntityEditCommand, PublicEntityEntryDto?>>());
+        _suggestParentEdit = new SuggestPublicEntityParentEditCommandHandler(
+            rules, entityRepository, new Repository<Branch>(_db), new Repository<ParentEditSuggestion>(_db), uow, _tx, _audit,
+            Array.Empty<IPipelineBehavior<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto>>());
+        _previewMerge = new PreviewMergeQueryHandler(
+            entityRepository,
+            Array.Empty<IPipelineBehavior<PreviewMergeQuery, MergePreviewResponse>>());
+        _previewUnify = new PreviewUnifyQueryHandler(
+            entityRepository,
+            Array.Empty<IPipelineBehavior<PreviewUnifyQuery, UnifyNamesPreviewResponse>>());
+        _previewRenameGroup = new PreviewRenameGroupQueryHandler(
+            rules, entityRepository,
+            Array.Empty<IPipelineBehavior<PreviewRenameGroupQuery, RenameGroupPreviewResponse>>());
+        _previewAbolishAndReplace = new PreviewAbolishAndReplaceQueryHandler(
+            entityRepository, new UserRepository(_db),
+            Array.Empty<IPipelineBehavior<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse>>());
+        _previewBranchAction = new PreviewBranchActionQueryHandler(
+            rules, entityRepository,
+            Array.Empty<IPipelineBehavior<PreviewBranchActionQuery, BranchActionPreviewResponse>>());
     }
 
 
@@ -1343,7 +1367,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task PreviewMerge_ShowsCorrectBranchMapping()
     {
         var (sg, ag1, ag2) = await SeedThreeGroupsForMergeAsync();
-        var preview = await _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { ag1, ag2 }));
+        var preview = await _previewMerge.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { ag1, ag2 }));
 
         Assert.Equal(2, preview.AbsorbedGroups.Count);
         Assert.Empty(preview.Warnings);
@@ -1355,7 +1379,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (_, ag1, _) = await SeedThreeGroupsForMergeAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.PreviewMergeAsync(new MergePreviewRequest(9999, new[] { ag1 })));
+            _previewMerge.PreviewMergeAsync(new MergePreviewRequest(9999, new[] { ag1 })));
     }
 
     [PostgresFact]
@@ -1363,7 +1387,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { sg })));
+            _previewMerge.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { sg })));
     }
 
     [PostgresFact]
@@ -1371,7 +1395,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.PreviewMergeAsync(new MergePreviewRequest(sg, Array.Empty<int>())));
+            _previewMerge.PreviewMergeAsync(new MergePreviewRequest(sg, Array.Empty<int>())));
     }
 
     [PostgresFact]
@@ -2254,7 +2278,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task PreviewUnify_ShowsTotalEntriesAndWarnings()
     {
         var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
-        var preview = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { absorbed }));
+        var preview = await _previewUnify.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { absorbed }));
         Assert.Equal("الجهة الموحدة الهدف", preview.TargetName);
         Assert.Single(preview.AbsorbedGroups);
         Assert.Equal(1, preview.TotalEntriesToMove);
@@ -2273,7 +2297,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        var preview = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target.GroupId, new[] { absorbed.GroupId }));
+        var preview = await _previewUnify.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target.GroupId, new[] { absorbed.GroupId }));
         Assert.Equal(0, preview.TotalEntriesToMove);
         Assert.Equal(1, preview.TotalEntriesFolded);
         var fold = Assert.Single(preview.FoldsToApply);
@@ -2292,7 +2316,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var first = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
         var second = await _createEntity.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        var preview2 = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target2.GroupId, new[] { first.GroupId, second.GroupId }));
+        var preview2 = await _previewUnify.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target2.GroupId, new[] { first.GroupId, second.GroupId }));
         Assert.Equal(1, preview2.TotalEntriesToMove);
         Assert.Equal(1, preview2.TotalEntriesFolded);
         var fold2 = Assert.Single(preview2.FoldsToApply);
@@ -2303,14 +2327,14 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task PreviewUnify_SelfUnify_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { target })));
+        await Assert.ThrowsAsync<ArgumentException>(() => _previewUnify.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { target })));
     }
 
     [PostgresFact]
     public async Task PreviewUnify_EmptyAbsorbed_Throws()
     {
         var (target, _) = await SeedTwoGroupsForUnifyAsync();
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, Array.Empty<int>())));
+        await Assert.ThrowsAsync<ArgumentException>(() => _previewUnify.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, Array.Empty<int>())));
     }
 
     [PostgresFact]
@@ -2967,7 +2991,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new User { Username = "d_entry", FullName = "مندوب قيد", Role = UserRole.EntityManager, PortalEntryId = absorbedEntry.Id, PortalGroupId = null, PasswordHash = "x" });
         await _db.SaveChangesAsync();
 
-        var preview = await _service.PreviewAbolishAndReplaceAsync(
+        var preview = await _previewAbolishAndReplace.PreviewAbolishAndReplaceAsync(
             new AbolishReplacePreviewRequest(new[] { absorbed.GroupId }));
 
         Assert.Equal(2, preview.DelegatesToReassign);
@@ -3701,7 +3725,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var a = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
 
-        var preview = await _service.PreviewBranchActionAsync(
+        var preview = await _previewBranchAction.PreviewBranchActionAsync(
             a.GroupId,
             new PreviewBranchActionRequest(ActionKindCatalog.Rename, a.Id, NewBranchName: "فرع مقترح"),
             HeadDamascusActor());
@@ -3720,7 +3744,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var source = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.PreviewBranchActionAsync(
+            _previewBranchAction.PreviewBranchActionAsync(
                 source.GroupId,
                 new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
                 HeadAleppoActor()));
@@ -3736,7 +3760,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            _service.PreviewBranchActionAsync(
+            _previewBranchAction.PreviewBranchActionAsync(
                 source.GroupId,
                 new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
                 HeadDamascusActor(),
@@ -3752,7 +3776,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         tgtEntry.NeedsReview = true;
         await _db.SaveChangesAsync();
 
-        var preview = await _service.PreviewBranchActionAsync(
+        var preview = await _previewBranchAction.PreviewBranchActionAsync(
             source.GroupId,
             new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
             HeadDamascusActor());
@@ -3776,7 +3800,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
 
-        var suggestion = await _service.SuggestParentEditAsync(
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(
             entryId,
             new SuggestParentEditRequest("وزارة التعليم المقترحة", "authority", null, "توحيد المسميات"),
             HeadDamascusActor());
@@ -3801,7 +3825,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), ManagerActor()));
+            _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), ManagerActor()));
     }
 
     private async Task<EntityRegistryActor> SubHeadDamascusActorAsync()
@@ -3818,14 +3842,14 @@ public class PublicEntityServiceTests : PostgresDbTest
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var sub = await SubHeadDamascusActorAsync();
 
-        var suggestion = await _service.SuggestParentEditAsync(
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(
             entryId, new SuggestParentEditRequest("وزارة التعليم المقترحة", Reason: "سبب"), sub);
         Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, suggestion.Status);
 
         // خارج محافظة فرعه مرفوض كما القسم.
         var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest(Reason: "سبب"), sub));
+            _suggestParentEdit.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest(Reason: "سبب"), sub));
     }
 
     [PostgresFact]
@@ -3834,8 +3858,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
         var sub = await SubHeadDamascusActorAsync();
-        await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest("اقتراح الشعبة", Reason: "سبب"), sub);
-        await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+        await _suggestParentEdit.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest("اقتراح الشعبة", Reason: "سبب"), sub);
+        await _suggestParentEdit.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
 
         var subView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), sub);
         Assert.Equal(1, subView.TotalCount);
@@ -3848,11 +3872,11 @@ public class PublicEntityServiceTests : PostgresDbTest
         var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
         var sub = await SubHeadDamascusActorAsync();
-        var own = await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest(Reason: "سبب"), sub);
+        var own = await _suggestParentEdit.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest(Reason: "سبب"), sub);
         var withdrawn = await _withdrawSuggestion.WithdrawParentEditSuggestionAsync(own.Id, sub);
         Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn!.Status);
 
-        var headSuggestion = await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+        var headSuggestion = await _suggestParentEdit.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _withdrawSuggestion.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
     }
@@ -3880,9 +3904,9 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task SuggestParentEdit_DuplicatePendingPerBranch_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الأول", Reason: "سبب"), HeadDamascusActor());
+        await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الأول", Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الثاني", Reason: "سبب"), HeadDamascusActor()));
+            _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الثاني", Reason: "سبب"), HeadDamascusActor()));
     }
 
     [PostgresFact]
@@ -3890,7 +3914,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "حلب", "فرع حلب");
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor()));
+            _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor()));
     }
 
     [PostgresFact]
@@ -3898,8 +3922,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
-        await _service.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
-        await _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
+        await _suggestParentEdit.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
+        await _suggestParentEdit.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
 
         var managerView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), ManagerActor());
         Assert.Equal(2, managerView.TotalCount);
@@ -3917,7 +3941,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewSuggestion_Head_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), HeadDamascusActor()));
@@ -3927,7 +3951,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewSuggestion_ManagerApprove_FlipsStatus()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
 
         var reviewed = await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
@@ -3945,7 +3969,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewSuggestion_ManagerReject_WithoutReason_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _reviewSuggestion.ReviewParentEditSuggestionAsync(
                 suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected), ManagerActor()));
@@ -3955,7 +3979,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewSuggestion_Twice_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected, "اسم مقترح غير دقيق"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -3967,7 +3991,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task WithdrawSuggestion_HeadCreator_FlipsWithdrawn()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("اسم مقترح", Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("اسم مقترح", Reason: "سبب"), HeadDamascusActor());
 
         var withdrawn = await _withdrawSuggestion.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor());
 
@@ -3983,8 +4007,8 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
-        await _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
-        var damSuggestion = await _service.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
+        await _suggestParentEdit.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
+        var damSuggestion = await _suggestParentEdit.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _withdrawSuggestion.WithdrawParentEditSuggestionAsync(damSuggestion.Id, HeadAleppoActor()));
     }
@@ -3993,7 +4017,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task WithdrawSuggestion_AfterReview_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
         await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -4134,7 +4158,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
         var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
 
-        var preview = await _service.PreviewBranchActionAsync(
+        var preview = await _previewBranchAction.PreviewBranchActionAsync(
             parent.GroupId,
             new PreviewBranchActionRequest(ActionKindCatalog.Rename, parentId, NewBranchName: "فرع مقترح"),
             ManagerActor());
@@ -4151,7 +4175,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
         var other = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع آخر"), ManagerActor());
 
-        var preview = await _service.PreviewBranchActionAsync(
+        var preview = await _previewBranchAction.PreviewBranchActionAsync(
             parent.GroupId,
             new PreviewBranchActionRequest(ActionKindCatalog.Merge, parentId, TargetId: other.Id),
             ManagerActor());
@@ -4166,7 +4190,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewApprove_WithoutAppliedRename_Throws()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _reviewSuggestion.ReviewParentEditSuggestionAsync(
@@ -4181,7 +4205,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewApprove_AfterAppliedRename_Accepts()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
         var entry = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == entryId);
 
         // تطبيق التسمية فعليًا ثم المراجعة تُقبل (إعادة التسمية أصبحت منفذة قبل القرار).
@@ -4200,7 +4224,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ReviewApprove_WithoutProposedName_Accepts()
     {
         var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
-        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(ProposedEntityType: "authority", Reason: "سبب"), HeadDamascusActor());
+        var suggestion = await _suggestParentEdit.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(ProposedEntityType: "authority", Reason: "سبب"), HeadDamascusActor());
 
         var reviewed = await _reviewSuggestion.ReviewParentEditSuggestionAsync(
             suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
@@ -4218,7 +4242,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
 
-        var preview = await _service.PreviewBranchActionAsync(
+        var preview = await _previewBranchAction.PreviewBranchActionAsync(
             source.GroupId,
             new PreviewBranchActionRequest(ActionKindCatalog.Abolish, source.Id, TargetId: target.Id),
             HeadDamascusActor());
@@ -4245,7 +4269,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var dto = await _createEntity.CreateAsync(new CreatePublicEntityRequest(
             "جهة المعاينة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
-        var preview = await _service.PreviewRenameGroupAsync(
+        var preview = await _previewRenameGroup.PreviewRenameGroupAsync(
             new RenameGroupPreviewRequest(dto.GroupId, "جهة المعاينة الجديدة"));
 
         Assert.Equal("جهة المعاينة", preview.OldCanonicalName);

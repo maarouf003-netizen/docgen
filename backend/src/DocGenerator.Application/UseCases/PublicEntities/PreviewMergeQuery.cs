@@ -1,14 +1,25 @@
+using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.PublicEntities;
 
-public sealed partial class PublicEntityService
+/// <summary>معاينة دمج عدة هويات أم في هوية ناجية — قراءة صرفة (بلا كتابة ولا معاملة).</summary>
+public sealed record PreviewMergeQuery(MergePreviewRequest Request) : IQuery<MergePreviewResponse>;
+
+internal sealed class PreviewMergeQueryHandler : QueryHandlerBase<PreviewMergeQuery, MergePreviewResponse>
 {
-    // ── الدمج N←1 (د5 §4) ──
+    private readonly IPublicEntityRepository _entities;
 
-    /// <inheritdoc/>
-    public async Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default)
+    public PreviewMergeQueryHandler(
+        IPublicEntityRepository entities,
+        IEnumerable<IPipelineBehavior<PreviewMergeQuery, MergePreviewResponse>> behaviors)
+        : base(behaviors)
+        => _entities = entities;
+
+    protected override async Task<MergePreviewResponse> HandleCoreAsync(PreviewMergeQuery query, CancellationToken ct)
     {
+        var request = query.Request;
         var survivorGroup = await _entities.GetGroupAsync(request.SurvivorGroupId, ct)
             ?? throw new ArgumentException("الهوية الأم الناجية غير موجودة");
         if (!survivorGroup.IsActive)

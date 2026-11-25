@@ -802,7 +802,7 @@
 
 #### `P4-01` — Command/Query pipeline
 
-- **الحالة (2026-11-24):** **جزئيًا — الأساس مثبت بشريحة رأسية في `Documents`.**
+- **الحالة (2026-11-25):** **جزئيًا — الأساس مثبت بشريحة رأسية في `Documents`.**
   أُضيفت عقود `ICommandHandler`/`IQueryHandler`/`IPipelineBehavior` وأساسا التركيب،
   وثلاثة سلوكيات (`Validation`/`Transaction`/`Audit`) مسجّلة كـ open generics،
   وحُوِّلت نقطتا `Get`/`Create` في `DocumentsController` إلى معالجين **بلا تغيير سلوكي**.
@@ -1060,10 +1060,25 @@
   `docs/audit/199-p4-01cb-cc-followup-review-20261125.md` و
   `docs/audit/200-p4-01cd-abolish-replace-group-20261125.md` و
   `docs/audit/201-p4-01ce-propose-edit-20261125.md` و
-  `docs/audit/202-p4-01cd-ce-followup-review-20261125.md`.
+  `docs/audit/202-p4-01cd-ce-followup-review-20261125.md` و
+  `docs/audit/203-p4-01cf-suggest-parent-edit-command-20261125.md` و
+  `docs/audit/204-p4-01cg-public-entity-preview-queries-20261125.md` و
+  `docs/audit/205-p4-01cf-cg-followup-review-20261125.md`.
+  **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
+  (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
+  منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
+  `IPublicEntityService` (17 → 16)؛ وبقي `PublicEntityService.Suggestions.cs` لقائمة
+  الاقتراحات ومُحوِّل الـ`DTO` المشترك.
+  **`P4-01cg`:** خمسة استعلامات معاينة **قراءة صرفة** — `PreviewMergeQuery` و
+  `PreviewUnifyQuery` و`PreviewRenameGroupQuery` و`PreviewAbolishAndReplaceQuery` و
+  `PreviewBranchActionQuery` — بنوع `IQuery<TResponse>` ومعالجات `QueryHandlerBase`
+  مسجَّلة كـ`IQueryHandler<,>`، وأُزيلت من `IPublicEntityService` (16 → 11)؛ وحُذف
+  `PublicEntityService.Merge.cs`/`PublicEntityService.Branches.cs` بعد إفراغهما، ونُقلت
+  مساعدات العدّ و`ValidateMergeablePairAsync` إلى `internal static` على الخدمة (مصدر
+  واحد بلا تكرار)، بلا كتابة ولا وسم معاملة/تدقيق في أي استعلام.
   **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (ملكية `CreateDocumentCommand`، وبقية كتابات الجهات العامة:
-  `SuggestParentEditAsync`).
+  (ملكية `CreateDocumentCommand`، وقراءات الجهات العامة العشرة المتبقية، وآخِر كتابة
+  عليها: `UnifyNamesAsync` — مرشح `P4-01ch`).
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.
