@@ -115,6 +115,10 @@ jobs:
       # الدليل (روابط runbook، تغطية كل تنبيه، أسماء مقاييس موثّقة) بلا أي حزمة جديدة.
       - name: Observability config guard
         run: node scripts/observability-config-guard.mjs --self-test
+      # P5-06: أعلام أمان النسخ/الاستعادة (dry-run، تأكيد، حارس إنتاج، بصمة) + تحقق
+      # من الدليل/الخريطة، وتشغيل الاختبارات الذاتية للسكربتات الستة فعليًا (bash/pwsh).
+      - name: Backup/restore scripts guard
+        run: node scripts/backup/backup-scripts-guard.mjs --self-test
       # P1-01i/c: اختبار ذاتي لحارس مجموعات PostgreSQL (اكتشاف من المصدر + تحقق trx)
       # يعمل في وظيفة لا تحتاج .NET، فلا يمرّ تعديل على المحلل بلا برهان.
       - name: PostgreSQL suite guard self-test
