@@ -1,0 +1,536 @@
+# ============================================================================
+# docgen-api — Prometheus alert rules (P5-02)
+#
+# Load with: promtool check rules ops/observability/alerts.yaml
+# Then place under Prometheus `rule_files` or wrap as a PrometheusRule CRD.
+#
+# Contract:
+#  - every `expr` uses metric names documented in docs/SLO.md §2;
+#  - `slo` selects the runbook anchor `#slo-<value>`;
+#  - install `blackbox_exporter` jobs `docgen-ready`, `docgen-outbox-ready`
+#    and `docgen-outbox-health` (see docs/runbooks/observability.md).
+#
+# Optional rules are marked; they stay silent until their metric exists
+# (they are NOT wrapped in absent() so they do not page forever).
+# ============================================================================
+
+groups:
+  - name: docgen-meta
+    interval: 30s
+    rules:
+      - alert: DocGenApiReadinessDown
+        expr: probe_success{job="docgen-ready"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "docgen-api readiness probe is failing"
+          description: >-
+            /readyz returned non-200 for 2m (database/outbox readiness). Users
+            cannot be routed to this instance. Check database reachability and
+            outbox lag before restarting anything.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-availability"
+
+      - alert: DocGenTelemetryAbsent
+        expr: absent_over_time(http_server_request_duration_seconds_count{service_name="docgen-api"}[30m])
+        for: 10m
+        labels:
+          severity: warning
+          slo: telemetry
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "No docgen-api HTTP metrics for 30m"
+          description: >-
+            No http_server_request_duration_seconds_count series with
+            service_name="docgen-api" for 30m. Metrics are missing (or the
+            service_name label transform failed), so SLO math is blind. Check
+            the collector, transform/resource_labels and the OTLP endpoint.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-telemetry"
+
+      - alert: DocGenCollectorDown
+        expr: up{job="docgen-collector"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          slo: telemetry
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "OpenTelemetry collector is down"
+          description: >-
+            Prometheus cannot scrape the collector. The API keeps running, but
+            traces/metrics are lost. Check the collector container and its
+            :8889/:13133 endpoints.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-telemetry"
+
+  - name: docgen-slo-availability
+    interval: 30s
+    rules:
+      # 14.4x burn over 1h = 7.2% errors for an SLO of 99.5%.
+      - alert: DocGenAvailabilityFastBurn
+        expr: |
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[1h]))
+            )
+          ) > 0.072
+          and
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[5m]))
+            )
+          ) > 0.072
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "docgen-api is burning its 99.5% availability budget fast"
+          description: >-
+            More than 7.2% of API responses are 5xx in both 1h and 5m windows
+            (14.4x burn). Freeze non-urgent releases and investigate now.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-availability"
+
+      # 6x burn over 6h = 3% errors; ticket, not a page.
+      - alert: DocGenAvailabilitySlowBurn
+        expr: |
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[6h]))
+            )
+          ) > 0.03
+          and
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[30m]))
+            )
+          ) > 0.03
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "docgen-api availability is burning budget steadily"
+          description: >-
+            More than 3% of API responses are 5xx in both 6h and 30m windows
+            (6x burn). Open a ticket and investigate within the working day.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-availability"
+
+      # 1x burn over 3d = 0.5% errors; backlog item.
+      - alert: DocGenAvailabilityBudgetBurning
+        expr: |
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[3d]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[3d]))
+            )
+          ) > 0.005
+          and
+          (
+            1 - (
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-4][0-9][0-9]"}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{
+                service_name="docgen-api", http_route=~"/api/.*",
+                http_response_status_code=~"[1-5][0-9][0-9]"}[6h]))
+            )
+          ) > 0.005
+        for: 1h
+        labels:
+          severity: info
+          slo: availability
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "docgen-api is using more than its 0.5% availability budget"
+          description: >-
+            Error ratio exceeded 0.5% over 3d and 6h. Add a backlog item and
+            review the weekly error-budget report.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-availability"
+
+  - name: docgen-slo-latency
+    interval: 30s
+    rules:
+      - alert: DocGenReadP95Warning
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{
+              service_name="docgen-api", http_route=~"/api/.*",
+              http_request_method=~"GET|HEAD"}[30m]))) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+          slo: read-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Read p95 is above the 500ms SLO"
+          description: >-
+            GET/HEAD p95 > 500ms for 15m. Check slow SQL, pool wait time and CPU.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-read-latency"
+
+      - alert: DocGenReadP95Critical
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{
+              service_name="docgen-api", http_route=~"/api/.*",
+              http_request_method=~"GET|HEAD"}[5m]))) > 1.0
+        for: 5m
+        labels:
+          severity: critical
+          slo: read-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Read p95 is more than double the SLO"
+          description: >-
+            GET/HEAD p95 > 1s for 5m. This is a user-visible degradation;
+            follow the latency section of the runbook.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-read-latency"
+
+      - alert: DocGenWriteP95Warning
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{
+              service_name="docgen-api", http_route=~"/api/.*",
+              http_request_method=~"POST|PUT|PATCH|DELETE"}[30m]))) > 1.0
+        for: 15m
+        labels:
+          severity: warning
+          slo: write-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Write p95 is above the 1s SLO"
+          description: >-
+            POST/PUT/PATCH/DELETE p95 > 1s for 15m. Check locks, transactions,
+            outbox dispatch and slow SQL.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-write-latency"
+
+      - alert: DocGenWriteP95Critical
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{
+              service_name="docgen-api", http_route=~"/api/.*",
+              http_request_method=~"POST|PUT|PATCH|DELETE"}[10m]))) > 2.0
+        for: 5m
+        labels:
+          severity: critical
+          slo: write-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Write p95 is more than double the SLO"
+          description: >-
+            POST/PUT/PATCH/DELETE p95 > 2s for 5m. Writes may time out; follow
+            the write-latency runbook before retrying traffic.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-write-latency"
+
+      - alert: DocGenSqlP95Warning
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(docgen_db_duration_seconds_bucket{
+              service_name="docgen-api"}[10m]))) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          slo: read-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Derived SQL p95 is above 100ms"
+          description: >-
+            EF Core-derived SQL p95 > 100ms for 15m. Check for sequential scans,
+            missing indexes or lock waits; this metric is derived from traces
+            by the collector, not a native app counter.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-read-latency"
+
+      - alert: DocGenSqlP95Critical
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(docgen_db_duration_seconds_bucket{
+              service_name="docgen-api"}[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+          slo: read-latency
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Derived SQL p95 is above 500ms"
+          description: >-
+            EF Core-derived SQL p95 > 500ms for 5m. Database work is dominating
+            request latency; inspect pg_stat_activity and slow queries.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-read-latency"
+
+  - name: docgen-slo-outbox
+    interval: 30s
+    rules:
+      - alert: DocGenOutboxLagCritical
+        expr: probe_success{job="docgen-outbox-ready"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          slo: outbox
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Outbox lag exceeded the 15m readiness threshold"
+          description: >-
+            /healthz/outbox returned 503 for 2m: the oldest pending message is
+            older than HeadAlerts:Outbox:Health:LagThresholdMinutes (15m).
+            Alerts are not being delivered; follow the outbox runbook.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-outbox"
+
+      - alert: DocGenOutboxDegraded
+        expr: |
+          (probe_success{job="docgen-outbox-health"} == 0)
+          and on(instance)
+          (probe_success{job="docgen-outbox-ready"} == 1)
+        for: 10m
+        labels:
+          severity: warning
+          slo: outbox
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Outbox has failed messages but lag is within threshold"
+          description: >-
+            /healthz/outbox reports Degraded (failed messages) while HTTP
+            remains 200. Human review is required; this does not drop readiness.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-outbox"
+
+      # Optional: only fires when postgres_exporter publishes this metric.
+      - alert: DocGenOutboxLagNumeric
+        expr: docgen_outbox_lag_minutes > 15
+        for: 5m
+        labels:
+          severity: critical
+          slo: outbox
+          service: docgen-api
+          team: docgen
+          optional: "true"
+        annotations:
+          summary: "Numeric outbox lag is above 15 minutes"
+          description: >-
+            postgres_exporter query docgen_outbox_lag_minutes > 15 for 5m.
+            This is an optional numeric view; the readiness probe alert above
+            is the mandatory signal.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-outbox"
+
+      # Optional: only fires when postgres_exporter publishes this metric.
+      - alert: DocGenOutboxRetriesHigh
+        expr: delta(docgen_outbox_retry_attempts[15m]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          slo: outbox
+          service: docgen-api
+          team: docgen
+          optional: "true"
+        annotations:
+          summary: "Outbox retries are elevated"
+          description: >-
+            More than 10 retries in 15m (postgres_exporter optional metric).
+            Inspect HeadAlertOutboxMessages.LastError and delivery dependencies.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-outbox"
+
+  - name: docgen-slo-db-pool
+    interval: 30s
+    rules:
+      # Optional until the Npgsql meter is registered (P5-02b). The rule is
+      # intentionally not wrapped in absent()/absent_over_time().
+      - alert: DocGenDbPoolSaturationWarning
+        expr: |
+          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          slo: db-pool
+          service: docgen-api
+          team: docgen
+          optional: "true"
+        annotations:
+          summary: "Database pool is above 80% utilisation"
+          description: >-
+            Npgsql used/max connections > 80% for 10m. Check slow queries and
+            leaked DbContexts. Requires the Npgsql meter (not enabled by P5-01).
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-db-pool"
+
+      - alert: DocGenDbPoolSaturationCritical
+        expr: |
+          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.95
+        for: 5m
+        labels:
+          severity: critical
+          slo: db-pool
+          service: docgen-api
+          team: docgen
+          optional: "true"
+        annotations:
+          summary: "Database pool is nearly exhausted"
+          description: >-
+            Npgsql used/max connections > 95% for 5m. Requests will queue and
+            time out; reduce load and inspect pool wait/timeouts.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-db-pool"
+
+      - alert: DocGenDbPoolTimeouts
+        expr: increase(db_client_connection_npgsql_timeouts_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          slo: db-pool
+          service: docgen-api
+          team: docgen
+          optional: "true"
+        annotations:
+          summary: "Database pool timeouts detected"
+          description: >-
+            Npgsql reported connection-pool timeouts in the last 5m. Check
+            Database:Pool:MaxPoolSize, connection leaks and database health.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-db-pool"
+
+  - name: docgen-slo-auth-rate-limit
+    interval: 30s
+    rules:
+      - alert: DocGenAuthFailureWarning
+        expr: |
+          sum(rate(aspnetcore_authentication_authenticate_duration_seconds_count{
+            service_name="docgen-api", aspnetcore_authentication_result="failure"}[15m]))
+          /
+          clamp_min(sum(rate(aspnetcore_authentication_authenticate_duration_seconds_count{
+            service_name="docgen-api",
+            aspnetcore_authentication_result=~"success|failure"}[15m])), 0.001) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+          slo: auth
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Authentication failure ratio is above 25%"
+          description: >-
+            More than a quarter of authentication attempts are failing. Check
+            token validation configuration, clocks and credential-stuffing
+            patterns; confirm the baseline before paging security.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-auth"
+
+      - alert: DocGenAuthFailureCritical
+        expr: |
+          sum(rate(aspnetcore_authentication_authenticate_duration_seconds_count{
+            service_name="docgen-api", aspnetcore_authentication_result="failure"}[5m]))
+          /
+          clamp_min(sum(rate(aspnetcore_authentication_authenticate_duration_seconds_count{
+            service_name="docgen-api",
+            aspnetcore_authentication_result=~"success|failure"}[5m])), 0.001) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+          slo: auth
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Authentication failure ratio is above 50%"
+          description: >-
+            Half of authentication attempts are failing for 5m. Treat as a
+            possible auth outage or brute-force attack; follow the auth runbook.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-auth"
+
+      - alert: DocGenAuthServerErrors
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{
+            service_name="docgen-api", http_route=~"/api/auth/.*",
+            http_response_status_code=~"5.."}[5m])) > 0.017
+        for: 10m
+        labels:
+          severity: warning
+          slo: auth
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Authentication endpoints are returning 5xx"
+          description: >-
+            More than ~1 auth 5xx per minute for 10m. Check logs/traces for the
+            failing endpoint; do not expose token or password values.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-auth"
+
+      - alert: DocGenRateLimitRejectionWarning
+        expr: |
+          sum(rate(aspnetcore_rate_limiting_requests_total{
+            service_name="docgen-api",
+            aspnetcore_rate_limiting_result=~"endpoint_limiter|global_limiter"}[15m]))
+          /
+          clamp_min(sum(rate(aspnetcore_rate_limiting_requests_total{
+            service_name="docgen-api"}[15m])), 0.001) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          slo: rate-limit
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Rate-limit rejections are above 5%"
+          description: >-
+            Rejections may indicate an attack or limits that are too tight for
+            legitimate mobile users. Inspect the rejecting policy and top IPs.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-rate-limit"
+
+      - alert: DocGenRateLimitRejectionCritical
+        expr: |
+          sum(rate(aspnetcore_rate_limiting_requests_total{
+            service_name="docgen-api",
+            aspnetcore_rate_limiting_result=~"endpoint_limiter|global_limiter"}[5m]))
+          /
+          clamp_min(sum(rate(aspnetcore_rate_limiting_requests_total{
+            service_name="docgen-api"}[5m])), 0.001) > 0.2
+        for: 5m
+        labels:
+          severity: critical
+          slo: rate-limit
+          service: docgen-api
+          team: docgen
+        annotations:
+          summary: "Rate-limit rejections are above 20%"
+          description: >-
+            A fifth of requests are rejected for 5m. Either an attack or a
+            misconfigured limit is blocking real users; follow the runbook.
+          runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-rate-limit"

@@ -111,6 +111,10 @@ jobs:
       # المتتبَّعة؛ خط الأساس يسمح بقيم الاختبار الموثّقة فقط، ولا تُطبع القيم أبدًا.
       - name: Secrets guard
         run: node scripts/secrets-guard.mjs
+      # P5-02: يتحقق من صلاحية YAML/JSON لملفات الرصد، ومن اتساق SLO/التنبيهات/
+      # الدليل (روابط runbook، تغطية كل تنبيه، أسماء مقاييس موثّقة) بلا أي حزمة جديدة.
+      - name: Observability config guard
+        run: node scripts/observability-config-guard.mjs --self-test
       # P1-01i/c: اختبار ذاتي لحارس مجموعات PostgreSQL (اكتشاف من المصدر + تحقق trx)
       # يعمل في وظيفة لا تحتاج .NET، فلا يمرّ تعديل على المحلل بلا برهان.
       - name: PostgreSQL suite guard self-test

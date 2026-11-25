@@ -1511,8 +1511,21 @@
 
 #### `P5-02` — لوحات وتنبيهات وSLOs
 
-- **العمل:** طلبات/أخطاء/زمن، زمن SQL، outbox lag، retry count، pool، CPU/RAM؛ SLO 99.5%؛ تنبيهات بريد/Telegram.
-- **DoD:** لوحة واحدة + تنبيهات مفعّلة.
+- **الحالة (2026-11-26):** **منفّذ كرمز** — PR
+  [`#365`](https://github.com/maarouf003-netizen/docgen/pull/365). التسليم:
+  - `docs/SLO.md`: تعريفات `SLI`/`SLO` للإتاحة 99.5% شهريًا، قراءة `p95 ≤ 500ms`،
+    كتابة `p95 ≤ 1s`، `Outbox` (عتبة 15 دقيقة من `P5-03`)، مجمّع القاعدة، المصادقة
+    وحدّ المعدل، مع نوافذ القياس والاستثناءات وميزانية الخطأ وأسماء `OTLP`/`Prometheus`.
+  - `ops/observability/otel-collector.yaml` (`OTLP` → حذف `PII`/فلترة صحة/عيّنة → `Tempo`
+    + `Prometheus` + `span_metrics` لزمن `SQL`)، `alerts.yaml` (24 قاعدة/6 مجموعات)،
+    `dashboard.json` (13 لوحة)، و`docs/runbooks/observability.md`.
+  - `scripts/observability-config-guard.mjs` + خطوة في `guards` (تحقق `YAML`/`JSON` واتساق
+    `SLO`/التنبيهات/الدليل) — بلا حزم جديدة.
+- **DoD:** لوحة واحدة + تنبيهات مفعّلة — **متحقق كرمز فقط**. **متبقٍ (بنية تحتية/مالك):**
+  نشر `Prometheus`/`Grafana`/`Tempo`/`blackbox_exporter` واستيراد الملفات، وتفعيل
+  `Observability:OtlpEndpoint` في البيئة. **فجوة قياس معلنة:** `SLO-5` (مجمّع `Npgsql`)
+  يتطلب تسجيل متر `Npgsql` (`.AddMeter("Npgsql")`) في تغيير لاحق `P5-02b`؛ و`Outbox` بالدقائق
+  والإعادات اختياري عبر `postgres_exporter`. التفاصيل: `docs/audit/258`–`260`.
 
 #### `P5-03` — Health checks
 
