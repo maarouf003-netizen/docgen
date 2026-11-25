@@ -1,23 +1,39 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.Services;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using Microsoft.Extensions.Options;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.Portal;
 
-public sealed partial class PortalService : IPortalService
+/// <summary>إحصاءات قرائية لنطاق المندوب (المرحلة 4) — مع فلتر فرع اختياري ضمن النطاق.</summary>
+public sealed record GetPortalStatsQuery(int UserId, int? EntryId = null) : IQuery<PortalStatsDto>;
+
+internal sealed class GetPortalStatsQueryHandler
+    : QueryHandlerBase<GetPortalStatsQuery, PortalStatsDto>
 {
-    // ── إحصاءات الجهة (المرحلة 4) ──
+    private readonly IPortalRepository _portal;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
-    /// <inheritdoc />
-    public async Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default, int? entryId = null)
+    public GetPortalStatsQueryHandler(
+        IPortalRepository portal,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<GetPortalStatsQuery, PortalStatsDto>> behaviors)
+        : base(behaviors)
     {
-        var scope = await _portal.ResolveForUserAsync(userId, ct);
-        var ids = ResolveEffectiveIds(scope, entryId);
+        _portal = portal;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<PortalStatsDto> HandleCoreAsync(
+        GetPortalStatsQuery query, CancellationToken ct)
+    {
+        var scope = await _portal.ResolveForUserAsync(query.UserId, ct);
+        var ids = PortalService.ResolveEffectiveIds(scope, query.EntryId);
 
         // اللقطة الوحيدة: كل العدّادات والمجاميع تُشتق من نفس الصفوف (فلا سباق
         // بين استعلامين ولا ازدواج تصنيف). الحالة أولًا دائمًا، والمسودة مسودة
@@ -62,8 +78,8 @@ public sealed partial class PortalService : IPortalService
 
         var perEntryCounts = await _portal.CountDocsPerEntryAsync(ids, ct);
         var scopeEntries = scope?.Entries ?? Array.Empty<(int Id, string Governorate, string BranchName, bool IsActive)>();
-        if (entryId.HasValue)
-            scopeEntries = scopeEntries.Where(e => e.Id == entryId.Value).ToList();
+        if (query.EntryId.HasValue)
+            scopeEntries = scopeEntries.Where(e => e.Id == query.EntryId.Value).ToList();
         var perEntry = scopeEntries
             .Select(e => new PortalEntryStatDto(
                 e.Id,

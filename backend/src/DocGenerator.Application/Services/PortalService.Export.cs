@@ -1,11 +1,6 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
-using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Services;
 
@@ -66,4 +61,14 @@ public sealed partial class PortalService : IPortalService
     /// أو القائمة) — تُغذّي `BuildMatchedEntries` فلا يعرض أي مسار فروعًا خارج
     /// ما طلبه الفلتر. النطاق الفارغ أو غير المربوط يُبقي الدالة بلا أثر.
     /// </summary>
+    private static PortalScopeResolution? NarrowScope(
+        PortalScopeResolution? scope, IReadOnlyCollection<int> entryIds)
+    {
+        if (scope is null)
+            return null;
+        return scope with
+        {
+            Entries = scope.Entries.Where(e => entryIds.Contains(e.Id)).ToList(),
+        };
+    }
 }

@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.Application.UseCases.Portal;
 using Xunit.Abstractions;
 
 using DocGenerator.Application.Tests.TestHelpers;
@@ -19,8 +19,7 @@ namespace DocGenerator.Application.Tests;
 public class PortalStatsMeasurementTests : PostgresDbTest
 {
     private static readonly DateTime FixedDate = new(2020, 1, 15);
-    private readonly IPortalService _portal;
-    private readonly FakeAuditLogger _audit = new();
+    private readonly IQueryHandler<GetPortalStatsQuery, PortalStatsDto> _stats;
     private readonly int _delegateGroupId;
     private readonly int _entryAId;
     private readonly int _entryBId;
@@ -44,7 +43,7 @@ public class PortalStatsMeasurementTests : PostgresDbTest
         _db.SaveChanges();
         _delegateGroupId = del.Id;
 
-        _portal = PortalServiceFactory.Create(_db, _audit);
+        _stats = PortalReadHandlerFactory.Create(_db).Stats;
     }
 
 
@@ -91,7 +90,7 @@ public class PortalStatsMeasurementTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         var sw = Stopwatch.StartNew();
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
         sw.Stop();
 
         Assert.Equal(count, stats.TotalFiles);

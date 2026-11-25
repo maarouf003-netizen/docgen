@@ -1,12 +1,10 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
-using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.Application.UseCases.Portal;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 using DocGenerator.Application.Tests.TestHelpers;
 
@@ -15,8 +13,7 @@ namespace DocGenerator.Application.Tests;
 /// <summary>اختبارات إحصاءات بوابة الجهة (المرحلة 4): عزل النطاق وتطابق التصنيف مع فلاتر القائمة.</summary>
 public class PortalStatsTests : PostgresDbTest
 {
-    private readonly IPortalService _portal;
-    private readonly FakeAuditLogger _audit = new();
+    private readonly IQueryHandler<GetPortalStatsQuery, PortalStatsDto> _stats;
     private readonly int _groupAId;
     private readonly int _entryAId;
     private readonly int _entryBId;
@@ -42,7 +39,7 @@ public class PortalStatsTests : PostgresDbTest
         _db.SaveChanges();
         _delegateGroupId = delegateGroup.Id;
 
-        _portal = PortalServiceFactory.Create(_db, _audit);
+        _stats = PortalReadHandlerFactory.Create(_db).Stats;
     }
 
 
@@ -87,7 +84,7 @@ public class PortalStatsTests : PostgresDbTest
         _db.Documents.Add(struck);
         await _db.SaveChangesAsync();
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(5, stats.TotalFiles); // المشطوب المرتبط خارج الحساب
         Assert.Equal(1, stats.DraftFiles);
@@ -112,7 +109,7 @@ public class PortalStatsTests : PostgresDbTest
         await SeedApplicantDocAsync("منفذ جبريا", ExecutionStatusCatalog.ExecutedForcibly, false, now, registryId: _entryAId);
         await SeedApplicantDocAsync("متداول د", null, false, now, registryId: _entryAId);
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(4, stats.TotalFiles);
         Assert.Equal(3, stats.ExecutedFiles); // جبريا + المستردان
@@ -140,7 +137,7 @@ public class PortalStatsTests : PostgresDbTest
         _db.Documents.Add(foreign);
         await _db.SaveChangesAsync();
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(1, stats.TotalFiles);
         // كل قيود النطاق تظهر (حتى الصفري منها)؛ قيد الهوية الأخرى لا يظهر إطلاقًا.
@@ -160,7 +157,7 @@ public class PortalStatsTests : PostgresDbTest
         await SeedApplicantDocAsync("هذا الشهر", null, false, thisMonth, registryId: _entryAId);
         await SeedApplicantDocAsync("قبل أحد عشر شهرًا", null, false, elevenMonthsAgo, registryId: _entryAId);
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(12, stats.Monthly.Count);
         Assert.Equal((elevenMonthsAgo.Year, elevenMonthsAgo.Month), (stats.Monthly[0].Year, stats.Monthly[0].Month));
@@ -190,7 +187,7 @@ public class PortalStatsTests : PostgresDbTest
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         // توزيع ارتباط لا تجزئة حصرية (موثّق): الملف يُحتسب تحت كل قيد ارتبط به،
         // وتمييز الأزواج (ملف×قيد) يمنع تضخم العدّاد بتكرار صفوف نفس الارتباط.
@@ -209,7 +206,7 @@ public class PortalStatsTests : PostgresDbTest
         await SeedApplicantDocAsync("دولار 1", null, false, now, currency: "دولار أمريكي", amount: 90, registryId: _entryAId);
         await SeedApplicantDocAsync("بلا عملة", null, false, now, currency: "", amount: 7, registryId: _entryAId);
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(4, stats.TotalFiles);
         var lira = stats.TopCurrencies.First(c => c.Currency == "ليرة سورية");
@@ -242,7 +239,7 @@ public class PortalStatsTests : PostgresDbTest
             new DocumentAppeal { DocumentId = outScopeDoc.Id, Direction = AppealDirectionCatalog.Appellants, Status = AppealStatusCatalog.Pending, AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 });
         await _db.SaveChangesAsync();
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(1, stats.PendingAppeals);  // استئناف الخارج عن النطاق غير محسوب
         Assert.Equal(1, stats.ClosedAppeals);
@@ -259,7 +256,7 @@ public class PortalStatsTests : PostgresDbTest
         await SeedApplicantDocAsync("محال جزئي أد", ExecutionStatusCatalog.ReferredToStart, false, now,
             registryId: _entryAId, amount: 50);
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(3, stats.TotalFiles);
         Assert.Equal(2, stats.ReferredToStartFiles);
@@ -309,7 +306,7 @@ public class PortalStatsTests : PostgresDbTest
         _db.Documents.Add(naturalLike);
         await _db.SaveChangesAsync();
 
-        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+        var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
         Assert.Equal(0, stats.TotalFiles);
     }
