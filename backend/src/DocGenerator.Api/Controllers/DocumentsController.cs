@@ -9,9 +9,11 @@ using DocGenerator.Application.Common.Options;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Audit;
 using DocGenerator.Application.UseCases.Documents;
 using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Application.UseCases.Interventions;
+using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -39,8 +41,10 @@ public class DocumentsController : ControllerBase
     private readonly IWordDocumentGenerator _generator;
     private readonly IOptions<DocumentGenerationOptions> _generationOptions;
     private readonly IExcelExportService _excel;
-    private readonly IStrikeOffReminderService _strikeOffReminders;
-    private readonly IAuditLogService _auditLogs;
+    private readonly IQueryHandler<GetStrikeOffRemindersQuery, PagedResult<DocumentResponse>> _strikeOffReminders;
+    private readonly IQueryHandler<GetStrikeOffReminderListQuery, PagedResult<DocumentListItemDto>> _strikeOffReminderList;
+    private readonly IQueryHandler<CountStrikeOffRemindersQuery, int> _strikeOffReminderCount;
+    private readonly IQueryHandler<GetDocumentChangesQuery, PagedResult<DocumentChangeGroupDto>> _documentChanges;
     private readonly IAuditLogger _audit;
     private readonly IDocumentAuthorization _authorization;
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _getDocument;
@@ -94,8 +98,10 @@ public class DocumentsController : ControllerBase
         IWordDocumentGenerator generator,
         IOptions<DocumentGenerationOptions> generationOptions,
         IExcelExportService excel,
-        IStrikeOffReminderService strikeOffReminders,
-        IAuditLogService auditLogs,
+        IQueryHandler<GetStrikeOffRemindersQuery, PagedResult<DocumentResponse>> strikeOffReminders,
+        IQueryHandler<GetStrikeOffReminderListQuery, PagedResult<DocumentListItemDto>> strikeOffReminderList,
+        IQueryHandler<CountStrikeOffRemindersQuery, int> strikeOffReminderCount,
+        IQueryHandler<GetDocumentChangesQuery, PagedResult<DocumentChangeGroupDto>> documentChanges,
         IAuditLogger audit,
         IDocumentAuthorization authorization,
         IQueryHandler<GetDocumentQuery, DocumentResponse?> getDocument,
@@ -149,7 +155,9 @@ public class DocumentsController : ControllerBase
         _generationOptions = generationOptions;
         _excel = excel;
         _strikeOffReminders = strikeOffReminders;
-        _auditLogs = auditLogs;
+        _strikeOffReminderList = strikeOffReminderList;
+        _strikeOffReminderCount = strikeOffReminderCount;
+        _documentChanges = documentChanges;
         _audit = audit;
         _authorization = authorization;
         _getDocument = getDocument;
@@ -512,8 +520,9 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
-        var result = await _strikeOffReminders.GetAsync(
-            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+        var result = await _strikeOffReminders.HandleAsync(
+            new GetStrikeOffRemindersQuery(
+                page, perPage, User.GetBranchId(), User.GetUserId(), OwnerSectionId: null), ct);
         return OkSanitized(result);
     }
 
@@ -529,8 +538,9 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
-        var result = await _strikeOffReminders.GetListAsync(
-            page, perPage, User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct, cursor: cursor);
+        var result = await _strikeOffReminderList.HandleAsync(
+            new GetStrikeOffReminderListQuery(
+                page, perPage, User.GetBranchId(), User.GetUserId(), OwnerSectionId: null, cursor), ct);
         return Ok(result);
     }
 
@@ -541,8 +551,9 @@ public class DocumentsController : ControllerBase
         if (!_authorization.Has(User, UserCapability.CanViewStrikeOffReminders))
             return Forbid();
 
-        var count = await _strikeOffReminders.GetCountAsync(
-            User.GetBranchId(), User.GetUserId(), ownerSectionId: null, ct);
+        var count = await _strikeOffReminderCount.HandleAsync(
+            new CountStrikeOffRemindersQuery(
+                User.GetBranchId(), User.GetUserId(), OwnerSectionId: null), ct);
         return Ok(new { count });
     }
 
@@ -643,7 +654,8 @@ public class DocumentsController : ControllerBase
     {
         var denied = await RequireDocumentAccessAsync(id, DocumentAction.Read, ct);
         if (denied is not null) return denied;
-        return Ok(await _auditLogs.GetDocumentChangesAsync(id, page, perPage, ct));
+        return Ok(await _documentChanges.HandleAsync(
+            new GetDocumentChangesQuery(id, page, perPage), ct));
     }
 
     [HttpPost]

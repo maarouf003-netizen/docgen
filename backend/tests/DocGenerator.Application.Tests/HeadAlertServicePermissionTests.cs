@@ -20,6 +20,7 @@ namespace DocGenerator.Application.Tests;
 public class HeadAlertServicePermissionTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
+    private readonly HeadAlertReadHandlers _reads;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
     private readonly int _branchA;
@@ -79,11 +80,10 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),
             users,
-            new Repository<Branch>(_db),
-            new DelegationRepository(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             new FakeAuditLogger());
+        _reads = HeadAlertReadHandlerFactory.Create(_db);
         _markRead = new MarkHeadAlertReadCommandHandler(
             new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
         _createManual = new CreateManualHeadAlertCommandHandler(
@@ -97,7 +97,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     public async Task ReceivedLists_FollowRoleScope_BranchScopedForHeads_BranchlessForLawyers()
     {
         // محامي: استلامه الشخصي عبر الفرعين (A وB) ولا يرى تنبيه غيره.
-        var lawyerPage = await _service.ListForActorAsync(
+        var lawyerPage = await _reads.ListForActorAsync(
             ActorFor(_lawyerA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Equal(2, lawyerPage.TotalCount);
         Assert.Contains(lawyerPage.Items, i => i.Id == _alertA.Id);
@@ -105,30 +105,30 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         Assert.DoesNotContain(lawyerPage.Items, i => i.Id == _alertOther.Id);
 
         // رئيس قسم: ما استلمه في فرعه فقط؛ تنبيه فرع حلب مستبعد رغم أنه مستلمه.
-        var headPage = await _service.ListForActorAsync(
+        var headPage = await _reads.ListForActorAsync(
             ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Equal(_alertHead.Id, Assert.Single(headPage.Items).Id);
         Assert.Equal(1, headPage.Items[0].RecipientCount);
 
         // رئيس شعبة بلا استلام: قائمة فارغة (لا يرى ما في فرعه بلا استلام).
-        var subPage = await _service.ListForActorAsync(
+        var subPage = await _reads.ListForActorAsync(
             ActorFor(_subA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Empty(subPage.Items);
         Assert.Equal(0, subPage.TotalCount);
 
         // المدير/المشرف: إشراف كل الفروع، وحالة القراءة غير مستلم-محددة.
-        var managerPage = await _service.ListForActorAsync(
+        var managerPage = await _reads.ListForActorAsync(
             ActorFor(_manager), new HeadAlertListQuery { Page = FullPage() });
         Assert.Equal(5, managerPage.TotalCount);
         Assert.All(managerPage.Items, i => Assert.Null(i.IsRead));
         Assert.All(managerPage.Items, i => Assert.NotNull(i.RecipientCount));
 
-        var adminPage = await _service.ListForActorAsync(
+        var adminPage = await _reads.ListForActorAsync(
             ActorFor(_admin), new HeadAlertListQuery { Page = FullPage() });
         Assert.Equal(5, adminPage.TotalCount);
 
         // غير المقروء متاح للمحامي/الرئيس، ويعتمد على صف الاستلام الشخصي.
-        var lawyerUnread = await _service.ListForActorAsync(
+        var lawyerUnread = await _reads.ListForActorAsync(
             ActorFor(_lawyerA),
             new HeadAlertListQuery { UnreadOnly = true, Page = FullPage() });
         Assert.Equal(2, lawyerUnread.TotalCount);
@@ -140,7 +140,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     public async Task ReceivedList_RejectsUnreadOnly_ForOversightRoles(UserRole role)
     {
         var actor = new HeadAlertActor(_manager.Id, role, null);
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.ListForActorAsync(
+        await Assert.ThrowsAsync<ArgumentException>(() => _reads.ListForActorAsync(
             actor, new HeadAlertListQuery { UnreadOnly = true, Page = FullPage() }));
     }
 
@@ -157,11 +157,11 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         if (!allowed)
         {
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
+                _reads.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
             return;
         }
 
-        var page = await _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null);
+        var page = await _reads.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null);
         Assert.Equal(2, page.TotalCount); // alertA + alertOther صادر headA في فرعه
         Assert.All(page.Items, i => Assert.Equal(_headA.FullName, i.CreatedByName));
     }
@@ -176,7 +176,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_lawyerA.Id, role, _branchA);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListByDelegationAsync(88, actor, FullPage()));
+            _reads.ListByDelegationAsync(88, actor, FullPage()));
     }
 
     [PostgresFact]
@@ -185,14 +185,14 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         // 77 مالك مصدرها headA ⇒ محامي دمشق ليس طرفًا: الرفض من الخدمة لا من المتحكم
         // (مراجعة PR-4 `ح‑1`: المستودع لا يقيّد النتيجة بالمستخدم).
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListByDelegationAsync(77, ActorFor(_lawyerA), FullPage()));
+            _reads.ListByDelegationAsync(77, ActorFor(_lawyerA), FullPage()));
 
         // إنابة غير موجودة ⇒ الرفض نفسه، بلا تسريب وجود.
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListByDelegationAsync(999_999, ActorFor(_lawyerA), FullPage()));
+            _reads.ListByDelegationAsync(999_999, ActorFor(_lawyerA), FullPage()));
 
         // 88 مالك مصدرها محامي دمشق ⇒ طرف، وتُقبل القائمة (فارغة هنا).
-        var page = await _service.ListByDelegationAsync(88, ActorFor(_lawyerA), FullPage());
+        var page = await _reads.ListByDelegationAsync(88, ActorFor(_lawyerA), FullPage());
         Assert.Empty(page.Items);
         Assert.Equal(0, page.TotalCount);
     }
@@ -201,18 +201,18 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     public async Task Details_RecipientHasAbsolutePriority_ThenCreator_ThenOversight_ElseNull()
     {
         // المستلم: داخل الفرع...
-        var recipientInBranch = await _service.GetDetailsAsync(_alertA.Id, ActorFor(_lawyerA));
+        var recipientInBranch = await _reads.GetDetailsAsync(_alertA.Id, ActorFor(_lawyerA));
         Assert.NotNull(recipientInBranch);
         Assert.False(recipientInBranch!.CanViewRecipients);
         Assert.False(recipientInBranch.IsRead);
 
         // ...وخارج فرعه (إنابة/تنبيه من فرع آخر) — بلا شرط فرع.
-        var recipientOutsideBranch = await _service.GetDetailsAsync(_alertB.Id, ActorFor(_lawyerA));
+        var recipientOutsideBranch = await _reads.GetDetailsAsync(_alertB.Id, ActorFor(_lawyerA));
         Assert.NotNull(recipientOutsideBranch);
         Assert.Equal(_alertB.Id, recipientOutsideBranch!.Id);
 
         // المنشئ يرى المستلمين.
-        var creator = await _service.GetDetailsAsync(_alertA.Id, ActorFor(_headA));
+        var creator = await _reads.GetDetailsAsync(_alertA.Id, ActorFor(_headA));
         Assert.NotNull(creator);
         Assert.True(creator!.CanViewRecipients);
         Assert.Null(creator.IsRead); // ليس مستلمًا
@@ -220,26 +220,26 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         // الإشراف يرى التفاصيل والمستلمين دائمًا.
         foreach (var oversight in new[] { _manager, _admin })
         {
-            var detail = await _service.GetDetailsAsync(_alertA.Id, ActorFor(oversight));
+            var detail = await _reads.GetDetailsAsync(_alertA.Id, ActorFor(oversight));
             Assert.NotNull(detail);
             Assert.True(detail!.CanViewRecipients);
             Assert.Null(detail.IsRead);
         }
 
         // رئيس فرع آخر غير منشئ ولا مستلم ولا مشرف → 404 (null).
-        Assert.Null(await _service.GetDetailsAsync(_alertA.Id, ActorFor(_headB)));
+        Assert.Null(await _reads.GetDetailsAsync(_alertA.Id, ActorFor(_headB)));
         // محامٍ غير مستلم → 404.
-        Assert.Null(await _service.GetDetailsAsync(_alertA.Id, ActorFor(_lawyerB)));
+        Assert.Null(await _reads.GetDetailsAsync(_alertA.Id, ActorFor(_lawyerB)));
         // رئيس شعبة غير مستلم → 404.
-        Assert.Null(await _service.GetDetailsAsync(_alertA.Id, ActorFor(_subA)));
+        Assert.Null(await _reads.GetDetailsAsync(_alertA.Id, ActorFor(_subA)));
         // معرّف غير موجود → null.
-        Assert.Null(await _service.GetDetailsAsync(int.MaxValue, ActorFor(_manager)));
+        Assert.Null(await _reads.GetDetailsAsync(int.MaxValue, ActorFor(_manager)));
     }
 
     [PostgresFact]
     public async Task Recipients_OnlyCreatorOrOversight_OthersGetNull()
     {
-        var creator = await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_headA));
+        var creator = await _reads.GetRecipientsAsync(_alertA.Id, ActorFor(_headA));
         Assert.NotNull(creator);
         Assert.Single(creator!);
         var lawyerRow = Assert.Single(creator, r => r.UserId == _lawyerA.Id);
@@ -247,13 +247,13 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         Assert.Equal("lawyer", lawyerRow.Role);
         Assert.False(lawyerRow.IsRead);
 
-        Assert.NotNull(await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_manager)));
-        Assert.NotNull(await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_admin)));
+        Assert.NotNull(await _reads.GetRecipientsAsync(_alertA.Id, ActorFor(_manager)));
+        Assert.NotNull(await _reads.GetRecipientsAsync(_alertA.Id, ActorFor(_admin)));
 
         // المستلم لا يرى قائمة المستلمين، وغير المنشئ/الإشراف يُترجم إلى 404.
-        Assert.Null(await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_lawyerA)));
-        Assert.Null(await _service.GetRecipientsAsync(_alertA.Id, ActorFor(_headB)));
-        Assert.Null(await _service.GetRecipientsAsync(int.MaxValue, ActorFor(_manager)));
+        Assert.Null(await _reads.GetRecipientsAsync(_alertA.Id, ActorFor(_lawyerA)));
+        Assert.Null(await _reads.GetRecipientsAsync(_alertA.Id, ActorFor(_headB)));
+        Assert.Null(await _reads.GetRecipientsAsync(int.MaxValue, ActorFor(_manager)));
     }
 
     [PostgresFact]
@@ -262,12 +262,12 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_headA.Id, UserRole.Head, null);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListForActorAsync(actor, new HeadAlertListQuery { Page = FullPage() }));
+            _reads.ListForActorAsync(actor, new HeadAlertListQuery { Page = FullPage() }));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
+            _reads.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
 
         // التفاصيل لا تحتاج فرعًا: غير المستلم/المنشئ/الإشراف → null، لا استثناء.
-        Assert.Null(await _service.GetDetailsAsync(_alertB.Id, actor));
+        Assert.Null(await _reads.GetDetailsAsync(_alertB.Id, actor));
     }
 
     [PostgresTheory]
@@ -278,13 +278,13 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     {
         var request = new AlertPageRequest { Page = page, PageSize = pageSize };
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListForActorAsync(
+            _reads.ListForActorAsync(
                 ActorFor(_manager), new HeadAlertListQuery { Page = request }));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListSentAsync(
+            _reads.ListSentAsync(
                 ActorFor(_headA), AlertArchiveFilter.Active, request, cursor: null));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
+            _reads.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
     [PostgresFact]
@@ -295,21 +295,21 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var request = new AlertPageRequest { Page = int.MaxValue, PageSize = AlertPageRequest.MaxPageSize };
 
         var listEx = await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListForActorAsync(
+            _reads.ListForActorAsync(
                 ActorFor(_manager), new HeadAlertListQuery { Page = request }));
         Assert.DoesNotContain("Parameter", listEx.Message);
 
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request, cursor: null));
+            _reads.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request, cursor: null));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
+            _reads.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
     [PostgresFact]
     public async Task Paging_ExtremePageWithSize1_IsAllowed()
     {
         // السقف يرفض الفيضان لا كِبَر رقم الصفحة: الإزاحة 2,147,483,646 ≤ int.MaxValue.
-        var page = await _service.ListForActorAsync(
+        var page = await _reads.ListForActorAsync(
             ActorFor(_manager),
             new HeadAlertListQuery { Page = new() { Page = int.MaxValue, PageSize = 1 } });
 
@@ -381,7 +381,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var actor = new HeadAlertActor(_manager.Id, role, null);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CountUnreadAsync(actor, AlertUnreadScope.User));
+            _reads.CountUnreadAsync(actor, AlertUnreadScope.User));
     }
 
     [PostgresFact]
@@ -390,14 +390,14 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403.
         var branchlessHead = new HeadAlertActor(_headA.Id, UserRole.Head, null);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CountUnreadAsync(branchlessHead, AlertUnreadScope.User));
+            _reads.CountUnreadAsync(branchlessHead, AlertUnreadScope.User));
     }
 
     [PostgresFact]
     public async Task CountUnread_LawyerIsBranchless()
     {
         // المحامي بلا قيد فرع أصلًا: تنبيهان غير مقروءين له في الفرعين.
-        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_lawyerA), AlertUnreadScope.User));
+        Assert.Equal(2, await _reads.CountUnreadAsync(ActorFor(_lawyerA), AlertUnreadScope.User));
     }
 
     [PostgresFact]
@@ -405,10 +405,10 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     {
         // D7 + ح‑19: الثبات الحقيقي هو «العدّاد = TotalCount لقائمة غير المقروء»
         // (يصمد أمام الترقيم)، لا «طول الصفحة» الذي ينجح مصادفةً حين تكون كل الصفوف غير مقروءة.
-        var unreadList = await _service.ListForActorAsync(
+        var unreadList = await _reads.ListForActorAsync(
             ActorFor(_headA), new HeadAlertListQuery { UnreadOnly = true, Page = FullPage() });
 
-        var count = await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User);
+        var count = await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User);
 
         Assert.Equal(unreadList.TotalCount, count);
         // تنبيه واحد في فرعه؛ تنبيه فرع حلب (رغم أنه مستلمه) مستبعد.
@@ -419,16 +419,16 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     public async Task CountUnread_UserScope_ExcludesReadRow_WhileListStillContainsIt()
     {
         // ح‑19: العدّاد «غير المقروء» لا «طول القائمة» — القائمة تبقى بطولها بعد القراءة.
-        var before = await _service.ListForActorAsync(
+        var before = await _reads.ListForActorAsync(
             ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Single(before.Items);
 
         Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(_alertHead.Id, ActorFor(_headA))));
 
-        var after = await _service.ListForActorAsync(
+        var after = await _reads.ListForActorAsync(
             ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
         Assert.Single(after.Items);
-        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+        Assert.Equal(0, await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
     [PostgresFact]
@@ -438,11 +438,11 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         var collective = AddAlert(_branchA, _headB.Id, "استلام جماعي", _lawyerA.Id,
             _headA.Id, _lawyerA.Id);
 
-        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+        Assert.Equal(2, await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
 
         Assert.True(await _markRead.HandleAsync(new MarkHeadAlertReadCommand(collective.Id, ActorFor(_headA))));
 
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+        Assert.Equal(1, await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
     [PostgresFact]
@@ -452,7 +452,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         AddAlert(_branchA, _headB.Id, "استلام شعبة", _lawyerA.Id,
             _subA.Id, _lawyerA.Id);
 
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User));
+        Assert.Equal(1, await _reads.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User));
     }
 
     [PostgresFact]
@@ -460,7 +460,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
     {
         // ح‑22: قيمة enum غير معروفة (مستدعٍ داخلي) تُرفض 400 ولا تسقط صامتةً إلى `user`.
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            _service.CountUnreadAsync(ActorFor(_lawyerA), (AlertUnreadScope)42));
+            _reads.CountUnreadAsync(ActorFor(_lawyerA), (AlertUnreadScope)42));
     }
 
     [PostgresFact]
@@ -473,7 +473,7 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         _db.SaveChanges();
 
         // تنبيه فرع حلب (`_alertHeadInB`) مستبعد رغم أن الرئيس مستلمه — قيد الفرع.
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+        Assert.Equal(1, await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
     private HeadAlert AddAlert(

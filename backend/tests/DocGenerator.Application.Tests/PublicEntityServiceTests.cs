@@ -92,7 +92,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _tx = new TransactionRunner(_db);
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _headAlerts = new HeadAlertService(alertsRepo, new DocumentRepository(_db), users,
-            branches, new DelegationRepository(_db), uow, _tx, _audit, _tx);
+            uow, _tx, _audit, _tx);
         var service = new PublicEntityService(
             new PublicEntityRepository(_db),
             branches,

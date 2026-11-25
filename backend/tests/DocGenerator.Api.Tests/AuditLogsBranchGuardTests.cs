@@ -2,8 +2,9 @@ using System.Net;
 using System.Security.Claims;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Audit;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,39 +14,35 @@ namespace DocGenerator.Api.Tests;
 /// حراسة نطاق سجل التدقيق (L-05، 2026-10-17): رئيس القسم بلا رمز فرع يُرفض صراحةً
 /// (403) بدل النطاق الإجمالي — تحوّط دفاعي موازٍ لمانع القاعدة
 /// (`CK_Users_BranchRequiredForBranchRoles`) وحارس الدخول `login_branch_required`.
-/// تُختبر بهوية مطالبات مصنوعة وخدمة مزيفة، لأن قيد القاعدة يجعل تجسيد الصف
+/// تُختبر بهوية مطالبات مصنوعة ومعالج مزيف، لأن قيد القاعدة يجعل تجسيد الصف
 /// الشاذ عبر EF مستحيلًا — وهذا مقصود: المتحكم يحرس قرار الرفض، والقاعدة تحرس التخزين.
 /// </summary>
 public sealed class AuditLogsBranchGuardTests
 {
-    private sealed class FakeAuditLogService : IAuditLogService
+    private sealed class FakeSearchAuditLogsHandler
+        : IQueryHandler<SearchAuditLogsQuery, PagedResult<AuditLogDto>>
     {
         public int Calls { get; private set; }
         public int? ReceivedScopeBranchId { get; private set; }
         public int? ReceivedScopeSectionId { get; private set; }
 
-        public Task<PagedResult<AuditLogDto>> SearchAsync(
-            string? userName, string? actionType, int page, int perPage, CancellationToken ct = default,
-            int? scopeBranchId = null, int? scopeSectionId = null)
+        public Task<PagedResult<AuditLogDto>> HandleAsync(
+            SearchAuditLogsQuery query, CancellationToken ct = default)
         {
             Calls++;
-            ReceivedScopeBranchId = scopeBranchId;
-            ReceivedScopeSectionId = scopeSectionId;
+            ReceivedScopeBranchId = query.ScopeBranchId;
+            ReceivedScopeSectionId = query.ScopeSectionId;
             return Task.FromResult(new PagedResult<AuditLogDto>
             {
                 Items = [],
-                Page = page,
-                PerPage = perPage,
+                Page = query.Page,
+                PerPage = query.PerPage,
                 TotalCount = 0,
             });
         }
-
-        public Task<PagedResult<DocumentChangeGroupDto>> GetDocumentChangesAsync(
-            int documentId, int page, int perPage, CancellationToken ct = default)
-            => throw new NotImplementedException();
     }
 
-    private static (AuditLogsController Controller, FakeAuditLogService Service) Build(string role, int? branchId = null, int? sectionId = null)
+    private static (AuditLogsController Controller, FakeSearchAuditLogsHandler Service) Build(string role, int? branchId = null, int? sectionId = null)
     {
         var claims = new List<Claim>
         {
@@ -58,7 +55,7 @@ public sealed class AuditLogsBranchGuardTests
         if (sectionId.HasValue)
             claims.Add(new Claim("section_id", sectionId.Value.ToString()));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
-        var service = new FakeAuditLogService();
+        var service = new FakeSearchAuditLogsHandler();
         var controller = new AuditLogsController(
             service, new DocGenerator.Api.Authorization.UserCapabilities());
         controller.ControllerContext = new ControllerContext

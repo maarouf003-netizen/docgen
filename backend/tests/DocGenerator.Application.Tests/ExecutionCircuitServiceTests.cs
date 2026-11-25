@@ -92,7 +92,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
                 circuitsRepo, branchesRepo, sectionsRepo, documents,
                 Array.Empty<IPipelineBehavior<GetCircuitStatsQuery, List<CircuitStatsDto>>>()));
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
-            branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
+            uow, _tx, _audit, _tx);
         _createCircuit = new CreateExecutionCircuitCommandHandler(
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, users,
             uow, _audit, classifier,

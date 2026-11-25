@@ -1,7 +1,8 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Audit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +13,12 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "manager,admin,head,subhead")]
 public class AuditLogsController : ControllerBase
 {
-    private readonly IAuditLogService _logs;
+    private readonly IQueryHandler<SearchAuditLogsQuery, PagedResult<AuditLogDto>> _logs;
     private readonly IUserCapabilities _capabilities;
 
-    public AuditLogsController(IAuditLogService logs, IUserCapabilities capabilities)
+    public AuditLogsController(
+        IQueryHandler<SearchAuditLogsQuery, PagedResult<AuditLogDto>> logs,
+        IUserCapabilities capabilities)
     {
         _logs = logs;
         _capabilities = capabilities;
@@ -46,6 +49,7 @@ public class AuditLogsController : ControllerBase
             scopeSectionId = User.GetSectionId();
             if (scopeSectionId is null) return Forbid();
         }
-        return Ok(await _logs.SearchAsync(userName, actionType, page, perPage, ct, scopeBranchId, scopeSectionId));
+        return Ok(await _logs.HandleAsync(
+            new SearchAuditLogsQuery(userName, actionType, page, perPage, scopeBranchId, scopeSectionId), ct));
     }
 }

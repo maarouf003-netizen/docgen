@@ -109,8 +109,8 @@ public static class DelegationWriteHandlerFactory
             numberRegistry,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             new HeadAlertService(
-                new HeadAlertRepository(db), documents, users, new Repository<Branch>(db),
-                new DelegationRepository(db), uow, tx, auditValue),
+                new HeadAlertRepository(db), documents, users,
+                uow, tx, auditValue),
             uow,
             tx,
             auditValue,
@@ -135,8 +135,8 @@ public static class DelegationWriteHandlerFactory
             new Repository<DocumentOccurrence>(db),
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             new HeadAlertService(
-                new HeadAlertRepository(db), documents, users, new Repository<Branch>(db),
-                new DelegationRepository(db), uow, tx, auditValue),
+                new HeadAlertRepository(db), documents, users,
+                uow, tx, auditValue),
             uow,
             tx,
             auditValue,

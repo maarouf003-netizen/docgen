@@ -16,6 +16,7 @@ namespace DocGenerator.Application.Tests;
 public class HeadAlertServiceTests : PostgresDbTest
 {
     private readonly IHeadAlertService _service;
+    private readonly HeadAlertReadHandlers _reads;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly ICommandHandler<CreateManualHeadAlertCommand, HeadAlertSummaryDto> _createManual;
     private readonly FakeAuditLogger _audit = new();
@@ -68,8 +69,9 @@ public class HeadAlertServiceTests : PostgresDbTest
         var branches = new Repository<Branch>(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
-        _service = new HeadAlertService(alerts, documents, users, branches,
-            new DelegationRepository(_db), uow, _tx, _audit);
+        _service = new HeadAlertService(alerts, documents, users,
+            uow, _tx, _audit);
+        _reads = HeadAlertReadHandlerFactory.Create(_db);
         _markRead = new MarkHeadAlertReadCommandHandler(
             new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
         _createManual = new CreateManualHeadAlertCommandHandler(
@@ -83,12 +85,12 @@ public class HeadAlertServiceTests : PostgresDbTest
     private static HeadAlertActor ActorFor(User user) => new(user.Id, user.Role, user.BranchId);
 
     private async Task<List<HeadAlertSummaryDto>> ReceivedAsync(User user) =>
-        (await _service.ListForActorAsync(
+        (await _reads.ListForActorAsync(
             ActorFor(user),
             new HeadAlertListQuery { Page = FullPage() })).Items.ToList();
 
     private async Task<List<HeadAlertSummaryDto>> SentAsync(User user) =>
-        (await _service.ListSentAsync(
+        (await _reads.ListSentAsync(
             ActorFor(user), AlertArchiveFilter.Active, FullPage(), cursor: null)).Items.ToList();
 
     private async Task<int> CreateSystemHeadAlertAsync(
@@ -357,12 +359,12 @@ public class HeadAlertServiceTests : PostgresDbTest
         var alert = await _createManual.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
+        Assert.Equal(1, await _reads.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
         var ok = await _markRead.HandleAsync(new MarkHeadAlertReadCommand(alert.Id, ActorFor(_lawyer1)));
 
         Assert.True(ok);
-        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
+        Assert.Equal(0, await _reads.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
         var dto = Assert.Single(await ReceivedAsync(_lawyer1));
         Assert.True(dto.IsRead);
@@ -449,7 +451,7 @@ public class HeadAlertServiceTests : PostgresDbTest
 
         // عقد التفاصيل (§9.2): الحقول السبعة المضافة كلها موجودة، والنص الكامل هنا وحده.
         var fullMessage = HeadAlertMessages.ManualMessage(UserRole.Head, "نص كامل للتفاصيل");
-        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
+        var detail = await _reads.GetDetailsAsync(created.Id, ActorFor(_head));
         Assert.NotNull(detail);
         Assert.Equal(fullMessage, detail!.Message);
         Assert.Equal(created.Kind, detail.Kind);
@@ -463,7 +465,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         Assert.Null(detail.IsRead);
 
         // المستلم غير المنشئ: يرى التفاصيل لكنه لا يرى المستلمين، وحالة القراءة تخصّه.
-        var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
+        var recipientDetail = await _reads.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
         Assert.NotNull(recipientDetail);
         Assert.False(recipientDetail!.CanViewRecipients);
         Assert.False(recipientDetail.IsRead);
@@ -494,13 +496,13 @@ public class HeadAlertServiceTests : PostgresDbTest
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
         // المنشئ ليس مستلمًا: IsRead فارغة، وعقد التفاصيل بلا عدّادي المستلمين (PR-6a).
-        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
+        var detail = await _reads.GetDetailsAsync(created.Id, ActorFor(_head));
         Assert.NotNull(detail);
         Assert.True(detail!.CanViewRecipients);
         Assert.Null(detail.IsRead);
 
         // مستلم غير الفاعل: حالته تخصّه (غير مقروء) ولا يرى المستلمين.
-        var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(lawyer3));
+        var recipientDetail = await _reads.GetDetailsAsync(created.Id, ActorFor(lawyer3));
         Assert.NotNull(recipientDetail);
         Assert.False(recipientDetail!.IsRead);
         Assert.False(recipientDetail.CanViewRecipients);
@@ -536,7 +538,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
 
         // التفاصيل تعكس حالة القارئ بدقة، بلا عدّادي مستلمين (PR-6a).
-        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
+        var detail = await _reads.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
         Assert.NotNull(detail);
         Assert.True(detail!.IsRead);
     }
@@ -565,7 +567,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         // مدير غير منشئ وغير مستلم: يصل عبر الإشراف (D2).
-        var dto = await _service.GetDetailsAsync(alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
+        var dto = await _reads.GetDetailsAsync(alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
 
         Assert.NotNull(dto);
         Assert.Equal(HeadAlertKindCatalog.ManualToLawyer, dto!.Kind);
@@ -668,7 +670,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         _db.HeadAlerts.Add(alert);
         await _db.SaveChangesAsync();
 
-        var dto = await _service.GetDetailsAsync(
+        var dto = await _reads.GetDetailsAsync(
             alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
 
         Assert.NotNull(dto);
@@ -701,7 +703,7 @@ public class HeadAlertServiceTests : PostgresDbTest
         var otherBranch = new Branch { Name = "حلب", Code = "ALP" };
         _db.Branches.Add(otherBranch);
         await _db.SaveChangesAsync();
-        var otherBranchSent = await _service.ListSentAsync(
+        var otherBranchSent = await _reads.ListSentAsync(
             new HeadAlertActor(_head.Id, _head.Role, otherBranch.Id),
             AlertArchiveFilter.Active,
             FullPage(),

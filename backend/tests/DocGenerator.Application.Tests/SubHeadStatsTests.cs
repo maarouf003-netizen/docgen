@@ -23,6 +23,7 @@ public class SubHeadStatsTests : PostgresDbTest
     private readonly IStatisticsRepository _stats;
     private readonly IQueryHandler<GetCircuitStatsQuery, List<CircuitStatsDto>> _circuits;
     private readonly IHeadAlertService _alerts;
+    private readonly HeadAlertReadHandlers _alertReads;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
@@ -59,12 +60,11 @@ public class SubHeadStatsTests : PostgresDbTest
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),
             new UserRepository(_db),
-            new Repository<Branch>(_db),
-            new DelegationRepository(_db),
             uow,
             tx,
             _audit,
             tx);
+        _alertReads = HeadAlertReadHandlerFactory.Create(_db);
         _markRead = new MarkHeadAlertReadCommandHandler(
             new HeadAlertRepository(_db), Array.Empty<IPipelineBehavior<MarkHeadAlertReadCommand, bool>>());
     }
@@ -72,7 +72,7 @@ public class SubHeadStatsTests : PostgresDbTest
 
     /// <summary>قائمة المستلَم حسب دور المستخدم — صفحة كاملة للاختبار (PR-4: <c>ListForActorAsync</c>).</summary>
     private Task<PagedResult<HeadAlertSummaryDto>> ReceivedAlertsAsync(User user) =>
-        _alerts.ListForActorAsync(
+        _alertReads.ListForActorAsync(
             new HeadAlertActor(user.Id, user.Role, user.BranchId),
             new HeadAlertListQuery { Page = new AlertPageRequest { Page = 1, PageSize = AlertPageRequest.MaxPageSize } });
 

@@ -85,8 +85,6 @@ public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
                 new HeadAlertRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
                 new DocumentRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
                 new UserRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-                new Repository<Branch>(sp.GetRequiredService<DocGeneratorDbContext>()),
-                new DelegationRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
                 new UnitOfWork(sp.GetRequiredService<DocGeneratorDbContext>()),
                 sp.GetRequiredService<ITransactionRunner>(),
                 auditFactory?.Invoke(sp) ?? new FakeAuditLogger(),
@@ -764,31 +762,7 @@ public class HeadAlertOutboxDispatcherTests : IAsyncLifetime
             return await _inner.CreateSystemAsync(request, occurredAt, supersedePlan, targetUserIdOverride, ct);
         }
 
-        // بقية الأعضاء تمرير مباشر: الاختبار يستهدف مسار CreateSystemAsync وحده.
-        public Task<PagedResult<HeadAlertSummaryDto>> ListForActorAsync(
-            HeadAlertActor actor, HeadAlertListQuery query, CancellationToken ct = default)
-            => _inner.ListForActorAsync(actor, query, ct);
-
-        public Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
-            HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, string? cursor,
-            CancellationToken ct = default)
-            => _inner.ListSentAsync(actor, archive, page, cursor, ct);
-
-        public Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
-            int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default)
-            => _inner.ListByDelegationAsync(delegationId, actor, page, ct);
-
-        public Task<HeadAlertDto?> GetDetailsAsync(int id, HeadAlertActor actor, CancellationToken ct = default)
-            => _inner.GetDetailsAsync(id, actor, ct);
-
-        public Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
-            int id, HeadAlertActor actor, CancellationToken ct = default)
-            => _inner.GetRecipientsAsync(id, actor, ct);
-
-        public Task<int> CountUnreadAsync(
-            HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default)
-            => _inner.CountUnreadAsync(actor, scope, ct);
-
+        // الأعضاء الباقية تمرير مباشر: الاختبار يستهدف مسار CreateSystemAsync وحده.
         public Task<int> ApplyCircuitRenamedAsync(
             int circuitId, string message, DateTime occurredAt, CancellationToken ct = default)
             => _inner.ApplyCircuitRenamedAsync(circuitId, message, occurredAt, ct);
