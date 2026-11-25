@@ -3,7 +3,9 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Application.UseCases.Documents;
+using DocGenerator.Application.UseCases.ExecutionActions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 
@@ -19,7 +21,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (DocumentReadHandlers Reads, IExecutionActionService Actions, DocumentSearchHandlers Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
+    public static (DocumentReadHandlers Reads, ExecutionActionHandlers Actions, DocumentSearchHandlers Search, IDocumentStatusService Status, DocumentStatusHandlers StatusCommands, ICommandHandler<UpdateDocumentCommand, DocumentResponse?> UpdateDocument, ICommandHandler<DeleteDocumentCommand, bool> DeleteDocument, ICommandHandler<TransferDocumentCommand, DocumentResponse> TransferDocument, ICommandHandler<TransferAllDocumentsCommand, int> TransferAllDocuments, ICommandHandler<SaveDocumentBaseNumbersCommand, bool> SaveBaseNumbers, ICommandHandler<CreateDocumentCommand, DocumentResponse> CreateDocument) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -62,11 +64,15 @@ public static class DocumentServiceFactory
 
         var actionService = new ExecutionActionService(
             actionsValue,
-            documentsValue,
             uowValue,
             audit,
             clockValue,
             timeZoneValue);
+        var actionHandlers = new ExecutionActionHandlers(
+            actionService,
+            new GetExecutionActionsQueryHandler(
+                documentsValue,
+                Array.Empty<IPipelineBehavior<GetExecutionActionsQuery, List<ExecutionActionDto>>>()));
 
         var appealsValue = appeals ?? new AppealRepository(db);
         var cursorCodec = new DocGenerator.Infrastructure.Security.KeysetCursorCodec(new JwtOptions
@@ -269,7 +275,7 @@ public static class DocumentServiceFactory
             numberRegistry,
             Array.Empty<IPipelineBehavior<SaveDocumentBaseNumbersCommand, bool>>());
 
-        return (reads, actionService, search, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
+        return (reads, actionHandlers, search, statusService, statusCommands, updateDocument, deleteDocument, transferDocument, transferAllDocuments, saveBaseNumbers, createDocument);
     }
 }
 

@@ -341,13 +341,13 @@ public class PortalController : ControllerBase
 [Authorize(Roles = "manager,admin,head,subhead")]
 public class DelegatesController : ControllerBase
 {
-    private readonly IEntityDelegateService _delegates;
+    private readonly IQueryHandler<ListEntityDelegatesQuery, List<DelegateDto>> _delegates;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreateEntityDelegateCommand, DelegateDto> _createDelegate;
     private readonly ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> _updateDelegate;
 
     public DelegatesController(
-        IEntityDelegateService delegates,
+        IQueryHandler<ListEntityDelegatesQuery, List<DelegateDto>> delegates,
         IUserCapabilities capabilities,
         ICommandHandler<CreateEntityDelegateCommand, DelegateDto> createDelegate,
         ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> updateDelegate)
@@ -363,7 +363,7 @@ public class DelegatesController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageDelegates))
             return Forbid();
-        return Ok(await _delegates.ListAsync(ct, Actor()));
+        return Ok(await _delegates.HandleAsync(new ListEntityDelegatesQuery(Actor()), ct));
     }
 
     [HttpPost]

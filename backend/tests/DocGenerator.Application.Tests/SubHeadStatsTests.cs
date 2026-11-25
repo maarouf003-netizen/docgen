@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Alerts;
+using DocGenerator.Application.UseCases.ExecutionCircuits;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -20,7 +21,7 @@ namespace DocGenerator.Application.Tests;
 public class SubHeadStatsTests : PostgresDbTest
 {
     private readonly IStatisticsRepository _stats;
-    private readonly IExecutionCircuitService _circuits;
+    private readonly IQueryHandler<GetCircuitStatsQuery, List<CircuitStatsDto>> _circuits;
     private readonly IHeadAlertService _alerts;
     private readonly ICommandHandler<MarkHeadAlertReadCommand, bool> _markRead;
     private readonly TransactionRunner _tx;
@@ -48,17 +49,12 @@ public class SubHeadStatsTests : PostgresDbTest
         var tx = new TransactionRunner(_db);
         _tx = tx;
         _stats = new StatisticsRepository(_db, TestClock.Provider, TestClock.TimeZone);
-        _circuits = new ExecutionCircuitService(
+        _circuits = new GetCircuitStatsQueryHandler(
             new Repository<ExecutionCircuit>(_db),
             new Repository<Branch>(_db),
             new Repository<Section>(_db),
             new DocumentRepository(_db),
-            new DelegationRepository(_db),
-            new HeadAlertRepository(_db),
-            new UserRepository(_db),
-            uow,
-            tx,
-            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx));
+            Array.Empty<IPipelineBehavior<GetCircuitStatsQuery, List<CircuitStatsDto>>>());
         _alerts = new HeadAlertService(
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),
@@ -247,7 +243,7 @@ public class SubHeadStatsTests : PostgresDbTest
         await AddDocumentAsync(_lawyer1.Id, divisionCircuit);
         await AddDocumentAsync(_lawyer1.Id, sectionCircuit);
 
-        var rows = await _circuits.CircuitStatsAsync(_branch.Id, null, true);
+        var rows = await _circuits.HandleAsync(new GetCircuitStatsQuery(_branch.Id, null, true));
 
         var division = Assert.Single(rows, r => r.CircuitId == divisionCircuit);
         Assert.Null(division.SectionId);

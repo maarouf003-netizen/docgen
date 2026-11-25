@@ -17,7 +17,7 @@ namespace DocGenerator.Application.Tests;
 /// <summary>اختبارات إدارة حسابات مندوبي الجهات وربط نطاقهم (د11 — المرحلة 3).</summary>
 public class EntityDelegateServiceTests : PostgresDbTest
 {
-    private readonly IEntityDelegateService _service;
+    private readonly IQueryHandler<ListEntityDelegatesQuery, List<DelegateDto>> _list;
     private readonly ICommandHandler<CreateEntityDelegateCommand, DelegateDto> _createDelegate;
     private readonly ICommandHandler<UpdateEntityDelegateCommand, DelegateDto?> _updateDelegate;
     private readonly FakeAuditLogger _audit = new();
@@ -37,16 +37,17 @@ public class EntityDelegateServiceTests : PostgresDbTest
         _groupId = group.Id;
         _entryId = group.Entries.First().Id;
 
-        _service = new EntityDelegateService(
-            new UserRepository(_db),
+        var service = new EntityDelegateService(
             new PublicEntityRepository(_db),
-            new PasswordHasher(),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
             new Repository<Branch>(_db));
 
-        var rules = (IEntityDelegateWriteRules)_service;
+        _list = new ListEntityDelegatesQueryHandler(
+            new UserRepository(_db),
+            new PublicEntityRepository(_db),
+            Array.Empty<IPipelineBehavior<ListEntityDelegatesQuery, List<DelegateDto>>>(),
+            new Repository<Branch>(_db));
+
+        var rules = (IEntityDelegateWriteRules)service;
         var users = new UserRepository(_db);
         var hasher = new PasswordHasher();
         var uow = new UnitOfWork(_db);
@@ -117,7 +118,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
 
         // التطبيع يوحّد حالة الأحرف فيكشف التكرار.
         Assert.Contains("بنفس اسم الدخول", ex.Message);
-        Assert.Single(await _service.ListAsync());
+        Assert.Single(await _list.ListAsync());
     }
 
     [PostgresFact]
@@ -136,7 +137,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
             _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "TestPass1234", null, pendingId), "مدير"));
 
         Assert.Contains("بانتظار الاعتماد", ex.Message);
-        Assert.Empty(await _service.ListAsync());
+        Assert.Empty(await _list.ListAsync());
         Assert.Empty(_audit.Actions);
     }
 
@@ -149,7 +150,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
             _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "TestPass1234", null, reviewId), "مدير"));
 
         Assert.Contains("بانتظار المراجعة", ex.Message);
-        Assert.Empty(await _service.ListAsync());
+        Assert.Empty(await _list.ListAsync());
     }
 
     [PostgresFact]
@@ -161,7 +162,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
             _createDelegate.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "TestPass1234", null, offId), "مدير"));
 
         Assert.Contains("غير نشط", ex.Message);
-        Assert.Empty(await _service.ListAsync());
+        Assert.Empty(await _list.ListAsync());
     }
 
     [PostgresFact]
@@ -211,7 +212,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         Assert.Contains("بانتظار الاعتماد", ex.Message);
 
         // الرفض قبل أي تعديل: النطاق القديم محفوظ.
-        var dto = Assert.Single(await _service.ListAsync());
+        var dto = Assert.Single(await _list.ListAsync());
         Assert.Equal(_groupId, dto.PortalGroupId);
         Assert.Null(dto.PortalEntryId);
     }
@@ -305,7 +306,7 @@ public class EntityDelegateServiceTests : PostgresDbTest
         Assert.Equal("delegate.dam", dto.Username);
 
         // والقائمة محجوبة عن خارج المحافظة.
-        var list = await _service.ListAsync(default, actor);
+        var list = await _list.ListAsync(default, actor);
         Assert.All(list, d => Assert.NotEqual("delegate.alp", d.Username));
     }
 }

@@ -46,7 +46,7 @@ internal sealed class GetSectionQueryHandler : QueryHandlerBase<GetSectionQuery,
         return SectionProjection.ToDto(
             section,
             branch?.Name,
-            await SectionProjection.ListCircuitsAsync(_circuits, _cache, ct),
+            await ReferenceDataQueries.ListCircuitsAsync(_circuits, _cache, ct),
             await _users.ListUsersBySectionAsync(section.Id, ct));
     }
 }

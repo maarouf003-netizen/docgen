@@ -1,10 +1,5 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -54,33 +49,5 @@ public sealed partial class ExecutionCircuitService : IExecutionCircuitService
             sourceOwnerId, _documents, _users, _alerts, token);
         await _uow.SaveChangesAsync(token);
         _cache?.Invalidate(ReferenceDataGroups.Circuits);
-    }
-
-    public async Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default)
-    {
-        var docs = await _documents.ListPendingForLawyerAsync(lawyerId, circuitId, ct);
-        if (docs.Count == 0) return new List<PendingRegistrationDto>();
-        var referrals = await _documents.ListLastCircuitReferralsAsync(docs.Select(d => d.Id).ToList(), ct);
-        var referralByDoc = referrals
-            .GroupBy(o => o.DocumentId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(o => o.Id).First());
-        var circuits = await ListCircuitsAsync(ct);
-        var circuitNames = circuits.ToDictionary(c => c.Id, c => c.Name);
-        return docs.OrderBy(d => d.Id).Select(d =>
-        {
-            // المعروض حاليًا (قديم — من EffectiveFileIdentity).
-            referralByDoc.TryGetValue(d.Id, out var lastReferred);
-            string? circuitName = null;
-            if (d.ExecutionCircuitId is not null)
-                circuitNames.TryGetValue(d.ExecutionCircuitId.Value, out circuitName);
-            return new PendingRegistrationDto(
-                d.Id,
-                d.ExecutionCircuitId ?? 0,
-                circuitName ?? d.Court,
-                d.BorrowerName,
-                lastReferred?.FileNumber ?? d.FileNumber,
-                lastReferred?.FileType ?? d.FileType,
-                lastReferred?.Year?.ToString(CultureInfo.InvariantCulture) ?? d.FileYear);
-        }).ToList();
     }
 }

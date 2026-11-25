@@ -20,7 +20,11 @@ namespace DocGenerator.Api.Controllers;
 [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
 public class ExecutionCircuitsController : ControllerBase
 {
-    private readonly IExecutionCircuitService _circuits;
+    private readonly IQueryHandler<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>> _listMine;
+    private readonly IQueryHandler<ListCircuitFilesQuery, List<CircuitFileDto>> _listFiles;
+    private readonly IQueryHandler<ListExecutionCircuitsForLawyerQuery, List<ExecutionCircuitDto>> _listForLawyer;
+    private readonly IQueryHandler<ListExecutionCircuitsForDelegationQuery, List<ExecutionCircuitDto>> _listForDelegation;
+    private readonly IQueryHandler<GetCircuitStatsQuery, List<CircuitStatsDto>> _circuitStats;
     private readonly Application.Common.Interfaces.IRepository<Domain.Entities.Branch> _branches;
     private readonly IExcelExportService _excel;
     private readonly TimeProvider _clock;
@@ -34,7 +38,11 @@ public class ExecutionCircuitsController : ControllerBase
     private readonly ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> _referFiles;
 
     public ExecutionCircuitsController(
-        IExecutionCircuitService circuits,
+        IQueryHandler<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>> listMine,
+        IQueryHandler<ListCircuitFilesQuery, List<CircuitFileDto>> listFiles,
+        IQueryHandler<ListExecutionCircuitsForLawyerQuery, List<ExecutionCircuitDto>> listForLawyer,
+        IQueryHandler<ListExecutionCircuitsForDelegationQuery, List<ExecutionCircuitDto>> listForDelegation,
+        IQueryHandler<GetCircuitStatsQuery, List<CircuitStatsDto>> circuitStats,
         Application.Common.Interfaces.IRepository<Domain.Entities.Branch> branches,
         IExcelExportService excel,
         TimeProvider clock,
@@ -47,7 +55,11 @@ public class ExecutionCircuitsController : ControllerBase
         ICommandHandler<TransferExecutionCircuitCommand, ExecutionCircuitDto> transferCircuit,
         ICommandHandler<ReferCircuitFilesCommand, ReferCircuitFilesResult> referFiles)
     {
-        _circuits = circuits;
+        _listMine = listMine;
+        _listFiles = listFiles;
+        _listForLawyer = listForLawyer;
+        _listForDelegation = listForDelegation;
+        _circuitStats = circuitStats;
         _branches = branches;
         _excel = excel;
         _clock = clock;
@@ -96,7 +108,8 @@ public class ExecutionCircuitsController : ControllerBase
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
-        return Ok(await _circuits.ListMineAsync(branchId, ownerSectionId, ct));
+        return Ok(await _listMine.HandleAsync(
+            new ListMineExecutionCircuitsQuery(branchId, ownerSectionId), ct));
     }
 
     /// <summary>نافذة الإفراغ (حزمة A): كل ملفات الدائرة غير المحذوفة أيًا كانت حالتها — نطاق المالك إلزامي.</summary>
@@ -106,7 +119,8 @@ public class ExecutionCircuitsController : ControllerBase
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
-        return Ok(await _circuits.ListFilesAsync(id, branchId, ownerSectionId, ct));
+        return Ok(await _listFiles.HandleAsync(
+            new ListCircuitFilesQuery(id, branchId, ownerSectionId), ct));
     }
 
     [HttpPost]
@@ -211,7 +225,8 @@ public class ExecutionCircuitsController : ControllerBase
         var ownerSectionId = limitToOwner ? User.GetSectionId() : null;
         if (limitToOwner && IsSubHead && ownerSectionId is null)
             return Forbid();
-        return Ok(await _circuits.ListForLawyerAsync(branchId.Value, ownerSectionId, limitToOwner, ct));
+        return Ok(await _listForLawyer.HandleAsync(
+            new ListExecutionCircuitsForLawyerQuery(branchId.Value, ownerSectionId, limitToOwner), ct));
     }
 
     [HttpGet("for-delegation")]
@@ -225,7 +240,8 @@ public class ExecutionCircuitsController : ControllerBase
         var branchGov = branch?.Governorate;
         if (string.IsNullOrWhiteSpace(branchGov))
             return Ok(new List<ExecutionCircuitDto>());
-        return Ok(await _circuits.ListForDelegationAsync(branchGov, ct));
+        return Ok(await _listForDelegation.HandleAsync(
+            new ListExecutionCircuitsForDelegationQuery(branchGov), ct));
     }
 
     [HttpPost("{id:int}/refer-files")]
@@ -302,10 +318,10 @@ public class ExecutionCircuitsController : ControllerBase
     public async Task<IActionResult> Stats([FromQuery] int? branchId, CancellationToken ct)
     {
         if (_capabilities.Has(User, UserCapability.HasFullAccess))
-            return Ok(await _circuits.CircuitStatsAsync(branchId, null, true, ct));
+            return Ok(await _circuitStats.HandleAsync(new GetCircuitStatsQuery(branchId, null, true), ct));
         var error = RequireOwnerScope(out var own, out var ownerSectionId);
         if (error is not null) return error;
-        return Ok(await _circuits.CircuitStatsAsync(own, ownerSectionId, false, ct));
+        return Ok(await _circuitStats.HandleAsync(new GetCircuitStatsQuery(own, ownerSectionId, false), ct));
     }
 
     /// <summary>
@@ -320,13 +336,13 @@ public class ExecutionCircuitsController : ControllerBase
         List<CircuitStatsDto> rows;
         if (_capabilities.Has(User, UserCapability.HasFullAccess))
         {
-            rows = await _circuits.CircuitStatsAsync(branchId, null, true, ct);
+            rows = await _circuitStats.HandleAsync(new GetCircuitStatsQuery(branchId, null, true), ct);
         }
         else
         {
             var error = RequireOwnerScope(out var own, out var ownerSectionId);
             if (error is not null) return error;
-            rows = await _circuits.CircuitStatsAsync(own, ownerSectionId, false, ct);
+            rows = await _circuitStats.HandleAsync(new GetCircuitStatsQuery(own, ownerSectionId, false), ct);
         }
         var stream = _excel.BuildCircuitStatsWorkbook(rows);
         return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -340,14 +356,14 @@ public class ExecutionCircuitsController : ControllerBase
 [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
 public class PendingRegistrationsController : ControllerBase
 {
-    private readonly IExecutionCircuitService _circuits;
+    private readonly IQueryHandler<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>> _pendingRegistrations;
     private readonly ICommandHandler<CompletePendingRegistrationsCommand, int> _completeRegistrations;
 
     public PendingRegistrationsController(
-        IExecutionCircuitService circuits,
+        IQueryHandler<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>> pendingRegistrations,
         ICommandHandler<CompletePendingRegistrationsCommand, int> completeRegistrations)
     {
-        _circuits = circuits;
+        _pendingRegistrations = pendingRegistrations;
         _completeRegistrations = completeRegistrations;
     }
 
@@ -357,7 +373,8 @@ public class PendingRegistrationsController : ControllerBase
     [Authorize(Roles = "lawyer")]
     public async Task<IActionResult> MyPending([FromQuery] int? circuitId, CancellationToken ct)
     {
-        return Ok(await _circuits.MyPendingRegistrationsAsync(User.GetUserId(), circuitId, ct));
+        return Ok(await _pendingRegistrations.HandleAsync(
+            new ListMyPendingRegistrationsQuery(User.GetUserId(), circuitId), ct));
     }
 
     [HttpPost("complete-registrations")]

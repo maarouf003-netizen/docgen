@@ -39,12 +39,12 @@ internal sealed class ListSectionsQueryHandler : QueryHandlerBase<ListSectionsQu
     {
         var branch = await _branches.GetByIdAsync(query.BranchId, ct)
             ?? throw new ArgumentException("الفرع غير موجود");
-        var all = await SectionProjection.ListSectionsAsync(_sections, _cache, ct);
+        var all = await ReferenceDataQueries.ListSectionsAsync(_sections, _cache, ct);
         var sections = all.Where(s => s.BranchId == query.BranchId).OrderBy(s => s.Name).ToList();
         if (sections.Count == 0)
             return new List<SectionDto>();
 
-        var circuits = await SectionProjection.ListCircuitsAsync(_circuits, _cache, ct);
+        var circuits = await ReferenceDataQueries.ListCircuitsAsync(_circuits, _cache, ct);
         var circuitCounts = circuits
             .Where(c => c.SectionId.HasValue)
             .GroupBy(c => c.SectionId!.Value)
