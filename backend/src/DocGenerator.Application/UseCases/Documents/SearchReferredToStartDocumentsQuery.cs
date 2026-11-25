@@ -1,0 +1,52 @@
+using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
+
+namespace DocGenerator.Application.UseCases.Documents;
+
+/// <summary>
+/// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
+/// «منفذ جبريا» المحال بجزئيته) — صفحة «محال الى البداية»، ظاهرة لجميع الأدوار.
+/// </summary>
+public sealed record SearchReferredToStartDocumentsQuery(
+    string? Query, int Page, int PerPage, int? VisibleBranchId = null,
+    int? VisibleUserId = null, int? OwnerSectionId = null)
+    : IQuery<PagedResult<DocumentResponse>>;
+
+internal sealed class SearchReferredToStartDocumentsQueryHandler
+    : QueryHandlerBase<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>>
+{
+    private readonly IDocumentRepository _documents;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public SearchReferredToStartDocumentsQueryHandler(
+        IDocumentRepository documents,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IEnumerable<IPipelineBehavior<SearchReferredToStartDocumentsQuery, PagedResult<DocumentResponse>>> behaviors)
+        : base(behaviors)
+    {
+        _documents = documents;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
+    protected override async Task<PagedResult<DocumentResponse>> HandleCoreAsync(
+        SearchReferredToStartDocumentsQuery query, CancellationToken ct)
+    {
+        var page = Math.Max(1, query.Page);
+        var perPage = Math.Clamp(query.PerPage, 1, 100);
+
+        var (total, items) = await _documents.SearchReferredToStartAsync(query.Query, query.VisibleBranchId, query.VisibleUserId, page, perPage, ct, query.OwnerSectionId);
+
+        return new PagedResult<DocumentResponse>
+        {
+            Items = items.Select(d => DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone))).ToList(),
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
+        };
+    }
+}
