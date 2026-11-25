@@ -3,7 +3,6 @@ using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Correspondences;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -22,27 +21,42 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class CorrespondencesController : ControllerBase
 {
-    private readonly ICorrespondenceService _letters;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _create;
     private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addAddendum;
     private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _reply;
     private readonly ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> _markSeen;
+    private readonly IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> _search;
+    private readonly IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> _get;
+    private readonly IQueryHandler<CountUnseenCorrespondencesQuery, int> _unseenCount;
+    private readonly IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> _listByDocument;
+    private readonly IQueryHandler<GetCorrespondenceGovernoratesQuery, List<string>> _governorates;
+    private readonly IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> _targets;
 
     public CorrespondencesController(
-        ICorrespondenceService letters,
         IUserCapabilities capabilities,
         ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> create,
         ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> addAddendum,
         ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> reply,
-        ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> markSeen)
+        ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> markSeen,
+        IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> search,
+        IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> get,
+        IQueryHandler<CountUnseenCorrespondencesQuery, int> unseenCount,
+        IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> listByDocument,
+        IQueryHandler<GetCorrespondenceGovernoratesQuery, List<string>> governorates,
+        IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> targets)
     {
-        _letters = letters;
         _capabilities = capabilities;
         _create = create;
         _addAddendum = addAddendum;
         _reply = reply;
         _markSeen = markSeen;
+        _search = search;
+        _get = get;
+        _unseenCount = unseenCount;
+        _listByDocument = listByDocument;
+        _governorates = governorates;
+        _targets = targets;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -66,8 +80,9 @@ public class CorrespondencesController : ControllerBase
     {
         if (IsSubHead && SectionId is null)
             return Forbid();
-        var result = await _letters.SearchAsync(UserId, Role, BranchId, q, governorate,
-            importance, page, perPage, ct, SectionId);
+        var result = await _search.HandleAsync(
+            new SearchCorrespondencesQuery(UserId, Role, BranchId, q, governorate,
+                importance, page, perPage, SectionId), ct);
         return Ok(result);
     }
 
@@ -78,7 +93,7 @@ public class CorrespondencesController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanSeeAdministrativeBranch))
             return Ok(new { governorates = new List<string>() });
 
-        var governorates = await _letters.GetGovernoratesAsync(ct);
+        var governorates = await _governorates.HandleAsync(new GetCorrespondenceGovernoratesQuery(), ct);
         return Ok(new { governorates });
     }
 
@@ -92,7 +107,8 @@ public class CorrespondencesController : ControllerBase
         if (IsSubHead && SectionId is null)
             return Forbid();
 
-        return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
+        return Ok(await _targets.HandleAsync(
+            new SearchCorrespondenceTargetsQuery(UserId, Role, BranchId, q, documentId, SectionId), ct));
     }
 
     /// <summary>عدد مراسلات المستخدم غير المؤكَّدة المشاهدة (بأي أهمية) — جرس المراسلات وشارتها.</summary>
@@ -102,7 +118,7 @@ public class CorrespondencesController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanCreateCorrespondences))
             return Forbid();
 
-        var count = await _letters.CountUnseenAsync(UserId, ct);
+        var count = await _unseenCount.HandleAsync(new CountUnseenCorrespondencesQuery(UserId), ct);
         return Ok(new { count });
     }
 
@@ -112,7 +128,8 @@ public class CorrespondencesController : ControllerBase
     {
         try
         {
-            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
+            var items = await _listByDocument.HandleAsync(
+                new ListCorrespondencesByDocumentQuery(documentId, UserId, Role, BranchId, SectionId), ct);
             return Ok(items);
         }
         catch (KeyNotFoundException e)
@@ -151,7 +168,8 @@ public class CorrespondencesController : ControllerBase
     {
         try
         {
-            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
+            var letter = await _get.HandleAsync(
+                new GetCorrespondenceQuery(id, UserId, Role, BranchId, SectionId), ct);
             return Ok(letter);
         }
         catch (KeyNotFoundException e)

@@ -27,6 +27,10 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
     private readonly CorrespondenceService _correspondences;
+    private readonly IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> _letterSearch;
+    private readonly IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> _letterGet;
+    private readonly IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> _letterListByDocument;
+    private readonly IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> _letterTargets;
     private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
     private readonly FakeAuditLogger _audit = new();
 
@@ -107,6 +111,27 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             TestClock.Provider,
             new DbExceptionClassifier(),
             Array.Empty<IPipelineBehavior<CreateCorrespondenceCommand, CorrespondenceDto>>());
+
+        var corrRepo = new CorrespondenceRepository(_db);
+        var corrDocuments = new DocumentRepository(_db);
+        var corrCircuits = circuits;
+        var corrBranches = new BranchRepository(_db);
+        var corrAppeals = new AppealRepository(_db);
+        var corrDelegations = new DelegationRepository(_db);
+        var corrPortal = new PortalRepository(_db);
+        _letterSearch = new SearchCorrespondencesQueryHandler(
+            corrRepo, corrBranches, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>>>());
+        _letterGet = new GetCorrespondenceQueryHandler(
+            corrRepo, corrDocuments, corrCircuits, corrBranches, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetCorrespondenceQuery, CorrespondenceDto>>());
+        _letterListByDocument = new ListCorrespondencesByDocumentQueryHandler(
+            corrRepo, corrDocuments, corrCircuits, corrAppeals, corrDelegations, corrPortal, corrBranches,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>>>());
+        _letterTargets = new SearchCorrespondenceTargetsQueryHandler(
+            corrDocuments, new UserRepository(_db), corrCircuits, corrAppeals, corrDelegations, corrPortal,
+            Array.Empty<IPipelineBehavior<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>>>());
     }
 
 
@@ -386,7 +411,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _correspondences.ListByDocumentAsync(legacy.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
+            _letterListByDocument.ListByDocumentAsync(legacy.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 
     [PostgresFact]
@@ -574,7 +599,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
         await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
 
-        var targets = await _correspondences.SearchTargetsAsync(
+        var targets = await _letterTargets.SearchTargetsAsync(
             _lawyer1.Id, UserRole.Lawyer, _branch.Id, "sub_masyaf", null, default);
 
         Assert.Contains(targets, t => t.FullName == "sub_masyaf");
@@ -609,12 +634,12 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new CreateCorrespondenceRequest(null, _lawyer2.Id, "normal", "<p>خاصة</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
 
-        var subView = await _correspondences.SearchAsync(
+        var subView = await _letterSearch.SearchAsync(
             sub.Id, UserRole.SubHead, _branch.Id, null, null, null, 1, 20, default, sectionId);
         Assert.Equal(1, subView.TotalCount);
         Assert.Equal("sub_masyaf", subView.Items.Single().TargetName);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _correspondences.SearchAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _letterSearch.SearchAsync(
             sub.Id, UserRole.SubHead, _branch.Id, null, null, null, 1, 20, default, null));
     }
 
@@ -631,11 +656,11 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new CreateCorrespondenceRequest(null, _head1.Id, "normal", "<p>للقسم</p>"),
             _lawyer1.Id, "lawyer1", UserRole.Lawyer, _branch.Id);
 
-        var seen = await _correspondences.GetByIdAsync(
+        var seen = await _letterGet.GetByIdAsync(
             sectionLetter.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId);
         Assert.Equal(sectionLetter.Id, seen.Id);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _correspondences.GetByIdAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _letterGet.GetByIdAsync(
             headLetter.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 
@@ -678,9 +703,9 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         });
         await _db.SaveChangesAsync();
 
-        Assert.Single(await _correspondences.ListByDocumentAsync(
+        Assert.Single(await _letterListByDocument.ListByDocumentAsync(
             sectionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _correspondences.ListByDocumentAsync(divisionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
+            _letterListByDocument.ListByDocumentAsync(divisionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 }
