@@ -1,10 +1,9 @@
 using System.Net;
 using System.Security.Claims;
 using DocGenerator.Api.Controllers;
-using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
+using DocGenerator.Application.UseCases.Statistics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,27 +12,27 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// حراس النقاط الإحصائية (`RequireOwnBranch`): الدور المقيَّد بلا فرع (رئيس/محامٍ)
 /// يُرفض صراحة بدل تمرير `null` (كل الفروع) إلى المستودع. تُختبر هنا بهوية
-/// مطالبات مصنوعة وخدمة مزيفة، لأن قيد القاعدة يجعل تجسيد الصف الشاذ عبر EF
-/// مستحيلًا — وهذا مقصود: المتحكم يحرس قرار الرفض، والقاعدة تحرس التخزين.
+/// مطالبات مصنوعة ومعالجات استعلام مزيفة، لأن قيد القاعدة يجعل تجسيد الصف الشاذ عبر
+/// EF مستحيلًا — وهذا مقصود: المتحكم يحرس قرار الرفض، والقاعدة تحرس التخزين.
 /// </summary>
 public sealed class StatisticsBranchGuardTests
 {
-    private sealed class FakeStatisticsService : IStatisticsService
+    private sealed class StubQueryHandler<TQuery, TResult> : IQueryHandler<TQuery, TResult>
+        where TQuery : IQuery<TResult>
     {
-        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => Task.FromResult(new DashboardStatsDto(0, 0, 0, 0, 0, 0, 0, 0));
-        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => Task.FromResult(new List<MonthlyStatDto>());
-        public Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<UserActivityDto>> GetUserActivityAsync(CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true) => throw new NotImplementedException();
-        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true) => throw new NotImplementedException();
-        public Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true)
-            => Task.FromResult(new List<MonthlyStatDto>());
+        private readonly TResult _result;
+
+        public StubQueryHandler(TResult result) => _result = result;
+
+        public Task<TResult> HandleAsync(TQuery query, CancellationToken ct = default)
+            => Task.FromResult(_result);
+    }
+
+    private sealed class ThrowingQueryHandler<TQuery, TResult> : IQueryHandler<TQuery, TResult>
+        where TQuery : IQuery<TResult>
+    {
+        public Task<TResult> HandleAsync(TQuery query, CancellationToken ct = default)
+            => throw new NotImplementedException();
     }
 
     private static StatisticsController ControllerFor(string role, int? branchId)
@@ -48,7 +47,17 @@ public sealed class StatisticsBranchGuardTests
             claims.Add(new Claim("branch_id", branchId.Value.ToString()));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
         var controller = new StatisticsController(
-            new FakeStatisticsService(), null!, new DocGenerator.Api.Authorization.UserCapabilities());
+            new StubQueryHandler<GetDashboardStatsQuery, DashboardStatsDto>(
+                new DashboardStatsDto(0, 0, 0, 0, 0, 0, 0, 0)),
+            new StubQueryHandler<GetMonthlyStatsQuery, List<MonthlyStatDto>>(new List<MonthlyStatDto>()),
+            new ThrowingQueryHandler<GetBranchesSummaryQuery, List<BranchSummaryDto>>(),
+            new ThrowingQueryHandler<GetUserActivityQuery, List<UserActivityDto>>(),
+            new ThrowingQueryHandler<GetRemindersQuery, List<ReminderDto>>(),
+            new ThrowingQueryHandler<GetManagerStatsQuery, ManagerStatsDto>(),
+            new ThrowingQueryHandler<GetManagerLawyerStatsQuery, List<ManagerLawyerStatDto>>(),
+            new ThrowingQueryHandler<GetPersonalStatsQuery, ManagerStatsDto>(),
+            new StubQueryHandler<GetAvailablePeriodsQuery, List<MonthlyStatDto>>(new List<MonthlyStatDto>()),
+            new DocGenerator.Api.Authorization.UserCapabilities());
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext { User = principal },

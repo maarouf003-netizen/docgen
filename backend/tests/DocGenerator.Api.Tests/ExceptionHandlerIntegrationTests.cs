@@ -5,8 +5,9 @@ using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.UseCases.Statistics;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -29,10 +30,10 @@ public class ExceptionHandlerIntegrationTests
     [PostgresFact]
     public async Task UnhandledException_ThroughPipeline_ReturnsJson500WithMessage()
     {
-        var fake = new ThrowingStatisticsService();
+        var fake = new ThrowingDashboardStatsQueryHandler();
         using var factory = _factory.WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
-                services.AddScoped<IStatisticsService>(_ => fake)));
+                services.AddScoped<IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto>>(_ => fake)));
 
         var loginBody = JsonSerializer.Serialize(new { username = "lawyer1", password = "123456" });
         var loginResponse = await factory.CreateClient().PostAsync("/api/auth/login",
@@ -304,41 +305,11 @@ public class ExceptionHandlerIntegrationTests
         public void OnCompleted(Func<object, Task> callback, object state) { }
     }
 
-    private sealed class ThrowingStatisticsService : IStatisticsService
+    private sealed class ThrowingDashboardStatsQueryHandler
+        : IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto>
     {
-        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<UserActivityDto>> GetUserActivityAsync(CancellationToken ct = default)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
-            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
-            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId,
-            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
-
-        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default,
-            int? ownerSectionId = null, bool fullAccess = true)
-            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
+        public Task<DashboardStatsDto> HandleAsync(
+            GetDashboardStatsQuery query, CancellationToken ct = default)
+            => throw new InvalidOperationException("تعطلت قراءة الإحصاءات");
     }
 }
