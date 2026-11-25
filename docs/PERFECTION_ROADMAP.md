@@ -1067,7 +1067,9 @@
   `docs/audit/206-p4-01ch-unify-names-command-20261125.md` و
   `docs/audit/207-p4-01ch-followup-review-20261125.md` و
   `docs/audit/208-p4-01ci-create-document-ownership-20261125.md` و
-  `docs/audit/209-p4-01ci-followup-review-20261125.md`.
+  `docs/audit/209-p4-01ci-followup-review-20261125.md` و
+  `docs/audit/210-p4-01cj-public-entity-reads-20261125.md` و
+  `docs/audit/211-p4-01cj-followup-review-20261125.md`.
   **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
   (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
   منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
@@ -1094,8 +1096,22 @@
   التدقيق، وقعة الشطب، وزرع الإجراءات — بحفاظ حرفي (50/50 و22/22)؛ وأُزيل `CreateAsync` من
   `IDocumentService` (8 → 7 قراءات)، وحُذف `DocumentService.Crud.cs` بعد إفراغه، وتقلّصت
   `DocumentService` إلى 5 حقول/5 معاملات، ونُقلت **356** موضع نداء اختباري إلى المعالج عبر جسر.
+  **`P4-01cj`:** اكتمل مسح قراءات سجل الجهات — نُقلت عشرة أسطح قراءة من `IPublicEntityService`
+  إلى عشرة استعلامات `IQuery<TResponse>` ومعالجات `QueryHandlerBase` تحت
+  `UseCases/PublicEntities/`: القائمة، بحاجة المراجعة وعدّها، سجل التغييرات وتصديره، معاينة
+  الاستيراد، المجموعات، المشابهات، قيود المجموعة، واقتراحات تعديل الجهة الأم — قراءة صرفة بلا
+  كتابة ولا معاملة، بحفاظ سطي **205/205** سطرًا (`diffs = 0` في سبعة، وسطر ربط/تمرير اعتماد
+  واحد في ثلاثة) وبلا فرق في النطاق/الصلاحيات أو الرسائل؛ وحُذف `IPublicEntityService` نهائيًا
+  (10 → 0) وتسجيله في `DI`، وبقي `PublicEntityService` تنفيذًا وحيدًا لـ`IPublicEntityWriteRules`
+  مع تقليص حقوله **12 → 10** (`_suggestions` بعد نقل آخر مستخدميه، و`_tx` الميت أصلًا) ومنشئه
+  **12 → 10**، وحُذف `PublicEntityService.Registry.cs` بعد إفراغه، ونُقلت سجلات
+  `EntityRegistryActor`/`EntityRegistryListQuery` إلى ملف مستقل؛ وارتفع `DI` إلى **134/134/0**،
+  وحُوِّل **59** موضع نداء اختباري عبر جسر واحد. التفاصيل:
+  `docs/audit/210-p4-01cj-public-entity-reads-20261125.md` و
+  `docs/audit/211-p4-01cj-followup-review-20261125.md`.
   **متبقٍ:** مسح module-by-module لبقية الوحدات (المطالعات/الإنابات/الاستئنافات/البوابة/
-  الإحصاءات) للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية.
+  الإحصاءات) للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية —
+  اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

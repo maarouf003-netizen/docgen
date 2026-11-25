@@ -7,7 +7,7 @@ namespace DocGenerator.Application.Tests.TestHelpers;
 
 /// <summary>
 /// جسور اختبارية لمعالجات معاينات سجل الجهات (`P4-01cg`): تحافظ على توقيعات
-/// <c>IPublicEntityService</c> القديمة فوق معالجات الاستعلام — منطق الاختبارات كما هو.
+/// الخدمة القديمة فوق معالجات الاستعلام — منطق الاختبارات كما هو.
 /// </summary>
 public static class PublicEntityPreviewQueryExtensions
 {

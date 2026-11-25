@@ -21,7 +21,6 @@ namespace DocGenerator.Application.Tests;
 public class PortalScopingTests : PostgresDbTest
 {
     private readonly IPortalService _portal;
-    private readonly IPublicEntityService _entities;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
@@ -70,21 +69,19 @@ public class PortalScopingTests : PostgresDbTest
         _portal = PortalServiceFactory.Create(_db, _audit);
 
         var tx = new TransactionRunner(_db);
-        _entities = new PublicEntityService(
+        var entities = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
             new HeadAlertRepository(_db),
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
-            tx,
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));
         _renameGroup = new RenamePublicEntityGroupCommandHandler(
-            (IPublicEntityWriteRules)_entities, new PublicEntityRepository(_db),
+            (IPublicEntityWriteRules)entities, new PublicEntityRepository(_db),
             new Repository<DocumentOccurrence>(_db), new UnitOfWork(_db), tx, _audit,
             Array.Empty<IPipelineBehavior<RenamePublicEntityGroupCommand, RenameGroupResponse>>());
     }

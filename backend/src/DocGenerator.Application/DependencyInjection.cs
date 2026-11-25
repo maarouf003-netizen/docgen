@@ -67,7 +67,6 @@ public static class DependencyInjection
         services.AddScoped<IPersonalReminderService, PersonalReminderService>();
         services.AddScoped<IAppSuggestionService, AppSuggestionService>();
         services.AddScoped<PublicEntityService>();
-        services.AddScoped<IPublicEntityService>(sp => sp.GetRequiredService<PublicEntityService>());
         services.AddScoped<IPublicEntityWriteRules>(sp => sp.GetRequiredService<PublicEntityService>());
         services.AddScoped<IPortalService, PortalService>();
         services.AddScoped<EntityDelegateService>();
@@ -153,6 +152,16 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse>, PreviewRenameGroupQueryHandler>();
         services.AddScoped<IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse>, PreviewAbolishAndReplaceQueryHandler>();
         services.AddScoped<IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse>, PreviewBranchActionQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPublicEntitiesQuery, PagedResult<PublicEntityEntryDto>>, ListPublicEntitiesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPublicEntitiesNeedingReviewQuery, List<PublicEntityEntryDto>>, ListPublicEntitiesNeedingReviewQueryHandler>();
+        services.AddScoped<IQueryHandler<CountPublicEntitiesNeedingReviewQuery, int>, CountPublicEntitiesNeedingReviewQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPublicEntityChangeEventsQuery, PagedResult<EntityChangeEventDto>>, ListPublicEntityChangeEventsQueryHandler>();
+        services.AddScoped<IQueryHandler<ExportPublicEntityChangeEventsQuery, Stream>, ExportPublicEntityChangeEventsQueryHandler>();
+        services.AddScoped<IQueryHandler<PreviewPublicEntityImportQuery, ImportPreviewResponse>, PreviewPublicEntityImportQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPublicEntityGroupsQuery, PagedResult<PublicEntityGroupDto>>, ListPublicEntityGroupsQueryHandler>();
+        services.AddScoped<IQueryHandler<FindSimilarPublicEntityGroupsQuery, SimilarToResponse>, FindSimilarPublicEntityGroupsQueryHandler>();
+        services.AddScoped<IQueryHandler<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>>, ListPublicEntityGroupEntriesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>>, ListParentEditSuggestionsQueryHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentDelegationCommand, bool>, DeleteDocumentDelegationCommandHandler>();
         services.AddScoped<ICommandHandler<DeleteDocumentAppealCommand, bool>, DeleteDocumentAppealCommandHandler>();
         services.AddScoped<ICommandHandler<CreateDocumentDelegationCommand, DelegationDto>, CreateDocumentDelegationCommandHandler>();

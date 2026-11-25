@@ -10,7 +10,8 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class PublicEntityService
 {
-    // ── سجل تغييرات الجهات (د5 §7) ──
+    // ── مساعدات سجل تغييرات الجهات (د5 §7) — قراءة صرفة يستهلكها معالجا الاستعلام ──
+    // تبقى هنا مصدرًا واحدًا بلا أي كتابة ولا معاملة.
 
     private static (DateTime? From, DateTime? To) ParseChangeEventPeriod(string? fromRaw, string? toRaw)
     {
@@ -43,17 +44,19 @@ public sealed partial class PublicEntityService
         if (e.Group != null) return e.Group.Entries.Any(en => en.Governorate == governorate);
         return false;
     }
-    private async Task<List<PublicEntityChangeEvent>> GetFilteredChangeEventsAsync(
+    internal static async Task<List<PublicEntityChangeEvent>> GetFilteredChangeEventsAsync(
+        IPublicEntityRepository entities,
+        IRepository<Branch> branches,
         EntityChangeEventQuery query,
         EntityRegistryActor actor,
         CancellationToken ct)
     {
-        var all = await _entities.ListChangeEventsAsync(ct);
+        var all = await entities.ListChangeEventsAsync(ct);
         // نطاق الرئيس: محافظته فقط (جبر خادمي يتجاهل پارامتر العميل تمامًا).
         string? governorate = NormalizeOptional(query.Governorate);
         if (actor.Role is UserRole.Head or UserRole.SubHead && actor.BranchId.HasValue)
         {
-            var headBranch = await _branches.GetByIdAsync(actor.BranchId.Value, ct);
+            var headBranch = await branches.GetByIdAsync(actor.BranchId.Value, ct);
             governorate = NormalizeOptional(headBranch?.Governorate);
         }
         var actionKind = NormalizeOptional(query.ActionKind);
@@ -102,28 +105,7 @@ public sealed partial class PublicEntityService
         return ArabicNameNormalizer.Normalize(e.ActorUser?.FullName).Contains(normalized, StringComparison.Ordinal)
             || ArabicNameNormalizer.Normalize(e.ActorUser?.Username).Contains(normalized, StringComparison.Ordinal);
     }
-    public async Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default)
-    {
-        var filtered = await GetFilteredChangeEventsAsync(query, actor, ct);
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
-        var total = filtered.Count;
-        var items = filtered.Skip((page - 1) * perPage).Take(perPage).Select(ToChangeEventDto).ToList();
-        return new PagedResult<EntityChangeEventDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };
-    }
-    public async Task<Stream> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default)
-    {
-        var filtered = await GetFilteredChangeEventsAsync(query, actor, ct);
-        var items = filtered.Take(5000).Select(ToChangeEventDto).ToList();
-        var degraded = items.Count(i => i.SummaryDegraded);
-        await _audit.LogAsync(actor.Name, "export_change_events",
-            details: $"تصدير سجل تغييرات الجهات: {items.Count} سطرًا"
-                + (degraded > 0 ? $" (منها {degraded} بملخص منقوص — يلزم مراجعة بياناتها في قاعدة البيانات)" : "")
-                + (query.Governorate != null ? $" محافظة={query.Governorate}" : ""), ct: ct);
-        var exporter = new ExcelExportService();
-        return exporter.BuildChangeEventsWorkbook(items);
-    }
-    private static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e)
+    internal static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e)
     {
         var (summary, degraded) = EntityChangeLogSummary.Build(e.ActionKind, e.PayloadJson, e.DecreeKind, e.DecreeNumber, e.DecreeDate);
         return new(

@@ -1,19 +1,11 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
 public sealed partial class PublicEntityService
 {
     // ── الاستيراد التاريخي (د12) ──
-
-    public async Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default)
-        => new(DateTime.UtcNow, await BuildImportCandidatesAsync(ct));
 
     /// <summary>يجمع النصوص المتمايزة من الطرفين بعد التطبيع مع عدّاداتها، ويستبقي المسجل مسبقًا.</summary>
     private async Task<List<ImportPreviewItemDto>> BuildImportCandidatesAsync(CancellationToken ct)
