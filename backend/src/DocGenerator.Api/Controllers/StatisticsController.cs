@@ -1,11 +1,11 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
-using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
-using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
+using DocGenerator.Application.DTOs;
+using DocGenerator.Application.UseCases.Statistics;
+using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -18,15 +18,38 @@ namespace DocGenerator.Api.Controllers;
 [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
 public class StatisticsController : ControllerBase
 {
-    private readonly IStatisticsService _stats;
-    private readonly IRepository<Branch> _branches;
+    private readonly IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto> _dashboard;
+    private readonly IQueryHandler<GetMonthlyStatsQuery, List<MonthlyStatDto>> _monthly;
+    private readonly IQueryHandler<GetBranchesSummaryQuery, List<BranchSummaryDto>> _branchesSummary;
+    private readonly IQueryHandler<GetUserActivityQuery, List<UserActivityDto>> _userActivity;
+    private readonly IQueryHandler<GetRemindersQuery, List<ReminderDto>> _reminders;
+    private readonly IQueryHandler<GetManagerStatsQuery, ManagerStatsDto> _managerStats;
+    private readonly IQueryHandler<GetManagerLawyerStatsQuery, List<ManagerLawyerStatDto>> _managerLawyerStats;
+    private readonly IQueryHandler<GetPersonalStatsQuery, ManagerStatsDto> _personalStats;
+    private readonly IQueryHandler<GetAvailablePeriodsQuery, List<MonthlyStatDto>> _availablePeriods;
     private readonly IUserCapabilities _capabilities;
 
     public StatisticsController(
-        IStatisticsService stats, IRepository<Branch> branches, IUserCapabilities capabilities)
+        IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto> dashboard,
+        IQueryHandler<GetMonthlyStatsQuery, List<MonthlyStatDto>> monthly,
+        IQueryHandler<GetBranchesSummaryQuery, List<BranchSummaryDto>> branchesSummary,
+        IQueryHandler<GetUserActivityQuery, List<UserActivityDto>> userActivity,
+        IQueryHandler<GetRemindersQuery, List<ReminderDto>> reminders,
+        IQueryHandler<GetManagerStatsQuery, ManagerStatsDto> managerStats,
+        IQueryHandler<GetManagerLawyerStatsQuery, List<ManagerLawyerStatDto>> managerLawyerStats,
+        IQueryHandler<GetPersonalStatsQuery, ManagerStatsDto> personalStats,
+        IQueryHandler<GetAvailablePeriodsQuery, List<MonthlyStatDto>> availablePeriods,
+        IUserCapabilities capabilities)
     {
-        _stats = stats;
-        _branches = branches;
+        _dashboard = dashboard;
+        _monthly = monthly;
+        _branchesSummary = branchesSummary;
+        _userActivity = userActivity;
+        _reminders = reminders;
+        _managerStats = managerStats;
+        _managerLawyerStats = managerLawyerStats;
+        _personalStats = personalStats;
+        _availablePeriods = availablePeriods;
         _capabilities = capabilities;
     }
 
@@ -91,16 +114,17 @@ public class StatisticsController : ControllerBase
         // الرؤساء بنطاق المالك (§12/قرار 27)، والمحامي بفرعه كما كان.
         // `null` هنا تعني الكل ولا تُمنح إلا لوصول المدير/المشرف الكامل.
         if (HasFullAccess)
-            return Ok(await _stats.GetDashboardStatsAsync(null, ct));
+            return Ok(await _dashboard.HandleAsync(new GetDashboardStatsQuery(null), ct));
         if (IsHeadOrSubHead)
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
-            return Ok(await _stats.GetDashboardStatsAsync(own, ct, ownerSectionId, false));
+            return Ok(await _dashboard.HandleAsync(
+                new GetDashboardStatsQuery(own, ownerSectionId, false), ct));
         }
         var branchError = RequireOwnBranch(out var branch);
         if (branchError is not null) return branchError;
-        return Ok(await _stats.GetDashboardStatsAsync(branch, ct));
+        return Ok(await _dashboard.HandleAsync(new GetDashboardStatsQuery(branch), ct));
     }
 
     [HttpGet("monthly-stats")]
@@ -109,34 +133,35 @@ public class StatisticsController : ControllerBase
     {
         // كـ `/dashboard` أعلاه: الرؤساء بنطاق المالك، والمحامي بفرعه.
         if (HasFullAccess)
-            return Ok(await _stats.GetMonthlyStatsAsync(null, ct));
+            return Ok(await _monthly.HandleAsync(new GetMonthlyStatsQuery(null), ct));
         if (IsHeadOrSubHead)
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
-            return Ok(await _stats.GetMonthlyStatsAsync(own, ct, ownerSectionId, false));
+            return Ok(await _monthly.HandleAsync(
+                new GetMonthlyStatsQuery(own, ownerSectionId, false), ct));
         }
         var branchError = RequireOwnBranch(out var branch);
         if (branchError is not null) return branchError;
-        return Ok(await _stats.GetMonthlyStatsAsync(branch, ct));
+        return Ok(await _monthly.HandleAsync(new GetMonthlyStatsQuery(branch), ct));
     }
 
     [HttpGet("reminders")]
     [Authorize(Roles = "lawyer")]
     public async Task<ActionResult<List<ReminderDto>>> Reminders(CancellationToken ct)
     {
-        return Ok(await _stats.GetRemindersAsync(User.GetUserId(), ct));
+        return Ok(await _reminders.HandleAsync(new GetRemindersQuery(User.GetUserId()), ct));
     }
 
     [HttpGet("branches/summary")]
     [Authorize(Roles = "manager,admin")]
     public async Task<ActionResult<List<BranchSummaryDto>>> BranchesSummary(CancellationToken ct)
-        => Ok(await _stats.GetBranchesSummaryAsync(ct));
+        => Ok(await _branchesSummary.HandleAsync(new GetBranchesSummaryQuery(), ct));
 
     [HttpGet("users/activity")]
     [Authorize(Roles = "manager,admin")]
     public async Task<ActionResult<List<UserActivityDto>>> UserActivity(CancellationToken ct)
-        => Ok(await _stats.GetUserActivityAsync(ct));
+        => Ok(await _userActivity.HandleAsync(new GetUserActivityQuery(), ct));
 
     [HttpGet("stats/manager")]
     [Authorize(Roles = "manager,admin,head,subhead")]
@@ -155,10 +180,12 @@ public class StatisticsController : ControllerBase
         // نطاق المالك (§12/قرار 27): رئيس القسم لإحصاء قسمه (تضييق مقصود)،
         // ورئيس الشعبة لشعبته، والمدير/المشرف للفرع ككل — ولا اختيار فرع آخر للرؤساء.
         if (HasFullAccess)
-            return Ok(await _stats.GetManagerStatsAsync(period, branchId, year, month, quarter, ct));
+            return Ok(await _managerStats.HandleAsync(
+                new GetManagerStatsQuery(period, branchId, year, month, quarter), ct));
         var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
         if (scopeError is not null) return scopeError;
-        return Ok(await _stats.GetManagerStatsAsync(period, own, year, month, quarter, ct, ownerSectionId, false));
+        return Ok(await _managerStats.HandleAsync(
+            new GetManagerStatsQuery(period, own, year, month, quarter, ownerSectionId, false), ct));
     }
 
     [HttpGet("stats/manager/lawyers")]
@@ -185,11 +212,13 @@ public class StatisticsController : ControllerBase
                     ApiErrorCodes.ValidationFailed,
                     "branchId مطلوب لجدول محامي الفرع",
                     field: "branchId");
-            return Ok(await _stats.GetManagerLawyerStatsAsync(period, branchId, year, month, quarter, ct));
+            return Ok(await _managerLawyerStats.HandleAsync(
+                new GetManagerLawyerStatsQuery(period, branchId, year, month, quarter), ct));
         }
         var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
         if (scopeError is not null) return scopeError;
-        return Ok(await _stats.GetManagerLawyerStatsAsync(period, own, year, month, quarter, ct, ownerSectionId, false));
+        return Ok(await _managerLawyerStats.HandleAsync(
+            new GetManagerLawyerStatsQuery(period, own, year, month, quarter, ownerSectionId, false), ct));
     }
 
     [HttpGet("stats/me")]
@@ -205,7 +234,8 @@ public class StatisticsController : ControllerBase
         if (invalid is not null)
             return invalid;
 
-        return Ok(await _stats.GetPersonalStatsAsync(period, User.GetUserId(), year, month, quarter, ct));
+        return Ok(await _personalStats.HandleAsync(
+            new GetPersonalStatsQuery(period, User.GetUserId(), year, month, quarter), ct));
     }
 
     /// <summary>
@@ -224,7 +254,8 @@ public class StatisticsController : ControllerBase
         {
             var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
             if (scopeError is not null) return scopeError;
-            return Ok(await _stats.GetAvailablePeriodsAsync(own, null, ct, ownerSectionId, false));
+            return Ok(await _availablePeriods.HandleAsync(
+                new GetAvailablePeriodsQuery(own, null, ownerSectionId, false), ct));
         }
         else if (IsLawyer)
         {
@@ -235,7 +266,8 @@ public class StatisticsController : ControllerBase
         }
         var userId = IsLawyer ? User.GetUserId() : (int?)null;
 
-        return Ok(await _stats.GetAvailablePeriodsAsync(effectiveBranch, userId, ct));
+        return Ok(await _availablePeriods.HandleAsync(
+            new GetAvailablePeriodsQuery(effectiveBranch, userId), ct));
     }
 
     private ActionResult? ValidatePeriod(StatsPeriod period, int? year, int? month, int? quarter)

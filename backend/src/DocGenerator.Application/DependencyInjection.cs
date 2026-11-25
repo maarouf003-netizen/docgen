@@ -19,6 +19,7 @@ using DocGenerator.Application.UseCases.PublicEntities;
 using DocGenerator.Application.UseCases.Reminders;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Application.UseCases.Sections;
+using DocGenerator.Application.UseCases.Statistics;
 using DocGenerator.Application.UseCases.Suggestions;
 using DocGenerator.Application.UseCases.Users;
 using Microsoft.Extensions.Configuration;
@@ -53,7 +54,6 @@ public static class DependencyInjection
         services.AddScoped<IDocumentSearchService, DocumentSearchService>();
         services.AddScoped<IDocumentStatusService, DocumentStatusService>();
         services.AddScoped<IDocumentWriteGuard, DocumentWriteGuard>();
-        services.AddScoped<IStatisticsService, StatisticsService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<UserManagementService>();
         services.AddScoped<IUserManagementService>(sp => sp.GetRequiredService<UserManagementService>());
@@ -258,6 +258,15 @@ public static class DependencyInjection
         services.AddScoped<IQueryHandler<ListPortalAppealDetailsQuery, IReadOnlyList<AppealDto>?>, ListPortalAppealDetailsQueryHandler>();
         services.AddScoped<IQueryHandler<ListPortalBaseNumbersQuery, IReadOnlyList<BaseNumberHistoryDto>?>, ListPortalBaseNumbersQueryHandler>();
         services.AddScoped<IQueryHandler<GetPortalStatsQuery, PortalStatsDto>, GetPortalStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto>, GetDashboardStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetMonthlyStatsQuery, List<MonthlyStatDto>>, GetMonthlyStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetBranchesSummaryQuery, List<BranchSummaryDto>>, GetBranchesSummaryQueryHandler>();
+        services.AddScoped<IQueryHandler<GetUserActivityQuery, List<UserActivityDto>>, GetUserActivityQueryHandler>();
+        services.AddScoped<IQueryHandler<GetRemindersQuery, List<ReminderDto>>, GetRemindersQueryHandler>();
+        services.AddScoped<IQueryHandler<GetManagerStatsQuery, ManagerStatsDto>, GetManagerStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetManagerLawyerStatsQuery, List<ManagerLawyerStatDto>>, GetManagerLawyerStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPersonalStatsQuery, ManagerStatsDto>, GetPersonalStatsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAvailablePeriodsQuery, List<MonthlyStatDto>>, GetAvailablePeriodsQueryHandler>();
         return services;
     }
 }
