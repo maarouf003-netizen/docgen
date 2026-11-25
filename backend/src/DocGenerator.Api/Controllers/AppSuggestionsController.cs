@@ -1,8 +1,8 @@
 using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Suggestions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,18 +15,27 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AppSuggestionsController : ControllerBase
 {
-    private readonly IAppSuggestionService _suggestions;
+    private readonly IQueryHandler<ListMyAppSuggestionsQuery, List<AppSuggestionDto>> _listMine;
+    private readonly IQueryHandler<GetAppSuggestionQuery, AppSuggestionDto?> _getSuggestion;
+    private readonly IQueryHandler<ListAppSuggestionsForAdminQuery, PagedResult<AppSuggestionDto>> _listForAdmin;
+    private readonly IQueryHandler<CountUnreadAppSuggestionsQuery, int> _countUnread;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
     private readonly ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> _createSuggestion;
 
     public AppSuggestionsController(
-        IAppSuggestionService suggestions,
+        IQueryHandler<ListMyAppSuggestionsQuery, List<AppSuggestionDto>> listMine,
+        IQueryHandler<GetAppSuggestionQuery, AppSuggestionDto?> getSuggestion,
+        IQueryHandler<ListAppSuggestionsForAdminQuery, PagedResult<AppSuggestionDto>> listForAdmin,
+        IQueryHandler<CountUnreadAppSuggestionsQuery, int> countUnread,
         IUserCapabilities capabilities,
         ICommandHandler<MarkAppSuggestionReadCommand, bool> markRead,
         ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> createSuggestion)
     {
-        _suggestions = suggestions;
+        _listMine = listMine;
+        _getSuggestion = getSuggestion;
+        _listForAdmin = listForAdmin;
+        _countUnread = countUnread;
         _capabilities = capabilities;
         _markRead = markRead;
         _createSuggestion = createSuggestion;
@@ -45,8 +54,10 @@ public class AppSuggestionsController : ControllerBase
     public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         if (IsAdmin)
-            return Ok(await _suggestions.ListForAdminAsync(page, perPage, ct));
-        return Ok(await _suggestions.ListMineAsync(User.GetUserId(), ct));
+            return Ok(await _listForAdmin.HandleAsync(
+                new ListAppSuggestionsForAdminQuery(page, perPage), ct));
+        return Ok(await _listMine.HandleAsync(
+            new ListMyAppSuggestionsQuery(User.GetUserId()), ct));
     }
 
     /// <summary>
@@ -57,8 +68,8 @@ public class AppSuggestionsController : ControllerBase
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
         var dto = IsAdmin
-            ? await _suggestions.GetByIdAsync(id, null, ct)
-            : await _suggestions.GetByIdAsync(id, User.GetUserId(), ct);
+            ? await _getSuggestion.HandleAsync(new GetAppSuggestionQuery(id, null), ct)
+            : await _getSuggestion.HandleAsync(new GetAppSuggestionQuery(id, User.GetUserId()), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 
@@ -80,7 +91,7 @@ public class AppSuggestionsController : ControllerBase
     {
         if (!IsAdmin)
             return Forbid();
-        return Ok(new { count = await _suggestions.CountUnreadAsync(ct) });
+        return Ok(new { count = await _countUnread.HandleAsync(new CountUnreadAppSuggestionsQuery(), ct) });
     }
 
     /// <summary>تعليم الاقتراح مقروءًا — مشرف ومدير (`BQ-001`).</summary>

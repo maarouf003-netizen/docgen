@@ -2,7 +2,6 @@ using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.Reminders;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +14,8 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer")]
 public class PersonalRemindersController : ControllerBase
 {
-    private readonly IPersonalReminderService _reminders;
+    private readonly IQueryHandler<ListPersonalRemindersQuery, List<PersonalReminderDto>> _listReminders;
+    private readonly IQueryHandler<GetPersonalReminderQuery, PersonalReminderDto?> _getReminder;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<DeletePersonalReminderCommand, bool> _deleteReminder;
     private readonly ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> _setOccurrence;
@@ -23,14 +23,16 @@ public class PersonalRemindersController : ControllerBase
     private readonly ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?> _updateReminder;
 
     public PersonalRemindersController(
-        IPersonalReminderService reminders,
+        IQueryHandler<ListPersonalRemindersQuery, List<PersonalReminderDto>> listReminders,
+        IQueryHandler<GetPersonalReminderQuery, PersonalReminderDto?> getReminder,
         IUserCapabilities capabilities,
         ICommandHandler<DeletePersonalReminderCommand, bool> deleteReminder,
         ICommandHandler<SetPersonalReminderOccurrenceCommand, PersonalReminderDto?> setOccurrence,
         ICommandHandler<CreatePersonalReminderCommand, PersonalReminderDto> createReminder,
         ICommandHandler<UpdatePersonalReminderCommand, PersonalReminderDto?> updateReminder)
     {
-        _reminders = reminders;
+        _listReminders = listReminders;
+        _getReminder = getReminder;
         _capabilities = capabilities;
         _deleteReminder = deleteReminder;
         _setOccurrence = setOccurrence;
@@ -48,7 +50,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        return Ok(await _reminders.ListAsync(User.GetUserId(), includeArchived, ct));
+        return Ok(await _listReminders.HandleAsync(
+            new ListPersonalRemindersQuery(User.GetUserId(), includeArchived), ct));
     }
 
     /// <summary>إنشاء تذكير شخصي — المالك الحالي حصرًا.</summary>
@@ -68,7 +71,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        var reminder = await _reminders.GetByIdAsync(id, User.GetUserId(), ct);
+        var reminder = await _getReminder.HandleAsync(
+            new GetPersonalReminderQuery(id, User.GetUserId()), ct);
         return reminder is null ? NotFound() : Ok(reminder);
     }
 

@@ -12,7 +12,7 @@ namespace DocGenerator.Application.Tests;
 
 public class AppSuggestionServiceTests : PostgresDbTest
 {
-    private readonly IAppSuggestionService _service;
+    private readonly AppSuggestionReadHandlers _reads;
     private readonly ICommandHandler<CreateAppSuggestionCommand, AppSuggestionDto> _createSuggestion;
     private readonly ICommandHandler<MarkAppSuggestionReadCommand, bool> _markRead;
     private readonly FakeAuditLogger _audit = new();
@@ -37,11 +37,7 @@ public class AppSuggestionServiceTests : PostgresDbTest
         _db.Users.Add(_lawyer);
         _db.SaveChanges();
 
-        _service = new AppSuggestionService(
-            new AppSuggestionRepository(_db),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit);
+        _reads = AppSuggestionReadHandlerFactory.Create(_db);
         _markRead = new MarkAppSuggestionReadCommandHandler(
             new AppSuggestionRepository(_db),
             new UnitOfWork(_db),
@@ -106,7 +102,7 @@ public class AppSuggestionServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
         await CreateSuggestionAsync("للآخر", other.Id, "other");
 
-        var mine = await _service.ListMineAsync(_lawyer.Id);
+        var mine = await _reads.ListMineAsync(_lawyer.Id);
         Assert.Equal(2, mine.Count);
         Assert.Equal("الثاني", mine[0].Message);
     }
@@ -120,24 +116,24 @@ public class AppSuggestionServiceTests : PostgresDbTest
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(dto.Id, null)));
 
-        var admin = await _service.ListForAdminAsync(1, 20);
+        var admin = await _reads.ListForAdminAsync(1, 20);
         Assert.Contains(admin.Items, s => s.Id == dto.Id && s.IsRead && s.SenderName == "محامي مقترح");
     }
 
     [PostgresFact]
     public async Task CountUnread_TracksUnreadOnly()
     {
-        Assert.Equal(0, await _service.CountUnreadAsync());
+        Assert.Equal(0, await _reads.CountUnreadAsync());
 
         var first = await CreateSuggestionAsync("أول اقتراح", _lawyer.Id, "lawyer");
         await CreateSuggestionAsync("ثانٍ اقتراح", _lawyer.Id, "lawyer");
-        Assert.Equal(2, await _service.CountUnreadAsync());
+        Assert.Equal(2, await _reads.CountUnreadAsync());
 
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(first.Id, null)));
-        Assert.Equal(1, await _service.CountUnreadAsync());
+        Assert.Equal(1, await _reads.CountUnreadAsync());
         // التعليم المتكرر لا ينقص العدّاد مرتين.
         Assert.True(await _markRead.HandleAsync(new MarkAppSuggestionReadCommand(first.Id, null)));
-        Assert.Equal(1, await _service.CountUnreadAsync());
+        Assert.Equal(1, await _reads.CountUnreadAsync());
     }
 
     [PostgresFact]
@@ -147,18 +143,18 @@ public class AppSuggestionServiceTests : PostgresDbTest
         await CreateSuggestionAsync("الثاني", _lawyer.Id, "lawyer");
         await CreateSuggestionAsync("الثالث", _lawyer.Id, "lawyer");
 
-        var first = await _service.ListForAdminAsync(1, 2);
+        var first = await _reads.ListForAdminAsync(1, 2);
         Assert.Equal(3, first.TotalCount);
         Assert.Equal(2, first.TotalPages);
         Assert.Equal(2, first.Items.Count);
         Assert.Equal("الثالث", first.Items[0].Message);
 
-        var second = await _service.ListForAdminAsync(2, 2);
+        var second = await _reads.ListForAdminAsync(2, 2);
         Assert.Single(second.Items);
         Assert.Equal("الأول", second.Items[0].Message);
 
         // تقويم الحدود: صفحة دون 1 تُرفع، وحجم فوق الأقصى يُخفَّض للافتراضي.
-        var clamped = await _service.ListForAdminAsync(0, 999);
+        var clamped = await _reads.ListForAdminAsync(0, 999);
         Assert.Equal(1, clamped.Page);
         Assert.Equal(AppSuggestionService.DefaultPerPage, clamped.PerPage);
     }
@@ -179,17 +175,17 @@ public class AppSuggestionServiceTests : PostgresDbTest
 
         var dto = await CreateSuggestionAsync("اقتراح للقراءة", _lawyer.Id, "lawyer");
 
-        var mine = await _service.GetByIdAsync(dto.Id, _lawyer.Id);
+        var mine = await _reads.GetByIdAsync(dto.Id, _lawyer.Id);
         Assert.NotNull(mine);
         Assert.Equal(dto.Id, mine.Id);
         Assert.Null(mine.SenderName);
 
-        Assert.Null(await _service.GetByIdAsync(dto.Id, other.Id));
-        Assert.Null(await _service.GetByIdAsync(999999, _lawyer.Id));
+        Assert.Null(await _reads.GetByIdAsync(dto.Id, other.Id));
+        Assert.Null(await _reads.GetByIdAsync(999999, _lawyer.Id));
 
-        var adminView = await _service.GetByIdAsync(dto.Id, null);
+        var adminView = await _reads.GetByIdAsync(dto.Id, null);
         Assert.NotNull(adminView);
         Assert.Equal("محامي مقترح", adminView.SenderName);
-        Assert.Null(await _service.GetByIdAsync(999999, null));
+        Assert.Null(await _reads.GetByIdAsync(999999, null));
     }
 }
