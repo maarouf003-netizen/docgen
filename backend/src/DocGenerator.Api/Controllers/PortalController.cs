@@ -25,30 +25,42 @@ namespace DocGenerator.Api.Controllers;
 public class PortalController : ControllerBase
 {
     private readonly IPortalService _portal;
-    private readonly ICorrespondenceService _correspondence;
     private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
     private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addCorrespondenceAddendum;
     private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _replyCorrespondence;
     private readonly ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> _markCorrespondenceSeen;
+    private readonly IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> _searchCorrespondence;
+    private readonly IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> _correspondenceTargets;
+    private readonly IQueryHandler<CountUnseenCorrespondencesQuery, int> _correspondenceUnseenCount;
+    private readonly IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> _getCorrespondence;
+    private readonly IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> _fileCorrespondence;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
     public PortalController(
         IPortalService portal,
-        ICorrespondenceService correspondence,
         ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> createCorrespondence,
         ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> addCorrespondenceAddendum,
         ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> replyCorrespondence,
         ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> markCorrespondenceSeen,
+        IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> searchCorrespondence,
+        IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> correspondenceTargets,
+        IQueryHandler<CountUnseenCorrespondencesQuery, int> correspondenceUnseenCount,
+        IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> getCorrespondence,
+        IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> fileCorrespondence,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
         _portal = portal;
-        _correspondence = correspondence;
         _createCorrespondence = createCorrespondence;
         _addCorrespondenceAddendum = addCorrespondenceAddendum;
         _replyCorrespondence = replyCorrespondence;
         _markCorrespondenceSeen = markCorrespondenceSeen;
+        _searchCorrespondence = searchCorrespondence;
+        _correspondenceTargets = correspondenceTargets;
+        _correspondenceUnseenCount = correspondenceUnseenCount;
+        _getCorrespondence = getCorrespondence;
+        _fileCorrespondence = fileCorrespondence;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -159,9 +171,10 @@ public class PortalController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        return Ok(await _correspondence.SearchAsync(UserId,
-            DocGenerator.Domain.Enums.UserRole.EntityManager, null,
-            q, null, importance, page, perPage, ct));
+        return Ok(await _searchCorrespondence.HandleAsync(
+            new SearchCorrespondencesQuery(UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null,
+                q, null, importance, page, perPage), ct));
     }
 
     /// <summary>مرشحو الاستلام بالاسم لمندوب الجهة — مع documentId محامو الملف فقط.</summary>
@@ -169,14 +182,19 @@ public class PortalController : ControllerBase
     public async Task<IActionResult> CorrespondenceTargets(
         [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
     {
-        return Ok(await _correspondence.SearchTargetsAsync(UserId,
-            DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId, ct));
+        return Ok(await _correspondenceTargets.HandleAsync(
+            new SearchCorrespondenceTargetsQuery(UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId), ct));
     }
 
     /// <summary>عدد مراسلات المندوب غير المؤكَّدة المشاهدة (بأي أهمية) — جرس البوابة وشارتها.</summary>
     [HttpGet("correspondence/unseen-count")]
     public async Task<IActionResult> CorrespondenceUnseenCount(CancellationToken ct)
-        => Ok(new { count = await _correspondence.CountUnseenAsync(UserId, ct) });
+    {
+        var count = await _correspondenceUnseenCount.HandleAsync(
+            new CountUnseenCorrespondencesQuery(UserId), ct);
+        return Ok(new { count });
+    }
 
     /// <summary>مراسلة المندوب برسائلها — مقصورة على ما هو طرف فيه.</summary>
     [HttpGet("correspondence/{id:int}")]
@@ -184,8 +202,9 @@ public class PortalController : ControllerBase
     {
         try
         {
-            return Ok(await _correspondence.GetByIdAsync(id, UserId,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+            return Ok(await _getCorrespondence.HandleAsync(
+                new GetCorrespondenceQuery(id, UserId,
+                    DocGenerator.Domain.Enums.UserRole.EntityManager, null), ct));
         }
         catch (KeyNotFoundException e)
         {
@@ -274,8 +293,9 @@ public class PortalController : ControllerBase
     {
         try
         {
-            return Ok(await _correspondence.ListByDocumentAsync(id, UserId,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+            return Ok(await _fileCorrespondence.HandleAsync(
+                new ListCorrespondencesByDocumentQuery(id, UserId,
+                    DocGenerator.Domain.Enums.UserRole.EntityManager, null), ct));
         }
         catch (KeyNotFoundException)
         {

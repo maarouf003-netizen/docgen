@@ -1,13 +1,11 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Security;
-using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class CorrespondenceService : ICorrespondenceService
+public sealed partial class CorrespondenceService
 {
     /// <summary>
     /// ترقيم الرسائل داخل نطاق المراسلة: الأولى تحمل رقم المراسلة نفسه، واللاحقات
@@ -83,22 +81,12 @@ public sealed partial class CorrespondenceService : ICorrespondenceService
         return bodyText;
     }
 
-    private static string? NormalizeImportanceFilter(string? importance)
-    {
-        if (string.IsNullOrWhiteSpace(importance))
-            return null;
-        var term = importance.Trim().ToLowerInvariant();
-        if (!Correspondence.IsValidImportance(term))
-            throw new ArgumentException("فلتر الأهمية غير صالح");
-        return term;
-    }
-
     /// <summary>
     /// أدوار الكتابة في المراسلات: محامٍ/رئيس قسم/شعبة/مندوب جهة (تُفرض أيضًا عبر
     /// RolePermissions في المتحكمات؛ هذا الفحص دفاع داخلي للخدمة). الشعبة ترث
     /// القسم هنا بموجب القرار §2.21 — لا تأليف على الملفات لها (`MayAttach`
     /// يردها)، بل مراسلات عامة بفرعها.
     /// </summary>
-    private static bool CanWrite(UserRole role)
+    internal static bool CanWrite(UserRole role)
         => role is UserRole.Lawyer or UserRole.Head or UserRole.SubHead or UserRole.EntityManager;
 }

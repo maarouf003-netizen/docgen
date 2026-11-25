@@ -76,7 +76,6 @@ public static class DependencyInjection
         services.AddScoped<IReviewLetterReplyWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<IReviewLetterCreateWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<CorrespondenceService>();
-        services.AddScoped<ICorrespondenceService>(sp => sp.GetRequiredService<CorrespondenceService>());
         services.AddScoped<ICorrespondenceWriteRules>(sp => sp.GetRequiredService<CorrespondenceService>());
         services.AddScoped<IForumService, ForumService>();
         services.AddScoped<IForumRetentionService, ForumRetentionService>();
@@ -137,6 +136,12 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto>, AddCorrespondenceAddendumCommandHandler>();
         services.AddScoped<ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto>, ReplyCorrespondenceCommandHandler>();
         services.AddScoped<ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto>, MarkCorrespondenceSeenCommandHandler>();
+        services.AddScoped<IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>>, SearchCorrespondencesQueryHandler>();
+        services.AddScoped<IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto>, GetCorrespondenceQueryHandler>();
+        services.AddScoped<IQueryHandler<CountUnseenCorrespondencesQuery, int>, CountUnseenCorrespondencesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>>, ListCorrespondencesByDocumentQueryHandler>();
+        services.AddScoped<IQueryHandler<GetCorrespondenceGovernoratesQuery, List<string>>, GetCorrespondenceGovernoratesQueryHandler>();
+        services.AddScoped<IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>>, SearchCorrespondenceTargetsQueryHandler>();
         services.AddScoped<ICommandHandler<CommitPublicEntityImportCommand, ImportCommitResultDto>, CommitPublicEntityImportCommandHandler>();
         services.AddScoped<ICommandHandler<WithdrawParentEditSuggestionCommand, ParentEditSuggestionDto?>, WithdrawParentEditSuggestionCommandHandler>();
         services.AddScoped<ICommandHandler<ReviewParentEditSuggestionCommand, ParentEditSuggestionDto?>, ReviewParentEditSuggestionCommandHandler>();

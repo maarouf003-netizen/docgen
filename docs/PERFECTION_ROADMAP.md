@@ -1164,10 +1164,30 @@
   `docs/audit/218-p4-01cm-appeal-reads-20261125.md` و
   `docs/audit/219-p4-01cm-critical-review-20261125.md` و
   `docs/audit/220-p4-01cm-followup-review-20261125.md`.
-  **متبقٍ:** مسح module-by-module لبقية الوحدات (المراسلات/البوابة/الإحصاءات)
+  **`P4-01cn`:** اكتملت قراءات المراسلات — نُقلت أسطح القراءة الستة من
+  `ICorrespondenceService` إلى ستة استعلامات `IQuery<TResponse>` ومعالجات
+  `QueryHandlerBase` تحت `UseCases/Correspondences/`: قائمة المراسلات بحسب الدور،
+  ومراسلة برسائلها، وعدّاد غير المؤكَّد المشاهدة، ومراسلات ملف محدد، ومحافظات فلتر
+  الإدارة، ومرشحو الاستلام بالاسم — قراءة صرفة بلا كتابة ولا معاملة ولا تدقيق،
+  بحفاظ سطي **256/269** سطرًا فعّالًا (**119/132** للقراءات المنقولة و**137/137**
+  للمساعدات المرقّاة) وفرق الرموز الدلالي **0** بعد استثناءات موثّقة (لفّ استدعاءات
+  وتمرير المستودعات/الساعة صراحةً) وبلا فرق في النطاق/الصلاحيات/الرسائل/رموز الحالة؛
+  وحُذفت الواجهة نهائيًا (**6 → 0**) وتسجيلها في `DI` مع بقاء
+  `ICorrespondenceWriteRules` بلا تغيير، وأُعيد تسمية `CorrespondenceService.Queries.cs`
+  إلى `Mapping.cs` بعد إفراغه من القراءات، ورُقّيت الحرّاس والإسقاطات إلى
+  `internal static`، ونُقلت `MayListDocumentAsync`/`ResolveEligibleTargetsAsync`/
+  `ToTargetDto`/`NormalizeImportanceFilter`/`TargetsLimit` إلى معالجيها الوحيدين؛
+  والحقول بقيت **12/12** (لا حقل ميت: الحرّاس/الإسقاطات المشتركة تحتفظ باعتمادياتها)،
+  وصار `CorrespondencesController` يحقن ستة معالجات (**6 → 11** معاملًا) و
+  `PortalController` خمسة (**8 → 12**)، وارتفع `DI` إلى **156/156/0**، وحُوِّل **46**
+  موضع نداء اختباري عبر جسر واحد، ونُظّفت استيرادات ميتة وضجيج `CRLF`. التفاصيل:
+  `docs/audit/221-p4-01cn-correspondence-reads-20261125.md` و
+  `docs/audit/222-p4-01cn-critical-review-20261125.md` و
+  `docs/audit/223-p4-01cn-followup-review-20261125.md`.
+  **متبقٍ:** مسح module-by-module لبقية الوحدات (البوابة/الإحصاءات)
   للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية —
   اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً، وقراءات الإنابات، وقراءات المطالعات،
-  وقراءات الاستئنافات.
+  وقراءات الاستئنافات، وقراءات المراسلات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

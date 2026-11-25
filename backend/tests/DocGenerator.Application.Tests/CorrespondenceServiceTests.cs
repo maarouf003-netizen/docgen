@@ -16,6 +16,11 @@ namespace DocGenerator.Application.Tests;
 public class CorrespondenceServiceTests : PostgresDbTest
 {
     private readonly CorrespondenceService _service;
+    private readonly IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> _letterSearch;
+    private readonly IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> _letterGet;
+    private readonly IQueryHandler<CountUnseenCorrespondencesQuery, int> _unseenCount;
+    private readonly IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> _lettersByDocument;
+    private readonly IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> _targets;
     private readonly ICommandHandler<CreateCorrespondenceCommand, CorrespondenceDto> _createCorrespondence;
     private readonly ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> _addCorrespondenceAddendum;
     private readonly ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> _replyCorrespondence;
@@ -79,6 +84,12 @@ public class CorrespondenceServiceTests : PostgresDbTest
         _db.SaveChanges();
 
         _service = BuildService();
+        var reads = BuildReads();
+        _letterSearch = reads.Search;
+        _letterGet = reads.Get;
+        _unseenCount = reads.UnseenCount;
+        _lettersByDocument = reads.ListByDocument;
+        _targets = reads.Targets;
         var writes = BuildWrites(_service);
         _createCorrespondence = writes.Create;
         _addCorrespondenceAddendum = writes.AddAddendum;
@@ -91,6 +102,42 @@ public class CorrespondenceServiceTests : PostgresDbTest
         ICommandHandler<AddCorrespondenceAddendumCommand, CorrespondenceMessageDto> AddAddendum,
         ICommandHandler<ReplyCorrespondenceCommand, CorrespondenceMessageDto> Reply,
         ICommandHandler<MarkCorrespondenceSeenCommand, CorrespondenceReceiptDto> MarkSeen);
+
+    private sealed record CorrespondenceReads(
+        IQueryHandler<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>> Search,
+        IQueryHandler<GetCorrespondenceQuery, CorrespondenceDto> Get,
+        IQueryHandler<CountUnseenCorrespondencesQuery, int> UnseenCount,
+        IQueryHandler<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>> ListByDocument,
+        IQueryHandler<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>> Targets);
+
+    private CorrespondenceReads BuildReads()
+    {
+        var repository = new CorrespondenceRepository(_db);
+        var documents = new DocumentRepository(_db);
+        var branches = new BranchRepository(_db);
+        var circuits = new Repository<ExecutionCircuit>(_db);
+        var appeals = new AppealRepository(_db);
+        var delegations = new DelegationRepository(_db);
+        var portal = new PortalRepository(_db);
+        var users = new UserRepository(_db);
+        var time = TestClock.Provider;
+        return new CorrespondenceReads(
+            new SearchCorrespondencesQueryHandler(
+                repository, branches, time, TestClock.TimeZone,
+                Array.Empty<IPipelineBehavior<SearchCorrespondencesQuery, PagedResult<CorrespondenceListItemDto>>>()),
+            new GetCorrespondenceQueryHandler(
+                repository, documents, circuits, branches, time, TestClock.TimeZone,
+                Array.Empty<IPipelineBehavior<GetCorrespondenceQuery, CorrespondenceDto>>()),
+            new CountUnseenCorrespondencesQueryHandler(
+                repository,
+                Array.Empty<IPipelineBehavior<CountUnseenCorrespondencesQuery, int>>()),
+            new ListCorrespondencesByDocumentQueryHandler(
+                repository, documents, circuits, appeals, delegations, portal, branches, time, TestClock.TimeZone,
+                Array.Empty<IPipelineBehavior<ListCorrespondencesByDocumentQuery, List<CorrespondenceListItemDto>>>()),
+            new SearchCorrespondenceTargetsQueryHandler(
+                documents, users, circuits, appeals, delegations, portal,
+                Array.Empty<IPipelineBehavior<SearchCorrespondenceTargetsQuery, List<CorrespondenceTargetDto>>>()));
+    }
 
     /// <summary>بناء معالجات الكتابة فوق خدمة اختبارية بعينها (ساعة/مستودع/وحدة عمل مخصصة).</summary>
     private CorrespondenceWrites BuildWrites(
@@ -130,7 +177,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SearchAsync(_head.Id, UserRole.Head, null, null, null, null, 1, 20));
+            _letterSearch.SearchAsync(_head.Id, UserRole.Head, null, null, null, null, 1, 20));
     }
 
 
@@ -328,11 +375,11 @@ public class CorrespondenceServiceTests : PostgresDbTest
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>للعلم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        var damascus = await _service.SearchAsync(
+        var damascus = await _letterSearch.SearchAsync(
             _head.Id, UserRole.Head, _branchId, null, null, null, 1, 20);
         Assert.Equal(1, damascus.TotalCount);
 
-        var aleppo = await _service.SearchAsync(
+        var aleppo = await _letterSearch.SearchAsync(
             _otherBranchHead.Id, UserRole.Head, _otherBranchId, null, null, null, 1, 20);
         Assert.Equal(0, aleppo.TotalCount);
     }
@@ -344,11 +391,11 @@ public class CorrespondenceServiceTests : PostgresDbTest
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>للعلم</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        var blocked = await _service.SearchAsync(
+        var blocked = await _letterSearch.SearchAsync(
             _manager.Id, UserRole.Manager, null, null, null, null, 1, 20);
         Assert.Equal(0, blocked.TotalCount);
 
-        var allowed = await _service.SearchAsync(
+        var allowed = await _letterSearch.SearchAsync(
             _manager.Id, UserRole.Manager, null, null, "دمشق", null, 1, 20);
         Assert.Equal(1, allowed.TotalCount);
     }
@@ -446,13 +493,13 @@ public class CorrespondenceServiceTests : PostgresDbTest
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() => path switch
         {
-            "get" => _service.GetByIdAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
+            "get" => _letterGet.GetByIdAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
             "addendum" => _addCorrespondenceAddendum.AddAddendumAsync(missing, validBody, _lawyer1.Id, "المحامي الأول"),
             "reply" => _replyCorrespondence.ReplyAsync(missing,
                 new ReplyCorrespondenceRequest("<p>نص</p>"), _delegate.Id, "مندوب الجهة"),
             "markseen" => _markCorrespondenceSeen.MarkSeenAsync(missing, _delegate.Id, "مندوب الجهة",
                 UserRole.EntityManager, null),
-            _ => _service.ListByDocumentAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
+            _ => _lettersByDocument.ListByDocumentAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
         });
     }
 
@@ -463,7 +510,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        var pending = await _service.GetByIdAsync(
+        var pending = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.Equal(Correspondence.ViewStatusPending, pending.ViewStatus);
         Assert.Empty(pending.Receipts);
@@ -475,7 +522,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
 
         Assert.Equal(first.SeenAt, second.SeenAt);
 
-        var stored = await _service.GetByIdAsync(
+        var stored = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.Equal(Correspondence.ViewStatusSeen, stored.ViewStatus);
         Assert.Single(stored.Receipts);
@@ -544,7 +591,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
             letter.Id, actor.Id, "قارئ", actorRole, actorBranch));
 
         // لم يُنشأ توثيق باسم القارئ، والحالة تبقى «بانتظار» عند المستلم.
-        var stored = await _service.GetByIdAsync(
+        var stored = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.Equal(Correspondence.ViewStatusPending, stored.ViewStatus);
         Assert.Empty(stored.Receipts);
@@ -568,7 +615,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         // القارئ (المدير) يرى توثيق المستلم وحده — لا توثيقه القديم ولا أي اسم آخر.
-        var seenByManager = await _service.GetByIdAsync(
+        var seenByManager = await _letterGet.GetByIdAsync(
             letter.Id, _manager.Id, UserRole.Manager, null);
         Assert.Equal(Correspondence.ViewStatusPending, seenByManager.ViewStatus);
         Assert.Empty(seenByManager.Receipts);
@@ -577,20 +624,20 @@ public class CorrespondenceServiceTests : PostgresDbTest
         Assert.False(seenByManager.CanReply);
 
         // المرسل المنشئ يقرأ التفاصيل بلا حق توثيق ولا رد، فالقاعدة على هوية المستلم.
-        var seenByCreator = await _service.GetByIdAsync(
+        var seenByCreator = await _letterGet.GetByIdAsync(
             letter.Id, _lawyer1.Id, UserRole.Lawyer, _branchId);
         Assert.False(seenByCreator.CanMarkSeen);
         Assert.False(seenByCreator.CanReply);
 
         // المستلم وحده يحمل حقّي التوثيق والرد في التفاصيل (وهو ما تُبني عليه الواجهة).
-        var seenByTarget = await _service.GetByIdAsync(
+        var seenByTarget = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.True(seenByTarget.CanMarkSeen);
         Assert.True(seenByTarget.CanReply);
 
         await _markCorrespondenceSeen.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
-        var afterTargetSeen = await _service.GetByIdAsync(
+        var afterTargetSeen = await _letterGet.GetByIdAsync(
             letter.Id, _manager.Id, UserRole.Manager, null);
         Assert.Equal(Correspondence.ViewStatusSeen, afterTargetSeen.ViewStatus);
         Assert.Single(afterTargetSeen.Receipts);
@@ -598,14 +645,14 @@ public class CorrespondenceServiceTests : PostgresDbTest
 
         // القائمة: الحالة مشتركة للجميع، وحقّا التوثيق والرد للمستلم وحده.
         // (المدير لا يطلب قائمة بلا محافظة — فلتره الإجباري.)
-        var listForManager = await _service.SearchAsync(
+        var listForManager = await _letterSearch.SearchAsync(
             _manager.Id, UserRole.Manager, null, null, letter.Governorate, null, 1, 20);
         var managerRow = listForManager.Items.Single(i => i.Id == letter.Id);
         Assert.Equal(Correspondence.ViewStatusSeen, managerRow.ViewStatus);
         Assert.False(managerRow.CanMarkSeen);
         Assert.False(managerRow.CanReply);
 
-        var listForTarget = await _service.SearchAsync(
+        var listForTarget = await _letterSearch.SearchAsync(
             _delegate.Id, UserRole.EntityManager, null, null, null, null, 1, 20);
         var targetRow = listForTarget.Items.Single(i => i.Id == letter.Id);
         Assert.True(targetRow.CanMarkSeen);
@@ -623,13 +670,13 @@ public class CorrespondenceServiceTests : PostgresDbTest
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
         // الشارة تشمل كل غير المؤكَّد المشاهدة لا العاجل وحده.
-        Assert.Equal(2, await _service.CountUnseenAsync(_delegate.Id));
+        Assert.Equal(2, await _unseenCount.CountUnseenAsync(_delegate.Id));
         // المنشئ يعرف محتواه — لا تنبيه له على ما سطّره.
-        Assert.Equal(0, await _service.CountUnseenAsync(_lawyer1.Id));
+        Assert.Equal(0, await _unseenCount.CountUnseenAsync(_lawyer1.Id));
 
         await _markCorrespondenceSeen.MarkSeenAsync(
             urgent.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
-        Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
+        Assert.Equal(1, await _unseenCount.CountUnseenAsync(_delegate.Id));
     }
 
     [PostgresFact]
@@ -638,25 +685,25 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var letter = await _createCorrespondence.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
-        Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
+        Assert.Equal(1, await _unseenCount.CountUnseenAsync(_delegate.Id));
 
         await _replyCorrespondence.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
             _delegate.Id, "مندوب الجهة");
 
         // الرد يُوثّق المشاهدة تلقائيًا: الحالة «تمت المشاهدة»، وتوثيق واحد للمستلم،
         // ويخرج من عدّاد غير المؤكَّد المشاهدة — بلا حاجة لزر «تمت المشاهدة».
-        var stored = await _service.GetByIdAsync(
+        var stored = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.Equal(Correspondence.ViewStatusSeen, stored.ViewStatus);
         var receipt = Assert.Single(stored.Receipts);
         Assert.Equal(_delegate.Id, receipt.UserId);
-        Assert.Equal(0, await _service.CountUnseenAsync(_delegate.Id));
+        Assert.Equal(0, await _unseenCount.CountUnseenAsync(_delegate.Id));
 
         // التوثيق لا يُكرَّر عند الرد مرة أخرى، ويبقى أول توثيق هو المرجع.
         var firstSeenAt = receipt.SeenAt;
         await _replyCorrespondence.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد ثانٍ</p>"),
             _delegate.Id, "مندوب الجهة");
-        var afterSecondReply = await _service.GetByIdAsync(
+        var afterSecondReply = await _letterGet.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
         var again = Assert.Single(afterSecondReply.Receipts);
         Assert.Equal(firstSeenAt, again.SeenAt);
@@ -665,7 +712,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchTargets_FindsActivePartyMembersWithoutSelf()
     {
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _lawyer1.Id, UserRole.Lawyer, _branchId, "مندوب الجهة", null, default);
 
         Assert.Equal(2, targets.Count);
@@ -688,12 +735,12 @@ public class CorrespondenceServiceTests : PostgresDbTest
             new CreateCorrespondenceRequest(doc.Id, _delegate2.Id, "normal", "<p>للثاني</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        var mine = await _service.ListByDocumentAsync(
+        var mine = await _lettersByDocument.ListByDocumentAsync(
             doc.Id, _delegate.Id, UserRole.EntityManager, null);
         Assert.Single(mine);
         Assert.Equal("للأول", mine[0].Snippet);
 
-        var headView = await _service.ListByDocumentAsync(
+        var headView = await _lettersByDocument.ListByDocumentAsync(
             doc.Id, _head.Id, UserRole.Head, _branchId);
         Assert.Equal(2, headView.Count);
     }
@@ -736,7 +783,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
             _db.Users.Add(EntityBuilders.NewUser($"corr_cap{i:00}", $"مرشح تجريبي {i:00}", UserRole.Lawyer, _branchId));
         await _db.SaveChangesAsync();
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _lawyer1.Id, UserRole.Lawyer, _branchId, "مرشح تجريبي", null, default);
 
         Assert.Equal(20, targets.Count);
@@ -746,7 +793,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task SearchTargets_General_RemainsOpenAcrossRoles()
     {
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _lawyer1.Id, UserRole.Lawyer, _branchId, "قسم", null, default);
 
         var names = targets.Select(t => t.FullName).ToList();
@@ -759,7 +806,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _delegate.Id, UserRole.EntityManager, null, "المحامي", doc.Id, default);
 
         var names = targets.Select(t => t.FullName).ToList();
@@ -777,7 +824,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         await LinkDocumentToEntryAsync(doc, _entryId);
         await MakeDelegationFollowerAsync(doc, _lawyer2.Id);
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _delegate.Id, UserRole.EntityManager, null, "المحامي", doc.Id, default);
 
         var names = targets.Select(t => t.FullName).ToList();
@@ -791,7 +838,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _lawyer1.Id, UserRole.Lawyer, _branchId, "مندوب", doc.Id, default);
 
         var names = targets.Select(t => t.FullName).ToList();
@@ -810,10 +857,10 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
         // المندوب مرتبط بقيد حلب — خارج نطاق ملف دمشق.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchTargetsAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _targets.SearchTargetsAsync(
             _outDelegate.Id, UserRole.EntityManager, null, "المحامي", doc.Id, default));
         // محامٍ غير منشئ وغير مسند لا يستطيع البحث عن مستلمي الملف.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchTargetsAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _targets.SearchTargetsAsync(
             _lawyer3.Id, UserRole.Lawyer, _branchId, "مندوب", doc.Id, default));
     }
 
@@ -823,7 +870,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var doc = await AddDocumentAsync(_lawyer1);
         await LinkDocumentToEntryAsync(doc, _entryId);
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             _head.Id, UserRole.Head, _branchId, "مندوب", doc.Id, default);
 
         var names = targets.Select(t => t.FullName).ToList();
@@ -887,7 +934,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
     public async Task SearchTargets_GeneralActors_ByQueryAndSelfExclusion_SameAsBefore()
     {
         // عام (بلا ملف): مندوب الجهة يبحث بحرية بين المحامين، والمحامون بين المناديب.
-        var byDelegate = await _service.SearchTargetsAsync(
+        var byDelegate = await _targets.SearchTargetsAsync(
             _delegate.Id, UserRole.EntityManager, null, "المحامي", null, default);
         Assert.All(byDelegate, t => Assert.NotEqual(_delegate.Id, t.UserId));
         Assert.Contains(byDelegate, t => t.FullName == "المحامي الأول");
@@ -1117,7 +1164,7 @@ public class CorrespondenceServiceTests : PostgresDbTest
         Assert.Equal(letter.CorrespondenceNumber + "-4", secondAddendum.MessageNumber);
 
         // الخيط كاملًا مرتب بالمعرّف، وأرقامه مميزة داخل النطاق.
-        var full = await _service.GetByIdAsync(letter.Id, _lawyer1.Id, UserRole.Lawyer, _branchId);
+        var full = await _letterGet.GetByIdAsync(letter.Id, _lawyer1.Id, UserRole.Lawyer, _branchId);
         Assert.Equal(4, full.Messages.Count);
         Assert.Equal(
             new[] { letter.CorrespondenceNumber, addendum.MessageNumber, reply.MessageNumber, secondAddendum.MessageNumber },
@@ -1195,11 +1242,11 @@ public class CorrespondenceServiceTests : PostgresDbTest
         var otherDoc = await AddSectionDocumentAsync(_lawyer1, null);
         await LinkDocumentToEntryAsync(otherDoc, _entryId);
 
-        var targets = await _service.SearchTargetsAsync(
+        var targets = await _targets.SearchTargetsAsync(
             sub.Id, UserRole.SubHead, _branchId, "مندوب", ownDoc.Id, default, sectionId);
         Assert.NotEmpty(targets);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchTargetsAsync(
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _targets.SearchTargetsAsync(
             sub.Id, UserRole.SubHead, _branchId, "مندوب", otherDoc.Id, default, sectionId));
     }
 }
