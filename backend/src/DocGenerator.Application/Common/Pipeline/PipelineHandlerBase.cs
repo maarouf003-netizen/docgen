@@ -35,7 +35,16 @@ public abstract class CommandHandlerBase<TCommand, TResult> : ICommandHandler<TC
     protected abstract Task<TResult> HandleCoreAsync(TCommand command, CancellationToken ct);
 
     public Task<TResult> HandleAsync(TCommand command, CancellationToken ct = default)
-        => PipelineExecutor.ExecuteAsync(command, HandleCoreAsync, _behaviors, ct);
+    {
+        // `P5-01`: بلا مستمع على `ApplicationDiagnostics` يبقى المسار القديم نفسه حرفيًا
+        // (بلا نشاط ولا آلة حالة إضافية)، فلا تكلفة على التشغيل غير المرصود.
+        if (!PipelineActivity.IsEnabled)
+            return PipelineExecutor.ExecuteAsync(command, HandleCoreAsync, _behaviors, ct);
+
+        return PipelineActivity.RunAsync<TCommand, TResult>(
+            this,
+            () => PipelineExecutor.ExecuteAsync(command, HandleCoreAsync, _behaviors, ct));
+    }
 }
 
 /// <summary>أساس معالج الاستعلامات — نفس عقد الأوامر بلا فرق سلوكي.</summary>
@@ -50,5 +59,13 @@ public abstract class QueryHandlerBase<TQuery, TResult> : IQueryHandler<TQuery, 
     protected abstract Task<TResult> HandleCoreAsync(TQuery query, CancellationToken ct);
 
     public Task<TResult> HandleAsync(TQuery query, CancellationToken ct = default)
-        => PipelineExecutor.ExecuteAsync(query, HandleCoreAsync, _behaviors, ct);
+    {
+        // نفس سياسة معالج الأوامر: نشاط اختياري، وصفر تكلفة بلا مستمع.
+        if (!PipelineActivity.IsEnabled)
+            return PipelineExecutor.ExecuteAsync(query, HandleCoreAsync, _behaviors, ct);
+
+        return PipelineActivity.RunAsync<TQuery, TResult>(
+            this,
+            () => PipelineExecutor.ExecuteAsync(query, HandleCoreAsync, _behaviors, ct));
+    }
 }
