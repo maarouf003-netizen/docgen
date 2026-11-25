@@ -45,9 +45,10 @@ groups:
         annotations:
           summary: "No docgen-api HTTP metrics for 30m"
           description: >-
-            Metrics are missing, so SLO math is blind. Check the collector,
-            the Prometheus scrape target and OTLP endpoint before trusting any
-            dashboard value.
+            No http_server_request_duration_seconds_count series with
+            service_name="docgen-api" for 30m. Metrics are missing (or the
+            service_name label transform failed), so SLO math is blind. Check
+            the collector, transform/resource_labels and the OTLP endpoint.
           runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-telemetry"
 
       - alert: DocGenCollectorDown
@@ -380,7 +381,7 @@ groups:
       # intentionally not wrapped in absent()/absent_over_time().
       - alert: DocGenDbPoolSaturationWarning
         expr: |
-          (db_client_connection_count{state="used"} / clamp_min(db_client_connection_max, 1)) > 0.8
+          (db_client_connection_count{state="used"} / ignoring(state) (clamp_min(db_client_connection_max, 1))) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -397,7 +398,7 @@ groups:
 
       - alert: DocGenDbPoolSaturationCritical
         expr: |
-          (db_client_connection_count{state="used"} / clamp_min(db_client_connection_max, 1)) > 0.95
+          (db_client_connection_count{state="used"} / ignoring(state) (clamp_min(db_client_connection_max, 1))) > 0.95
         for: 5m
         labels:
           severity: critical

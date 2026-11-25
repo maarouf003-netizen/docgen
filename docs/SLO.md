@@ -64,6 +64,13 @@
 > `OpenTelemetry.Instrumentation.Runtime` عبر متر `System.Runtime` (وليست أسماء
 > `process.runtime.dotnet.*` القديمة). لا يُستخدم أي اسم قديم في هذا الملف أو في التنبيهات.
 
+**مصدر الأنشطة (`P5-01`):** `ActivitySource` باسم `DocGenerator.Application`، ونشاط لكل
+`HandleAsync` باسم نوع الطلب (`typeof(TRequest).Name`) ووسوم `docgen.request.type`،
+`docgen.handler`، `docgen.outcome` (`success`/`exception`). هذه الأنشطة تصل إلى `Tempo`
+عبر مسار التتبّع المعاين، ولا تُستخدم كأسماء مقاييس `Prometheus`؛ المقياس الوحيد المشتق
+منها في هذه الجولة هو `docgen.db.*` من أنشطة `EF Core` (نطاق
+`OpenTelemetry.Instrumentation.EntityFrameworkCore`).
+
 ### 2.2 ما يشتقه الجامع (بلا تغيير في التطبيق)
 
 | المقياس المشتق | كيف يُشتق | لماذا |
@@ -148,6 +155,8 @@ availability_ratio =
 
 **الهدف:** `≥ 99.5%`. **ميزانية الخطأ:** `0.5%` من الطلبات (تعادل 216 دقيقة شهريًا فقط
 إذا حُوّلت إلى زمن عند معدل ثابت؛ الميزانية الفعلية بالطلبات).
+**شهر بلا طلبات:** إذا لم تُسجَّل أي طلبات `API` في الشهر فلا تُحتسب النسبة 100% ولا 0%؛
+تُعلن فجوة قياس (`DocGenTelemetryAbsent`) ولا تُصدر شهادة `SLO` لذلك الشهر.
 
 **الاستثناءات:**
 - استثناء مسارات الصحة `"/healthz"`, `"/readyz"`, `"/healthz/outbox"`، و`/metrics`، والملفات
@@ -223,9 +232,11 @@ outbox_healthy_ratio = avg_over_time(probe_success{job="docgen-outbox-ready"}[30
 ```
 db_pool_used_ratio =
   db_client_connection_count{state="used"}
-  /
-  clamp_min(db_client_connection_max, 1)
+  / ignoring(state) (clamp_min(db_client_connection_max, 1))
 ```
+
+> `ignoring(state)` لازم لأن `connection.count` يحمل `state` بينما `connection.max` لا
+> يحمله؛ بدونها لا يتطابق المتجهان ولا تُنتج النسبة أي بيانات.
 
 **الهدف:** `≤ 0.80` في `99%` من الدقائق شهريًا. **الميزانية:** `1%` من الدقائق.
 **الحالة الحالية:** **غير مقيس** — متر `Npgsql` غير مسجّل في `P5-01`؛ القواعد موجودة في
@@ -294,6 +305,8 @@ rate_limit_rejection_ratio =
 - **الاستثناءات:** لا تُستهلك الميزانية بسبب صيانة معلنة مسبقًا فقط إذا عُطّل الفحص/السحب
   خلالها وسُجّل الاستثناء في الحادث؛ لا يوجد وسم `maintenance` آلي اليوم.
 - **إعادة الضبط:** أول الشهر (`UTC`)؛ النوافذ المتدحرجة للتنبيهات لا تُعاد ضبطها.
+- **50% مستهلكة:** مراجعة يدوية أسبوعية من لوحة `30d`؛ لا تنبيه آلي عند 50% (تنبيهات
+  الاستهلاك تبدأ عند `1x` و`6x` و`14.4x`).
 - **الصلاحية:** تجاوز التجميد بقرار المالك الموثّق في الحادث، بمدة محدودة.
 
 ## 5. التضمين والاستبعاد (ملخص تنفيذي)

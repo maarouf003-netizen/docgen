@@ -141,10 +141,12 @@ modules:
 scrape_configs:
   # مقاييس التطبيق تُسحب من الجامع، لا من التطبيق مباشرة.
   - job_name: docgen-collector
+    scrape_interval: 30s
     static_configs:
       - targets: ["otel-collector:8889"]
 
   - job_name: docgen-ready
+    scrape_interval: 30s
     metrics_path: /probe
     params:
       module: [docgen_http_2xx]
@@ -159,6 +161,7 @@ scrape_configs:
         replacement: blackbox-exporter:9115
 
   - job_name: docgen-outbox-ready
+    scrape_interval: 30s
     metrics_path: /probe
     params:
       module: [docgen_http_2xx]
@@ -167,6 +170,7 @@ scrape_configs:
     relabel_configs: *blackbox_relabel
 
   - job_name: docgen-outbox-health
+    scrape_interval: 30s
     metrics_path: /probe
     params:
       module: [docgen_outbox_healthy]

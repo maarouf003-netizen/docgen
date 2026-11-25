@@ -576,18 +576,10 @@
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "editorMode": "code",
-          "expr": "db_client_connection_count{state=\"used\"} / clamp_min(db_client_connection_max, 1)",
+          "expr": "db_client_connection_count{state=\"used\"} / ignoring(state) (clamp_min(db_client_connection_max, 1))",
           "legendFormat": "used / max",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "editorMode": "code",
-          "expr": "increase(db_client_connection_npgsql_timeouts_total[5m])",
-          "legendFormat": "pool timeouts / 5m",
-          "range": true,
-          "refId": "B"
         }
       ],
       "title": "DB pool utilisation (requires Npgsql meter)",
@@ -646,7 +638,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Process working set (RAM) and thread-pool queue length from System.Runtime.",
+      "description": "Process working set (RAM) from System.Runtime.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
