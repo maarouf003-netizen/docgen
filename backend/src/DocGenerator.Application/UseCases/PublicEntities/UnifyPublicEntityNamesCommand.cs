@@ -1,22 +1,64 @@
 using System.Globalization;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.UseCases.PublicEntities;
 
-public sealed partial class PublicEntityService
+/// <summary>
+/// توحيد التسمية N←1: ينقل قيود الهويات الممتصة إلى الهوية الهدف ويطوي المطابق
+/// حرفيًا ويعطّل المجموعات الممتصة، بمعاملة واحدة وبمفتاح عدم تكرار (`RF-011`).
+/// </summary>
+public sealed record UnifyPublicEntityNamesCommand(
+    UnifyNamesRequest Request,
+    EntityRegistryActor Actor,
+    string? IdempotencyKey = null) : ICommand<UnifyNamesResponse>;
+
+internal sealed class UnifyPublicEntityNamesCommandHandler
+    : CommandHandlerBase<UnifyPublicEntityNamesCommand, UnifyNamesResponse>
 {
-    // ── توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات) ──
+    private readonly IPublicEntityWriteRules _rules;
+    private readonly IPublicEntityRepository _entities;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly IIdempotencyStore? _idempotency;
 
-    /// <inheritdoc/>
-    public async Task<UnifyNamesResponse> UnifyNamesAsync(UnifyNamesRequest request, EntityRegistryActor actor, CancellationToken ct = default, string? idempotencyKey = null)
+    public UnifyPublicEntityNamesCommandHandler(
+        IPublicEntityWriteRules rules,
+        IPublicEntityRepository entities,
+        IRepository<DocumentOccurrence> occurrences,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        IEnumerable<IPipelineBehavior<UnifyPublicEntityNamesCommand, UnifyNamesResponse>> behaviors,
+        IIdempotencyStore? idempotency = null)
+        : base(behaviors)
     {
+        _rules = rules;
+        _entities = entities;
+        _occurrences = occurrences;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _idempotency = idempotency;
+    }
+
+    protected override async Task<UnifyNamesResponse> HandleCoreAsync(
+        UnifyPublicEntityNamesCommand command, CancellationToken ct)
+    {
+        var request = command.Request;
+        var actor = command.Actor;
+
         // RF-011: حجز المفتاح أولًا (التحققات داخل المعاملة عمدًا) — التكرار
         // يُعيد النتيجة المخزنة نفسها.
         var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "registry.unify",
-            actor.UserId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+            actor.UserId, command.IdempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
         UnifyNamesResponse result;
         try
         {
@@ -59,8 +101,8 @@ public sealed partial class PublicEntityService
             var survivorPool = new List<PublicEntity>(activeTarget);
 
             // مرسوم التوحيد العام (اختياري)
-            var decreeKind = NormalizeOptional(request.DecreeKind);
-            var decreeNumber = NormalizeOptional(request.DecreeNumber);
+            var decreeKind = _rules.NormalizeOptional(request.DecreeKind);
+            var decreeNumber = _rules.NormalizeOptional(request.DecreeNumber);
             var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرسوم");
             if (decreeKind is not null && decreeKind.Length > 100)
                 throw new ArgumentException("نوع المرسوم أطول من 100 حرف");
@@ -109,11 +151,11 @@ public sealed partial class PublicEntityService
                                 affectedDocsById[doc.Id] = doc;
                         }
                         foreach (var doc in linkedFoldDocs)
-                            RepointEntryLinks(doc, ae.Id, survivor.Id);
+                            _rules.RepointEntryLinks(doc, ae.Id, survivor.Id);
 
                         ae.IsActive = false;
                         entryTargetByAbsorbed[ae.Id] = survivor.Id;
-                        AddFoldAliases(survivor, absorbedGroup.CanonicalName, ae, ref aliasesAdded);
+                        _rules.AddFoldAliases(survivor, absorbedGroup.CanonicalName, ae, ref aliasesAdded);
                         entriesFolded++;
                         folds.Add(new
                         {
@@ -155,7 +197,7 @@ public sealed partial class PublicEntityService
             var nameMatchedDocs = new Dictionary<int, Document>();
             foreach (var oldName in oldNames)
             {
-                var matched = await SyncTextsAfterRenameAsync(oldName, targetGroup.CanonicalName, actor.Name, token);
+                var matched = await _rules.SyncTextsAfterRenameAsync(oldName, targetGroup.CanonicalName, actor.Name, token);
                 foreach (var doc in matched)
                     nameMatchedDocs[doc.Id] = doc;
             }
@@ -171,9 +213,9 @@ public sealed partial class PublicEntityService
 
             var affectedDocs = affectedDocsById.Values.ToList();
             if (affectedDocs.Count > 0)
-                await SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
+                await _rules.SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
 
-            totalAffectedDocs = CountUniqueDocuments(nameMatchedDocs, affectedDocsById);
+            totalAffectedDocs = PublicEntityService.CountUniqueDocuments(nameMatchedDocs, affectedDocsById);
 
             // 5) مزامنة لقطات أطراف الاستئنافات عبر اتحاد الملفات المتأثرة (الاسمية + المترحلة)
             var allAffectedDocs = nameMatchedDocs.Values
@@ -182,12 +224,12 @@ public sealed partial class PublicEntityService
                 .Select(g => g.First())
                 .ToList();
             if (allAffectedDocs.Count > 0)
-                await SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
+                await _rules.SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
 
             // 6) ترحيل مندوبي الجهات الممتصة إلى الهدف (على مستوى المجموعة)، مع خريطة الطيّ:
             //    المطوي يرحل لناجيه، والمنقول (غير المُدرج) يبقى على قيده.
             var absorbedIdsSet = new HashSet<int>(absorbedIdsDistinct);
-            await MigrateDelegatesAsync(absorbedIdsSet, targetGroup.Id, null, entryTargetByAbsorbed, token);
+            await _rules.MigrateDelegatesAsync(absorbedIdsSet, targetGroup.Id, null, entryTargetByAbsorbed, token);
 
             // 7) سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new
@@ -218,7 +260,7 @@ public sealed partial class PublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await TrackChangeEventAsync(changeEvent, token);
+            await _rules.TrackChangeEventAsync(changeEvent, token);
 
             // 8) وقوعات آلية لكل ملف متأثر (نوع entity-change)
             var absorbedNamesJoined = string.Join('،', oldNames);
@@ -245,11 +287,11 @@ public sealed partial class PublicEntityService
 
             // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
             var entityGroupKey = targetGroup.Id.ToString(CultureInfo.InvariantCulture);
-            await BroadcastEntityChangeToAllLawyersAsync(
+            await _rules.BroadcastEntityChangeToAllLawyersAsync(
                 HeadAlertKindCatalog.EntityUnifyLawyers,
                 HeadAlertMessages.EntityUnifyLawyers(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
                 ActionKindCatalog.Unify, entityGroupKey, actor.UserId, token);
-            await BroadcastToAllHeadsAsync(
+            await _rules.BroadcastToAllHeadsAsync(
                 HeadAlertKindCatalog.EntityUnifyHeads,
                 HeadAlertMessages.EntityUnifyHeads(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
                 ActionKindCatalog.Unify, entityGroupKey, actor.UserId, token);

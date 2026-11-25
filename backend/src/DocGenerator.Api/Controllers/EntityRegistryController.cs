@@ -3,7 +3,6 @@ using DocGenerator.Api.Filters;
 using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -44,6 +43,7 @@ public class EntityRegistryController : ControllerBase
     private readonly ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> _commitMerge;
     private readonly ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> _renameGroup;
     private readonly ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> _abolishAndReplace;
+    private readonly ICommandHandler<UnifyPublicEntityNamesCommand, UnifyNamesResponse> _unifyNames;
     private readonly ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> _proposeEdit;
     private readonly ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> _suggestParentEdit;
     private readonly IQueryHandler<PreviewMergeQuery, MergePreviewResponse> _previewMerge;
@@ -71,6 +71,7 @@ public class EntityRegistryController : ControllerBase
         ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse> commitMerge,
         ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse> renameGroup,
         ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse> abolishAndReplace,
+        ICommandHandler<UnifyPublicEntityNamesCommand, UnifyNamesResponse> unifyNames,
         ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?> proposeEdit,
         ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto> suggestParentEdit,
         IQueryHandler<PreviewMergeQuery, MergePreviewResponse> previewMerge,
@@ -97,6 +98,7 @@ public class EntityRegistryController : ControllerBase
         _commitMerge = commitMerge;
         _renameGroup = renameGroup;
         _abolishAndReplace = abolishAndReplace;
+        _unifyNames = unifyNames;
         _proposeEdit = proposeEdit;
         _suggestParentEdit = suggestParentEdit;
         _previewMerge = previewMerge;
@@ -345,8 +347,8 @@ public class EntityRegistryController : ControllerBase
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
-            return Ok(await _registry.UnifyNamesAsync(request, Actor, ct,
-                IdempotencyKeyHeader()));
+            return Ok(await _unifyNames.HandleAsync(
+                new UnifyPublicEntityNamesCommand(request, Actor, IdempotencyKeyHeader()), ct));
         }
         catch (IdempotentReplayException r)
         {

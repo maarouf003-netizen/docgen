@@ -1063,7 +1063,9 @@
   `docs/audit/202-p4-01cd-ce-followup-review-20261125.md` و
   `docs/audit/203-p4-01cf-suggest-parent-edit-command-20261125.md` و
   `docs/audit/204-p4-01cg-public-entity-preview-queries-20261125.md` و
-  `docs/audit/205-p4-01cf-cg-followup-review-20261125.md`.
+  `docs/audit/205-p4-01cf-cg-followup-review-20261125.md` و
+  `docs/audit/206-p4-01ch-unify-names-command-20261125.md` و
+  `docs/audit/207-p4-01ch-followup-review-20261125.md`.
   **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
   (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
   منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
@@ -1076,9 +1078,16 @@
   `PublicEntityService.Merge.cs`/`PublicEntityService.Branches.cs` بعد إفراغهما، ونُقلت
   مساعدات العدّ و`ValidateMergeablePairAsync` إلى `internal static` على الخدمة (مصدر
   واحد بلا تكرار)، بلا كتابة ولا وسم معاملة/تدقيق في أي استعلام.
-  **متبقٍ:** توسيع تدريجي module-by-module ونقل ملكية use-case كاملة إلى المعالجات
-  (ملكية `CreateDocumentCommand`، وقراءات الجهات العامة العشرة المتبقية، وآخِر كتابة
-  عليها: `UnifyNamesAsync` — مرشح `P4-01ch`).
+  **`P4-01ch`:** `UnifyPublicEntityNamesCommand` يملك توحيد تسمية الجهات N←1 — آخر كتابة
+  كانت على `IPublicEntityService`: نقل القيود وطيّ المطابق حرفيًا (`Ordinal` على
+  المحافظة/الفرع) وتعطيل المجموعات الممتصة، مع مزامنة النصوص والاستئنافات وترحيل المندوبين
+  والحمولة والحدث والوقوعات والتنبيهين والتدقيق، داخل معاملة واحدة، ومفتاح عدم تكرار
+  (`registry.unify`) يُحجز **قبل** المعاملة عمدًا (التحققات داخلها كما كانت)؛ وأُزيلت
+  `UnifyNamesAsync` من `IPublicEntityService` (11 → 10، قراءات فقط)، وحُذف الحقل الميت
+  `_idempotency` من الخدمة، وحُذف `PublicEntityService.Unify.cs` بعد إفراغه بـ`git rm`؛
+  ولم يُضف أي عضو إلى `IPublicEntityWriteRules` (كل المساعدات كانت مُسجَّلة).
+  **متبقٍ:** ملكية `CreateDocumentCommand` (أكبر مسار كتابة ما زال يعتمد على
+  `IDocumentService`)، ثم مسح module-by-module لبقية الوحدات بلا كسر عقود خارجية.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.

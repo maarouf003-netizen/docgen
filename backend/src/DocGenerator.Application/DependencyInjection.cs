@@ -145,6 +145,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CommitPublicEntityMergeCommand, MergeCommitResponse>, CommitPublicEntityMergeCommandHandler>();
         services.AddScoped<ICommandHandler<RenamePublicEntityGroupCommand, RenameGroupResponse>, RenamePublicEntityGroupCommandHandler>();
         services.AddScoped<ICommandHandler<AbolishAndReplacePublicEntityGroupCommand, AbolishAndReplaceResponse>, AbolishAndReplacePublicEntityGroupCommandHandler>();
+        services.AddScoped<ICommandHandler<UnifyPublicEntityNamesCommand, UnifyNamesResponse>, UnifyPublicEntityNamesCommandHandler>();
         services.AddScoped<ICommandHandler<ProposePublicEntityEditCommand, PublicEntityEntryDto?>, ProposePublicEntityEditCommandHandler>();
         services.AddScoped<ICommandHandler<SuggestPublicEntityParentEditCommand, ParentEditSuggestionDto>, SuggestPublicEntityParentEditCommandHandler>();
         services.AddScoped<IQueryHandler<PreviewMergeQuery, MergePreviewResponse>, PreviewMergeQueryHandler>();

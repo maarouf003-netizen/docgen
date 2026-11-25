@@ -1,6 +1,3 @@
-using System.Globalization;
-using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -34,7 +31,6 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
     private readonly IAuditLogger _audit;
     private readonly IUserRepository _users;
     private readonly IAppealRepository _appeals;
-    private readonly IIdempotencyStore? _idempotency;
 
     public PublicEntityService(
         IPublicEntityRepository entities,
@@ -48,8 +44,7 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
         ITransactionRunner tx,
         IAuditLogger audit,
         IUserRepository users,
-        IAppealRepository appeals,
-        IIdempotencyStore? idempotency = null)
+        IAppealRepository appeals)
     {
         _entities = entities;
         _branches = branches;
@@ -63,7 +58,6 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
         _audit = audit;
         _users = users;
         _appeals = appeals;
-        _idempotency = idempotency;
     }
 
     // ── تنفيذ عقد مساعدات الكتابة المشتركة (P4-01be) ──────────────────────
