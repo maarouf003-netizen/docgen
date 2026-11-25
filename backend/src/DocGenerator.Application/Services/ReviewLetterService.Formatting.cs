@@ -1,13 +1,10 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class ReviewLetterService : IReviewLetterService
+public sealed partial class ReviewLetterService
 {
     /// <summary>
     /// الرقم بصيغة {رمز الفرع}-{السنة}-{عشوائي 4 خانات} مع ضمان التفرّد بإعادة المحاولة.
@@ -59,7 +56,8 @@ public sealed partial class ReviewLetterService : IReviewLetterService
         m.AuthorName,
         m.AuthorRole);
 
-    private ReviewLetterFileContextDto? FileContextOf(ReviewLetter letter)
+    private static ReviewLetterFileContextDto? FileContextOf(ReviewLetter letter,
+        TimeProvider clock, TimeZoneInfo timeZone)
     {
         var doc = letter.Document;
         if (doc is null)
@@ -70,7 +68,7 @@ public sealed partial class ReviewLetterService : IReviewLetterService
         if (string.IsNullOrWhiteSpace(name))
             name = doc.DocumentType ?? string.Empty;
 
-        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        var currentYear = ServerClock.CurrentYear(clock, timeZone);
         return new ReviewLetterFileContextDto(
             name,
             EffectiveFileIdentity.Number(doc, currentYear),
@@ -79,7 +77,7 @@ public sealed partial class ReviewLetterService : IReviewLetterService
             doc.Court);
     }
 
-    private ReviewLetterDto ToDto(ReviewLetter letter)
+    internal static ReviewLetterDto ToDto(ReviewLetter letter, TimeProvider clock, TimeZoneInfo timeZone)
     {
         var messages = letter.Messages.OrderBy(m => m.Id).ToList();
         return new ReviewLetterDto(
@@ -88,7 +86,7 @@ public sealed partial class ReviewLetterService : IReviewLetterService
             letter.LetterDate,
             letter.IsAnswered,
             letter.DocumentId,
-            FileContextOf(letter),
+            FileContextOf(letter, clock, timeZone),
             letter.BranchId,
             letter.Branch?.Name,
             letter.CreatedBy?.FullName ?? string.Empty,
@@ -100,7 +98,8 @@ public sealed partial class ReviewLetterService : IReviewLetterService
             letter.Version);
     }
 
-    private ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen)
+    internal static ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen,
+        TimeProvider clock, TimeZoneInfo timeZone)
     {
         var messages = letter.Messages.OrderBy(m => m.Id).ToList();
         var snippet = messages.FirstOrDefault(m => m.Kind == ReviewLetterMessage.KindLetter)?.BodyPlainText
@@ -116,7 +115,7 @@ public sealed partial class ReviewLetterService : IReviewLetterService
             letter.LetterDate,
             letter.IsAnswered,
             letter.DocumentId,
-            FileContextOf(letter),
+            FileContextOf(letter, clock, timeZone),
             letter.CreatedBy?.FullName ?? string.Empty,
             snippet.Length > 160 ? snippet[..160] + "…" : snippet,
             lastKind,

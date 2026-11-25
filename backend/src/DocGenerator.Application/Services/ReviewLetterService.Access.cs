@@ -1,36 +1,35 @@
-using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
-using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class ReviewLetterService : IReviewLetterService
+public sealed partial class ReviewLetterService
 {
     /// <summary>
     /// مالك الكتاب (§10): شعبة دائرة ملفه (بلا دائرة → القسم)، وبلا ملف الشعبة
     /// المستلمة (`null` → القسم). الملف المحذوف مصدره يعامَل كبلا دائرة.
     /// </summary>
-    private async Task<int?> OwnerSectionOfAsync(ReviewLetter letter, CancellationToken ct)
+    internal static async Task<int?> OwnerSectionOfAsync(ReviewLetter letter,
+        IDocumentRepository documents, IRepository<ExecutionCircuit> circuits, CancellationToken ct)
     {
         if (letter.DocumentId is null)
             return letter.RecipientSectionId;
-        var doc = letter.Document ?? await _documents.GetByIdAsync(letter.DocumentId.Value, ct);
+        var doc = letter.Document ?? await documents.GetByIdAsync(letter.DocumentId.Value, ct);
         if (doc?.ExecutionCircuitId is null)
             return null;
-        var circuit = doc.ExecutionCircuit ?? await _circuits.GetByIdAsync(doc.ExecutionCircuitId.Value, ct);
+        var circuit = doc.ExecutionCircuit ?? await circuits.GetByIdAsync(doc.ExecutionCircuitId.Value, ct);
         return circuit?.SectionId;
     }
 
     /// <summary>مالك دائرة ملف (§10.1) — يُشتق منه مستلم الكتاب المرتبط تلقائيًا.</summary>
-    private async Task<int?> FileOwnerSectionAsync(Document document, CancellationToken ct)
+    internal static async Task<int?> FileOwnerSectionAsync(Document document,
+        IRepository<ExecutionCircuit> circuits, CancellationToken ct)
     {
         if (document.ExecutionCircuitId is null)
             return null;
         var circuit = document.ExecutionCircuit
-            ?? await _circuits.GetByIdAsync(document.ExecutionCircuitId.Value, ct);
+            ?? await circuits.GetByIdAsync(document.ExecutionCircuitId.Value, ct);
         return circuit?.SectionId;
     }
 
@@ -50,26 +49,6 @@ public sealed partial class ReviewLetterService : IReviewLetterService
         if (section is null || section.BranchId != actorBranchId || !section.IsActive || head is null)
             throw new ArgumentException("يجب اختيار المستلم — حدّد رئيس القسم أو شعبة نشطة برئيس مفعّل");
         return section;
-    }
-
-    /// <summary>
-    /// نطاق الملف (§10): القسم لدوائر القسم وبلا دائرة، والشعبة لدوائر شعبته —
-    /// بلا تدهور (رمز بلا شعبة مرفوض).
-    /// </summary>
-    private async Task<bool> InFileScopeAsync(Document document, UserRole role,
-        int? actorBranchId, int? actorSectionId, CancellationToken ct)
-    {
-        // حارس null صريح: مقارنة int?==int? تعدّ null==null صوابًا، فيرى رئيس
-        // بلا فرع ملفًا إرثيًا بلا فرع — ثغرة حسابات مشوّهة (مرآة نمط المراسلات).
-        if (actorBranchId is null || actorBranchId != document.BranchId)
-            return false;
-        var ownerSection = await FileOwnerSectionAsync(document, ct);
-        return role switch
-        {
-            UserRole.Head => ownerSection is null,
-            UserRole.SubHead => actorSectionId is not null && ownerSection == actorSectionId,
-            _ => false,
-        };
     }
 
     /// <summary>
@@ -99,16 +78,17 @@ public sealed partial class ReviewLetterService : IReviewLetterService
     /// متابعة الملف: إسناد متابعة استئناف عليه، أو إنابة مصدره/منابُه هذا الملف
     /// ومسندة إلى المحامي نفسه.
     /// </summary>
-    private async Task<bool> FollowsDocumentAsync(int documentId, int userId, CancellationToken ct)
+    internal static async Task<bool> FollowsDocumentAsync(IAppealRepository appeals,
+        IDelegationRepository delegations, int documentId, int userId, CancellationToken ct)
     {
-        if (await _appeals.IsAssignedFollowerAsync(documentId, userId, ct))
+        if (await appeals.IsAssignedFollowerAsync(documentId, userId, ct))
             return true;
 
-        var sourceDelegations = await _delegations.ListBySourceAsync(documentId, ct);
+        var sourceDelegations = await delegations.ListBySourceAsync(documentId, ct);
         if (sourceDelegations.Any(d => d.AssignedLawyerId == userId))
             return true;
 
-        var targetDelegation = await _delegations.FindByTargetAsync(documentId, ct);
+        var targetDelegation = await delegations.FindByTargetAsync(documentId, ct);
         return targetDelegation is { AssignedLawyerId: not null } target
             && target.AssignedLawyerId == userId;
     }

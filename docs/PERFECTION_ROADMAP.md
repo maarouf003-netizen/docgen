@@ -1072,7 +1072,10 @@
   `docs/audit/211-p4-01cj-followup-review-20261125.md` و
   `docs/audit/212-p4-01ck-delegation-reads-20261125.md` و
   `docs/audit/213-p4-01ck-critical-review-20261125.md` و
-  `docs/audit/214-p4-01ck-followup-review-20261125.md`.
+  `docs/audit/214-p4-01ck-followup-review-20261125.md` و
+  `docs/audit/215-p4-01cl-review-letter-reads-20261125.md` و
+  `docs/audit/216-p4-01cl-critical-review-20261125.md` و
+  `docs/audit/217-p4-01cl-followup-review-20261125.md`.
   **`P4-01cf`:** `SuggestPublicEntityParentEditCommand` يملك اقتراح تعديل قيد «الجهة الأم»
   (حراسة الدور والفرع، قيد الأم ونشاط المجموعة، نطاق محافظة الرئيس، تفرّد الاسم المقترح،
   منع الاقتراح المعلّق المكرر، والمعاملة + حدث التغيير + التدقيق)، وأُزيل من
@@ -1127,9 +1130,26 @@
   ميتة. التفاصيل: `docs/audit/212-p4-01ck-delegation-reads-20261125.md` و
   `docs/audit/213-p4-01ck-critical-review-20261125.md` و
   `docs/audit/214-p4-01ck-followup-review-20261125.md`.
-  **متبقٍ:** مسح module-by-module لبقية الوحدات (المطالعات/الاستئنافات/البوابة/
+  **`P4-01cl`:** اكتملت قراءات كتب المطالعة — نُقلت أسطح القراءة الستة من
+  `IReviewLetterService` إلى ستة استعلامات `IQuery<TResponse>` ومعالجات
+  `QueryHandlerBase` تحت `UseCases/ReviewLetters/`: قائمة الكتب بحسب الدور مع فلتر فرع
+  الإدارة، وكتاب برسائله، وعدّاد بانتظار الرد، وعدّاد الردود غير المطّلع عليها، وكتب ملف
+  محدد، وأسماء فروع الإدارة — قراءة صرفة بلا كتابة ولا معاملة ولا تدقيق، بحفاظ سطي
+  **84/96** سطرًا فعّالًا وفرق رموز **0** بعد استثناءات موثّقة (سطرا ربط، وتمرير
+  الاعتماديات/الساعة صراحةً، وتعليق واحد) وبلا فرق في النطاق/الصلاحيات/الرسائل/رموز
+  الحالة؛ وحُذفت الواجهة نهائيًا (**6 → 0**) وتسجيلها في `DI`، وتقلّصت الخدمة إلى
+  **12** حقلًا/معاملًا بحذف `_uow`/`_tx`/`_audit` الميتة، ونُقلت `CanViewAsync`/
+  `InFileScopeAsync` إلى معالجيهما الوحيدين، ورُقّيت المساعدات المشتركة
+  (`OwnerSectionOfAsync`/`FileOwnerSectionAsync`/`FollowsDocumentAsync` و`ToDto`/
+  `ToListItem`/`FileContextOf`) إلى `internal static`، وحُذف
+  `ReviewLetterService.Queries.cs` بعد إفراغه؛ وارتفع `DI` إلى **143/143/0**، وحُوِّل
+  **40** موضع نداء اختباري عبر جسر واحد، ونُظّف حقلان ميتان في الاختبارات واستيرادات
+  ميتة. التفاصيل: `docs/audit/215-p4-01cl-review-letter-reads-20261125.md` و
+  `docs/audit/216-p4-01cl-critical-review-20261125.md` و
+  `docs/audit/217-p4-01cl-followup-review-20261125.md`.
+  **متبقٍ:** مسح module-by-module لبقية الوحدات (المراسلات/الاستئنافات/البوابة/
   الإحصاءات) للتأكد من أن كل `use-case` له معالج واحد بملكية واضحة، بلا كسر عقود خارجية —
-  اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً، واكتملت قراءات الإنابات.
+  اكتمل بهذه الدفعة مسح سجل الجهات كتابةً وقراءةً، وقراءات الإنابات، وقراءات المطالعات.
 - **العمل:** `ICommandHandler<TCommand,TResult>` و`IQueryHandler`؛ Behaviors: Validation, Authorization, Idempotency, Transaction, Audit, Outbox؛ المتحكمات رقيقة.
 - **DoD:** كل نقطة كتابة = handler واحد؛ لا `_tx.RunAsync` مكرر في المتحكم.
 - **الاعتمادية:** `P0-03`، `P0-04`، `P2-01`.
