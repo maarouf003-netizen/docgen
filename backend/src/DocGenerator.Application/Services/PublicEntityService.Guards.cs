@@ -130,7 +130,7 @@ public sealed partial class PublicEntityService
             throw new ArgumentException($"{fallback} — أقصى طول {maxLength}");
         return normalized;
     }
-    private static string? NormalizeOptional(string? value)
+    internal static string? NormalizeOptional(string? value)
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;

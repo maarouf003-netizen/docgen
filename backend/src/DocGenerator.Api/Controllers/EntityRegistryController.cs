@@ -25,7 +25,6 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class EntityRegistryController : ControllerBase
 {
-    private readonly IPublicEntityService _registry;
     private readonly IUserCapabilities _capabilities;
     private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
     private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
@@ -51,9 +50,18 @@ public class EntityRegistryController : ControllerBase
     private readonly IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse> _previewRenameGroup;
     private readonly IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse> _previewAbolishAndReplace;
     private readonly IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> _previewBranchAction;
+    private readonly IQueryHandler<ListPublicEntitiesQuery, PagedResult<PublicEntityEntryDto>> _listEntities;
+    private readonly IQueryHandler<ListPublicEntitiesNeedingReviewQuery, List<PublicEntityEntryDto>> _listNeedsReview;
+    private readonly IQueryHandler<CountPublicEntitiesNeedingReviewQuery, int> _countNeedsReview;
+    private readonly IQueryHandler<ListPublicEntityChangeEventsQuery, PagedResult<EntityChangeEventDto>> _listChangeEvents;
+    private readonly IQueryHandler<ExportPublicEntityChangeEventsQuery, Stream> _exportChangeEvents;
+    private readonly IQueryHandler<PreviewPublicEntityImportQuery, ImportPreviewResponse> _previewImport;
+    private readonly IQueryHandler<ListPublicEntityGroupsQuery, PagedResult<PublicEntityGroupDto>> _listGroups;
+    private readonly IQueryHandler<FindSimilarPublicEntityGroupsQuery, SimilarToResponse> _findSimilar;
+    private readonly IQueryHandler<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>> _listGroupEntries;
+    private readonly IQueryHandler<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>> _listSuggestions;
 
     public EntityRegistryController(
-        IPublicEntityService registry,
         IUserCapabilities capabilities,
         ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> createEntity,
         ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> updateEntity,
@@ -78,9 +86,18 @@ public class EntityRegistryController : ControllerBase
         IQueryHandler<PreviewUnifyQuery, UnifyNamesPreviewResponse> previewUnify,
         IQueryHandler<PreviewRenameGroupQuery, RenameGroupPreviewResponse> previewRenameGroup,
         IQueryHandler<PreviewAbolishAndReplaceQuery, AbolishReplacePreviewResponse> previewAbolishAndReplace,
-        IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> previewBranchAction)
+        IQueryHandler<PreviewBranchActionQuery, BranchActionPreviewResponse> previewBranchAction,
+        IQueryHandler<ListPublicEntitiesQuery, PagedResult<PublicEntityEntryDto>> listEntities,
+        IQueryHandler<ListPublicEntitiesNeedingReviewQuery, List<PublicEntityEntryDto>> listNeedsReview,
+        IQueryHandler<CountPublicEntitiesNeedingReviewQuery, int> countNeedsReview,
+        IQueryHandler<ListPublicEntityChangeEventsQuery, PagedResult<EntityChangeEventDto>> listChangeEvents,
+        IQueryHandler<ExportPublicEntityChangeEventsQuery, Stream> exportChangeEvents,
+        IQueryHandler<PreviewPublicEntityImportQuery, ImportPreviewResponse> previewImport,
+        IQueryHandler<ListPublicEntityGroupsQuery, PagedResult<PublicEntityGroupDto>> listGroups,
+        IQueryHandler<FindSimilarPublicEntityGroupsQuery, SimilarToResponse> findSimilar,
+        IQueryHandler<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>> listGroupEntries,
+        IQueryHandler<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>> listSuggestions)
     {
-        _registry = registry;
         _capabilities = capabilities;
         _createEntity = createEntity;
         _updateEntity = updateEntity;
@@ -106,6 +123,16 @@ public class EntityRegistryController : ControllerBase
         _previewRenameGroup = previewRenameGroup;
         _previewAbolishAndReplace = previewAbolishAndReplace;
         _previewBranchAction = previewBranchAction;
+        _listEntities = listEntities;
+        _listNeedsReview = listNeedsReview;
+        _countNeedsReview = countNeedsReview;
+        _listChangeEvents = listChangeEvents;
+        _exportChangeEvents = exportChangeEvents;
+        _previewImport = previewImport;
+        _listGroups = listGroups;
+        _findSimilar = findSimilar;
+        _listGroupEntries = listGroupEntries;
+        _listSuggestions = listSuggestions;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -131,8 +158,9 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage, BranchName: branchName), ct));
+        return Ok(await _listEntities.HandleAsync(
+            new ListPublicEntitiesQuery(
+                new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage, BranchName: branchName)), ct));
     }
 
     /// <summary>
@@ -149,8 +177,9 @@ public class EntityRegistryController : ControllerBase
     {
         // المندوب مستبعد بنيويًا بسمة الصنف `[Authorize(Roles=...)]` وحارس البوابة؛
         // فلا حاجة لفحص دوري داخل الأكشن (فحص زائد لا يضيف ضمانًا).
-        return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: branchName), ct));
+        return Ok(await _listEntities.HandleAsync(
+            new ListPublicEntitiesQuery(
+                new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: branchName)), ct));
     }
 
     /// <summary>
@@ -207,7 +236,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.ListNeedsReviewAsync(Actor, ct));
+        return Ok(await _listNeedsReview.HandleAsync(new ListPublicEntitiesNeedingReviewQuery(Actor), ct));
     }
 
     /// <summary>عدد قيود «بحاجة مراجعة» ضمن نطاق الفاعل — شارة خفيفة (استطلاع دوري) دون تحميل القائمة.</summary>
@@ -216,7 +245,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(new { count = await _registry.CountNeedsReviewAsync(Actor, ct) });
+        return Ok(new { count = await _countNeedsReview.HandleAsync(new CountPublicEntitiesNeedingReviewQuery(Actor), ct) });
     }
 
     /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون تعديل ودون إشعار للمُدخِل.</summary>
@@ -237,7 +266,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.PreviewImportAsync(ct));
+        return Ok(await _previewImport.HandleAsync(new PreviewPublicEntityImportQuery(), ct));
     }
 
     /// <summary>اعتماد الربط الجماعي: إنشاء هويات وقيود نهائية Final مباشرة مع الأسماء البديلة.</summary>
@@ -298,7 +327,9 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         var excl = ParseIdList(excludeIds);
         var incl = ParseIdList(includeIds);
-        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage, excl, incl), Actor, ct));
+        return Ok(await _listGroups.HandleAsync(
+            new ListPublicEntityGroupsQuery(
+                new EntityGroupListQuery(q, governorate, page, perPage, excl, incl), Actor), ct));
     }
 
     private static List<int>? ParseIdList(string? raw)
@@ -316,7 +347,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
+        return Ok(await _listGroupEntries.HandleAsync(new ListPublicEntityGroupEntriesQuery(groupId, Actor), ct));
     }
 
     /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة) — المدير/المشرف فقط.</summary>
@@ -325,7 +356,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.HasFullAccess))
             return Forbid();
-        return Ok(await _registry.FindSimilarToGroupAsync(groupId, threshold ?? 0, maxResults ?? 0, ct));
+        return Ok(await _findSimilar.HandleAsync(
+            new FindSimilarPublicEntityGroupsQuery(groupId, threshold ?? 0, maxResults ?? 0), ct));
     }
 
     /// <summary>معاينة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات).</summary>
@@ -458,8 +490,9 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        return Ok(await _registry.ListChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor, ct));
+        return Ok(await _listChangeEvents.HandleAsync(
+            new ListPublicEntityChangeEventsQuery(
+                new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor), ct));
     }
 
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
@@ -476,8 +509,9 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        var stream = await _registry.ExportChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
+        var stream = await _exportChangeEvents.HandleAsync(
+            new ExportPublicEntityChangeEventsQuery(
+                new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor), ct);
         return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
     }
 
@@ -556,8 +590,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!_capabilities.Has(User, UserCapability.CanManageEntityRegistry))
             return Forbid();
-        var result = await _registry.ListParentEditSuggestionsAsync(
-            new ParentEditSuggestionListQuery(status, groupId, page, perPage), Actor, ct);
+        var result = await _listSuggestions.HandleAsync(
+            new ListParentEditSuggestionsQuery(new ParentEditSuggestionListQuery(status, groupId, page, perPage), Actor), ct);
         return Ok(new ParentEditSuggestionListResponse(result.Items, result.TotalCount));
     }
 

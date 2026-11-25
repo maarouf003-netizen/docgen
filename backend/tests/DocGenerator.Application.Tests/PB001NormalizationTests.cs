@@ -22,7 +22,6 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class PB001NormalizationTests : PostgresDbTest
 {
-    private readonly IPublicEntityService _registry;
     private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
@@ -50,13 +49,10 @@ public class PB001NormalizationTests : PostgresDbTest
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
-            tx,
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));
-        _registry = service;
         _createEntity = new CreatePublicEntityCommandHandler(
             (IPublicEntityWriteRules)service, new PublicEntityRepository(_db), new UnitOfWork(_db), tx, _audit,
             Array.Empty<IPipelineBehavior<CreatePublicEntityCommand, PublicEntityEntryDto>>());

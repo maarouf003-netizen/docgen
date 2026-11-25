@@ -6,7 +6,7 @@ using DocGenerator.Application.UseCases.PublicEntities;
 namespace DocGenerator.Application.Tests.TestHelpers;
 
 /// <summary>
-/// جسر اختباري ضيق: يحافظ على توقيعات <c>IPublicEntityService</c> القديمة في كتابات
+/// جسر اختباري ضيق: يحافظ على توقيعات خدمة السجل القديمة في كتابات
 /// سجل الجهات فوق معالجات الأوامر — منطق الاختبارات كما هو (`P4-01be`).
 /// </summary>
 public static class PublicEntityWriteCommandExtensions

@@ -20,7 +20,16 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class PublicEntityServiceTests : PostgresDbTest
 {
-    private readonly IPublicEntityService _service;
+    private readonly IQueryHandler<ListPublicEntitiesQuery, PagedResult<PublicEntityEntryDto>> _listEntities;
+    private readonly IQueryHandler<ListPublicEntitiesNeedingReviewQuery, List<PublicEntityEntryDto>> _listNeedsReview;
+    private readonly IQueryHandler<CountPublicEntitiesNeedingReviewQuery, int> _countNeedsReview;
+    private readonly IQueryHandler<ListPublicEntityChangeEventsQuery, PagedResult<EntityChangeEventDto>> _listChangeEvents;
+    private readonly IQueryHandler<ExportPublicEntityChangeEventsQuery, Stream> _exportChangeEvents;
+    private readonly IQueryHandler<PreviewPublicEntityImportQuery, ImportPreviewResponse> _previewImport;
+    private readonly IQueryHandler<ListPublicEntityGroupsQuery, PagedResult<PublicEntityGroupDto>> _listGroups;
+    private readonly IQueryHandler<FindSimilarPublicEntityGroupsQuery, SimilarToResponse> _findSimilar;
+    private readonly IQueryHandler<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>> _listGroupEntries;
+    private readonly IQueryHandler<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>> _listSuggestions;
     private readonly ICommandHandler<CreatePublicEntityCommand, PublicEntityEntryDto> _createEntity;
     private readonly ICommandHandler<UpdatePublicEntityCommand, PublicEntityEntryDto?> _updateEntity;
     private readonly ICommandHandler<AddPublicEntityAliasCommand, PublicEntityEntryDto?> _addAlias;
@@ -84,21 +93,19 @@ public class PublicEntityServiceTests : PostgresDbTest
         var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _headAlerts = new HeadAlertService(alertsRepo, new DocumentRepository(_db), users,
             branches, new DelegationRepository(_db), uow, _tx, _audit, _tx);
-        _service = new PublicEntityService(
+        var service = new PublicEntityService(
             new PublicEntityRepository(_db),
             branches,
             alertsRepo,
             outbox,
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
-            new Repository<ParentEditSuggestion>(_db),
             uow,
-            _tx,
             _audit,
             users,
             new AppealRepository(_db));
 
-        var rules = (IPublicEntityWriteRules)_service;
+        var rules = (IPublicEntityWriteRules)service;
         var entityRepository = new PublicEntityRepository(_db);
         _createEntity = new CreatePublicEntityCommandHandler(
             rules, entityRepository, uow, _tx, _audit,
@@ -173,6 +180,36 @@ public class PublicEntityServiceTests : PostgresDbTest
         _previewBranchAction = new PreviewBranchActionQueryHandler(
             rules, entityRepository,
             Array.Empty<IPipelineBehavior<PreviewBranchActionQuery, BranchActionPreviewResponse>>());
+        _listEntities = new ListPublicEntitiesQueryHandler(
+            entityRepository,
+            Array.Empty<IPipelineBehavior<ListPublicEntitiesQuery, PagedResult<PublicEntityEntryDto>>>());
+        _listNeedsReview = new ListPublicEntitiesNeedingReviewQueryHandler(
+            entityRepository, branches,
+            Array.Empty<IPipelineBehavior<ListPublicEntitiesNeedingReviewQuery, List<PublicEntityEntryDto>>>());
+        _countNeedsReview = new CountPublicEntitiesNeedingReviewQueryHandler(
+            entityRepository, branches,
+            Array.Empty<IPipelineBehavior<CountPublicEntitiesNeedingReviewQuery, int>>());
+        _listChangeEvents = new ListPublicEntityChangeEventsQueryHandler(
+            entityRepository, branches,
+            Array.Empty<IPipelineBehavior<ListPublicEntityChangeEventsQuery, PagedResult<EntityChangeEventDto>>>());
+        _exportChangeEvents = new ExportPublicEntityChangeEventsQueryHandler(
+            entityRepository, branches, _audit,
+            Array.Empty<IPipelineBehavior<ExportPublicEntityChangeEventsQuery, Stream>>());
+        _previewImport = new PreviewPublicEntityImportQueryHandler(
+            rules,
+            Array.Empty<IPipelineBehavior<PreviewPublicEntityImportQuery, ImportPreviewResponse>>());
+        _listGroups = new ListPublicEntityGroupsQueryHandler(
+            entityRepository, branches,
+            Array.Empty<IPipelineBehavior<ListPublicEntityGroupsQuery, PagedResult<PublicEntityGroupDto>>>());
+        _findSimilar = new FindSimilarPublicEntityGroupsQueryHandler(
+            entityRepository,
+            Array.Empty<IPipelineBehavior<FindSimilarPublicEntityGroupsQuery, SimilarToResponse>>());
+        _listGroupEntries = new ListPublicEntityGroupEntriesQueryHandler(
+            entityRepository, branches,
+            Array.Empty<IPipelineBehavior<ListPublicEntityGroupEntriesQuery, IReadOnlyList<PublicEntityEntryDto>>>());
+        _listSuggestions = new ListParentEditSuggestionsQueryHandler(
+            new Repository<ParentEditSuggestion>(_db),
+            Array.Empty<IPipelineBehavior<ListParentEditSuggestionsQuery, PagedResult<ParentEditSuggestionDto>>>());
     }
 
 
@@ -358,9 +395,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.PublicEntities.Add(pendingEntry);
         await _db.SaveChangesAsync();
 
-        var hidden = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: false, 1, 20));
-        var visible = await _service.ListAsync(new EntityRegistryListQuery(null, "دمشق", null, IncludePending: true, 1, 20));
-        var pendingOnly = await _service.ListAsync(new EntityRegistryListQuery(null, null, "pending", IncludePending: true, 1, 20));
+        var hidden = await _listEntities.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: false, 1, 20));
+        var visible = await _listEntities.ListAsync(new EntityRegistryListQuery(null, "دمشق", null, IncludePending: true, 1, 20));
+        var pendingOnly = await _listEntities.ListAsync(new EntityRegistryListQuery(null, null, "pending", IncludePending: true, 1, 20));
 
         Assert.Equal(1, hidden.TotalCount);
         Assert.Equal(1, visible.TotalCount);
@@ -374,7 +411,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("الإدارة العامة للكتابة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
         // «الاداره» بلا همزات وتاء مربوطة تطابق «الإدارة العامة» بعد التطبيع.
-        var result = await _service.ListAsync(new EntityRegistryListQuery("الاداره العامه", null, null, IncludePending: false, 1, 20));
+        var result = await _listEntities.ListAsync(new EntityRegistryListQuery("الاداره العامه", null, null, IncludePending: false, 1, 20));
 
         Assert.Equal(1, result.TotalCount);
     }
@@ -386,8 +423,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _updateEntity.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
 
-        var pickerView = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50, IncludeInactive: false));
-        var managementView = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50));
+        var pickerView = await _listEntities.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50, IncludeInactive: false));
+        var managementView = await _listEntities.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50));
 
         Assert.Equal(0, pickerView.TotalCount);      // نافذة الاختيار وربط المندوبين
         Assert.Equal(1, managementView.TotalCount);  // شاشة الإدارة ترى الموقوف أيضًا
@@ -401,9 +438,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
 
-        var onlyMain = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
-        var onlyBranch = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
-        var all = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false));
+        var onlyMain = await _listEntities.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
+        var onlyBranch = await _listEntities.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
+        var all = await _listEntities.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false));
 
         // فلتر «الجهة الأم» يعيدها فقط.
         Assert.Equal(1, onlyMain.TotalCount);
@@ -424,7 +461,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "الجهة الأم"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "فرع دمشق"), ManagerActor());
 
-        var main = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
+        var main = await _listEntities.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
 
         Assert.Equal(1, main.TotalCount);
         Assert.Equal("حلب", main.Items[0].Governorate);
@@ -439,7 +476,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parent = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
 
-        var aleppoFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", "حلب", null, IncludePending: true, 1, 50, IncludeInactive: false));
+        var aleppoFiltered = await _listEntities.ListAsync(new EntityRegistryListQuery("المركزي", "حلب", null, IncludePending: true, 1, 50, IncludeInactive: false));
 
         Assert.True(parent.IsParentEntity);
         Assert.Equal(2, aleppoFiltered.TotalCount); // الأم (دمشق المخزّنة) + فرع حلب
@@ -454,7 +491,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var parent = await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
 
-        var branchFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
+        var branchFiltered = await _listEntities.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
 
         Assert.True(parent.IsParentEntity);
         Assert.Equal(2, branchFiltered.TotalCount); // الأم + فرع حلب المختار
@@ -816,8 +853,8 @@ public class PublicEntityServiceTests : PostgresDbTest
             LawyerActor());
 
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
-        var forDamascus = await _service.ListNeedsReviewAsync(headDamascus);
-        var forManager = await _service.ListNeedsReviewAsync(ManagerActor());
+        var forDamascus = await _listNeedsReview.ListNeedsReviewAsync(headDamascus);
+        var forManager = await _listNeedsReview.ListNeedsReviewAsync(ManagerActor());
 
         Assert.Equal(2, forDamascus.Count);
         Assert.Contains(forDamascus, i => i.CanonicalName == "هيئة أ");
@@ -856,7 +893,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(executedDoc);
         await _db.SaveChangesAsync();
 
-        var preview = await _service.PreviewImportAsync();
+        var preview = await _previewImport.PreviewImportAsync();
 
         var item = Assert.Single(preview.Items);
         Assert.Equal(ArabicNameNormalizer.Normalize("مديرية النقل"), item.NormalizedName);
@@ -871,7 +908,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         await SeedApplicantDocumentAsync("مديرية الاقتصاد الوطني", "دمشق");
         await SeedApplicantDocumentAsync("مديريه الاقتصاد الوطني", "دمشق");
-        var preview = await _service.PreviewImportAsync();
+        var preview = await _previewImport.PreviewImportAsync();
         var candidate = preview.Items[0];
 
         // الاسم المعتمد المختار يخالف تطبيع الكتابات الأصلية، فتُسجَّل الكتابات أسماءً بديلة.
@@ -1872,7 +1909,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var g1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var g2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة أ2", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _moveEntry.MoveEntryAsync(g1.Id, new MoveEntryRequest(g2.GroupId, null, null, null, null, null), ManagerActor());
-        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20), ManagerActor());
+        var paged = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
         Assert.All(paged.Items, i => Assert.Equal("move", i.ActionKind));
     }
@@ -1886,8 +1923,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         var b2 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ب2-ت", "ministry", "حلب", "فرع التجهيز 2"), ManagerActor());
         await _moveEntry.MoveEntryAsync(a1.Id, new MoveEntryRequest(b1.GroupId, null, null, null, null, null), ManagerActor());
         await _moveEntry.MoveEntryAsync(a2.Id, new MoveEntryRequest(b2.GroupId, null, null, null, null, null), ManagerActor());
-        var p1 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1), ManagerActor());
-        var p2 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 2, 1), ManagerActor());
+        var p1 = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1), ManagerActor());
+        var p2 = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 2, 1), ManagerActor());
         Assert.Single(p1.Items);
         Assert.Single(p2.Items);
         Assert.NotEqual(p1.Items[0].Id, p2.Items[0].Id);
@@ -1901,9 +1938,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
         var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
-        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, _managerId, from, to, 1, 20), ManagerActor());
+        var paged = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, _managerId, from, to, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
-        var byOther = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, 999999, from, to, 1, 20), ManagerActor());
+        var byOther = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, 999999, from, to, 1, 20), ManagerActor());
         Assert.Equal(0, byOther.TotalCount);
     }
 
@@ -1915,7 +1952,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         // رفض صريح بدل التوسيع الصامت إلى بلا فلتر (قرار إداري على مجموعة موسعة خطأ).
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, from, to, 1, 20), ManagerActor()));
+            _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, from, to, 1, 20), ManagerActor()));
         Assert.Contains("غير صالح", ex.Message);
     }
 
@@ -1926,11 +1963,11 @@ public class PublicEntityServiceTests : PostgresDbTest
         var b = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة ط1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _moveEntry.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
 
-        var all = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+        var all = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
         Assert.True(all.TotalCount >= 1);
 
         // "ـ" (تطويل) يُطبَّع إلى فراغ — فلتر بلا معنى يطابق لا شيء، لا الكل.
-        var none = await _service.ListChangeEventsAsync(
+        var none = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "ـ"), ManagerActor());
         Assert.Equal(0, none.TotalCount);
     }
@@ -1939,7 +1976,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     public async Task ChangeLog_ExportProducesWorkbook()
     {
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await using var stream = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+        await using var stream = await _exportChangeEvents.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
         var bytes = XlsxReader.ToArray(stream);
         Assert.True(bytes.Length > 100);
         Assert.Equal((byte)'P', bytes[0]); // PK zip header
@@ -1958,7 +1995,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // لا يُسجّل صفًّا، فيبقى المصنّف بلا بيانات إن لم يُنفَّذ نقل.
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        await using var stream = await _service.ExportChangeEventsAsync(
+        await using var stream = await _exportChangeEvents.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
 
         var sheetXml = XlsxReader.FirstSheetXml(stream);
@@ -2022,7 +2059,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الملخص ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, "move", null, null, null, 1, 20), ManagerActor());
 
         Assert.True(paged.TotalCount >= 1);
@@ -2043,7 +2080,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _renameGroup.RenameGroupAsync(
             new RenameGroupRequest(dto.GroupId, "جهة التسمية الجديدة", "قرار", "77", "1/8/2026"), ManagerActor());
 
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, "rename", null, null, null, 1, 20), ManagerActor());
 
         Assert.True(paged.TotalCount >= 1);
@@ -2063,7 +2100,7 @@ public class PublicEntityServiceTests : PostgresDbTest
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, "merge", null, null, null, 1, 20), ManagerActor());
 
         var item = paged.Items.First(i => i.ActionKind == "merge");
@@ -2119,7 +2156,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        await using var stream = await _service.ExportChangeEventsAsync(
+        await using var stream = await _exportChangeEvents.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
 
         var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
@@ -2136,7 +2173,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الاسم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "المدير"), ManagerActor());
 
         Assert.True(paged.TotalCount >= 1);
@@ -2150,7 +2187,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var target = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة الدخول ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "mgr"), ManagerActor());
 
         Assert.True(paged.TotalCount >= 1);
@@ -2160,7 +2197,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     [PostgresFact]
     public async Task ChangeLog_UnknownActorNameReturnsEmpty()
     {
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "اسم غير موجود إطلاقًا"), ManagerActor());
 
         Assert.Equal(0, paged.TotalCount);
@@ -2174,7 +2211,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _moveEntry.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
         var arabicDigits = string.Concat(_managerId.ToString().Select(c => (char)('٠' + (c - '0'))));
-        var paged = await _service.ListChangeEventsAsync(
+        var paged = await _listChangeEvents.ListChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: arabicDigits), ManagerActor());
 
         Assert.True(paged.TotalCount >= 1);
@@ -2190,7 +2227,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "حمص", "فرع حمص"), ManagerActor());
 
-        var paged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), ManagerActor());
+        var paged = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 2);
         // مرتبة حسب CanonicalName
         Assert.True(string.Compare(paged.Items[0].CanonicalName, paged.Items[1].CanonicalName, StringComparison.Ordinal) <= 0);
@@ -2206,11 +2243,11 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        var qPaged = await _service.ListGroupsAsync(new EntityGroupListQuery("النقل", null, 1, 20), ManagerActor());
+        var qPaged = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("النقل", null, 1, 20), ManagerActor());
         Assert.Single(qPaged.Items);
         Assert.Equal("وزارة النقل", qPaged.Items[0].CanonicalName);
 
-        var govPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, "حلب", 1, 20), ManagerActor());
+        var govPaged = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(null, "حلب", 1, 20), ManagerActor());
         Assert.All(govPaged.Items, g => Assert.Contains("حلب", g.Governorates));
     }
 
@@ -2220,11 +2257,11 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة دمشق فقط", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة حلب فقط", "ministry", "حلب", "فرع حلب"), ManagerActor());
 
-        var damPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadDamascusActor());
+        var damPaged = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadDamascusActor());
         Assert.All(damPaged.Items, g => Assert.Contains("دمشق", g.Governorates));
         Assert.DoesNotContain(damPaged.Items, g => g.CanonicalName == "جهة حلب فقط");
 
-        var alpPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadAleppoActor());
+        var alpPaged = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadAleppoActor());
         Assert.All(alpPaged.Items, g => Assert.Contains("حلب", g.Governorates));
     }
 
@@ -2234,8 +2271,8 @@ public class PublicEntityServiceTests : PostgresDbTest
         for (int i = 0; i < 5; i++)
             await _createEntity.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
 
-        var p1 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
-        var p2 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 2, 2), ManagerActor());
+        var p1 = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
+        var p2 = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 2, 2), ManagerActor());
         Assert.Equal(2, p1.Items.Count);
         Assert.Equal(2, p2.Items.Count);
         Assert.NotEqual(p1.Items[0].GroupId, p2.Items[0].GroupId);
@@ -2250,13 +2287,13 @@ public class PublicEntityServiceTests : PostgresDbTest
         for (int i = 0; i < 5; i++)
             await _createEntity.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
 
-        var page = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
-        var all = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 10), ManagerActor());
+        var page = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
+        var all = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 10), ManagerActor());
         var target = all.Items.First(g => g.CanonicalName == "جهة ترقيم 4");
         Assert.DoesNotContain(page.Items, g => g.GroupId == target.GroupId);
 
         // بما أن الهدف خارج الصفحة الأولى، يضمن IncludeIds حضوره دون كسر الفرز/الترقيم.
-        var forced = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2, IncludeIds: new[] { target.GroupId }), ManagerActor());
+        var forced = await _listGroups.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2, IncludeIds: new[] { target.GroupId }), ManagerActor());
         Assert.Contains(forced.Items, g => g.GroupId == target.GroupId);
         Assert.Equal(page.Items.Count + 1, forced.Items.Count);
         Assert.Equal(page.TotalCount, forced.TotalCount);
@@ -2267,7 +2304,7 @@ public class PublicEntityServiceTests : PostgresDbTest
     {
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة نشطة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
 
-        var result = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20, IncludeIds: new[] { 999999 }), ManagerActor());
+        var result = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20, IncludeIds: new[] { 999999 }), ManagerActor());
         Assert.Empty(result.Items.Where(g => g.GroupId == 999999));
     }
 
@@ -2584,11 +2621,11 @@ public class PublicEntityServiceTests : PostgresDbTest
         var g1 = await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "دمشق", "فرع دمشق 1"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "حلب", "فرع حلب 1"), ManagerActor());
 
-        var damEntries = await _service.ListEntriesByGroupAsync(g1.GroupId, HeadDamascusActor());
+        var damEntries = await _listGroupEntries.ListEntriesByGroupAsync(g1.GroupId, HeadDamascusActor());
         Assert.All(damEntries, e => Assert.Equal("دمشق", e.Governorate));
         Assert.Single(damEntries);
 
-        var managerEntries = await _service.ListEntriesByGroupAsync(g1.GroupId, ManagerActor());
+        var managerEntries = await _listGroupEntries.ListEntriesByGroupAsync(g1.GroupId, ManagerActor());
         Assert.Equal(2, managerEntries.Count);
     }
 
@@ -2692,7 +2729,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار والتجارة", "authority", "حلب", "فرع حلب"), ManagerActor());
         await _createEntity.CreateAsync(new CreatePublicEntityRequest("جهة مختلفة تماما لا علاقة", "authority", "دمشق", "فرع آخر"), ManagerActor());
 
-        var resp = await _service.FindSimilarToGroupAsync(target.GroupId, 0.55, 10);
+        var resp = await _findSimilar.FindSimilarToGroupAsync(target.GroupId, 0.55, 10);
         Assert.Single(resp.Items);
         Assert.Equal("هيئة الاستثمار والتجارة", resp.Items[0].CanonicalName);
         Assert.True(resp.Items[0].Similarity >= 0.55);
@@ -2721,7 +2758,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        var result = await _service.ListGroupsAsync(new EntityGroupListQuery(Q: "جهة بعداد", Governorate: null), ManagerActor());
+        var result = await _listGroups.ListGroupsAsync(new EntityGroupListQuery(Q: "جهة بعداد", Governorate: null), ManagerActor());
         var item = result.Items.Single(g => g.GroupId == dto.GroupId);
         Assert.Equal(1, item.LinkedDocumentCount);
     }
@@ -3865,7 +3902,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _suggestParentEdit.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest("اقتراح الشعبة", Reason: "سبب"), sub);
         await _suggestParentEdit.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
 
-        var subView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), sub);
+        var subView = await _listSuggestions.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), sub);
         Assert.Equal(1, subView.TotalCount);
         Assert.Equal("اقتراح الشعبة", subView.Items[0].ProposedCanonicalName);
     }
@@ -3893,7 +3930,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         var sub = await SubHeadDamascusActorAsync();
 
         // نطاق المجموعات: محافظة فرعه فقط — مجموعة حلب محجوبة.
-        var groups = await _service.ListGroupsAsync(
+        var groups = await _listGroups.ListGroupsAsync(
             new EntityGroupListQuery(null, null, 1, 50, null, null), sub, default);
         Assert.Contains(groups.Items, g => g.CanonicalName == "وزارة التعليم");
         Assert.DoesNotContain(groups.Items, g => g.CanonicalName == "وزارة الصحة");
@@ -3929,14 +3966,14 @@ public class PublicEntityServiceTests : PostgresDbTest
         await _suggestParentEdit.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
         await _suggestParentEdit.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
 
-        var managerView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), ManagerActor());
+        var managerView = await _listSuggestions.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), ManagerActor());
         Assert.Equal(2, managerView.TotalCount);
 
-        var damView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), HeadDamascusActor());
+        var damView = await _listSuggestions.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), HeadDamascusActor());
         Assert.Equal(1, damView.TotalCount);
         Assert.Equal("اقتراح دمشق", damView.Items[0].ProposedCanonicalName);
 
-        var pendingFilter = await _service.ListParentEditSuggestionsAsync(
+        var pendingFilter = await _listSuggestions.ListParentEditSuggestionsAsync(
             new ParentEditSuggestionListQuery(Status: ParentEditSuggestionStatusCatalog.Pending), ManagerActor());
         Assert.Equal(2, pendingFilter.TotalCount);
     }
@@ -4062,7 +4099,7 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
 
-        var result = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
+        var result = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
 
         var shown = Assert.Single(result.Items, e => e.Id == evt.Id);
         Assert.NotNull(shown.Governorate);
@@ -4078,7 +4115,7 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
 
-        var result = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
+        var result = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
 
         Assert.DoesNotContain(result.Items, e => e.Id == evt.Id);
     }
@@ -4093,10 +4130,10 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         await _renameBranch.RenameBranchAsync(dam.GroupId, dam.Id, new RenameBranchRequest("فرع دمشق المحدث"), HeadDamascusActor());
 
-        var aleppo = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
+        var aleppo = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
         Assert.DoesNotContain(aleppo.Items, e => e.ActionKind == ActionKindCatalog.Rename && e.GroupId == dam.GroupId);
 
-        var damascus = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
+        var damascus = await _listChangeEvents.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
         Assert.Contains(damascus.Items, e => e.ActionKind == ActionKindCatalog.Rename && e.GroupId == dam.GroupId);
     }
 
@@ -4263,7 +4300,7 @@ public class PublicEntityServiceTests : PostgresDbTest
         // الخدمة لأن قيد القاعدة يمنع تجسيد الصف الشاذ في قاعدة الاختبار.
         var branchlessHead = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, null);
 
-        Assert.Equal(0, await _service.CountNeedsReviewAsync(branchlessHead));
+        Assert.Equal(0, await _countNeedsReview.CountNeedsReviewAsync(branchlessHead));
     }
 
     [PostgresFact]

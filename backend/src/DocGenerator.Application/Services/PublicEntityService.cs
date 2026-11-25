@@ -6,15 +6,12 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// خدمة السجل المرجعي للجهات العامة (نموذج الحوكمة الجديد): أي جهة يُدخلها
-/// محامٍ تُخزَّن بـ Status=Final لكنها تبقى «بحاجة مراجعة» (NeedsReview=true) فلا
-/// تظهر لبوات المندوبين قبل اعتماد/تعديل رئيس قسمها (المواءمة السلوكية §6bis)؛
-/// الاعتماد يقفل المراجعة بصمت، والتعديل — وتغيير التسمية تحديدًا — يبلّغ
-/// المُدخِل بالاسم القديم والجديد. الإدارة تعدّل كل السجل بتنفيذ فوري.
-/// إعادة التسمية الجماعية تزامن الأعمدة النصية ضمن معاملة واحدة (د5)، وأداة
-/// الاستيراد التاريخي تعتمد نهائيًا مباشرة (د12).
+/// قواعد كتابة السجل المرجعي للجهات العامة (نموذج الحوكمة الجديد): الحرّاس والتحقق
+/// ومزامنة النصوص وأحداث التغيير والتنبيهات المشتركة بين معالجي الأوامر — مصدر واحد
+/// يستهلكه المعالج عبر <see cref="IPublicEntityWriteRules"/>؛ القراءات صارت استعلامات
+/// مستقلة (`P4-01cg`/`P4-01cj`) لا تمرّ بهذه الخدمة.
 /// </summary>
-public sealed partial class PublicEntityService : IPublicEntityService, IPublicEntityWriteRules
+public sealed partial class PublicEntityService : IPublicEntityWriteRules
 {
     /// <summary>الاسم الافتراضي لفرع قيد الجهة الأم — من الكتالوج لا من حرفي مكرر.</summary>
     private const string DefaultBranchName = PublicEntityBranchCatalog.ParentBranchName;
@@ -25,9 +22,7 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
     private readonly IHeadAlertOutbox _alertOutbox;
     private readonly IRepository<PublicEntityChangeEvent> _changeEvents;
     private readonly IRepository<DocumentOccurrence> _occurrences;
-    private readonly IRepository<ParentEditSuggestion> _suggestions;
     private readonly IUnitOfWork _uow;
-    private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IUserRepository _users;
     private readonly IAppealRepository _appeals;
@@ -39,9 +34,7 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
         IHeadAlertOutbox alertOutbox,
         IRepository<PublicEntityChangeEvent> changeEvents,
         IRepository<DocumentOccurrence> occurrences,
-        IRepository<ParentEditSuggestion> suggestions,
         IUnitOfWork uow,
-        ITransactionRunner tx,
         IAuditLogger audit,
         IUserRepository users,
         IAppealRepository appeals)
@@ -52,9 +45,7 @@ public sealed partial class PublicEntityService : IPublicEntityService, IPublicE
         _alertOutbox = alertOutbox;
         _changeEvents = changeEvents;
         _occurrences = occurrences;
-        _suggestions = suggestions;
         _uow = uow;
-        _tx = tx;
         _audit = audit;
         _users = users;
         _appeals = appeals;

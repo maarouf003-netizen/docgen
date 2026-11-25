@@ -1,10 +1,6 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Audit;
-using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -26,7 +22,7 @@ public sealed partial class PublicEntityService
         SetGroupNorm(created);
         return created;
     }
-    private static PublicEntityEntryDto ToEntryDto(PublicEntityGroup group, PublicEntity entry) => new(
+    internal static PublicEntityEntryDto ToEntryDto(PublicEntityGroup group, PublicEntity entry) => new(
         entry.Id,
         group.Id,
         group.CanonicalName,
