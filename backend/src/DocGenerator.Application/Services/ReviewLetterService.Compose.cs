@@ -1,13 +1,11 @@
 using DocGenerator.Application.Common;
-using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class ReviewLetterService : IReviewLetterService
+public sealed partial class ReviewLetterService
 {
     /// <summary>
     /// تجهيز تنبيه الرد لصاحب الكتاب (لا لمنفّذ الرد): الجمهور حسب دوره (محامٍ أو رئيس)،

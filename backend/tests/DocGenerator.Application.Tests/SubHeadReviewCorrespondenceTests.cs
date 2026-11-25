@@ -21,7 +21,9 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class SubHeadReviewCorrespondenceTests : PostgresDbTest
 {
-    private readonly IReviewLetterService _letters;
+    private readonly IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>> _searchLetters;
+    private readonly IQueryHandler<CountPendingReviewLettersQuery, int> _pendingCount;
+    private readonly IQueryHandler<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>> _listByDocument;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
     private readonly CorrespondenceService _correspondences;
@@ -50,26 +52,35 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
 
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _letters = new ReviewLetterService(
-            new ReviewLetterRepository(_db),
-            new DocumentRepository(_db),
+        var lettersRepo = new ReviewLetterRepository(_db);
+        var documents = new DocumentRepository(_db);
+        var appeals = new AppealRepository(_db);
+        var delegations = new DelegationRepository(_db);
+        var circuits = new Repository<ExecutionCircuit>(_db);
+        var service = new ReviewLetterService(
+            lettersRepo,
+            documents,
             new BranchRepository(_db),
-            new AppealRepository(_db),
-            new DelegationRepository(_db),
+            appeals,
+            delegations,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            uow,
-            tx,
-            _audit,
             TestClock.Provider,
             TestClock.TimeZone,
             new UserRepository(_db),
             new Repository<Section>(_db),
-            new Repository<ExecutionCircuit>(_db));
+            circuits);
+        _searchLetters = new SearchReviewLettersQueryHandler(lettersRepo, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>>>());
+        _pendingCount = new CountPendingReviewLettersQueryHandler(lettersRepo,
+            Array.Empty<IPipelineBehavior<CountPendingReviewLettersQuery, int>>());
+        _listByDocument = new ListReviewLettersByDocumentQueryHandler(
+            lettersRepo, documents, circuits, appeals, delegations, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>>>());
         _reply = new ReplyReviewLetterCommandHandler(
-            (IReviewLetterReplyWriteRules)_letters, new ReviewLetterRepository(_db), uow, tx, _audit,
+            (IReviewLetterReplyWriteRules)service, new ReviewLetterRepository(_db), uow, tx, _audit,
             Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
         _createLetter = new CreateReviewLetterCommandHandler(
-            (IReviewLetterCreateWriteRules)_letters, new BranchRepository(_db), new DocumentRepository(_db),
+            (IReviewLetterCreateWriteRules)service, new BranchRepository(_db), new DocumentRepository(_db),
             new ReviewLetterRepository(_db), new Repository<Section>(_db), uow, tx, _audit,
             new DbExceptionClassifier(),
             Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
@@ -239,9 +250,6 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             new AppealRepository(_db),
             new DelegationRepository(_db),
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
-            uow,
-            tx,
-            _audit,
             TestClock.Provider,
             TestClock.TimeZone,
             new UserRepository(_db),
@@ -352,7 +360,7 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _letters.ListByDocumentAsync(legacy.Id, otherHead.Id, UserRole.Head, _otherBranch.Id));
+            _listByDocument.ListByDocumentAsync(legacy.Id, otherHead.Id, UserRole.Head, _otherBranch.Id));
     }
 
     [PostgresFact]
@@ -415,18 +423,18 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>عام للشعبة</p>", sectionId),
             _lawyer1.Id, "lawyer1", _branch.Id);
 
-        var headView = await _letters.SearchAsync(_head1.Id, UserRole.Head, _branch.Id, null, 1, 20, null);
+        var headView = await _searchLetters.SearchAsync(_head1.Id, UserRole.Head, _branch.Id, null, 1, 20, null);
         Assert.Equal(1, headView.TotalCount);
         Assert.Null(headView.Items.Single().RecipientSectionId);
 
-        var subView = await _letters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null,
+        var subView = await _searchLetters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null,
             ct: default, actorSectionId: sectionId);
         Assert.Equal(2, subView.TotalCount);
         Assert.All(subView.Items, i => Assert.Equal(sectionId, i.RecipientSectionId));
 
         // رمز بلا شعبة مرفوض (نطاق فاعل غير صالح ⇒ 403 لا 400).
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _letters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null));
+            _searchLetters.SearchAsync(sub.Id, UserRole.SubHead, _branch.Id, null, 1, 20, null));
     }
 
     [PostgresFact]
@@ -473,8 +481,8 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(divisionDoc.Id, "<p>قسم</p>"),
             _lawyer1.Id, "lawyer1", _branch.Id);
 
-        Assert.Equal(1, await _letters.CountPendingForHeadAsync(_branch.Id, null));
-        Assert.Equal(1, await _letters.CountPendingForHeadAsync(_branch.Id, sectionId));
+        Assert.Equal(1, await _pendingCount.CountPendingForHeadAsync(_branch.Id, null));
+        Assert.Equal(1, await _pendingCount.CountPendingForHeadAsync(_branch.Id, sectionId));
     }
 
     [PostgresFact]
@@ -491,13 +499,13 @@ public class SubHeadReviewCorrespondenceTests : PostgresDbTest
             _lawyer1.Id, "lawyer1", _branch.Id);
 
         // القسم يرى كتب ملف القسم دون ملف الشعبة، والشعبة عكسه.
-        Assert.Single(await _letters.ListByDocumentAsync(divisionDoc.Id, _head1.Id, UserRole.Head, _branch.Id));
+        Assert.Single(await _listByDocument.ListByDocumentAsync(divisionDoc.Id, _head1.Id, UserRole.Head, _branch.Id));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _letters.ListByDocumentAsync(sectionDoc.Id, _head1.Id, UserRole.Head, _branch.Id));
-        Assert.Single(await _letters.ListByDocumentAsync(
+            _listByDocument.ListByDocumentAsync(sectionDoc.Id, _head1.Id, UserRole.Head, _branch.Id));
+        Assert.Single(await _listByDocument.ListByDocumentAsync(
             sectionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _letters.ListByDocumentAsync(divisionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
+            _listByDocument.ListByDocumentAsync(divisionDoc.Id, sub.Id, UserRole.SubHead, _branch.Id, default, sectionId));
     }
 
     // ── المراسلات ────────────────────────────────────────────────────

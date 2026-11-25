@@ -3,7 +3,6 @@ using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.ReviewLetters;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -21,23 +20,38 @@ namespace DocGenerator.Api.Controllers;
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class ReviewLettersController : ControllerBase
 {
-    private readonly IReviewLetterService _letters;
     private readonly IUserCapabilities _capabilities;
+    private readonly IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>> _searchLetters;
+    private readonly IQueryHandler<GetReviewLetterAdministrativeBranchesQuery, List<string>> _administrativeBranches;
+    private readonly IQueryHandler<CountPendingReviewLettersQuery, int> _pendingCount;
+    private readonly IQueryHandler<CountUnseenReviewRepliesQuery, int> _unseenRepliesCount;
+    private readonly IQueryHandler<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>> _lettersByDocument;
+    private readonly IQueryHandler<GetReviewLetterQuery, ReviewLetterDto> _getLetter;
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
     private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
     private readonly ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> _createLetter;
 
     public ReviewLettersController(
-        IReviewLetterService letters,
         IUserCapabilities capabilities,
+        IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>> searchLetters,
+        IQueryHandler<GetReviewLetterAdministrativeBranchesQuery, List<string>> administrativeBranches,
+        IQueryHandler<CountPendingReviewLettersQuery, int> pendingCount,
+        IQueryHandler<CountUnseenReviewRepliesQuery, int> unseenRepliesCount,
+        IQueryHandler<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>> lettersByDocument,
+        IQueryHandler<GetReviewLetterQuery, ReviewLetterDto> getLetter,
         ICommandHandler<MarkReviewRepliesSeenCommand, bool> markRepliesSeen,
         ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> addAddendum,
         ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> reply,
         ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto> createLetter)
     {
-        _letters = letters;
         _capabilities = capabilities;
+        _searchLetters = searchLetters;
+        _administrativeBranches = administrativeBranches;
+        _pendingCount = pendingCount;
+        _unseenRepliesCount = unseenRepliesCount;
+        _lettersByDocument = lettersByDocument;
+        _getLetter = getLetter;
         _markRepliesSeen = markRepliesSeen;
         _addAddendum = addAddendum;
         _reply = reply;
@@ -63,8 +77,9 @@ public class ReviewLettersController : ControllerBase
     {
         if (IsSubHead && SectionId is null)
             return Forbid();
-        var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
-            administrativeBranch, ct, SectionId);
+        var result = await _searchLetters.HandleAsync(
+            new SearchReviewLettersQuery(UserId, Role, BranchId, q, page, perPage,
+                administrativeBranch, SectionId), ct);
         return Ok(result);
     }
 
@@ -75,7 +90,8 @@ public class ReviewLettersController : ControllerBase
         if (!_capabilities.Has(User, UserCapability.CanSeeAdministrativeBranch))
             return Ok(new { administrativeBranches = new List<string>() });
 
-        var branches = await _letters.GetAdministrativeBranchesAsync(ct);
+        var branches = await _administrativeBranches.HandleAsync(
+            new GetReviewLetterAdministrativeBranchesQuery(), ct);
         return Ok(new { administrativeBranches = branches });
     }
 
@@ -95,7 +111,8 @@ public class ReviewLettersController : ControllerBase
         if (IsSubHead && SectionId is null)
             return Forbid();
 
-        var count = await _letters.CountPendingForHeadAsync(BranchId.Value, SectionId, ct);
+        var count = await _pendingCount.HandleAsync(
+            new CountPendingReviewLettersQuery(BranchId.Value, SectionId), ct);
         return Ok(new { count });
     }
 
@@ -106,7 +123,8 @@ public class ReviewLettersController : ControllerBase
         if (!IsLawyer)
             return Forbid();
 
-        var count = await _letters.CountUnseenRepliesForLawyerAsync(UserId, ct);
+        var count = await _unseenRepliesCount.HandleAsync(
+            new CountUnseenReviewRepliesQuery(UserId), ct);
         return Ok(new { count });
     }
 
@@ -125,7 +143,8 @@ public class ReviewLettersController : ControllerBase
     [HttpGet("document/{documentId:int}")]
     public async Task<IActionResult> ListByDocument(int documentId, CancellationToken ct)
     {
-        var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
+        var items = await _lettersByDocument.HandleAsync(
+            new ListReviewLettersByDocumentQuery(documentId, UserId, Role, BranchId, SectionId), ct);
         return Ok(items);
     }
 
@@ -151,7 +170,8 @@ public class ReviewLettersController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
+        var letter = await _getLetter.HandleAsync(
+            new GetReviewLetterQuery(id, UserId, Role, BranchId, SectionId), ct);
         return Ok(letter);
     }
 

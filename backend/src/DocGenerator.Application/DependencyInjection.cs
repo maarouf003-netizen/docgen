@@ -73,7 +73,6 @@ public static class DependencyInjection
         services.AddScoped<IEntityDelegateService>(sp => sp.GetRequiredService<EntityDelegateService>());
         services.AddScoped<IEntityDelegateWriteRules>(sp => sp.GetRequiredService<EntityDelegateService>());
         services.AddScoped<ReviewLetterService>();
-        services.AddScoped<IReviewLetterService>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<IReviewLetterReplyWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<IReviewLetterCreateWriteRules>(sp => sp.GetRequiredService<ReviewLetterService>());
         services.AddScoped<CorrespondenceService>();
@@ -125,6 +124,12 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<ChangePasswordCommand, bool>, ChangePasswordCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePendingRegistrationAlertsCommand, bool>, DeletePendingRegistrationAlertsCommandHandler>();
+        services.AddScoped<IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>>, SearchReviewLettersQueryHandler>();
+        services.AddScoped<IQueryHandler<GetReviewLetterQuery, ReviewLetterDto>, GetReviewLetterQueryHandler>();
+        services.AddScoped<IQueryHandler<CountPendingReviewLettersQuery, int>, CountPendingReviewLettersQueryHandler>();
+        services.AddScoped<IQueryHandler<CountUnseenReviewRepliesQuery, int>, CountUnseenReviewRepliesQueryHandler>();
+        services.AddScoped<IQueryHandler<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>>, ListReviewLettersByDocumentQueryHandler>();
+        services.AddScoped<IQueryHandler<GetReviewLetterAdministrativeBranchesQuery, List<string>>, GetReviewLetterAdministrativeBranchesQueryHandler>();
         services.AddScoped<ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto>, AddReviewLetterAddendumCommandHandler>();
         services.AddScoped<ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto>, ReplyReviewLetterCommandHandler>();
         services.AddScoped<ICommandHandler<CreateReviewLetterCommand, ReviewLetterDto>, CreateReviewLetterCommandHandler>();

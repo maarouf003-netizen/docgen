@@ -14,7 +14,12 @@ namespace DocGenerator.Application.Tests;
 
 public class ReviewLetterServiceTests : PostgresDbTest
 {
-    private readonly IReviewLetterService _service;
+    private readonly IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>> _search;
+    private readonly IQueryHandler<GetReviewLetterQuery, ReviewLetterDto> _getById;
+    private readonly IQueryHandler<CountPendingReviewLettersQuery, int> _pendingCount;
+    private readonly IQueryHandler<CountUnseenReviewRepliesQuery, int> _unseenCount;
+    private readonly IQueryHandler<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>> _listByDocument;
+    private readonly IQueryHandler<GetReviewLetterAdministrativeBranchesQuery, List<string>> _administrativeBranches;
     private readonly ICommandHandler<MarkReviewRepliesSeenCommand, bool> _markRepliesSeen;
     private readonly ICommandHandler<AddReviewLetterAddendumCommand, ReviewLetterMessageDto> _addAddendum;
     private readonly ICommandHandler<ReplyReviewLetterCommand, ReviewLetterMessageDto> _reply;
@@ -45,7 +50,27 @@ public class ReviewLetterServiceTests : PostgresDbTest
         _db.Users.AddRange(_head, _otherBranchHead, _lawyer1, _lawyer2);
         _db.SaveChanges();
 
-        _service = BuildService();
+        var service = BuildService();
+        var letters = new ReviewLetterRepository(_db);
+        var documents = new DocumentRepository(_db);
+        var circuits = new Repository<ExecutionCircuit>(_db);
+        var appeals = new AppealRepository(_db);
+        var delegations = new DelegationRepository(_db);
+        _search = new SearchReviewLettersQueryHandler(letters, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>>>());
+        _getById = new GetReviewLetterQueryHandler(letters, documents, circuits, appeals, delegations,
+            TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<GetReviewLetterQuery, ReviewLetterDto>>());
+        _pendingCount = new CountPendingReviewLettersQueryHandler(letters,
+            Array.Empty<IPipelineBehavior<CountPendingReviewLettersQuery, int>>());
+        _unseenCount = new CountUnseenReviewRepliesQueryHandler(letters,
+            Array.Empty<IPipelineBehavior<CountUnseenReviewRepliesQuery, int>>());
+        _listByDocument = new ListReviewLettersByDocumentQueryHandler(
+            letters, documents, circuits, appeals, delegations, TestClock.Provider, TestClock.TimeZone,
+            Array.Empty<IPipelineBehavior<ListReviewLettersByDocumentQuery, List<ReviewLetterListItemDto>>>());
+        _administrativeBranches = new GetReviewLetterAdministrativeBranchesQueryHandler(letters,
+            Array.Empty<IPipelineBehavior<GetReviewLetterAdministrativeBranchesQuery, List<string>>>());
+
         _markRepliesSeen = new MarkReviewRepliesSeenCommandHandler(
             new ReviewLetterRepository(_db),
             new UnitOfWork(_db),
@@ -54,7 +79,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
                 new TransactionBehavior<MarkReviewRepliesSeenCommand, bool>(new TransactionRunner(_db)),
             });
 
-        var replyRules = (IReviewLetterReplyWriteRules)_service;
+        var replyRules = (IReviewLetterReplyWriteRules)service;
         var lettersRepo = new ReviewLetterRepository(_db);
         var unitOfWork = new UnitOfWork(_db);
         var runner = new TransactionRunner(_db);
@@ -65,7 +90,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             replyRules, lettersRepo, unitOfWork, runner, _audit,
             Array.Empty<IPipelineBehavior<ReplyReviewLetterCommand, ReviewLetterMessageDto>>());
         _createLetter = new CreateReviewLetterCommandHandler(
-            (IReviewLetterCreateWriteRules)_service, new BranchRepository(_db), new DocumentRepository(_db),
+            (IReviewLetterCreateWriteRules)service, new BranchRepository(_db), new DocumentRepository(_db),
             new ReviewLetterRepository(_db), new Repository<Section>(_db), new UnitOfWork(_db), runner, _audit,
             new DbExceptionClassifier(),
             Array.Empty<IPipelineBehavior<CreateReviewLetterCommand, ReviewLetterDto>>());
@@ -79,7 +104,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     public async Task Search_HeadWithoutBranch_ThrowsUnauthorized()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.SearchAsync(_head.Id, UserRole.Head, null, null, 1, 20, null));
+            _search.SearchAsync(_head.Id, UserRole.Head, null, null, 1, 20, null));
     }
 
     /// <summary>P4-03: الكتاب المفقود KeyNotFound (404) لا Argument (400/404 مموّه).</summary>
@@ -87,7 +112,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
     public async Task GetById_Missing_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _service.GetByIdAsync(999_999, _lawyer1.Id, UserRole.Lawyer, _branchId, default));
+            _getById.GetByIdAsync(999_999, _lawyer1.Id, UserRole.Lawyer, _branchId, default));
     }
 
 
@@ -107,7 +132,6 @@ public class ReviewLetterServiceTests : PostgresDbTest
         return new ReviewLetterService(
             letters, documents, branches, appeals, delegations,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
-            uow, _tx, _audit,
             TestClock.Provider, TestClock.TimeZone,
             users,
             new Repository<Section>(_db),
@@ -228,13 +252,13 @@ public class ReviewLetterServiceTests : PostgresDbTest
         Assert.Equal("60", letter.FileContext.FileNumber);
         Assert.Equal(rotatedYear.ToString(), letter.FileContext.FileYear);
 
-        var stored = await _service.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
+        var stored = await _getById.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
         Assert.NotNull(stored.FileContext);
         Assert.Equal("60", stored.FileContext.FileNumber);
         Assert.Equal(rotatedYear.ToString(), stored.FileContext.FileYear);
 
         // مسار البحث (إسقاط SearchAsync): نفس الرقم الفعّال لا الأصلي.
-        var search = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "مطالعة بملف مدوَّر", 1, 20, null);
+        var search = await _search.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "مطالعة بملف مدوَّر", 1, 20, null);
         var hit = Assert.Single(search.Items);
         Assert.NotNull(hit.FileContext);
         Assert.Equal("60", hit.FileContext.FileNumber);
@@ -265,10 +289,10 @@ public class ReviewLetterServiceTests : PostgresDbTest
         Assert.Equal(ReviewLetterMessage.KindReply, reply.Kind);
         Assert.Matches("^DAM-\\d{4}-\\d{4}$", reply.MessageNumber);
 
-        var stored = await _service.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
+        var stored = await _getById.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
         Assert.True(stored.IsAnswered);
         Assert.Equal(2, stored.Messages.Count);
-        Assert.Equal(0, await _service.CountPendingForHeadAsync(_branchId));
+        Assert.Equal(0, await _pendingCount.CountPendingForHeadAsync(_branchId));
     }
 
     [PostgresFact]
@@ -304,7 +328,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         Assert.Equal(ReviewLetterMessage.KindAddendum, addendum.Kind);
         Assert.NotEqual(letter.LetterNumber, addendum.MessageNumber);
 
-        var stored = await _service.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
+        var stored = await _getById.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
         Assert.False(stored.IsAnswered);
         Assert.Equal(3, stored.Messages.Count);
         Assert.Equal(ReviewLetterMessage.KindAddendum, stored.Messages[^1].Kind);
@@ -320,20 +344,20 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب فرع آخر</p>"),
             _otherBranchHead.Id is not 0 ? _otherBranchHead.Id : 1, "رئيس حلب", _otherBranchId);
 
-        var lawyerView = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
+        var lawyerView = await _search.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.Equal(1, lawyerView.TotalCount);
         Assert.All(lawyerView.Items, i => Assert.Equal("المحامي الأول", i.LawyerName));
 
-        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
+        var headView = await _search.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
         Assert.Equal(2, headView.TotalCount);
 
         // المدير/المشرف: مقيّد بفرع الإدارة المنتقى — بلا فرع لا يرى شيئًا
-        var unselected = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, null);
+        var unselected = await _search.SearchAsync(1, UserRole.Admin, null, null, 1, 20, null);
         Assert.Equal(0, unselected.TotalCount);
 
-        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
+        var managerView = await _search.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
         Assert.Equal(2, managerView.TotalCount);
-        var managerViewAleppo = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "حلب");
+        var managerViewAleppo = await _search.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "حلب");
         Assert.Equal(1, managerViewAleppo.TotalCount);
         Assert.All(managerView.Items, i => Assert.Equal("دمشق", i.AdministrativeBranchName));
     }
@@ -347,7 +371,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        var hit = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "أحمد", 1, 20, null);
+        var hit = await _search.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "أحمد", 1, 20, null);
         Assert.Equal(1, hit.TotalCount);
         Assert.NotNull(hit.Items[0].FileContext);
     }
@@ -371,7 +395,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             _lawyer1.Id, "المحامي الأول", _branchId);
 
         // المتابع بالإنابة يرى كتب الملف
-        var followerView = await _service.ListByDocumentAsync(
+        var followerView = await _listByDocument.ListByDocumentAsync(
             sourceDoc.Id, _lawyer2.Id, UserRole.Lawyer, _branchId);
         Assert.Single(followerView);
 
@@ -381,7 +405,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _service.GetByIdAsync(linkedLetter.Id, stranger.Id, UserRole.Lawyer, _branchId));
+            () => _getById.GetByIdAsync(linkedLetter.Id, stranger.Id, UserRole.Lawyer, _branchId));
     }
 
     [PostgresFact]
@@ -403,7 +427,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
             new CreateReviewLetterRequest(doc.Id, "<p>مطالعة الملف المستأنف</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        var view = await _service.ListByDocumentAsync(doc.Id, assignee.Id, UserRole.Lawyer, _branchId);
+        var view = await _listByDocument.ListByDocumentAsync(doc.Id, assignee.Id, UserRole.Lawyer, _branchId);
         Assert.Single(view);
     }
 
@@ -440,18 +464,18 @@ public class ReviewLetterServiceTests : PostgresDbTest
         Assert.Contains("رد ثانٍ قبل الاطلاع", alert.Message);
 
         // قائمة المحامي تعرض الكتاب مع علم «رد غير مطّلع عليه»
-        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
+        var list = await _search.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.True(list.Items[0].HasUnseenReply);
-        Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
+        Assert.Equal(1, await _unseenCount.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
 
         // حالة الإطلاق خاصة بمحامي الكتاب: تُحجب عن رئيس القسم والمدير
-        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
+        var headView = await _search.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
         Assert.False(headView.Items[0].HasUnseenReply);
-        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
+        var managerView = await _search.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
         Assert.All(managerView.Items, i => Assert.False(i.HasUnseenReply));
 
         // رئيس قسم آخر لا يتأثر بعدّاد محامٍ غير صاحب الكتاب
-        Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer2.Id));
+        Assert.Equal(0, await _unseenCount.CountUnseenRepliesForLawyerAsync(_lawyer2.Id));
     }
 
     [PostgresFact]
@@ -486,8 +510,8 @@ public class ReviewLetterServiceTests : PostgresDbTest
 
         await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer1.Id));
 
-        Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
-        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
+        Assert.Equal(0, await _unseenCount.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
+        var list = await _search.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.False(list.Items[0].HasUnseenReply);
 
         // الإطلاع لا يزيل حالة «تم الرد» ولا يغيّر عدد الرسائل
@@ -503,14 +527,14 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>ج</p>"),
             _head.Id, "رئيس القسم", _branchId);
         await _markRepliesSeen.HandleAsync(new MarkReviewRepliesSeenCommand(letter.Id, _lawyer1.Id));
-        Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
+        Assert.Equal(0, await _unseenCount.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
 
         await _addAddendum.AddAddendumAsync(letter.Id,
             new AddReviewLetterAddendumRequest("<p>استفسار إضافي</p>"), _lawyer1.Id, "المحامي الأول");
         await _reply.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>جواب اللاحق</p>"),
             _head.Id, "رئيس القسم", _branchId);
 
-        Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
+        Assert.Equal(1, await _unseenCount.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
     }
 
     [PostgresFact]
@@ -519,12 +543,12 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        var unknown = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "فرع وهمي");
+        var unknown = await _search.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "فرع وهمي");
         Assert.Equal(0, unknown.TotalCount);
         Assert.Empty(unknown.Items);
 
         // الفراغ/البياض يعامل كعدم اختيار → حجب تام
-        var blank = await _service.SearchAsync(1, UserRole.Manager, null, null, 1, 20, "   ");
+        var blank = await _search.SearchAsync(1, UserRole.Manager, null, null, 1, 20, "   ");
         Assert.Equal(0, blank.TotalCount);
         Assert.Empty(blank.Items);
     }
@@ -563,9 +587,9 @@ public class ReviewLetterServiceTests : PostgresDbTest
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
 
         // "أحمد" يطابق كتابين فرع دمشق — فلتر الفرع يقصرهما عليه ولا يُمرّر كتاب حلب.
-        var inDamascus = await _service.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "دمشق");
+        var inDamascus = await _search.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "دمشق");
         Assert.Equal(2, inDamascus.TotalCount);
-        var inAleppo = await _service.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "حلب");
+        var inAleppo = await _search.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "حلب");
         Assert.Equal(0, inAleppo.TotalCount);
     }
 
@@ -579,7 +603,7 @@ public class ReviewLetterServiceTests : PostgresDbTest
         await _createLetter.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب حلب</p>"),
             _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
 
-        var branches = await _service.GetAdministrativeBranchesAsync();
+        var branches = await _administrativeBranches.GetAdministrativeBranchesAsync();
         Assert.Equal(new[] { "حلب", "دمشق" }, branches);
     }
 }
