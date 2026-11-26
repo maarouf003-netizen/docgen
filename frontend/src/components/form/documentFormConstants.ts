@@ -1,9 +1,5 @@
 import type {
   ApplicantPublicEntityDto,
-  AssetDto,
-  DocumentAnnexDto,
-  DocumentInterventionDto,
-  DocumentInterventionUpsertRequest,
   DocumentResponse,
   DocumentUpsertRequest,
   ExecutedHeirDto,
@@ -14,6 +10,15 @@ import type {
   HeirDto,
 } from '../../types';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { legacyToAnnexes } from './documentAnnexFields';
+import type { LabelValueOption } from './formLabelTypes';
+
+// إعادة تصدير الوحدات المفكّكة (`P6-02f`) للحفاظ على واجهة الاستيراد القائمة.
+export type { LabelValueOption } from './formLabelTypes';
+export * from './documentFormAssets';
+export * from './documentAmountKeys';
+export * from './documentAnnexFields';
+export * from './interventionConstants';
 
 /**
  * قاعدة عامة تسري على كل الكود: سنة الملف لا تكون سنة مستقبلية — الحد الأقصى
@@ -47,101 +52,11 @@ export function isFutureFileYear(value: string | number | null | undefined, curr
 /** رسالة الرفض الأمامية الموحدة (الخلفية ترد بصياغتها الديناميكية عند التجاوز المباشر). */
 export const FUTURE_FILE_YEAR_MESSAGE = 'سنة الملف لا يمكن أن تكون سنة مستقبلية';
 
-/** خيار قائمة منسدلة يحمل قيمة مخزنة وتسمية عرض (لتغيير التسمية دون كسر القيمة المخزنة). */
-export type LabelValueOption = { value: string; label: string };
-
 /** طبيعة طرف الملف (مقترض/كفيل/طالب تنفيذ): شخص طبيعي أو شخص اعتباري. */
 export const PARTY_NATURE_OPTIONS: LabelValueOption[] = [
   { value: 'natural', label: 'شخص طبيعي' },
   { value: 'legal', label: 'شخص اعتباري' },
 ];
-
-/** صفات المتدخل الثلاث في قائمة «صفة المتدخل» بنافذة الإضافة/التعديل. */
-export const INTERVENTION_NATURE_OPTIONS: LabelValueOption[] = [
-  { value: 'natural', label: 'شخص طبيعي' },
-  { value: 'legal', label: 'شخص اعتباري' },
-  { value: 'public', label: 'جهة عامة' },
-];
-
-/** حدود حقول المتدخل في الواجهة — مرآة `InterventionLimitsCatalog` في الخلفية. */
-export const INTERVENTION_LIMITS = {
-  subject: 2000,
-  notes: 2000,
-  name: 100,
-  address: 300,
-} as const;
-
-/** الحالة الابتدائية لنافذة متدخل جديد — ومرجع «إعادة التعيين». */
-export function emptyIntervention(): DocumentInterventionUpsertRequest {
-  return {
-    nature: 'natural',
-    receiptNumber: '',
-    receiptDate: '',
-    acceptanceDate: '',
-    subject: '',
-    notes: '',
-    name: '',
-    father: '',
-    family: '',
-    mother: '',
-    birth: '',
-    register: '',
-    nationalId: '',
-    addressType: 'موطن مختار',
-    address: '',
-    representativeName: '',
-    representativeFather: '',
-    representativeFamily: '',
-    representativeCapacity: '',
-    representativeAddressType: '',
-    representativeAddress: '',
-    entityName: '',
-    entityBranch: '',
-    registrationNumber: '',
-    representedBy: '',
-    governorate: '',
-    registryId: null,
-    heirs: [],
-  };
-}
-
-/**
- * تحويل متدخل محفوظ إلى حالة نافذة التعديل: تُنسخ الحقول المعروفة فقط
- * (بلا `id`/`natureLabel`/`displayName` التي ليست جزءًا من عقد الطلب).
- */
-export function interventionToRequest(dto: DocumentInterventionDto): DocumentInterventionUpsertRequest {
-  return {
-    ...emptyIntervention(),
-    nature: dto.nature,
-    receiptNumber: dto.receiptNumber ?? '',
-    receiptDate: dto.receiptDate ?? '',
-    acceptanceDate: dto.acceptanceDate ?? '',
-    subject: dto.subject ?? '',
-    notes: dto.notes ?? '',
-    name: dto.name ?? '',
-    father: dto.father ?? '',
-    family: dto.family ?? '',
-    mother: dto.mother ?? '',
-    birth: dto.birth ?? '',
-    register: dto.register ?? '',
-    nationalId: dto.nationalId ?? '',
-    addressType: dto.addressType ?? 'موطن مختار',
-    address: dto.address ?? '',
-    representativeName: dto.representativeName ?? '',
-    representativeFather: dto.representativeFather ?? '',
-    representativeFamily: dto.representativeFamily ?? '',
-    representativeCapacity: dto.representativeCapacity ?? '',
-    representativeAddressType: dto.representativeAddressType ?? '',
-    representativeAddress: dto.representativeAddress ?? '',
-    entityName: dto.entityName ?? '',
-    entityBranch: dto.entityBranch ?? '',
-    registrationNumber: dto.registrationNumber ?? '',
-    representedBy: dto.representedBy ?? '',
-    governorate: dto.governorate ?? '',
-    registryId: dto.registryId ?? null,
-    heirs: (dto.heirs ?? []).map((h) => ({ ...h })),
-  };
-}
 
 /** طبيعة المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. */
 export const ENTITY_NATURE_OPTIONS: LabelValueOption[] = [
@@ -179,47 +94,6 @@ export const REPRESENTATIVE_ADDRESS_TYPE_OPTIONS: LabelValueOption[] = [
 export const HEIR_CAPACITIES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
 export const REPRESENTATIVE_CAPACITIES = ['ولي', 'وصي', 'قيم'] as const;
 
-/** الأنواع المدعومة للأموال (مطابقة AssetKindCatalog في الخلفية). */
-export const ASSET_KINDS = {
-  realEstate: 'عقار',
-  vehicle: 'مركبة',
-  shop: 'متجر',
-  salaryGuarantee: 'كفالة رواتب',
-  unregisteredShop: 'متجر غير مسجل',
-} as const;
-
-/** الأنواع الحاملة لمقدار الحصة (تمام/حصة سهمية). */
-export const SHAREABLE_ASSET_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle, ASSET_KINDS.shop]);
-
-/** الأنواع الحاملة لنوع الحق: العقار والمركبة فقط (قرار المالك). */
-export const ASSET_RIGHT_TYPE_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle]);
-
-/** خيارات نوع الحق — مطابقة لـ `RightTypeCatalog` في الخلفية. */
-export const RIGHT_TYPE_OPTIONS = ['حق رقبة', 'حق انتفاع'] as const;
-
-/** نوع الحق الافتراضي للأصول المدعومة. */
-export const DEFAULT_RIGHT_TYPE = 'حق رقبة';
-
-export function supportsRightType(kind: string | undefined): boolean {
-  return Boolean(kind && ASSET_RIGHT_TYPE_KINDS.has(kind));
-}
-
-/** قيمة «تمام» الخاصة بنوع الأصل. */
-export function fullShareLabel(kind: string | undefined): string {
-  if (kind === ASSET_KINDS.vehicle) return 'تمام المركبة';
-  if (kind === ASSET_KINDS.shop) return 'تمام المتجر';
-  return 'تمام العقار';
-}
-
-/** خيارات مقدار الحصة حسب نوع الأصل (العقار/المركبة/المتجر فقط). */
-export function shareTypesFor(kind: string | undefined): string[] {
-  if (!kind || !SHAREABLE_ASSET_KINDS.has(kind)) return [];
-  return [fullShareLabel(kind), 'حصة سهمية'];
-}
-
-/** سقف عدد الأصول من كل نوع على حدة. */
-export const MAX_ASSETS_PER_KIND = 20;
-
 /** سقف عدد الكفلاء/المنفذ عليهم الآخرين (قرار المالك: إجمالي 50 شاملًا المقترض).
  * يطابق `PartyLimitsCatalog.MaxGuarantors` في الخلفية — أي تغيير يستلزم تغييرًا
  * مقابلًا هناك (وقد يستلزم تحديث قالب `Seizure.docx` إن تجاوز 50). */
@@ -254,17 +128,6 @@ export function guarantorAddState(
   return { canAdd: remaining > 0, remaining: Math.max(0, remaining) };
 }
 
-/** أنواع الأموال التي تُعرض في «منفذ جبريا» (كفالة الرواتب مستثناة). */
-export function isAuctionableKind(kind: string | null | undefined): boolean {
-  return Boolean(kind && kind !== ASSET_KINDS.salaryGuarantee);
-}
-
-export function emptyAsset(kind: string): AssetDto {
-  const base: AssetDto = { assetKind: kind, owners: [] };
-  if (SHAREABLE_ASSET_KINDS.has(kind)) base.shareType = fullShareLabel(kind);
-  if (ASSET_RIGHT_TYPE_KINDS.has(kind)) base.rightType = DEFAULT_RIGHT_TYPE;
-  return base;
-}
 export const REPRESENTATION_TYPES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
 export const EXECUTED_STATUS_OPTIONS = [
   { value: '', label: 'متداول' },
@@ -469,56 +332,6 @@ export function emptyExecutedNaturalPerson(): ExecutedNaturalPersonDto {
     deceasedFamily: '',
     heirs: [],
   };
-}
-
-/** مفاتيح المبالغ (حتى ثلاثة) بعملاتها في المواضع الثلاثة في النموذج. */
-export const requiredAmountKeys = [
-  'executedRequiredAmount',
-  'executedRequiredAmount2',
-  'executedRequiredAmount3',
-] as const;
-export const requiredCurrencyKeys = [
-  'executedRequiredCurrency',
-  'executedRequiredCurrency2',
-  'executedRequiredCurrency3',
-] as const;
-/** مفاتيح المبالغ المدفوعة (حتى ثلاثة) بعملاتها في وضع «منفذ عليه»/«عرض وايداع». */
-export const paidAmountKeys = [
-  'executedPaidAmount',
-  'executedPaidAmount2',
-  'executedPaidAmount3',
-] as const;
-export const paidCurrencyKeys = [
-  'executedPaidCurrency',
-  'executedPaidCurrency2',
-  'executedPaidCurrency3',
-] as const;
-export const bankingAmountKeys = [
-  'amountNumeric',
-  'amount2Numeric',
-  'amount3Numeric',
-] as const;
-export const bankingCurrencyKeys = ['currency', 'currency2', 'currency3'] as const;
-export const ordinaryAmountKeys = [
-  'inclusionAmountNumeric',
-  'inclusionAmount2Numeric',
-  'inclusionAmount3Numeric',
-] as const;
-export const ordinaryCurrencyKeys = [
-  'inclusionCurrency',
-  'inclusionCurrency2',
-  'inclusionCurrency3',
-] as const;
-
-/** صف ملحق جديد فارغ — الترتيب يُحسب عند الحفظ. */
-export function emptyAnnex(): DocumentAnnexDto {
-  return { sequence: 0, annexType: '', annexNumber: '', annexDate: '' };
-}
-
-/** توافق خلفي: الملحق المفرد القديم يُقرأ كصف واحد عند غياب القائمة. */
-export function legacyToAnnexes(d: Pick<DocumentResponse, 'annexType' | 'annexNumber' | 'annexDate'>): DocumentAnnexDto[] {
-  if (![d.annexType, d.annexNumber, d.annexDate].some((v) => (v ?? '').trim())) return [];
-  return [{ sequence: 0, annexType: d.annexType ?? '', annexNumber: d.annexNumber ?? '', annexDate: d.annexDate ?? '' }];
 }
 
 /** تحويل مستند مُحمَّل إلى طلب تحديث يملأ النموذج، مع ترك القوائم المركّبة فارغة تنتظر تفصيلها. */
