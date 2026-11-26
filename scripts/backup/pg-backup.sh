@@ -24,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_DIR="${BACKUP_OUTPUT_DIR:-${HOME:-$PWD}/docgen-backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 COMPRESS_LEVEL="${BACKUP_COMPRESS_LEVEL:-6}"
+SCHEMA="public"
 DRY_RUN=0
 SELF_TEST=0
 
@@ -39,6 +40,9 @@ Options:
   -o, --output-dir DIR       Backup directory (default: $BACKUP_OUTPUT_DIR or ~/docgen-backups)
       --retention-days N     Delete artifacts older than N days; 0 keeps all (default: 30)
       --compress-level N     pg_dump compression 0-9 (default: 6)
+      --all-schemas          Dump every schema (old behaviour). Default: app schema 'public'
+                             only, so the artifact is portable to vanilla PostgreSQL and
+                             does not capture Supabase platform internals.
       --dry-run              Validate connection/tools and print the plan; write nothing
       --self-test            Run offline parser/retention self-tests and exit
   -h, --help                 Show this help
@@ -75,6 +79,10 @@ while [ "$#" -gt 0 ]; do
       need_value "$@"
       COMPRESS_LEVEL="$2"
       shift 2
+      ;;
+    --all-schemas)
+      SCHEMA=""
+      shift
       ;;
     --dry-run)
       DRY_RUN=1
@@ -246,6 +254,11 @@ if [ "$ENC_MODE" != "none" ]; then
 else
   log "Encryption: disabled (set BACKUP_ENCRYPTION_KEY to enable)."
 fi
+if [ -n "$SCHEMA" ]; then
+  log "Scope: app schema '$SCHEMA' only (portable; excludes platform internals)."
+else
+  log "Scope: ALL schemas (full database; may include platform internals and may not restore on vanilla PostgreSQL)."
+fi
 
 PG_DUMP_VERSION="$(pg_dump --version 2>/dev/null | head -n 1)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -259,6 +272,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
   log "Planned checksum: $CHECKSUM"
   log "Planned metadata: $METADATA"
   log "Compression level: $COMPRESS_LEVEL (custom format)"
+  if [ -n "$SCHEMA" ]; then
+    log "Scope: app schema '$SCHEMA' only."
+  else
+    log "Scope: ALL schemas (full database)."
+  fi
   log "Client: $PG_DUMP_VERSION"
   if [ -d "$OUTPUT_DIR" ]; then
     log "Output directory exists: $OUTPUT_DIR"
@@ -290,7 +308,11 @@ cleanup() {
 trap cleanup EXIT
 
 log "Dumping database '$PG_DB' to a temporary artifact..."
-if ! pg_dump --format=custom --compress="$COMPRESS_LEVEL" --no-password --file="$TMP_PLAIN"; then
+DUMP_ARGS=(--format=custom --compress="$COMPRESS_LEVEL" --no-password --file="$TMP_PLAIN")
+if [ -n "$SCHEMA" ]; then
+  DUMP_ARGS+=(--schema="$SCHEMA")
+fi
+if ! pg_dump "${DUMP_ARGS[@]}"; then
   die "pg_dump failed; no artifact was published (temporary file removed)."
 fi
 
@@ -329,6 +351,11 @@ SOURCE_USER_JSON="$(json_escape "$PG_USER")"
 ARTIFACT_NAME_JSON="$(json_escape "$(basename "$ARTIFACT")")"
 MIGRATION_HEAD_JSON="$(json_escape "$MIGRATION_HEAD")"
 PG_DUMP_JSON="$(json_escape "$PG_DUMP_VERSION")"
+SCHEMA_JSON="$(json_escape "$SCHEMA")"
+SCOPE_JSON="app"
+if [ -z "$SCHEMA" ]; then
+  SCOPE_JSON="all"
+fi
 
 cat >"$TMP_META" <<EOF
 {
@@ -339,6 +366,8 @@ cat >"$TMP_META" <<EOF
   "sha256": "$ARTIFACT_HASH",
   "compressionLevel": $COMPRESS_LEVEL,
   "encryption": "$ENC_MODE",
+  "scope": "$SCOPE_JSON",
+  "schema": "$SCHEMA_JSON",
   "pgDumpVersion": "$PG_DUMP_JSON",
   "source": {
     "host": "$SOURCE_HOST_JSON",

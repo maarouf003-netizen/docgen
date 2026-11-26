@@ -33,6 +33,7 @@ param(
   [switch]$AllowProduction,
   [switch]$AllowNonEmpty,
   [switch]$TruncateTable,
+  [switch]$AllSchemas,
   [switch]$WhatIf,
   [switch]$SelfTest
 )
@@ -43,6 +44,9 @@ Set-StrictMode -Version Latest
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir 'backup-common.ps1')
+
+# Default: app schema only (portable, excludes Supabase platform internals).
+$schema = if ($AllSchemas) { '' } else { 'public' }
 
 $script:SelfTestFailures = 0
 
@@ -292,6 +296,15 @@ try {
   $env:PGDATABASE = $TargetDb
   Write-BackupLog ("Restore target: " + (Get-RedactedTarget))
   Write-BackupLog ("Archive: " + [System.IO.Path]::GetFileName($File))
+  if ($Table) {
+    Write-BackupLog ("Restore scope: partial table '{0}' only." -f $Table)
+  }
+  elseif ($schema) {
+    Write-BackupLog ("Restore scope: app schema '{0}' only (portable to vanilla PostgreSQL)." -f $schema)
+  }
+  else {
+    Write-BackupLog 'Restore scope: ALL schemas (full platform dump; target must provide the same extensions/roles).'
+  }
   Require-PgTools -Tools @('pg_restore', 'psql')
   Require-Sha256Tool
 
@@ -379,8 +392,16 @@ try {
   }
 
   $restoreArguments = @('--exit-on-error', '--single-transaction', '--no-owner', '--no-privileges', "--dbname=$TargetDb")
+  if (-not $Table -and $schema) {
+    $restoreArguments += "--schema=$schema"
+  }
   if ($Table) {
     $restoreArguments += @('--data-only', "--table=$Table")
+  }
+
+  if (-not $Table -and $schema -eq 'public') {
+    Write-BackupLog "Ensuring required extension pg_trgm exists in schema 'public'..."
+    Invoke-PsqlQuery "CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;" | Out-Null
   }
 
   if ($TruncateTable) {

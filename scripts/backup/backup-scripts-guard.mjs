@@ -58,8 +58,10 @@ const REQUIRED_TOKENS = {
     '--output-dir',
     '--retention-days',
     '--compress-level',
+    '--all-schemas',
     'BACKUP_ENCRYPTION_KEY',
-    'pg_dump --format=custom',
+    'pg_dump "${DUMP_ARGS[@]}"',
+    '--schema="$SCHEMA"',
     'pg_restore --list',
     '--no-password',
     'require_sha256_tool',
@@ -74,8 +76,10 @@ const REQUIRED_TOKENS = {
     'OutputDir',
     'RetentionDays',
     'CompressLevel',
+    '[switch]$AllSchemas',
     'BACKUP_ENCRYPTION_KEY',
     '--format=custom',
+    '--schema=$schema',
     'pg_restore --list',
     '--no-password',
     'Write-ChecksumFile',
@@ -92,6 +96,9 @@ const REQUIRED_TOKENS = {
     '--table',
     '--truncate-table',
     '--allow-nonempty',
+    '--all-schemas',
+    '--schema="$SCHEMA"',
+    'CREATE EXTENSION IF NOT EXISTS pg_trgm',
     'verify_checksum',
     'pg_restore',
     '--single-transaction',
@@ -110,6 +117,9 @@ const REQUIRED_TOKENS = {
     '-Table',
     '-TruncateTable',
     '-AllowNonEmpty',
+    '[switch]$AllSchemas',
+    '--schema=$schema',
+    'CREATE EXTENSION IF NOT EXISTS pg_trgm',
     '[switch]$WhatIf',
     'Test-Checksum',
     'pg_restore',
@@ -308,12 +318,12 @@ function validateScripts(root, files) {
 
     if (files.has('scripts/backup/pg-backup.sh')) {
       const content = files.get('scripts/backup/pg-backup.sh');
-      requireOrder('pg-backup.sh', content, 'if [ "$DRY_RUN" -eq 1 ]', 'pg_dump --format=custom');
+      requireOrder('pg-backup.sh', content, 'if [ "$DRY_RUN" -eq 1 ]', 'pg_dump "${DUMP_ARGS[@]}"');
       requireOrder('pg-backup.sh', content, 'write_checksum', 'prune_backups');
     }
     if (files.has('scripts/backup/pg-backup.ps1')) {
       const content = files.get('scripts/backup/pg-backup.ps1');
-      requireOrder('pg-backup.ps1', content, 'if ($WhatIf)', '& pg_dump --format=custom');
+      requireOrder('pg-backup.ps1', content, 'if ($WhatIf)', '& pg_dump @dumpArguments');
       requireOrder('pg-backup.ps1', content, 'Write-ChecksumFile', 'Invoke-BackupPrune');
     }
     if (files.has('scripts/backup/pg-restore.sh')) {
@@ -323,6 +333,8 @@ function validateScripts(root, files) {
       requireOrder('pg-restore.sh', main, 'assert_safe_target', 'pg_restore "${RESTORE_OPTS[@]}"');
       requireOrder('pg-restore.sh', main, 'require_confirmation "$YES"', 'pg_restore "${RESTORE_OPTS[@]}"');
       requireOrder('pg-restore.sh', main, 'require_confirmation "$YES"', 'TRUNCATE TABLE');
+      requireOrder('pg-restore.sh', main, 'require_confirmation "$YES"', 'CREATE EXTENSION IF NOT EXISTS pg_trgm');
+      requireOrder('pg-restore.sh', main, 'CREATE EXTENSION IF NOT EXISTS pg_trgm', 'pg_restore "${RESTORE_OPTS[@]}"');
     }
     if (files.has('scripts/backup/pg-restore.ps1')) {
       const content = files.get('scripts/backup/pg-restore.ps1');
@@ -331,6 +343,8 @@ function validateScripts(root, files) {
       requireOrder('pg-restore.ps1', main, 'Assert-SafeTarget', '& pg_restore @restoreArguments');
       requireOrder('pg-restore.ps1', main, 'Assert-RestoreConfirmation', '& pg_restore @restoreArguments');
       requireOrder('pg-restore.ps1', main, 'Assert-RestoreConfirmation', 'TRUNCATE TABLE');
+      requireOrder('pg-restore.ps1', main, 'Assert-RestoreConfirmation', 'CREATE EXTENSION IF NOT EXISTS pg_trgm');
+      requireOrder('pg-restore.ps1', main, 'CREATE EXTENSION IF NOT EXISTS pg_trgm', '& pg_restore @restoreArguments');
     }
     if (files.has('scripts/backup/verify-backup.sh')) {
       const content = files.get('scripts/backup/verify-backup.sh');
