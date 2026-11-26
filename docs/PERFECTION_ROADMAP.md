@@ -1615,7 +1615,7 @@
 
 #### `P6-01` — Server state وError boundaries
 
-- **الحالة (2026-11-26):** **جزئيًا — البنية المشتركة منجزة، وترحيل `TanStack Query` متبقٍ.**
+- **الحالة (2026-11-27):** **جزئيًا — البنية المشتركة و`TanStack Query` مُدخَلان، وترحيل بقية الصفحات متبقٍ.**
   - `ErrorBoundary` مشترك (صنف `TS`) ببديل عربي mobile-first: `role="alert"`، عنوان
     مُركَّز، إعادة محاولة (تصفير الحدّ)، عودة للرئيسية، ونسخ معرّف خطأ؛ تسجيل
     `console` في التطوير فقط مع تنقية الرموز/البيانات الشخصية
@@ -1629,8 +1629,15 @@
     مطبَّع (`ApiErrorInfo`/`toApiErrorInfo`).
   - الاختبارات: مصفوفة إعادة المحاولة، CSRF للطرق المغيّرة فقط، حدود الخطأ
     (التقاط/إعادة/`resetKeys`/نسخ/تنقية السجل)، وبقاء تنقل `Layout`.
-  - **متبقٍ:** ترحيل `useEffect` اليدوي إلى `TanStack Query` (لم يُدخل في هذه
-    المرحلة)، وتوحيد حالات التحميل/الخطأ لكل صفحة، و`LCP/INP`.
+  - **`P6-01b` (2026-11-27):** `@tanstack/react-query@5.108.4` مع عميل موحّد
+    (`retry: false`، `refetchOnWindowFocus: false`، `staleTime: 30s`) ومزوّد في `App`،
+    وأول شريحة كاملة: `CircuitStatsPage` صارت استعلامين (`branches`،
+    `circuit-stats` + الفرع) بدل `useEffect` يدوي، مع عدم طلب `/branches` لرئيس
+    القسم/الشعبة وعدم تكرار طلب الفرع المخزَّن، و`placeholderData` لإبقاء الصفوف.
+    8 اختبارات (6 للصفحة + 2 للعميل)، و`/circuit-stats` في `axe`/375px.
+    التفاصيل: `docs/audit/321`–`323`.
+  - **متبقٍ:** ترحيل بقية `useEffect` اليدوي إلى `TanStack Query` (صفحة بشريحة كل
+    تغيير)، وتوحيد حالات التحميل/الخطأ لكل صفحة، و`LCP/INP`.
   - التفاصيل: `docs/audit/264-p6-01a-error-boundaries-20261126.md` (والمراجعتان
     `265`/`266`).
 - **العمل:** TanStack Query بدل `useEffect` اليدوي؛ axios instance موحّد؛ error boundaries؛ retry/backoff للقراءات.

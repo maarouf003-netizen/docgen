@@ -110,4 +110,12 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByRole('heading', { name: 'اقتراحات التطوير' })).toBeVisible();
     await analyzeBlocking(page, '/suggestions');
   });
+
+  // P6-01b: الشاشة الأولى المرحَّلة إلى TanStack Query تُدقَّق أيضًا.
+  test('circuit statistics page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/circuit-stats');
+    await expect(page.getByRole('heading', { name: 'إحصائيات الدوائر' })).toBeVisible();
+    await analyzeBlocking(page, '/circuit-stats');
+  });
 });

@@ -81,4 +81,12 @@ test.describe('mobile 375px — no horizontal overflow', () => {
     await expect(page.getByRole('heading', { name: 'اقتراحات التطوير' })).toBeVisible();
     await expectNoHorizontalOverflow(page, '/suggestions');
   });
+
+  test('circuit statistics page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/circuit-stats');
+
+    await expect(page.getByRole('heading', { name: 'إحصائيات الدوائر' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/circuit-stats');
+  });
 });
