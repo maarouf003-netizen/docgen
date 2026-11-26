@@ -16,7 +16,7 @@
   -SelfTest runs offline parser/checksum/retention tests (no database or PostgreSQL tools).
 
 .EXAMPLE
-  $env:POSTGRES_CONNECTION = 'postgresql://<user>:<password>@db.example.test:5432/docgen?sslmode=require'
+  $env:POSTGRES_CONNECTION = 'postgresql://<user>@db.example.test:5432/docgen?sslmode=require'
   powershell -NoProfile -File scripts\backup\pg-backup.ps1 -WhatIf
 
 .EXAMPLE

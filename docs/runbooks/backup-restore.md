@@ -138,15 +138,16 @@ rclone copy --checksum /srv/backups/docgen/ remote:docgen-backups/daily/ \
 **قبل أي شيء:** `--dry-run`/`-WhatIf` يتحقق من البيئة والأدوات ويعرض الخطة دون كتابة.
 
 ```bash
-export POSTGRES_CONNECTION='postgresql://<user>:<password>@<host>:5432/<database>?sslmode=verify-full'
+export POSTGRES_CONNECTION='postgresql://<user>@<host>:5432/<database>?sslmode=verify-full'
 export BACKUP_ENCRYPTION_KEY='<من مدير الأسرار>'
 
+# كلمة المرور: ضعها في ~/.pgpass (صلاحيات 600) أو داخل URI؛ لا تكتبها في ملف متتبَّع.
 scripts/backup/pg-backup.sh --dry-run
 scripts/backup/pg-backup.sh --output-dir /srv/backups/docgen --retention-days 30 --compress-level 6
 ```
 
 ```powershell
-$env:POSTGRES_CONNECTION = 'postgresql://<user>:<password>@<host>:5432/<database>?sslmode=verify-full'
+$env:POSTGRES_CONNECTION = 'postgresql://<user>@<host>:5432/<database>?sslmode=verify-full'
 $env:BACKUP_ENCRYPTION_KEY = '<from secret manager>'
 
 .\scripts\backup\pg-backup.ps1 -WhatIf
@@ -235,13 +236,13 @@ scripts/backup/pg-restore.sh --file <artifact> --target-db docgen_drill --yes
 **الشروط:** قاعدة هدف فارغة (أو `--allow-nonempty` بوعي)، بصمة صحيحة، وموافقة نافذة تغيير.
 
 ```bash
-export POSTGRES_CONNECTION='postgresql://<user>:<password>@<staging-host>:5432/postgres?sslmode=verify-full'
+export POSTGRES_CONNECTION='postgresql://<user>@<staging-host>:5432/postgres?sslmode=verify-full'
 scripts/backup/pg-restore.sh --file /srv/backups/docgen/docgen-20261126T003000Z.dump \
   --target-db docgen_restore --yes
 ```
 
 ```powershell
-$env:POSTGRES_CONNECTION = 'postgresql://<user>:<password>@<staging-host>:5432/postgres?sslmode=verify-full'
+$env:POSTGRES_CONNECTION = 'postgresql://<user>@<staging-host>:5432/postgres?sslmode=verify-full'
 .\scripts\backup\pg-restore.ps1 -File D:\backups\docgen\docgen-20261126T003000Z.dump `
   -TargetDb docgen_restore -Yes
 ```

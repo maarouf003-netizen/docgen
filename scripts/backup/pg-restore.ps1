@@ -17,7 +17,7 @@
   -SelfTest runs offline guard/checksum tests (no database or PostgreSQL tools).
 
 .EXAMPLE
-  $env:POSTGRES_CONNECTION = 'postgresql://<user>:<password>@db.example.test:5432/postgres?sslmode=require'
+  $env:POSTGRES_CONNECTION = 'postgresql://<user>@db.example.test:5432/postgres?sslmode=require'
   powershell -NoProfile -File scripts\backup\pg-restore.ps1 -File D:\backups\docgen.dump -TargetDb docgen_staging -Yes
 
 .EXAMPLE

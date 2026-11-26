@@ -4,7 +4,7 @@
 # ط§ظ„ظ…طھط·ظ„ط¨ط§طھ: bash 4+طŒ ط£ط¯ظˆط§طھ ط¹ظ…ظٹظ„ PostgreSQL 16+ (pg_restore/psql)طŒ ط£ط¯ط§ط© SHA-256.
 #
 # ط³ظ„ط³ظ„ط© ط§ظ„ط§طھطµط§ظ„: ظ…ظ† POSTGRES_CONNECTION ط­طµط±ظ‹ط§ (ط§ظ„ظ‡ط¯ظپ)طŒ ظˆ--target-db ظٹط­ط¯ظ‘ط¯ ط§ظ„ظ‚ط§ط¹ط¯ط© طµط±ط§ط­ط©ظ‹.
-#   export POSTGRES_CONNECTION='postgresql://<user>:<password>@db.example.test:5432/postgres?sslmode=require'
+#   export POSTGRES_CONNECTION='postgresql://<user>@db.example.test:5432/postgres?sslmode=require'
 #   ./pg-restore.sh --file /srv/backups/docgen/docgen-....dump --target-db docgen_staging --yes
 #
 # ط­ظˆط§ط¬ط² ط§ظ„ط£ظ…ط§ظ† (ظƒظ„ظ‡ط§ ط¥ظ„ط²ط§ظ…ظٹط©):

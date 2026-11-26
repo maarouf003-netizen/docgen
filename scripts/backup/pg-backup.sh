@@ -4,7 +4,7 @@
 # ط§ظ„ظ…طھط·ظ„ط¨ط§طھ: bash 4+طŒ ط£ط¯ظˆط§طھ ط¹ظ…ظٹظ„ PostgreSQL 16+ (pg_dump/pg_restore)طŒ ظˆط£ط¯ط§ط© SHA-256.
 #
 # ط³ظ„ط³ظ„ط© ط§ظ„ط§طھطµط§ظ„: ظ…ظ† ظ…طھط؛ظٹط± ط§ظ„ط¨ظٹط¦ط© POSTGRES_CONNECTION ط­طµط±ظ‹ط§ (URI ط£ظˆ Npgsql ط£ظˆ libpq).
-#   export POSTGRES_CONNECTION='postgresql://<user>:<password>@db.example.test:5432/docgen?sslmode=require'
+#   export POSTGRES_CONNECTION='postgresql://<user>@db.example.test:5432/docgen?sslmode=require'
 # ظ„ط§ طھظڈظƒطھط¨ ط£ظٹ ظƒظ„ظ…ط© ظ…ط±ظˆط± ظپظٹ ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپطŒ ظˆظ„ط§ طھظڈط·ط¨ط¹ ظپظٹ ط§ظ„ط³ط¬ظ„.
 #
 # ط§ظ„طھط´ظپظٹط± (ط§ط®طھظٹط§ط±ظٹ): ط¥ظ† ط¶ظڈط¨ط· BACKUP_ENCRYPTION_KEY ظٹظڈط´ظپظژظ‘ط± ط§ظ„ظ…ظ„ظپ ط¨ظ€ gpg (AES256) ط¥ظ† ظˆظڈط¬ط¯طŒ
