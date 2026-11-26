@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { api, getApiErrorMessage, getCsrfToken, readApiProblemBody } from './client';
+import { CanceledError } from 'axios';
+import {
+  api,
+  getApiErrorMessage,
+  getCsrfToken,
+  isRetryableReadError,
+  readApiProblemBody,
+  retryAfterMs,
+  retryDelayMs,
+  toApiErrorInfo,
+  waitForRetry,
+  BLOB_TIMEOUT_MS,
+  RETRY_MAX_ATTEMPTS,
+} from './client';
 import { ContractError } from './contractError';
 
 describe('getApiErrorMessage', () => {
@@ -173,7 +186,7 @@ describe('api CSRF interceptor', () => {
     delete api.defaults.adapter;
   });
 
-  it('يضيف ترويسة CSRF لطلبات تغيير الحالة ولا يضيفها لطلبات القراءة', async () => {
+  it('يضيف ترويسة CSRF لكل طرق التغيير المطابقة لوسيط الخادم، ولا يضيفها للقراءة', async () => {
     document.cookie = 'docgen_csrf=csrf-token-1; path=/';
     const captured: { method?: string; headers: Record<string, unknown> }[] = [];
     api.defaults.adapter = async (config) => {
@@ -182,14 +195,20 @@ describe('api CSRF interceptor', () => {
     };
 
     await api.post('/auth/logout');
+    await api.put('/documents/1');
+    await api.patch('/documents/1');
+    await api.delete('/documents/1');
     await api.get('/auth/me');
+    await api.head('/auth/me');
 
-    expect(captured).toHaveLength(2);
-    const postHeaders = captured[0].headers as { get?: (k: string) => unknown; [k: string]: unknown };
-    const getHeaders = captured[1].headers as { get?: (k: string) => unknown; [k: string]: unknown };
-    const read = (h: typeof postHeaders) => h['X-CSRF-Token'] ?? h.get?.('X-CSRF-Token');
-    expect(read(postHeaders)).toBe('csrf-token-1');
-    expect(read(getHeaders)).toBeUndefined();
+    const read = (h: Record<string, unknown>) =>
+      h['X-CSRF-Token'] ?? (h as { get?: (k: string) => unknown }).get?.('X-CSRF-Token');
+    expect(captured).toHaveLength(6);
+    for (const request of captured.slice(0, 4)) {
+      expect(read(request.headers)).toBe('csrf-token-1');
+    }
+    expect(read(captured[4].headers)).toBeUndefined();
+    expect(read(captured[5].headers)).toBeUndefined();
   });
 
   it('لا يضيف ترويسة CSRF عند غياب الـ Cookie', async () => {
@@ -302,7 +321,7 @@ describe('api 429 retry', () => {
     expect(calls).toBe(2);
   });
 
-  it('لا يتتالي عند 429 متكرر — يرفض بعد المحاولة الوحيدة', async () => {
+  it('لا يتتالي عند 429 متكرر — يرفض بعد استنفاد المحاولات الثلاث', async () => {
     vi.useFakeTimers();
     let calls = 0;
     api.defaults.adapter = async (config) => {
@@ -312,9 +331,9 @@ describe('api 429 retry', () => {
 
     const pending = api.get('/stats/me');
     const assertion = expect(pending).rejects.toMatchObject({ response: { status: 429 } });
-    await vi.advanceTimersByTimeAsync(1100);
+    await vi.advanceTimersByTimeAsync(5000);
     await assertion;
-    expect(calls).toBe(2);
+    expect(calls).toBe(RETRY_MAX_ATTEMPTS);
   });
 
   it('لا يعيد طلبات الكتابة عند 429', async () => {
@@ -329,5 +348,265 @@ describe('api 429 retry', () => {
       response: { status: 429 },
     });
     expect(calls).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* P6-01a — إعادة المحاولة الآمنة وتطبيع الخطأ                        */
+/* ------------------------------------------------------------------ */
+
+const networkError = (config: unknown) => ({
+  isAxiosError: true,
+  message: 'Network Error',
+  code: 'ERR_NETWORK',
+  config,
+});
+
+const httpError = (config: unknown, status: number, headers: Record<string, string> = {}) => ({
+  isAxiosError: true,
+  message: `Request failed with status code ${status}`,
+  config,
+  response: { status, data: {}, headers, config },
+});
+
+describe('instance موحّد', () => {
+  afterEach(() => {
+    delete api.defaults.adapter;
+  });
+
+  it('يحمل baseURL وwithCredentials وtimeout صريحًا', () => {
+    expect(api.defaults.baseURL).toBe('/api');
+    expect(api.defaults.withCredentials).toBe(true);
+    expect(api.defaults.timeout).toBeGreaterThan(0);
+  });
+
+  it('يمنح تنزيلات blob سقفًا أطول ويحترم timeout المستدعي الصريح', async () => {
+    const timeouts: Array<number | undefined> = [];
+    api.defaults.adapter = async (config) => {
+      timeouts.push(config.timeout);
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    await api.get('/documents/1/export', { responseType: 'blob' });
+    await api.get('/documents/1/export', { responseType: 'blob', timeout: 1234 });
+
+    expect(timeouts).toEqual([BLOB_TIMEOUT_MS, 1234]);
+  });
+});
+
+describe('isRetryableReadError (مصفوفة السياسة)', () => {
+  it('يعيد المحاولة لـ GET/HEAD عند خطأ الشبكة و5xx و429', () => {
+    expect(isRetryableReadError(networkError({ method: 'get' }))).toBe(true);
+    expect(isRetryableReadError(networkError({ method: 'head' }))).toBe(true);
+    expect(isRetryableReadError(httpError({ method: 'get' }, 500))).toBe(true);
+    expect(isRetryableReadError(httpError({ method: 'get' }, 503))).toBe(true);
+    expect(isRetryableReadError(httpError({ method: 'get' }, 429))).toBe(true);
+  });
+
+  it('لا يعيد الكتابات ولا 4xx (بما فيها 401/403/404)', () => {
+    for (const method of ['post', 'put', 'patch', 'delete']) {
+      expect(isRetryableReadError(networkError({ method }))).toBe(false);
+      expect(isRetryableReadError(httpError({ method }, 500))).toBe(false);
+    }
+    for (const status of [400, 401, 403, 404, 409]) {
+      expect(isRetryableReadError(httpError({ method: 'get' }, status))).toBe(false);
+    }
+  });
+
+  it('لا يعيد طلبًا مُلغى ولا يتجاوز سقف المحاولات', () => {
+    expect(isRetryableReadError({ isAxiosError: true, code: 'ERR_CANCELED', config: { method: 'get' } })).toBe(false);
+    expect(
+      isRetryableReadError({
+        isAxiosError: true,
+        config: { method: 'get', signal: { aborted: true } },
+      }),
+    ).toBe(false);
+    expect(
+      isRetryableReadError(networkError({ method: 'get', _retryAttempt: RETRY_MAX_ATTEMPTS })),
+    ).toBe(false);
+  });
+});
+
+describe('retryDelayMs / retryAfterMs', () => {
+  it('يحترم Retry-After بالثواني وبصيغة تاريخ HTTP', () => {
+    const now = Date.parse('2026-11-26T10:00:00Z');
+    expect(retryAfterMs(httpError({ method: 'get' }, 429, { 'retry-after': '2' }))).toBe(2000);
+    expect(
+      retryAfterMs(
+        httpError({ method: 'get' }, 429, { 'retry-after': new Date(now + 4000).toUTCString() }),
+        now,
+      ),
+    ).toBe(4000);
+    expect(retryAfterMs(httpError({ method: 'get' }, 429, { 'retry-after': 'غير صالح' }))).toBeNull();
+  });
+
+  it('يقيّد Retry-After بسقف معلن', () => {
+    expect(retryAfterMs(httpError({ method: 'get' }, 429, { 'retry-after': '9999' }))).toBe(30_000);
+  });
+
+  it('يبني تباعدًا أُسّيًا مشوّشًا في النطاق [half, full]', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      // المحاولة الأولى: 300ms → [150, 300]، والتشويش 0.5 يعطي 225.
+      expect(retryDelayMs(networkError({ method: 'get' }), 1)).toBe(225);
+      // المحاولة الثانية: 600ms → [300, 600]، والتشويش 0.5 يعطي 450.
+      expect(retryDelayMs(networkError({ method: 'get' }), 2)).toBe(450);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+});
+
+describe('waitForRetry (إلغاء)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('يرفض فورًا عند إلغاء الإشارة أثناء الانتظار بلا مؤقت متبقٍ', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const waiting = waitForRetry(5000, controller.signal);
+    const assertion = expect(waiting).rejects.toBeInstanceOf(CanceledError);
+    controller.abort();
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('يرفض فورًا إذا كانت الإشارة ملغاة أصلًا', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(waitForRetry(1000, controller.signal)).rejects.toBeInstanceOf(CanceledError);
+  });
+});
+
+describe('api retry integration', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete api.defaults.adapter;
+  });
+
+  it('GET على خطأ شبكة: 3 محاولات إجمالًا ثم يرفض', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      throw networkError(config);
+    };
+
+    const pending = api.get('/documents');
+    const assertion = expect(pending).rejects.toMatchObject({ code: 'ERR_NETWORK' });
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
+    expect(calls).toBe(RETRY_MAX_ATTEMPTS);
+  });
+
+  it('GET على 500 ينجح في المحاولة الثانية', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      if (calls === 1) throw httpError(config, 500);
+      return { data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    const pending = api.get('/stats');
+    await vi.advanceTimersByTimeAsync(1000);
+    const res = await pending;
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it('POST على 500 لا يُعاد أبدًا ولا يجدول مؤقتًا', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      throw httpError(config, 500);
+    };
+
+    await expect(api.post('/documents', {})).rejects.toMatchObject({
+      response: { status: 500 },
+    });
+    expect(calls).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('يحترم Retry-After لـ429 ولا يبكر قبل انقضائه', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      if (calls === 1) throw httpError(config, 429, { 'retry-after': '2' });
+      return { data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    const pending = api.get('/stats/me');
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const res = await pending;
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it('إلغاء أثناء انتظار الإعادة يوقف السلسلة ولا يرسل محاولة ثانية', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      throw networkError(config);
+    };
+    const controller = new AbortController();
+
+    const pending = api.get('/documents', { signal: controller.signal });
+    const assertion = expect(pending).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(1);
+    controller.abort();
+    await assertion;
+    expect(calls).toBe(1);
+  });
+});
+
+describe('toApiErrorInfo (تطبيع مطبَّع)', () => {
+  it('يصنّف الشبكة والمهلة والإلغاء والعقد', () => {
+    expect(toApiErrorInfo({ isAxiosError: true, code: 'ERR_NETWORK', config: {} })).toMatchObject({
+      kind: 'network',
+      status: null,
+      code: 'ERR_NETWORK',
+    });
+    expect(
+      toApiErrorInfo({ isAxiosError: true, code: 'ECONNABORTED', config: {} }),
+    ).toMatchObject({ kind: 'timeout', code: 'ECONNABORTED' });
+    expect(
+      toApiErrorInfo({ isAxiosError: true, code: 'ERR_CANCELED', config: {} }),
+    ).toMatchObject({ kind: 'aborted' });
+    expect(toApiErrorInfo(new ContractError('عقد غير صالح'))).toMatchObject({
+      kind: 'contract',
+      message: 'عقد غير صالح',
+    });
+  });
+
+  it('يستخرج الحالة وcode/field/traceId من جسم ApiProblem', () => {
+    expect(
+      toApiErrorInfo({
+        isAxiosError: true,
+        config: { method: 'get' },
+        response: {
+          status: 400,
+          data: { code: 'validation_failed', message: 'سنة غير صالحة', field: 'year', traceId: 't-1' },
+        },
+      }),
+    ).toEqual({
+      kind: 'http',
+      status: 400,
+      code: 'validation_failed',
+      message: 'سنة غير صالحة',
+      field: 'year',
+      traceId: 't-1',
+      retryable: false,
+    });
   });
 });

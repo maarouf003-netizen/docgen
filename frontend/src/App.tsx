@@ -119,8 +119,11 @@ function RootRoute() {
 }
 
 export default function App() {
+  // إعادة ضبط حدّ الخطأ الجذري مع كل تنقل: خطأ صفحة واحدة لا يحبس التطبيق
+  // على شاشة الخطأ عند الانتقال إلى مسار آخر (زر الرجوع/رابط خارجي/توجيه).
+  const location = useLocation();
   return (
-    <ErrorBoundary>
+    <ErrorBoundary variant="screen" resetKeys={[location.pathname, location.search]}>
       <AuthProvider>
         <CurrentYearProvider>
         <Suspense fallback={<PageLoader />}>
