@@ -103,7 +103,7 @@ export default function PortalFiles() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">الملفات التنفيذية</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-2 text-balance">الملفات التنفيذية</h2>
       {scope && (
         <p className="text-sm text-gray-500 mb-4">
           نطاقك:{' '}
@@ -130,6 +130,7 @@ export default function PortalFiles() {
           <label htmlFor="portal-status" className="sr-only">فلتر الحالة</label>
           <select
             id="portal-status"
+            name="status"
             value={status}
             onChange={(e) => { setStatus(e.target.value); setPage(1); }}
             className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
@@ -149,6 +150,7 @@ export default function PortalFiles() {
           />
         )}
         <button
+          type="button"
           onClick={exportExcel}
           disabled={exporting || loading}
           className="border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 inline-flex items-center gap-2"
@@ -190,6 +192,7 @@ export default function PortalFiles() {
         {totalCount > PAGE_SIZE && (
           <nav aria-label="تصفح الملفات" className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 text-sm">
             <button
+              type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || loading}
               className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
@@ -198,6 +201,7 @@ export default function PortalFiles() {
             </button>
             <span className="text-gray-500 tabular-nums">{page} من {totalPages} — {totalCount} ملفًا</span>
             <button
+              type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || loading}
               className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"

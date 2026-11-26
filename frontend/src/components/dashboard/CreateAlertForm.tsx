@@ -49,7 +49,7 @@ export function CreateAlertForm({
             type="button"
             onClick={() => onTargetTypeChange(t)}
             aria-pressed={targetType === t}
-            className={`min-h-11 px-4 rounded-xl text-sm font-medium transition-colors ${
+            className={`min-h-11 px-4 rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
               targetType === t
                 ? 'bg-emerald-600 text-white'
                 : 'text-gray-600 border border-gray-200 bg-white hover:bg-gray-50'
@@ -67,11 +67,13 @@ export function CreateAlertForm({
           </label>
           <select
             id="alert-lawyer"
+            name="targetLawyerId"
+            aria-required="true"
             value={lawyerId}
             onChange={(e) => onLawyerIdChange(e.target.value)}
             aria-invalid={error.field === 'lawyer' ? true : undefined}
             aria-describedby={error.field === 'lawyer' ? 'alert-form-error' : undefined}
-            className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm"
+            className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             <option value="">اختر محاميًا…</option>
             {lawyers.map((l) => (
@@ -89,12 +91,14 @@ export function CreateAlertForm({
         </label>
         <textarea
           id="alert-message"
+          name="message"
           value={message}
           onChange={(e) => onMessageChange(e.target.value)}
           rows={3}
+          aria-required="true"
           aria-invalid={error.field === 'message' ? true : undefined}
           aria-describedby={error.field === 'message' ? 'alert-form-error' : undefined}
-          className="w-full min-h-11 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="w-full min-h-11 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         />
       </div>
 
@@ -108,14 +112,14 @@ export function CreateAlertForm({
         <button
           type="submit"
           disabled={submitting}
-          className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
+          className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         >
           {submitting ? 'جارٍ الإرسال…' : 'إرسال التنبيه'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="min-h-11 px-4 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+          className="min-h-11 px-4 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         >
           إلغاء
         </button>

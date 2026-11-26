@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth/useAuth';
@@ -22,6 +22,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [pendingBranches, setPendingBranches] = useState<LoginBranchSelectionResponse['branches'] | null>(null);
   const [selectedBranch, setSelectedBranch] = useState('');
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const branchRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     if (window.location.search.includes('logged_out')) {
@@ -35,6 +37,7 @@ export default function Login() {
     setError('');
     if (pendingBranches && selectedBranch === '') {
       setError('يرجى اختيار الفرع');
+      branchRef.current?.focus();
       return;
     }
     setBusy(true);
@@ -58,6 +61,8 @@ export default function Login() {
         ? (err.response?.data as { message?: string } | undefined)?.message
         : undefined;
       setError(message ?? 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      // أول خطأ يُركَّز عليه بدل بقاء التركيز على زر الإرسال المعطّل مؤقتًا.
+      usernameRef.current?.focus();
     } finally {
       setBusy(false);
     }
@@ -68,6 +73,10 @@ export default function Login() {
     setSelectedBranch('');
     setError('');
   };
+
+  // خطأ الفرع يخص `select` الفرع وحده؛ أي رسالة أخرى تخص بيانات الدخول.
+  const branchError = error === 'يرجى اختيار الفرع';
+  const credentialsError = Boolean(error) && !branchError;
 
   return (
     <div dir="rtl" className="min-h-screen bg-emerald-950 lg:grid lg:grid-cols-2">
@@ -160,6 +169,7 @@ export default function Login() {
 
               {error && (
                 <div
+                  id="login-error"
                   role="alert"
                   className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4 text-sm"
                 >
@@ -175,8 +185,16 @@ export default function Login() {
                   <label htmlFor="login-branch" className="block text-sm font-medium text-gray-700 mb-1">الفرع</label>
                   <select
                     id="login-branch"
+                    ref={branchRef}
+                    name="branchId"
+                    aria-required="true"
                     value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedBranch(e.target.value);
+                      setError('');
+                    }}
+                    aria-invalid={branchError ? true : undefined}
+                    aria-describedby={branchError ? 'login-error' : undefined}
                     className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 bg-white"
                   >
                     <option value="" disabled>
@@ -201,14 +219,20 @@ export default function Login() {
               <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم</label>
               <input
                 id="login-username"
+                ref={usernameRef}
                 name="username"
                 autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
                   if (pendingBranches) resetBranchSelection();
+                  else setError('');
                 }}
                 required
+                aria-invalid={credentialsError ? true : undefined}
+                aria-describedby={credentialsError ? 'login-error' : undefined}
                 className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
 
@@ -219,8 +243,13 @@ export default function Login() {
                 type="password"
                 autoComplete="current-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError('');
+                }}
                 required
+                aria-invalid={credentialsError ? true : undefined}
+                aria-describedby={credentialsError ? 'login-error' : undefined}
                 className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 mb-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
 
@@ -229,7 +258,7 @@ export default function Login() {
                 disabled={busy}
                 className="w-full bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg py-2.5 transition-colors min-h-11 touch-manipulation focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
               >
-                {busy ? 'جاري الدخول...' : pendingBranches ? 'متابعة الدخول' : 'دخول'}
+                {busy ? 'جارٍ الدخول…' : pendingBranches ? 'متابعة الدخول' : 'دخول'}
               </button>
             </div>
           </form>

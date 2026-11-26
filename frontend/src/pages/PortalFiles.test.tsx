@@ -104,6 +104,23 @@ describe('PortalFiles', () => {
     expect(Array.from(statusSelect.options).map((o) => o.value)).toContain('محال الى البداية');
   });
 
+  it('عقد إمكانية الوصول: عنوان h1، حقول بأسماء/تسميات، وأزرار نوعها button (`P6-03a`)', async () => {
+    render(<MemoryRouter><PortalFiles /></MemoryRouter>);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'الملفات التنفيذية' }),
+    ).toBeInTheDocument();
+
+    const search = screen.getByLabelText('بحث في الملفات التنفيذية');
+    expect(search).toHaveAttribute('name', 'q');
+    expect(search).toHaveAttribute('autocomplete', 'off');
+
+    const status = screen.getByLabelText('فلتر الحالة');
+    expect(status).toHaveAttribute('name', 'status');
+
+    expect(screen.getByRole('button', { name: 'تصدير إكسل' })).toHaveAttribute('type', 'button');
+  });
+
   it('يخفي دائرة التنفيذ عند فراغها ولا يعرض شيئًا مكانها', async () => {
     render(<MemoryRouter><PortalFiles /></MemoryRouter>);
 

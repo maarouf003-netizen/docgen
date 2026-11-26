@@ -128,7 +128,16 @@ describe('Login', () => {
 
     await user.click(screen.getByRole('button', { name: 'متابعة الدخول' }));
 
-    expect(await screen.findByText('يرجى اختيار الفرع')).toBeInTheDocument();
+    const branchAlert = await screen.findByRole('alert');
+    expect(branchAlert).toHaveTextContent('يرجى اختيار الفرع');
+    expect(branchAlert).toHaveAttribute('id', 'login-error');
+
+    const branchSelect = screen.getByLabelText('الفرع');
+    expect(branchSelect).toHaveAttribute('name', 'branchId');
+    expect(branchSelect).toHaveAttribute('aria-invalid', 'true');
+    expect(branchSelect).toHaveAttribute('aria-describedby', 'login-error');
+    // أول خطأ يُركَّز عليه بعد فشل الإرسال.
+    expect(branchSelect).toHaveFocus();
     expect(loginMock).toHaveBeenCalledTimes(1);
   });
 
@@ -158,8 +167,25 @@ describe('Login', () => {
     await user.type(screen.getByLabelText('كلمة المرور'), 'bad');
     await user.click(screen.getByRole('button', { name: 'دخول' }));
 
-    expect(await screen.findByText('اسم المستخدم أو كلمة المرور غير صحيحة')).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('اسم المستخدم أو كلمة المرور غير صحيحة');
+    expect(alert).toHaveAttribute('id', 'login-error');
+
+    const username = screen.getByLabelText('اسم المستخدم');
+    expect(username).toHaveAttribute('autocomplete', 'username');
+    expect(username).toHaveAttribute('aria-invalid', 'true');
+    expect(username).toHaveAttribute('aria-describedby', 'login-error');
+    expect(username).toHaveFocus();
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('تسميات الحقول مرتبطة فعليًا (label/for) وزر الإرسال نصه متاح لغير البصريين', () => {
+    render(<Login />);
+
+    expect(screen.getByLabelText('اسم المستخدم')).toHaveAttribute('id', 'login-username');
+    expect(screen.getByLabelText('كلمة المرور')).toHaveAttribute('id', 'login-password');
+    expect(screen.getByLabelText('كلمة المرور')).toHaveAttribute('type', 'password');
+    expect(screen.getByRole('button', { name: 'دخول' })).toHaveAttribute('type', 'submit');
   });
 
   it('يعرض رسالة رفض الحساب بلا فرع (400) ولا يوجّه', async () => {
