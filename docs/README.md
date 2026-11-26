@@ -1,13 +1,13 @@
 # فهرس الوثائق
 
 > نقطة الدخول الوحيدة للوثائق. كل ما تحتاجه لتفهم المشروع أو تنشر أو تحقّق تجده من هنا.
-> آخر تحديث: 2026-11-27 (`P6-02a–k` — تفكيك `DocumentForm` 1526→449، `DocumentView`
+> آخر تحديث: 2026-11-27 (`P6-02a–l` — تفكيك `DocumentForm` 1526→449، `DocumentView`
 > 947→380، `ApplicantSideSections` 952→157، `ExecutedSideSections` 681→174،
 > `DocumentsList` 1060→474، `documentFormConstants` 618→431، `StatusChangeModal`
 > 605→320، `UsersManagement` 602→519، `InterventionModal` 650→333،
-> `EntityRegistryReviewManagement` 642→46، `DayRemindersModal` 725→296، +66 اختبار
-> وحدة/مكوّن وحارس حجم `module-size-guard`؛ و`P6-04` — Playwright E2E + `axe` +
-> فحص 375px في `CI`).
+> `EntityRegistryReviewManagement` 642→46، `DayRemindersModal` 725→296،
+> `BranchManagementModal` 834→122، +66 اختبار وحدة/مكوّن وحارس حجم
+> `module-size-guard`؛ و`P6-04` — Playwright E2E + `axe` + فحص 375px في `CI`).
 
 ## 1. ابدأ من هنا
 
@@ -73,6 +73,8 @@
   اختبارات `303`)، `308` (عدائية).
 - **`P6-02k` (2026-11-27):** `309` (تفكيك `DayRemindersModal` 725→296: صف اليوم/
   النموذج الشخصي/منطق التصفية + 6 اختبارات)، `310` (نقدية)، `311` (عدائية).
+- **`P6-02l` (2026-11-27):** `312` (تفكيك `BranchManagementModal` 834→122: خطّاف
+  القيادة/لوحات الأفعال/بطاقة الأم)، `313` (نقدية)، `314` (عدائية).
 
 ## 4. الخطط
 
