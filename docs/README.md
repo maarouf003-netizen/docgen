@@ -1,11 +1,11 @@
 # فهرس الوثائق
 
 > نقطة الدخول الوحيدة للوثائق. كل ما تحتاجه لتفهم المشروع أو تنشر أو تحقّق تجده من هنا.
-> آخر تحديث: 2026-11-26 (`P6-02a–f` مكتمل النطاق — تفكيك `DocumentForm` 1526→449،
-> `DocumentView` 947→380، `ApplicantSideSections` 952→157، `ExecutedSideSections`
-> 681→174، `DocumentsList` 1060→474، `documentFormConstants` 618→431، +36 اختبار
-> وحدة/مكوّن وحارس حجم `module-size-guard`؛ و`P6-04` — Playwright E2E + `axe` +
-> فحص 375px في `CI`).
+> آخر تحديث: 2026-11-27 (`P6-02a–g` — تفكيك `DocumentForm` 1526→449، `DocumentView`
+> 947→380، `ApplicantSideSections` 952→157، `ExecutedSideSections` 681→174،
+> `DocumentsList` 1060→474، `documentFormConstants` 618→431، `StatusChangeModal`
+> 605→320، +38 اختبار وحدة/مكوّن وحارس حجم `module-size-guard`؛ و`P6-04` —
+> Playwright E2E + `axe` + فحص 375px في `CI`).
 
 ## 1. ابدأ من هنا
 
@@ -60,6 +60,8 @@
   عرض)، `292` (نقدية)، `293` (عدائية — فجوة عقد `perPage=20` أُغلقت باختبار).
 - **`P6-02f` (2026-11-26):** `294` (تفكيك `documentFormConstants` 618→431 إلى خمس وحدات
   متخصصة مع إعادة تصدير)، `295` (نقدية)، `296` (عدائية).
+- **`P6-02g` (2026-11-27):** `297` (تفكيك `StatusChangeModal` 605→320: حقول الإجراء/
+  نموذج)، `298` (نقدية)، `299` (عدائية — فجوة العملات الافتراضية أُغلقت باختبار).
 
 ## 4. الخطط
 
