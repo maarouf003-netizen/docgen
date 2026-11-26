@@ -481,8 +481,9 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
   (`--schema=public`)، ليكون الأرشيف قابلًا للاستعادة على `PostgreSQL` عادي ولا يحمل مخططات
   `Supabase` الداخلية (`auth`/`storage`/`vault`…) أو امتداداتها. `--all-schemas` يعيد النسخة
   الكاملة للمنصة (غير محمولة). `pg-restore` افتراضيًا يستعيد `public` وينشئ `pg_trgm` قبل
-  الاستعادة؛ `--all-schemas` للاستعادة على نفس المنصة فقط. التمرين المثبت:
-  `docs/audit/275-restore-drill-portable-backup-20261126.md`.
+  الاستعادة؛ `--all-schemas` للاستعادة على نفس المنصة فقط. **بيانات `DataProtectionKeys`
+  مستثناة** من الأرشيف (لا مفاتيح جلسات في النسخة؛ تُنشأ جديدة بعد الاستعادة).
+  التمرين المثبت: `docs/audit/275-restore-drill-portable-backup-20261126.md`.
 - **قبل النافذة:** نسخة احتياطية **مُتحقَّقة** (وليس نسخًا فقط) + استعادة تجريبية إلى قاعدة
   غير إنتاجية. لا تُشغَّل الاستعادة فوق الإنتاج إلا بـ`--allow-production` وبموافقة مكتوبة.
 - **الاستضافة المُدارة:** فعّل النسخ اليومي + `PITR` من لوحة المزوّد (`Supabase` تتطلب إعدادًا

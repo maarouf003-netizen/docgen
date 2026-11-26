@@ -31,12 +31,18 @@
 
 - `dotnet build -warnaserror` = 0/0.
 - `has-pending-model-changes` = «No changes».
-- Architecture 41/41 · Application 778 · Api 916 (محليًا؛ والاختبار الجديد `PostgresFact`
-  **نُفّذ على `PostgreSQL 17` محلي مؤقت ونجح**: حماية/فك حماية + وجود صف في
-  `DataProtectionKeys`). مرجعه الحاسم `backend-postgres` في `CI`.
+- Architecture 41/41 · Application 778 · Api **1579/1579** على `PostgreSQL 17` محلي
+  (بعد إصلاح `PostgresBaselineTests` وتشغيل الحزمة الكاملة بلا تخطٍّ)، والاختبار الجديد
+  `DataProtectionPersistenceTests` ضمنها. مرجعه الحاسم `backend-postgres` في `CI`.
 - `migration-watchlist-guard`: 8 هجرات / 7 أسطر غير مشطوبة.
 - `migration-safety-guard`: 8 هجرات، لا عمليات هدم.
 - `dotnet format --verify-no-changes`: نظيف.
+- **تمرين نسخ/استعادة بعد الإضافة:** نسخة `docgen-20261126T122116Z.dump` (8 هجرات)،
+  استُعيدت على `PostgreSQL 17` عادي: **52** جدولًا، **8** هجرات، **0** صفوف في
+  `DataProtectionKeys` (لا مفاتيح في الأرشيف)، و4 مشغّلات. نجح الفحص الدخاني.
+- **عيب كشفته المراجعة النقدية:** `--exclude-table-data=DataProtectionKeys` غير المنصّص
+  لا يطابق الاسم مختلط الحالة (يطويه `pg_dump` إلى أحرف صغيرة)، فكانت البيانات ستُنسخ.
+  صُحّح إلى `public."DataProtectionKeys"` مع حارس يمنع الرجوع، وأُعيد التمرين.
 
 ## 4. بعد النشر (تحقق مطلوب)
 
@@ -49,6 +55,9 @@
 - المفاتيح تُخزَّن **غير مشفّرة** داخل القاعدة (تحذير «No XML encryptor» قد يبقى)؛
   الحماية تعتمد على تشفير القاعدة/المزوّد وصلاحيات الوصول. حماية المفاتيح بشهادة
   (`ProtectKeysWithCertificate`) خيار لاحق يحتاج إدارة شهادات.
+- **النسخ الاحتياطي:** بيانات `DataProtectionKeys` **مستثناة** من أرشيف `pg_dump`
+  (`--exclude-table-data`)، فلا تحمل النسخة مفاتيح تزوير جلسات. بعد الاستعادة يُنشئ
+  التطبيق حلقة جديدة (تُبطل الجلسات القائمة، وهذا مقبول في DR).
 - `KeyPath` بديل للخوادم التي لا تريد تخزين المفاتيح في القاعدة؛ يجب أن يكون قرصًا
   دائمًا ومحميًا، وإلا عادت المشكلة.
 - لا سياسة تدوير مفاتيح صريحة بعد؛ تدوير `Data Protection` يمكن أن يُبطل الجلسات
