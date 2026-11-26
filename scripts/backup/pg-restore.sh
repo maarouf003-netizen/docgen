@@ -30,6 +30,7 @@ YES=0
 ALLOW_PRODUCTION=0
 ALLOW_NONEMPTY=0
 TRUNCATE_TABLE=0
+SCHEMA="public"
 DRY_RUN=0
 SELF_TEST=0
 
@@ -52,6 +53,9 @@ Safety:
                             conflicts roll back the whole restore)
   --table NAME              Partial restore of one table (pg_restore --data-only -t)
   --truncate-table          With --table: TRUNCATE the target table first (destructive)
+  --all-schemas             Restore every schema (old behaviour; only for full platform
+                            dumps that came from the same platform). Default: app schema
+                            'public' only, portable to vanilla PostgreSQL.
 
 Other:
   --checksum-file PATH      Default: <archive>.sha256
@@ -108,6 +112,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --truncate-table)
       TRUNCATE_TABLE=1
+      shift
+      ;;
+    --all-schemas)
+      SCHEMA=""
       shift
       ;;
     --dry-run)
@@ -383,6 +391,13 @@ PG_DB="$TARGET_DB"
 export PGDATABASE
 log "Restore target: $(redacted_target)"
 log "Archive: $(basename "$ARCHIVE")"
+if [ -n "$TABLE" ]; then
+  log "Restore scope: partial table '$TABLE' only."
+elif [ -n "$SCHEMA" ]; then
+  log "Restore scope: app schema '$SCHEMA' only (portable to vanilla PostgreSQL)."
+else
+  log "Restore scope: ALL schemas (full platform dump; target must provide the same extensions/roles)."
+fi
 require_pg_tools pg_restore psql
 require_sha256_tool
 
@@ -455,7 +470,16 @@ fi
 
 require_confirmation "$YES"
 
+if [ -z "$TABLE" ] && [ "$SCHEMA" = "public" ]; then
+  log "Ensuring required extension pg_trgm exists in schema 'public'..."
+  psql_query "CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;" >/dev/null ||
+    die "Cannot create extension pg_trgm in schema 'public'; install PostgreSQL contrib on the target first."
+fi
+
 RESTORE_OPTS=(--exit-on-error --single-transaction --no-owner --no-privileges --dbname="$TARGET_DB")
+if [ -z "$TABLE" ] && [ -n "$SCHEMA" ]; then
+  RESTORE_OPTS+=(--schema="$SCHEMA")
+fi
 if [ -n "$TABLE" ]; then
   RESTORE_OPTS+=(--data-only --table="$TABLE")
 fi

@@ -27,6 +27,7 @@ param(
   [string]$OutputDir = $(if ($env:BACKUP_OUTPUT_DIR) { $env:BACKUP_OUTPUT_DIR } else { Join-Path $HOME 'docgen-backups' }),
   [int]$RetentionDays = $(if ($env:BACKUP_RETENTION_DAYS) { [int]$env:BACKUP_RETENTION_DAYS } else { 30 }),
   [ValidateRange(0, 9)][int]$CompressLevel = $(if ($env:BACKUP_COMPRESS_LEVEL) { [int]$env:BACKUP_COMPRESS_LEVEL } else { 6 }),
+  [switch]$AllSchemas,
   [switch]$WhatIf,
   [switch]$SelfTest
 )
@@ -37,6 +38,9 @@ Set-StrictMode -Version Latest
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir 'backup-common.ps1')
+
+# Default: app schema only (portable, excludes Supabase platform internals).
+$schema = if ($AllSchemas) { '' } else { 'public' }
 
 $script:SelfTestFailures = 0
 
@@ -192,6 +196,12 @@ try {
   else {
     Write-BackupLog 'Encryption: disabled (set BACKUP_ENCRYPTION_KEY to enable).'
   }
+  if ($schema) {
+    Write-BackupLog ("Scope: app schema '{0}' only (portable; excludes platform internals)." -f $schema)
+  }
+  else {
+    Write-BackupLog 'Scope: ALL schemas (full database; may include platform internals and may not restore on vanilla PostgreSQL).'
+  }
 
   $pgDumpVersion = (& pg_dump --version | Select-Object -First 1)
   $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
@@ -207,6 +217,7 @@ try {
     Write-BackupLog ("Planned checksum: " + $checksum)
     Write-BackupLog ("Planned metadata: " + $metadata)
     Write-BackupLog ("Compression level: {0} (custom format)" -f $CompressLevel)
+    Write-BackupLog $(if ($schema) { "Scope: app schema '$schema' only." } else { 'Scope: ALL schemas (full database).' })
     Write-BackupLog ("Client: " + $pgDumpVersion)
     Write-BackupLog ("Retention: would delete {0} expired artifact(s) older than {1} day(s)." -f $expired.Count, $RetentionDays)
     return
@@ -222,7 +233,11 @@ try {
   $tempPlain = Join-Path $OutputDir ('.' + $artifactName + '.partial')
   $tempMetadata = $metadata + '.tmp'
   Write-BackupLog ("Dumping database '{0}' to a temporary artifact..." -f $script:PgDatabase)
-  & pg_dump --format=custom --compress=$CompressLevel --no-password --file=$tempPlain
+  $dumpArguments = @('--format=custom', "--compress=$CompressLevel", '--no-password', "--file=$tempPlain")
+  if ($schema) {
+    $dumpArguments += "--schema=$schema"
+  }
+  & pg_dump @dumpArguments
   if ($LASTEXITCODE -ne 0) {
     throw 'pg_dump failed; no artifact was published.'
   }
@@ -275,6 +290,8 @@ try {
     sha256           = $artifactHash
     compressionLevel = $CompressLevel
     encryption       = $encryptionMode
+    scope            = $(if ($schema) { 'app' } else { 'all' })
+    schema           = $schema
     pgDumpVersion    = [string]$pgDumpVersion
     source           = [ordered]@{
       host     = $script:PgHost

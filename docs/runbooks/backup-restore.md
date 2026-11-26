@@ -53,6 +53,12 @@
 تحليلها. كلمة المرور تنتقل إلى `PGPASSWORD` لعملية `pg_dump/pg_restore` ولا تُطبع ولا تظهر
 في `argv`. البصمة/البيانات الوصفية لا تحوي كلمة مرور.
 
+**نطاق النسخة (2026-11-26):** الافتراضي هو **مخطط التطبيق `public` فقط** (يشمل
+`__EFMigrationsHistory`) ليكون الأرشيف محمولًا إلى `PostgreSQL` عادي، ولا يحمل مخططات
+`Supabase` الداخلية (`auth`/`storage`/`realtime`/`vault`/`graphql`) أو امتداداتها.
+`--all-schemas`/`-AllSchemas` يعيد النسخة الكاملة للمنصة (للاستعادة على نفس المنصة فقط،
+وليست محمولة). أي نسخة قديمة كاملة يمكن استعادتها افتراضيًا بمخطط `public` وحده.
+
 ## 4. الاحتفاظ (Retention)
 
 | الفئة | المدة | المكان | الأداة/المسؤول |
@@ -248,15 +254,25 @@ $env:POSTGRES_CONNECTION = 'postgresql://<user>@<staging-host>:5432/postgres?ssl
 ```
 
 **ما يفعله:** يتحقق من البصمة والأرشيف، يرفض هدفًا إنتاجيًا/مصدر النسخة نفسه، يتحقق أن الهدف
-فارغ، ينفّذ `pg_restore --single-transaction --exit-on-error --no-owner --no-privileges`، ثم
+فارغ، **ينشئ `pg_trgm` في `public` عند الحاجة**، ينفّذ `pg_restore --single-transaction
+--exit-on-error --no-owner --no-privileges --schema=public` (أو `--all-schemas` صراحةً)، ثم
 يشغّل فحصًا دخانيًا: عدد الجداول، عدد/رأس `__EFMigrationsHistory` (مطابقة رأس الأرشيف)، ووجود
 `Documents` وعدد صفوفه.
+
+**الاستعادة المحمولة (مثبتة 2026-11-26):** استعادة نسخة `public` إلى `PostgreSQL 17` عادي
+(بلا مخططات `Supabase`) نجحت: **7** هجرات، **51** جدولًا، **4** مشغّلات، و`pg_trgm`/فهرس
+`IX_Documents_SearchText_Trgm` سليمان. التفاصيل: `docs/audit/275-restore-drill-portable-backup-20261126.md`.
 
 **حدود مقصودة:**
 - `--no-owner --no-privileges`: الأدوار والصلاحيات لا تُعاد (بيئات مختلفة). أعد تطبيق صلاحيات
   التدقيق بعد الاستعادة عبر `scripts/audit-readonly-privileges.sql`.
 - `--single-transaction`: أي خطأ يُرجع كل شيء (لا استعادة جزئية صامتة). القاعدة كبيرة = وقت أطول
   ومساحة `WAL` أكبر؛ احسبها في `RTO`.
+- **`--all-schemas` ممنوع على خادم `PostgreSQL` عادي** إذا كانت النسخة من `Supabase`: مخططات
+  `auth`/`storage`/`vault` وامتداداتها غير موجودة هناك، وستفشل الاستعادة. الافتراضي `public`
+  هو المسار المحمول.
+- إن كانت قاعدة الهدف لا تحوي `contrib` (`pg_trgm`)، ثبّته قبل الاستعادة؛ السكربت يفشل برسالة
+  واضحة بدل استعادة ناقصة.
 - التمرير/التسلسلات تُستعاد من الأرشيف؛ لا حاجة لتعديل يدوي.
 - بعد الاستعادة إلى خادم جديد: حدّث `DATABASE_URL`/`ConnectionStrings__DefaultConnection` في
   التطبيق، ثم شغّل النسخة وتحقق من `/readyz`.
