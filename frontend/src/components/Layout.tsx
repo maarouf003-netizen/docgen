@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import ErrorBoundary from './ErrorBoundary';
 import NetworkStatusBanner from './NetworkStatusBanner';
 import CurrentYearBanner from './CurrentYearBanner';
 import CorrespondenceBell from './correspondence/CorrespondenceBell';
@@ -31,6 +32,7 @@ interface NavItem {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   // مشتق من الدور عبر المساعد النقي (لا من راية السياق) — فيبقى صحيحًا مع أي
   // `mock` قديم يوفّر `user.role` بلا الرايات الجديدة، ولا يتكرر الشرط الحرفي.
   const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
@@ -356,7 +358,13 @@ export default function Layout() {
               )}
             </div>
           )}
-          <Outlet />
+          <ErrorBoundary
+            variant="content"
+            scopeLabel="هذه الصفحة"
+            resetKeys={[location.pathname, location.search]}
+          >
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

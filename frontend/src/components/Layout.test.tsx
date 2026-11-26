@@ -29,6 +29,7 @@ vi.mock('react-router-dom', () => ({
     </a>
   ),
   Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  useLocation: () => ({ pathname: '/', search: '', hash: '', state: null, key: 'test' }),
   Outlet: () => <div>محتوى الصفحة</div>,
 }));
 
