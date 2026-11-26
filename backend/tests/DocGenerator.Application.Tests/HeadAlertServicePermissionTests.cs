@@ -473,6 +473,9 @@ public class HeadAlertServicePermissionTests : PostgresDbTest
         _db.SaveChanges();
 
         // تنبيه فرع حلب (`_alertHeadInB`) مستبعد رغم أن الرئيس مستلمه — قيد الفرع.
+        var page = await _reads.ListForActorAsync(
+            ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
+        Assert.DoesNotContain(page.Items, alert => alert.Id == _alertHeadInB.Id);
         Assert.Equal(1, await _reads.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 

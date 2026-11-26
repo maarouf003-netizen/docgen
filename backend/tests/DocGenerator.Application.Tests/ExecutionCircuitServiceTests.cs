@@ -94,7 +94,7 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             uow, _tx, _audit, _tx);
         _createCircuit = new CreateExecutionCircuitCommandHandler(
-            circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, users,
+            circuitsRepo, branchesRepo, new Repository<Section>(_db), users,
             uow, _audit, classifier,
             new IPipelineBehavior<CreateExecutionCircuitCommand, ExecutionCircuitDto>[]
             {
@@ -1655,7 +1655,6 @@ public class ExecutionCircuitServiceTests : PostgresDbTest
             new Repository<ExecutionCircuit>(_db),
             new Repository<Branch>(_db),
             new Repository<Section>(_db),
-            new DocumentRepository(_db),
             new UserRepository(_db),
             new UnitOfWork(_db),
             _audit,

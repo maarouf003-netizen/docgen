@@ -25,7 +25,6 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
     private readonly IDocumentRepository _documents;
     private readonly IHeadAlertSuccessionService _alertSuccession;
     private readonly IUnitOfWork _uow;
-    private readonly IAuditLogger _audit;
 
     public UserManagementService(
         IUserRepository users,
@@ -36,8 +35,7 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
         IRepository<CorrespondenceMessage> messages,
         IDocumentRepository documents,
         IHeadAlertSuccessionService alertSuccession,
-        IUnitOfWork uow,
-        IAuditLogger audit)
+        IUnitOfWork uow)
     {
         _users = users;
         _branches = branches;
@@ -48,7 +46,6 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
         _documents = documents;
         _alertSuccession = alertSuccession;
         _uow = uow;
-        _audit = audit;
     }
 
     // ── تنفيذ عقد مساعدات كتابة المحامين المشتركة (P4-01bg) ───────────────

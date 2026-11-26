@@ -39,7 +39,7 @@ public class SubHeadFoundationTests : PostgresDbTest
                 new FakeAuditLogger(),
                 new DbExceptionClassifier(),
                 tx),
-            uow, new FakeAuditLogger());
+            uow);
 
         _createUser = new CreateUserCommandHandler(
             (IUserManagementUserWriteRules)service, users, new Repository<HeadSuccession>(_db), uow,
