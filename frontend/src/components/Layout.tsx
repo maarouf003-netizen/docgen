@@ -164,11 +164,11 @@ export default function Layout() {
   }
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    'block rounded-lg px-4 py-2.5 mb-1 transition-colors min-h-11 ' +
+    'block rounded-lg px-4 py-2.5 mb-1 transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300 ' +
     (isActive ? 'bg-emerald-700 text-white' : 'text-emerald-100 hover:bg-emerald-700/40');
 
   const bottomNavClass = ({ isActive }: { isActive: boolean }) =>
-    'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors ' +
+    'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300 ' +
     (isActive ? 'bg-emerald-700 text-white' : 'text-emerald-100 hover:bg-emerald-700/40');
 
   const renderNavLabel = (item: NavItem) => (
@@ -274,14 +274,15 @@ export default function Layout() {
               {formatRoleScope(user)}
             </div>
             <button
+              type="button"
               onClick={logout}
-              className="block w-full text-right text-emerald-100 hover:text-white hover:underline text-xs mb-1 min-h-11"
+              className="block w-full text-right text-emerald-100 hover:text-white hover:underline text-xs mb-1 min-h-11 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300"
             >
               تسجيل الخروج
             </button>
             <NavLink
               to="/change-password"
-              className="block text-emerald-100 hover:text-white hover:underline text-xs min-h-11"
+              className="block text-emerald-100 hover:text-white hover:underline text-xs min-h-11 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300"
             >
               تغيير كلمة المرور
             </NavLink>
@@ -297,7 +298,7 @@ export default function Layout() {
     const bottomItems = navItems.slice(0, BOTTOM_NAV_LIMIT);
     const hasMore = navItems.length > BOTTOM_NAV_LIMIT;
     const moreClass =
-      'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors text-emerald-100 hover:bg-emerald-700/40';
+      'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors text-emerald-100 hover:bg-emerald-700/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300';
     return (
       <nav
         className="fixed bottom-0 inset-x-0 z-40 bg-emerald-900 text-white flex border-t border-emerald-700 pb-[env(safe-area-inset-bottom)]"
@@ -334,9 +335,12 @@ export default function Layout() {
             <div className="mb-4 flex items-center gap-2">
               <button
                 ref={drawerTriggerRef}
+                type="button"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="فتح القائمة"
-                className="bg-emerald-800 text-white rounded-lg px-3 py-2 min-h-11 min-w-11"
+                aria-haspopup="dialog"
+                aria-expanded={drawerOpen}
+                className="bg-emerald-800 text-white rounded-lg px-3 py-2 min-h-11 min-w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
               >
                 ☰
               </button>
@@ -378,10 +382,11 @@ export default function Layout() {
         >
           <button
             ref={drawerCloseRef}
+            type="button"
             autoFocus
             onClick={() => setDrawerOpen(false)}
             aria-label="إغلاق القائمة"
-            className="absolute inset-0 bg-black/50 w-full h-full cursor-default min-h-11"
+            className="absolute inset-0 bg-black/50 w-full h-full cursor-default min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300"
           />
           <aside className="absolute top-0 right-0 h-full w-72 max-w-[85%] bg-emerald-900 text-white flex flex-col shadow-xl">
             {renderSidebarContent(() => setDrawerOpen(false))}

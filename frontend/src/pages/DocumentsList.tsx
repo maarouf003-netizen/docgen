@@ -40,7 +40,7 @@ export function FileNumber({ d, fallback }: { d: DocumentListItemDto; fallback?:
   }
   return (
     <div className="flex flex-col items-start gap-1">
-      <span className={d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}>{text}</span>
+      <span className={`tabular-nums ${d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>{text}</span>
       {/* شارة «استئناف»: للملفات التي عليها استئناف منظور — المحسوم والمشطوب لا يُظهران الشارة. */}
       <AppealBadge d={d} />
     </div>
@@ -67,7 +67,7 @@ function FilterSelect({ value, onChange, ariaLabel, allLabel, options, className
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={ariaLabel}
-      className={`border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11 ${className ?? ''}`}
+      className={`border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 min-h-11 ${className ?? ''}`}
     >
       <option value="">{allLabel}</option>
       {options.map((o) => (
@@ -140,7 +140,7 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="بحث..."
+                placeholder="بحث…"
                 aria-label={`بحث في ${label}`}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
               />
@@ -199,7 +199,7 @@ function MoreMenu({
         {...moreMenu.getReferenceProps()}
         aria-expanded={moreMenu.open}
         aria-haspopup="menu"
-        className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1"
+        className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
       >
         المزيد
         <svg
@@ -293,7 +293,7 @@ function MoreMenu({
               {exporting ? (
                 <>
                   <SpinnerIcon />
-                  جارِ التصدير...
+                  جارِ التصدير…
                 </>
               ) : (
                 'تصدير إكسل'
@@ -319,8 +319,9 @@ function ActionsCell({
   const latest = d.executionActions?.[0];
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="text-right w-full min-h-11 hover:underline"
+      className="text-right w-full min-h-11 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
       title="عرض الإجراءات والملاحظات"
     >
       {latest ? (
@@ -663,7 +664,7 @@ export default function DocumentsList() {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h2 className="text-2xl font-bold text-gray-800">الملفات التنفيذية</h2>
+        <h2 className="text-2xl font-bold text-gray-800 text-balance">الملفات التنفيذية</h2>
         <div className="flex items-center gap-2 flex-wrap">
           <MoreMenu
             canViewDeleted={canViewDeleted}
@@ -697,12 +698,21 @@ export default function DocumentsList() {
       )}
 
       <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-col sm:flex-row flex-wrap gap-3">
-        <input
-          value={query}
-          onChange={(e) => { setQuery(e.target.value); resetPaging(); }}
-          placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ..."
-          className="flex-1 min-w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
-        />
+        <div className="flex-1 min-w-0">
+          <label htmlFor="documents-search" className="sr-only">
+            بحث في الملفات التنفيذية
+          </label>
+          <input
+            id="documents-search"
+            name="q"
+            type="search"
+            autoComplete="off"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); resetPaging(); }}
+            placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ…"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 min-h-11"
+          />
+        </div>
         {isMobile && (
           <>
             <FilterSelect
@@ -777,7 +787,7 @@ export default function DocumentsList() {
         )}
       </div>
 
-      {loading && <div className="text-gray-500">جارِ البحث...</div>}
+      {loading && <div className="text-gray-500" role="status">جارِ البحث…</div>}
 
       {listQuery.error && !data && (
         <div
@@ -841,7 +851,7 @@ export default function DocumentsList() {
                       <AppealBadge d={d} />
                     </div>
                     <span
-                      className={`shrink-0 text-sm font-medium ${
+                      className={`shrink-0 text-sm font-medium tabular-nums ${
                         d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'
                       }`}
                     >
@@ -851,7 +861,7 @@ export default function DocumentsList() {
                   <Link
                     to={`/documents/${d.id}`}
                     onClick={() => openDocument(d.id)}
-                    className="text-emerald-800 font-bold text-lg hover:underline flex items-center min-h-11 mb-1 gap-2"
+                    className="text-emerald-800 font-bold text-lg hover:underline flex items-center min-h-11 mb-1 gap-2 min-w-0 break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
                   >
                     {fullName(d) || displayFileNumber(d) || `مستند ${d.id}`}
                     {d.id === focusId && (
@@ -880,7 +890,7 @@ export default function DocumentsList() {
               )}
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="bg-white rounded-xl shadow overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <thead className="bg-gray-50 text-emerald-900 font-bold">
                   <tr className="text-right">

@@ -1638,8 +1638,18 @@
 
 #### `P6-03` — Design system وإمكانية الوصول
 
+- **الحالة (2026-11-26):** **جزئيًا — دفعة `P6-03a` منجزة على الشاشات الأعلى حركة، والتدقيق الكامل متبقٍ.**
+  - `P6-03a`: أسماء وصول لأزرار أيقونية وحقول (`aria-label`/`label`/`name`)، ربط
+    الأخطاء بـ`aria-describedby`/`role="alert"` وتركيز أول خطأ، حلقات `focus-visible`،
+    أهداف لمس `min-h-11`/`min-h-14`، منع تجاوز 375px (`min-w-0`/`overflow-x-auto`/
+    `truncate`)، `tabular-nums`، و`…` عربية — على `Layout`/`Login`/`DocumentsList`/
+    `AlertsPage`/`PortalFiles`/`CreateAlertForm`، مع اختبارات عقد `a11y`.
+  - **متبقٍ:** تدقيق `axe` آلي لكل الشاشات، فحص `375px` البصري عبر Playwright، قياس
+    التباين، توكن/مكوّن focus موحّد، تعميم `prefers-reduced-motion`، وبقية الشاشات
+    (`Forum`/`Statistics`/`DocumentForm`/`DocumentView`).
+  - التفاصيل: `docs/audit/267-p6-03a-mobile-a11y-20261126.md` والمراجعتان `268`/`269`.
 - **العمل:** tokens، مكونات مشتركة، حالات focus، WCAG 2.2 AA، `aria-label`، `prefers-reduced-motion`، تباين، mobile-first (`sm:`/`md:`/`lg:`)، أهداف لمس 44px.
-- **DoD:** axe بلا أخطاء حرجة على الشاشات الرئيسية، وفحص 375px بلا تجاوز أفقي.
+- **DoD:** axe بلا أخطاء حرجة على الشاشات الرئيسية، وفحص 375px بلا تجاوز أفقي — **غير متحقق بعد** (الدفعة الحالية جزئية ومعلنة).
 
 #### `P6-04` — E2E/Visual/A11y
 

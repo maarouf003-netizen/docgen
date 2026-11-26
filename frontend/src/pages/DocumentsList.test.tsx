@@ -540,7 +540,7 @@ describe('DocumentsList', () => {
 
     await user.click(within(table).getByRole('button', { name: 'فلترة الحالة' }));
     expect(screen.getByRole('menu', { name: 'فلترة الحالة' })).toBeInTheDocument();
-    await user.click(screen.getByPlaceholderText(/بحث بالاسم الثنائي/));
+    await user.click(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' }));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
     expect(url).not.toContain('status=');
@@ -552,8 +552,9 @@ describe('DocumentsList', () => {
     renderList();
     await screen.findByRole('table');
 
-    const searchInput = screen.getByPlaceholderText(/بحث بالاسم الثنائي/);
-    const topBar = searchInput.closest('div');
+    const searchInput = screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' });
+    // البحث داخل حاوية `min-w-0` داخل شريط الفلترة؛ نصل إلى الشريط نفسه لا للحاوية.
+    const topBar = searchInput.parentElement?.parentElement;
     expect(topBar).not.toBeNull();
     expect(within(topBar as HTMLElement).queryByRole('combobox', { name: 'فلترة طالب التنفيذ' })).not.toBeInTheDocument();
     expect(within(topBar as HTMLElement).queryByRole('combobox', { name: 'فلترة دائرة التنفيذ' })).not.toBeInTheDocument();
@@ -1301,7 +1302,7 @@ describe('DocumentsList', () => {
     await waitFor(() => expect(
       get.mock.calls.some(([url]) => String(url).includes('cursor=cursor-p2')),
     ).toBe(true));
-    expect(screen.getByPlaceholderText(/بحث بالاسم/)).toHaveValue('محمود');
+    expect(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' })).toHaveValue('محمود');
   });
 
   it('يميّز الملف الذي كان مفتوحًا في الجدول بشارة وخلفية ويمرر إليه', async () => {
@@ -1484,7 +1485,7 @@ describe('DocumentsList', () => {
     expect(sessionStorage.getItem('lastViewedDocument')).not.toBeNull();
 
     // تغيّر بيانات القائمة (فلتر) يعيد تشغيل التأثير، ومع ذلك يبقى الجلب محاولة واحدة (الحارس).
-    await user.type(screen.getByPlaceholderText('بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ...'), 'س');
+    await user.type(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' }), 'س');
     await waitFor(() => expect(nameCalls).toBe(1));
   });
 
@@ -1551,7 +1552,7 @@ describe('DocumentsList', () => {
     await screen.findByRole('link', { name: 'أحمد خالد الخطيب' });
 
     listShouldFail = true;
-    await user.type(screen.getByPlaceholderText('بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ...'), 'س');
+    await user.type(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' }), 'س');
 
     expect(await screen.findByText('تعذر تحديث القائمة — تُعرض بيانات سابقة.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
@@ -1703,5 +1704,57 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     expect(screen.getByText(/عرض 2 من 2 نتيجة/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
     expect(screen.getByText('نهاية النتائج')).toBeInTheDocument();
+  });
+
+  describe('عقد إمكانية الوصول والجوال (`P6-03a`)', () => {
+    it('حقل البحث له اسم مقروء ونوع/اسم دلاليان بلا الاعتماد على placeholder وحده', async () => {
+      mockPage([]);
+      renderList();
+
+      const search = await screen.findByRole('searchbox', { name: 'بحث في الملفات التنفيذية' });
+      expect(search).toHaveAttribute('name', 'q');
+      expect(search).toHaveAttribute('type', 'search');
+      expect(search).toHaveAttribute('autocomplete', 'off');
+      expect(search).toHaveAttribute('placeholder', expect.stringContaining('…'));
+    });
+
+    it('الجدول الواسع ملفوف بحاوية تمرير أفقي والبحث بحاوية قابلة للانكماش (لا تجاوز 375px)', async () => {
+      mockPage([makeDocument({ id: 1 })]);
+      renderList();
+
+      const table = await screen.findByRole('table');
+      const scrollBox = table.parentElement;
+      expect(scrollBox).toHaveClass('overflow-x-auto');
+      expect(scrollBox).not.toHaveClass('overflow-hidden');
+
+      const searchWrapper = screen
+        .getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' })
+        .closest('div');
+      expect(searchWrapper).toHaveClass('min-w-0');
+      expect(searchWrapper).not.toHaveClass('min-w-64');
+    });
+
+    it('زر «عرض الإجراءات والملاحظات» نوعه button وله اسم مقروء من نصه', async () => {
+      mockPage([
+        makeDocument({
+          id: 1,
+          executionActions: [
+            {
+              id: 1,
+              text: 'إجراء تجريبي',
+              actionDate: '2026-01-01',
+              type: 'إجراء',
+              createdAt: '2026-01-01T00:00:00Z',
+              version: 0,
+            },
+          ],
+        }),
+      ]);
+      renderList();
+
+      const actionButton = await screen.findByRole('button', { name: /إجراء تجريبي/ });
+      expect(actionButton).toHaveAttribute('type', 'button');
+      expect(actionButton).toHaveAttribute('title', 'عرض الإجراءات والملاحظات');
+    });
   });
 });

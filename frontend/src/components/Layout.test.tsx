@@ -527,4 +527,52 @@ describe('Layout', () => {
       .filter((a) => (a as HTMLAnchorElement).getAttribute('href') === '/correspondence');
     expect(bells).toHaveLength(1);
   });
+
+  describe('عقد إمكانية الوصول والجوال (`P6-03a`)', () => {
+    it('زر فتح القائمة أيقوني باسم مقروء ونوع button وحالة توسّع مرتبطة بالدرج', async () => {
+      const user = userEvent.setup();
+      stubMatchMedia(true);
+      render(<Layout />);
+
+      const trigger = screen.getByRole('button', { name: 'فتح القائمة' });
+      expect(trigger).toHaveAttribute('type', 'button');
+      expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+      const close = within(dialog).getByRole('button', { name: 'إغلاق القائمة' });
+      expect(close).toHaveAttribute('type', 'button');
+      await user.click(close);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('روابط التنقل السفلية أهداف لمس ≥44px وتحتفظ بحلقة تركيز مرئية', () => {
+      stubMatchMedia(true);
+      render(<Layout />);
+
+      const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+      for (const link of within(bottomNav).getAllByRole('link')) {
+        expect(link).toHaveClass('min-h-14');
+        expect(link.className).toContain('focus-visible:ring-2');
+      }
+    });
+
+    it('زر تسجيل الخروج (للأدوار الاحتياطية) نوعه button وليس زر إرسال ضمني', () => {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role: 'unknown-role' },
+      });
+      stubMatchMedia(false);
+      render(<Layout />);
+
+      expect(screen.getByRole('button', { name: 'تسجيل الخروج' })).toHaveAttribute(
+        'type',
+        'button',
+      );
+    });
+  });
 });

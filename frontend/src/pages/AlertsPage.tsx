@@ -159,7 +159,7 @@ export default function AlertsPage() {
 
   const header = (
     <div className="mb-4">
-      <h1 className="text-xl font-bold text-gray-900">التنبيهات</h1>
+      <h1 className="text-xl font-bold text-gray-900 text-balance">التنبيهات</h1>
       <p className="mt-1 text-sm text-gray-500">
         {isManager
           ? 'قائمة إشرافية للقراءة فقط عبر الفروع.'
