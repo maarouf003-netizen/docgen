@@ -163,4 +163,17 @@ public class AuthServiceBranchGateTests
 
         Assert.Equal(LoginStatus.Success, result.Status);
     }
+
+    [Fact]
+    public async Task Login_UsernameWithBidiIsolate_Succeeds()
+    {
+        // U+2069 يلتصق عند نسخ اسم من واجهة RTL؛ يجب ألا يمنع المطابقة.
+        var user = BranchlessUser(1, "recoveryadmin", UserRole.Admin);
+        var service = CreateService(new List<User> { user });
+
+        var result = await service.LoginAsync(new LoginRequest("recoveryadmin\u2069", "123456"));
+
+        Assert.Equal(LoginStatus.Success, result.Status);
+        Assert.NotNull(result.Response);
+    }
 }

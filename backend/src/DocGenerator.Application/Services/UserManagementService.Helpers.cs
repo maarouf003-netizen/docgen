@@ -10,7 +10,7 @@ public sealed partial class UserManagementService
 {
     private static string NormalizeUsername(string username)
     {
-        var normalized = ArabicNameNormalizer.Normalize(username);
+        var normalized = ArabicNameNormalizer.Normalize(UsernameInput.Normalize(username));
         if (string.IsNullOrWhiteSpace(normalized))
             throw new ArgumentException("الاسم الثلاثي مطلوب");
         return normalized;

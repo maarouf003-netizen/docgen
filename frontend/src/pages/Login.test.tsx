@@ -84,6 +84,18 @@ describe('Login', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/'));
   });
 
+  it('يحذف محارف الاتجاه غير المرئية من اسم المستخدم قبل الإرسال', async () => {
+    loginMock.mockResolvedValue(successResponse);
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.type(screen.getByLabelText('اسم المستخدم'), 'lawyer1\u2069');
+    await user.type(screen.getByLabelText('كلمة المرور'), '123456');
+    await user.click(screen.getByRole('button', { name: 'دخول' }));
+
+    await waitFor(() => expect(loginMock).toHaveBeenCalledWith('lawyer1', '123456', undefined));
+  });
+
   it('يعرض اختيار الفرع عند تكرار الاسم ثم يدخل بالفرع المختار', async () => {
     loginMock.mockResolvedValueOnce({
       requiresBranchSelection: true,
