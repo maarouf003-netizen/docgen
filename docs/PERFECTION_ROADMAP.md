@@ -1638,7 +1638,7 @@
 
 #### `P6-02` — تفكيك النماذج والعروض
 
-- **الحالة (2026-11-26):** **مكتمل النطاق (a/b/c/d) — كل الملفات المسمّاة في البند <600، مع دين معلن لملفات أخرى.**
+- **الحالة (2026-11-27):** **مكتمل بالكامل (a–m) — لا ملف مصدر >600 سطرًا، والحارس بلا استثناءات.**
   - `DocumentForm.tsx`: **1526 → 449** سطرًا، مع سبع وحدات: `useDocumentParties` (491)،
     `useDocumentFormState` (253)، `DocumentBasicsSection` (243)،
     `documentFormPayload` (241)، `useDocumentReferences` (123)،
@@ -1666,16 +1666,18 @@
     و`PersonalReminderForm` (199) و`dayRemindersModel` (62) و6 اختبارات.
   - `BranchManagementModal.tsx` (`P6-02l`): **834 → 122**، مع `useBranchManagement` (389)
     و`BranchManagementPanels` (316) و`ParentBranchCard` (140).
+  - `BranchesManagement.tsx` (`P6-02m`): **870 → 113**، مع `useBranchesManagement` (400)
+    و`BranchSectionsPanel` (232) و`BranchEditModal` (140) و`BranchesTable` (106).
   - اختبارات: **28+** وحدة لـ`DocumentForm`، 3 لـhook `DocumentView`، 4 لمكوّنات الأقسام؛
-    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1934/1934** (على فرع `P6-02l`).
+    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1934/1934** (على فرع `P6-02m`).
     لا تغيير `API`/هجرة (`has-pending-model-changes` = «No changes»).
-  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **1** ملف
-    مجمّد فوق 600 ينقص فقط) في وظيفة `guards` بـ`CI`.
-  - **دين معلن (خارج `P6-02`):** ملف واحد >600 (`BranchesManagement` 870) —
-    مجمّد بالحارس ويُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…314`.
+  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **0** ملف
+    مجمّد — `FROZEN_MAX_LINES` فارغة) في وظيفة `guards` بـ`CI`.
+  - **لا دين حجم متبقٍ:** كل ملفات `frontend/src` تحت 600، وأي ملف جديد فوقه يُفشل الحارس.
+    التفاصيل: `docs/audit/279…317`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
-- **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق لنطاق `P6-02`** (الخمسة
-  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (ملف واحد معلن مجمّد).
+- **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق بالكامل** (a–m، والحارس بلا
+  استثناءات، وكل الملفات المسمّاة أُضيفت لها اختبارات وحدات/عقد).
 
 #### `P6-03` — Design system وإمكانية الوصول
 

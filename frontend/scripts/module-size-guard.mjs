@@ -22,12 +22,11 @@ export const LIMIT = 600;
  * وقسمَي الأطراف `ApplicantSideSections`/`ExecutedSideSections` و`DocumentsList`
  * وثوابت النموذج `documentFormConstants` و`StatusChangeModal` و`UsersManagement`
  * و`InterventionModal` و`EntityRegistryReviewManagement` و`DayRemindersModal`
- * و`BranchManagementModal`).
+ * و`BranchManagementModal`). بعد `P6-02m` صارت القائمة **فارغة**: لا ملف يتجاوز
+ * الحد، وأي إضافة جديدة فوقه تُفشل الحارس.
  * القيمة = الحد الأقصى المسموح حاليًا؛ لا تُرفع يدويًا — تُحذف عند التفكيك.
  */
-export const FROZEN_MAX_LINES = Object.freeze({
-  'src/pages/BranchesManagement.tsx': 870,
-});
+export const FROZEN_MAX_LINES = Object.freeze({});
 
 /** ملفات لا تدخل القياس (اختبارات/تعريفات/مولَّد). */
 export function isMeasuredSource(relativePath) {
