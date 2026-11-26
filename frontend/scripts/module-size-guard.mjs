@@ -19,7 +19,8 @@ export const LIMIT = 600;
 
 /**
  * الملفات القائمة فوق الحد (لقطة 2026-11-26، بعد تفكيك `DocumentForm`/`DocumentView`
- * وقسمَي الأطراف `ApplicantSideSections`/`ExecutedSideSections` و`DocumentsList`).
+ * وقسمَي الأطراف `ApplicantSideSections`/`ExecutedSideSections` و`DocumentsList`
+ * وثوابت النموذج `documentFormConstants`).
  * القيمة = الحد الأقصى المسموح حاليًا؛ لا تُرفع يدويًا — تُحذف عند التفكيك.
  */
 export const FROZEN_MAX_LINES = Object.freeze({
@@ -28,7 +29,6 @@ export const FROZEN_MAX_LINES = Object.freeze({
   'src/components/dashboard/DayRemindersModal.tsx': 725,
   'src/components/form/InterventionModal.tsx': 650,
   'src/pages/EntityRegistryReviewManagement.tsx': 642,
-  'src/components/form/documentFormConstants.ts': 618,
   'src/components/StatusChangeModal.tsx': 605,
   'src/pages/UsersManagement.tsx': 602,
 });

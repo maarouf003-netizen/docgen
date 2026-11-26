@@ -1651,19 +1651,22 @@
     الحالة 132، الأشخاص 130، السند 96).
   - `DocumentsList.tsx` (`P6-02e`): **1060 → 474**، مع `useDocumentsList` (402) و
     `DocumentsListDisplay` (330).
+  - `documentFormConstants.ts` (`P6-02f`): **618 → 431**، مع `interventionConstants` (89)،
+    `documentFormAssets` (58)، `documentAmountKeys` (38)، `documentAnnexFields` (12)،
+    `formLabelTypes` (2).
   - اختبارات: **28+** وحدة لـ`DocumentForm`، 3 لـhook `DocumentView`، 4 لمكوّنات الأقسام؛
     و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1903/1903**. لا تغيير
     `API`/هجرة (`has-pending-model-changes` = «No changes»).
-  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **8** ملفات
+  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **7** ملفات
     مجمّدة فوق 600 تنقص فقط) في وظيفة `guards` بـ`CI`.
-  - **دين معلن (خارج `P6-02`):** 8 ملفات أخرى >600 (`BranchesManagement` 870،
+  - **دين معلن (خارج `P6-02`):** 7 ملفات أخرى >600 (`BranchesManagement` 870،
     `BranchManagementModal` 834، `DayRemindersModal` 725،
     `InterventionModal` 650، `EntityRegistryReviewManagement` 642،
-    `documentFormConstants` 618، `StatusChangeModal` 605، `UsersManagement` 602) —
-    مجمّدة بالحارس وتُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…293`.
+    `StatusChangeModal` 605، `UsersManagement` 602) —
+    مجمّدة بالحارس وتُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…296`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
 - **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق لنطاق `P6-02`** (الخمسة
-  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (8 ملفات معلنة مجمّدة).
+  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (7 ملفات معلنة مجمّدة).
 
 #### `P6-03` — Design system وإمكانية الوصول
 
