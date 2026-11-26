@@ -188,7 +188,7 @@ export default function ReviewsList() {
                   <div className="flex items-center gap-2 flex-wrap">
                     {isLawyer && item.hasUnseenReply && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-red-600 text-white px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" aria-hidden="true" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-white motion-safe:animate-pulse" aria-hidden="true" />
                         رد جديد
                       </span>
                     )}

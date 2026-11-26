@@ -82,7 +82,7 @@ export function FieldInfoHint({
           id={panelId}
           role="note"
           tabIndex={-1}
-          className="absolute end-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg focus:outline-none"
+          className="absolute end-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
         >
           <div className="flex items-start justify-between gap-2">
             <p className="min-w-0 flex-1">{message}</p>
@@ -120,7 +120,7 @@ export function FieldInfoHint({
                 closeRef.current?.focus();
               }
             }}
-            className="max-h-[70vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl focus:outline-none"
+            className="max-h-[70vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl"
             style={{ touchAction: 'manipulation' }}
           >
             <div className="mb-3 flex items-center justify-between gap-2">

@@ -40,4 +40,45 @@ test.describe('mobile 375px — no horizontal overflow', () => {
     await expect(page.getByText(/لا توجد ملفات/)).toBeVisible();
     await expectNoHorizontalOverflow(page, '/portal/files');
   });
+
+  // P6-03b: توسيع فحص 375px إلى شاشات القوائم/الإدارة/التقويم.
+  test('forum page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/forum');
+
+    await expect(page.getByRole('heading', { name: 'منتدى المحامين' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/forum');
+  });
+
+  test('statistics page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/stats');
+
+    await expect(page.getByRole('heading', { name: 'الإحصائيات' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/stats');
+  });
+
+  test('branches management fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/branches/manage');
+
+    await expect(page.getByRole('heading', { name: 'إدارة الفروع' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/branches/manage');
+  });
+
+  test('calendar page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/calendar');
+
+    await expect(page.getByRole('heading', { name: 'التقويم' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/calendar');
+  });
+
+  test('suggestions page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/suggestions');
+
+    await expect(page.getByRole('heading', { name: 'اقتراحات التطوير' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/suggestions');
+  });
 });

@@ -461,7 +461,7 @@ export default function ForumPage() {
       {loading ? (
         <div aria-busy="true" aria-label="جارِ تحميل الرسائل" className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="animate-pulse rounded-2xl border border-gray-200 bg-white p-3">
+            <div key={i} className="motion-safe:animate-pulse rounded-2xl border border-gray-200 bg-white p-3">
               <div className="h-3 w-1/3 rounded bg-gray-200" />
               <div className="mt-2 h-4 w-3/4 rounded bg-gray-100" />
             </div>

@@ -270,7 +270,7 @@ export default function AppealRotationModal({
           {rotationMode ? (
             confirming ? (
               <section aria-label="تأكيد التدوير" className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                <h4 ref={confirmTitleRef} tabIndex={-1} className="text-sm font-bold text-gray-800 focus:outline-none">
+                <h4 ref={confirmTitleRef} tabIndex={-1} className="text-sm font-bold text-gray-800 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                   تأكيد حفظ التدوير
                 </h4>
                 <dl className="space-y-1.5 text-sm">

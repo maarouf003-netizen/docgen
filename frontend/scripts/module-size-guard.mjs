@@ -21,14 +21,12 @@ export const LIMIT = 600;
  * الملفات القائمة فوق الحد (لقطة 2026-11-26/27، بعد تفكيك `DocumentForm`/`DocumentView`
  * وقسمَي الأطراف `ApplicantSideSections`/`ExecutedSideSections` و`DocumentsList`
  * وثوابت النموذج `documentFormConstants` و`StatusChangeModal` و`UsersManagement`
- * و`InterventionModal` و`EntityRegistryReviewManagement`).
+ * و`InterventionModal` و`EntityRegistryReviewManagement` و`DayRemindersModal`
+ * و`BranchManagementModal`). بعد `P6-02m` صارت القائمة **فارغة**: لا ملف يتجاوز
+ * الحد، وأي إضافة جديدة فوقه تُفشل الحارس.
  * القيمة = الحد الأقصى المسموح حاليًا؛ لا تُرفع يدويًا — تُحذف عند التفكيك.
  */
-export const FROZEN_MAX_LINES = Object.freeze({
-  'src/pages/BranchesManagement.tsx': 870,
-  'src/components/entity/BranchManagementModal.tsx': 834,
-  'src/components/dashboard/DayRemindersModal.tsx': 725,
-});
+export const FROZEN_MAX_LINES = Object.freeze({});
 
 /** ملفات لا تدخل القياس (اختبارات/تعريفات/مولَّد). */
 export function isMeasuredSource(relativePath) {

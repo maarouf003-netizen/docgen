@@ -1638,7 +1638,7 @@
 
 #### `P6-02` — تفكيك النماذج والعروض
 
-- **الحالة (2026-11-26):** **مكتمل النطاق (a/b/c/d) — كل الملفات المسمّاة في البند <600، مع دين معلن لملفات أخرى.**
+- **الحالة (2026-11-27):** **مكتمل بالكامل (a–m) — لا ملف مصدر >600 سطرًا، والحارس بلا استثناءات.**
   - `DocumentForm.tsx`: **1526 → 449** سطرًا، مع سبع وحدات: `useDocumentParties` (491)،
     `useDocumentFormState` (253)، `DocumentBasicsSection` (243)،
     `documentFormPayload` (241)، `useDocumentReferences` (123)،
@@ -1662,21 +1662,26 @@
   - `EntityRegistryReviewManagement.tsx` (`P6-02j`): **642 → 46**، مع `EditEntityTab` (319)
     و`AddEntityTab` (202) و`ReviewTabs` (53) و`reviewTabsModel` (7) وخطّاف
     `useDebouncedCallback` (33) و4 اختبارات.
+  - `DayRemindersModal.tsx` (`P6-02k`): **725 → 296**، مع `DayReminderRow` (203)
+    و`PersonalReminderForm` (199) و`dayRemindersModel` (62) و6 اختبارات.
+  - `BranchManagementModal.tsx` (`P6-02l`): **834 → 122**، مع `useBranchManagement` (389)
+    و`BranchManagementPanels` (316) و`ParentBranchCard` (140).
+  - `BranchesManagement.tsx` (`P6-02m`): **870 → 113**، مع `useBranchesManagement` (400)
+    و`BranchSectionsPanel` (232) و`BranchEditModal` (140) و`BranchesTable` (106).
   - اختبارات: **28+** وحدة لـ`DocumentForm`، 3 لـhook `DocumentView`، 4 لمكوّنات الأقسام؛
-    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1928/1928** (على فرع `P6-02j`).
+    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1934/1934** (على فرع `P6-02m`).
     لا تغيير `API`/هجرة (`has-pending-model-changes` = «No changes»).
-  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **3** ملفات
-    مجمّدة فوق 600 تنقص فقط) في وظيفة `guards` بـ`CI`.
-  - **دين معلن (خارج `P6-02`):** 3 ملفات أخرى >600 (`BranchesManagement` 870،
-    `BranchManagementModal` 834، `DayRemindersModal` 725) —
-    مجمّدة بالحارس وتُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…308`.
+  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **0** ملف
+    مجمّد — `FROZEN_MAX_LINES` فارغة) في وظيفة `guards` بـ`CI`.
+  - **لا دين حجم متبقٍ:** كل ملفات `frontend/src` تحت 600، وأي ملف جديد فوقه يُفشل الحارس.
+    التفاصيل: `docs/audit/279…317`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
-- **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق لنطاق `P6-02`** (الخمسة
-  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (3 ملفات معلنة مجمّدة).
+- **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق بالكامل** (a–m، والحارس بلا
+  استثناءات، وكل الملفات المسمّاة أُضيفت لها اختبارات وحدات/عقد).
 
 #### `P6-03` — Design system وإمكانية الوصول
 
-- **الحالة (2026-11-26):** **جزئيًا — دفعة `P6-03a` منجزة على الشاشات الأعلى حركة، والتدقيق الكامل متبقٍ.**
+- **الحالة (2026-11-27):** **جزئيًا — دفعتا `P6-03a`/`P6-03b` منجزتان، والتدقيق الكامل متبقٍ.**
   - `P6-03a`: أسماء وصول لأزرار أيقونية وحقول (`aria-label`/`label`/`name`)، ربط
     الأخطاء بـ`aria-describedby`/`role="alert"` وتركيز أول خطأ، حلقات `focus-visible`،
     أهداف لمس `min-h-11`/`min-h-14`، منع تجاوز 375px (`min-w-0`/`overflow-x-auto`/
@@ -1687,9 +1692,18 @@
     (`Forum`/`Statistics`/`DocumentForm`/`DocumentView`).
     **تحديث 2026-11-26:** `axe` و`375px` صارا آليين وحاجبين في `CI` لثلاث شاشات
     (الدخول/المستندات/التنبيهات) عبر `P6-04`؛ بقية الشاشات والتوكنات ما زالت متبقية.
+  - **`P6-03b` (2026-11-27):** كتلة `prefers-reduced-motion` عامة في `index.css`،
+    ووسم `motion-safe` لكل الحركات الجوهرية (كانت 3 عارية)، وإصلاح 6 ملفات
+    `outline-none` بلا بديل، وحارس ثابت `frontend/scripts/a11y-guard.mjs` (**17** حالة
+    ذاتية، خطوتان في `guards` بـ`CI`)، وتوسيع `axe`/`375px` من 4 إلى **9** شاشات
+    (منتدى/إحصاءات/إدارة فروع/تقويم/اقتراحات) — بلا حزم أو `API`.
+    التفاصيل: `docs/audit/318`–`320`.
   - التفاصيل: `docs/audit/267-p6-03a-mobile-a11y-20261126.md` والمراجعتان `268`/`269`.
 - **العمل:** tokens، مكونات مشتركة، حالات focus، WCAG 2.2 AA، `aria-label`، `prefers-reduced-motion`، تباين، mobile-first (`sm:`/`md:`/`lg:`)، أهداف لمس 44px.
-- **DoD:** axe بلا أخطاء حرجة على الشاشات الرئيسية، وفحص 375px بلا تجاوز أفقي — **غير متحقق بعد** (الدفعة الحالية جزئية ومعلنة).
+- **`DoD`:** axe بلا أخطاء حرجة على الشاشات الرئيسية، وفحص 375px بلا تجاوز أفقي —
+  **جزئي متحقق**: 9 شاشات محمية آليًا في `CI` (الدخول/المستندات/التنبيهات/البوابة/
+  المنتدى/الإحصاءات/إدارة الفروع/التقويم/الاقتراحات)، والتباين والتوكنات وبقية
+  الشاشات متبقية.
 
 #### `P6-04` — E2E/Visual/A11y
 

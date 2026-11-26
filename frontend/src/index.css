@@ -41,6 +41,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * P6-03b: احترام تفضيل تقليل الحركة على مستوى النظام. القاعدة عامة وشاملة كي
+ * تنطبق على حركات Tailwind (`animate-*`) والانتقالات المعدّة يدويًا، بلا حاجة
+ * لتكرار `motion-reduce:` في كل مكوّن — مع إبقاء `motion-safe:` على الحركات
+ * الجوهرية كي تُلغى أصلًا لا تُختصر فقط.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
