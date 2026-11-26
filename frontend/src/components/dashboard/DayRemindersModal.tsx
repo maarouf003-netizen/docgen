@@ -1,53 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
-import type {
-  AppealReminderDto,
-  PersonalReminderDto,
-  ReminderDto,
-} from '../../types';
-import { PERSONAL_COLORS, PERSONAL_RECURRENCES } from '../../types';
+import type { PersonalReminderDto, ReminderDto } from '../../types';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
-import { richToPlainText } from '../../utils/richText';
+import { dayLabelOf, type CalendarOccurrence } from './personalReminders';
+import { DayReminderRow } from './dayReminders/DayReminderRow';
 import {
-  appealReminderTitle,
-  borrowerFullName,
-  dueLabel,
-} from './dashboardFormat';
-import {
-  dayKeyOf,
-  dayLabelOf,
-  dotTone,
-  parseDayKey,
-  toDayKey,
-  type CalendarOccurrence,
-} from './personalReminders';
+  deleteTargetKey,
+  filterOccurrences,
+  type DeletingTarget,
+} from './dayReminders/dayRemindersModel';
+import { PersonalForm } from './dayReminders/PersonalReminderForm';
 
-type DeletingTarget =
-  | { kind: 'document'; actionId: number; documentId: number; title: string }
-  | { kind: 'appeal'; actionId: number; appealId: number; title: string }
-  | { kind: 'personal'; id: number; title: string };
-
-const END_OPTIONS = [
-  { value: '', label: 'بلا نهاية' },
-  { value: '7', label: 'بعد أسبوع' },
-  { value: '30', label: 'بعد شهر' },
-  { value: '90', label: 'بعد 3 أشهر' },
-  { value: '365', label: 'بعد سنة' },
-];
-
-function endDateFrom(dayKey: string, days: string): string | null {
-  if (!days) return null;
-  const base = parseDayKey(dayKey);
-  if (!base) return null;
-  base.setDate(base.getDate() + Number(days));
-  return toDayKey(base);
-}
+// يُعاد تصديرهما لأن `CalendarPage` يستورد `PersonalForm` من هنا تاريخيًا.
+export { PersonalForm } from './dayReminders/PersonalReminderForm';
 
 /**
  * نافذة تذكيرات اليوم: قائمة المواعيد الثلاثة (ملف/استئناف/شخصي) مع روابطها وشاراتها،
  * ونموذج تذكير شخصي (إنشاء/تعديل)، وتغيير يوم تذكير الملف/الاستئناف (نص حر بنفس عقد
  * `ParseDateTime`)، وإلغاء التذكير بتأكيد صريح — سفلية على الجوال ووسطية على المكتبي.
+ * الصف في `dayReminders/DayReminderRow`، والتصفية/النموذج في `dayReminders/*`.
  */
 export function DayRemindersModal({
   dayKey,
@@ -109,24 +80,7 @@ export function DayRemindersModal({
   }, [onClose]);
 
   const query = search.trim();
-  const visible = useMemo(
-    () =>
-      occurrences.filter((o) => {
-        if (!query) return true;
-        const haystack = [
-          o.kind === 'personal' ? o.personal?.title : null,
-          o.kind === 'personal' ? o.personal?.notes : null,
-          o.reminder && 'borrowerName' in o.reminder ? borrowerFullName(o.reminder as ReminderDto) : null,
-          o.reminder && 'appealTitle' in o.reminder ? appealReminderTitle(o.reminder as AppealReminderDto) : null,
-          // نص الإجراء غني (`<p>…</p>`) فيُجرَّد قبل البحث كما في العرض.
-          o.reminder?.actionText ? richToPlainText(o.reminder.actionText) : null,
-        ]
-          .filter(Boolean)
-          .join(' ');
-        return haystack.includes(query);
-      }),
-    [occurrences, query],
-  );
+  const visible = useMemo(() => filterOccurrences(occurrences, query), [occurrences, query]);
 
   const startReschedule = (key: string, current: string | undefined) => {
     setRescheduling(key);
@@ -159,7 +113,7 @@ export function DayRemindersModal({
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    const key = `${deleting.kind}-${deleting.kind === 'personal' ? deleting.id : deleting.actionId}`;
+    const key = deleteTargetKey(deleting);
     setActingKey(key);
     setActionError('');
     try {
@@ -290,7 +244,7 @@ export function DayRemindersModal({
         ) : (
           <ul className="divide-y divide-gray-100 -mx-1 px-1">
             {visible.map((o, i) => (
-              <DayRow
+              <DayReminderRow
                 key={`${o.kind}-${o.reminder?.actionId ?? o.personal?.id ?? i}-${o.dayKey}`}
                 occurrence={o}
                 rescheduling={rescheduling}
@@ -338,388 +292,5 @@ export function DayRemindersModal({
         ) : null}
       </div>
     </div>
-  );
-}
-
-function RowBadge({ dueDate }: { dueDate: string }) {
-  const { text, tone } = dueLabel(dueDate);
-  return (
-    <span className={`text-xs rounded-full border px-2 py-0.5 font-medium whitespace-nowrap ${tone}`}>
-      {text}
-    </span>
-  );
-}
-
-function DayRow({
-  occurrence: o,
-  rescheduling,
-  rescheduleInput,
-  rescheduleError,
-  rescheduleSaving,
-  actingKey,
-  onStartReschedule,
-  onRescheduleInput,
-  onSaveReschedule,
-  onCancelReschedule,
-  onDelete,
-  onToggleDone,
-  onEdit,
-}: {
-  occurrence: CalendarOccurrence;
-  rescheduling: string | null;
-  rescheduleInput: string;
-  rescheduleError: string;
-  rescheduleSaving: boolean;
-  actingKey: string | null;
-  onStartReschedule: (key: string, current: string | undefined) => void;
-  onRescheduleInput: (value: string) => void;
-  onSaveReschedule: () => void;
-  onCancelReschedule: () => void;
-  onDelete: (target: DeletingTarget) => void;
-  onToggleDone: (personal: PersonalReminderDto, done: boolean) => void;
-  onEdit: (personal: PersonalReminderDto) => void;
-}) {
-  if (o.kind === 'personal' && o.personal) {
-    const p = o.personal;
-    const doneKey = `personal-done-${p.id}`;
-    const done = o.done ?? (p.completedOccurrenceKeys ?? []).includes(o.dayKey);
-    return (
-      <li className="py-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-2">
-              <span className={`font-medium text-gray-900 break-words ${done ? 'line-through text-gray-400' : ''}`}>
-                {p.title}
-              </span>
-              {done ? (
-                <span className="text-xs rounded-full bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 font-medium">
-                  منجز
-                </span>
-              ) : null}
-            </p>
-            {p.notes ? <p className="text-xs text-gray-500 mt-0.5 break-words line-clamp-2">{p.notes}</p> : null}
-            <p className="text-xs text-gray-400 mt-1">
-              تذكير شخصي · {p.recurrence}
-              {p.recurrenceEnd ? ` · حتى ${p.recurrenceEnd}` : ' · بلا نهاية'}
-            </p>
-          </div>
-          <span
-            className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${dotTone(p.color)}`}
-            aria-hidden="true"
-          />
-        </div>
-        <div className="flex flex-wrap gap-2 mt-2">
-          <button
-            type="button"
-            onClick={() => onToggleDone(p, !done)}
-            disabled={actingKey === doneKey}
-            className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            {done ? 'إعادة التكرار' : 'تم'}
-          </button>
-          <button
-            type="button"
-            onClick={() => onEdit(p)}
-            className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            تعديل
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete({ kind: 'personal', id: p.id, title: p.title })}
-            className="min-h-11 px-3 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-600"
-          >
-            حذف
-          </button>
-        </div>
-      </li>
-    );
-  }
-
-  if (!o.reminder) return null;
-  const isAppeal = o.kind === 'appeal';
-  const r = o.reminder as ReminderDto & { appealId?: number; appealTitle?: string };
-  const parentId = isAppeal ? (r.appealId as number) : r.documentId;
-  const linkTo = isAppeal ? `/appeals/${parentId}` : `/documents/${parentId}`;
-  const title = isAppeal
-    ? (r.appealTitle
-        ? appealReminderTitle({ appealTitle: r.appealTitle, documentLabel: (r as AppealReminderDto).documentLabel })
-        : `استئناف ${parentId}`)
-    : borrowerFullName(r as ReminderDto);
-  const rescheduleKey = `${o.kind}-${r.actionId}`;
-  // نص الإجراء غني (`<p>…</p>`) فيُعرض نصًا عاديًا كما في `ReminderList` — الفارغ
-  // بعد التجريد (مثل `<p><br></p>`) يُخفى سطره فلا واجهة مكسورة.
-  const plainActionText = richToPlainText(r.actionText);
-
-  return (
-    <li className="py-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <Link to={linkTo} className="font-medium text-sky-700 hover:underline break-words">
-            {title}
-          </Link>
-          {plainActionText ? (
-            <p className="text-xs text-gray-500 mt-0.5 break-words line-clamp-2">{plainActionText}</p>
-          ) : null}
-        </div>
-        <RowBadge dueDate={r.dueDate} />
-      </div>
-      {rescheduling === rescheduleKey ? (
-        <div className="mt-2 rounded-xl border border-gray-200 p-3">
-          <label className="block text-xs text-gray-600 mb-1.5" htmlFor={`reschedule-${rescheduleKey}`}>
-            اليوم الجديد
-          </label>
-          <input
-            id={`reschedule-${rescheduleKey}`}
-            type="text"
-            value={rescheduleInput}
-            onChange={(e) => onRescheduleInput(e.target.value)}
-            placeholder="مثال: 1/8/2026…"
-            name={`reschedule-${rescheduleKey}`}
-            autoComplete="off"
-            aria-describedby={`reschedule-help-${rescheduleKey}`}
-            className="w-full min-h-11 rounded-xl border border-gray-200 px-3 text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-emerald-600"
-          />
-          <p id={`reschedule-help-${rescheduleKey}`} className="text-[11px] text-gray-500 mt-1">
-            يوم الاستحقاق نفسه — المدة تبقى، ولا يتغيّر تاريخ الإجراء.
-          </p>
-          {rescheduleError ? (
-            <p role="alert" className="text-red-700 text-xs mt-1.5">
-              {rescheduleError}
-            </p>
-          ) : null}
-          <div className="flex gap-2 mt-2">
-            <button
-              type="button"
-              onClick={onSaveReschedule}
-              disabled={rescheduleSaving}
-              className="min-h-11 px-4 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-            >
-              {rescheduleSaving ? 'جارٍ الحفظ…' : 'حفظ اليوم'}
-            </button>
-            <button
-              type="button"
-              onClick={onCancelReschedule}
-              className="min-h-11 px-4 rounded-lg border border-gray-200 text-xs hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-            >
-              إلغاء
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2 mt-2">
-          <button
-            type="button"
-            onClick={() => onStartReschedule(rescheduleKey, dayKeyOf(r.dueDate) ?? o.dayKey)}
-            className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            تغيير اليوم
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              onDelete(
-                isAppeal
-                  ? { kind: 'appeal', actionId: r.actionId, appealId: parentId, title }
-                  : { kind: 'document', actionId: r.actionId, documentId: parentId, title },
-              )
-            }
-            className="min-h-11 px-3 rounded-lg text-xs font-medium text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-600"
-          >
-            إلغاء التذكير
-          </button>
-        </div>
-      )}
-    </li>
-  );
-}
-
-export function PersonalForm({
-  dayKey,
-  initial,
-  onClose,
-  onSaved,
-}: {
-  dayKey: string;
-  initial: PersonalReminderDto | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [title, setTitle] = useState(initial?.title ?? '');
-  const [notes, setNotes] = useState(initial?.notes ?? '');
-  // التعديل يحفظ اللون المخزّن (بما فيه الغياب) — لا يُزرَع لون افتراضي دون قصد.
-  const [color, setColor] = useState(initial ? (initial.color ?? '') : 'زمردي');
-  const [recurrence, setRecurrence] = useState(initial?.recurrence ?? 'مرة واحدة');
-  const [endDays, setEndDays] = useState('');
-  const [titleError, setTitleError] = useState('');
-  const [submitError, setSubmitError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const titleRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    titleRef.current?.focus();
-  }, []);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setTitleError('عنوان التذكير مطلوب');
-      titleRef.current?.focus();
-      return;
-    }
-    setTitleError('');
-    setSubmitError('');
-    setSaving(true);
-    try {
-      if (initial) {
-        await api.put(`/personal-reminders/${initial.id}`, {
-          title: title.trim(),
-          // النص الخام كما هو: الفارغ يمسح (الخلفية تقبله)، وغيره يُطبَّع خادميًا.
-          notes,
-          color,
-          recurrence,
-          // `__clear__` تُرسل سلسلة فارغة فتمسحها الخلفية؛ `undefined` تُبقي الحالية.
-          recurrenceEnd: endDays === '__clear__' ? '' : endDays ? endDateFrom(dayKey, endDays) : undefined,
-          version: initial.version,
-        });
-      } else {
-        await api.post('/personal-reminders', {
-          title: title.trim(),
-          notes: notes.trim() ? notes.trim() : null,
-          dueDate: dayKey,
-          color,
-          recurrence,
-          recurrenceEnd: endDateFrom(dayKey, endDays),
-        });
-      }
-      onSaved();
-    } catch (err) {
-      setSubmitError(getApiErrorMessage(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
-      <h4 className="font-bold text-gray-900 text-sm mb-3">
-        {initial ? 'تعديل التذكير الشخصي' : 'تذكير شخصي جديد لهذا اليوم'}
-      </h4>
-
-      <label className="block mb-2.5" htmlFor="personal-title">
-        <span className="block text-xs text-gray-600 mb-1">العنوان *</span>
-        <input
-          ref={titleRef}
-          id="personal-title"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="مثال: مراجعة دائرة التنفيذ…"
-          name="personal-title"
-          autoComplete="off"
-          maxLength={200}
-          className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-visible:ring-2 focus-visible:ring-emerald-600"
-        />
-      </label>
-      {titleError ? (
-        <p role="alert" className="text-red-700 text-xs mb-2">
-          {titleError}
-        </p>
-      ) : null}
-
-      <label className="block mb-2.5" htmlFor="personal-notes">
-        <span className="block text-xs text-gray-600 mb-1">ملاحظة</span>
-        <textarea
-          id="personal-notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="تفاصيل اختيارية…"
-          name="personal-notes"
-          autoComplete="off"
-          rows={2}
-          maxLength={2000}
-          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-emerald-600"
-        />
-      </label>
-
-      <div className="grid grid-cols-2 gap-2.5 mb-2.5">
-        <label className="block" htmlFor="personal-color">
-          <span className="block text-xs text-gray-600 mb-1">اللون</span>
-          <select
-            id="personal-color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            name="personal-color"
-            className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-2 text-sm focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            {initial ? <option value="">بلا لون</option> : null}
-            {PERSONAL_COLORS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block" htmlFor="personal-recurrence">
-          <span className="block text-xs text-gray-600 mb-1">التكرار</span>
-          <select
-            id="personal-recurrence"
-            value={recurrence}
-            onChange={(e) => setRecurrence(e.target.value)}
-            name="personal-recurrence"
-            className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-2 text-sm focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            {PERSONAL_RECURRENCES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <label className="block mb-2.5" htmlFor="personal-end">
-        <span className="block text-xs text-gray-600 mb-1">
-          انتهاء التكرار{initial?.recurrenceEnd ? ` (الحالي: ${initial.recurrenceEnd})` : ''}
-        </span>
-        <select
-          id="personal-end"
-          value={endDays}
-          onChange={(e) => setEndDays(e.target.value)}
-          name="personal-end"
-          className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-2 text-sm focus-visible:ring-2 focus-visible:ring-emerald-600"
-        >
-          {END_OPTIONS.map((o) => (
-            <option key={o.label} value={o.value}>
-              {o.value === '' && initial?.recurrenceEnd ? 'إبقاء النهاية الحالية' : o.label}
-            </option>
-          ))}
-          {initial?.recurrenceEnd ? <option value="__clear__">إزالة النهاية</option> : null}
-        </select>
-      </label>
-
-      {submitError ? (
-        <p role="alert" className="text-red-700 text-xs mb-2">
-          {submitError}
-        </p>
-      ) : null}
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="min-h-11 px-4 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-medium disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-        >
-          {saving ? 'جارٍ الحفظ…' : initial ? 'حفظ التعديل' : 'إضافة التذكير'}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="min-h-11 px-4 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-        >
-          إلغاء
-        </button>
-      </div>
-    </form>
   );
 }
