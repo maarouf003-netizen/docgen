@@ -1663,7 +1663,7 @@
     و`AddEntityTab` (202) و`ReviewTabs` (53) و`reviewTabsModel` (7) وخطّاف
     `useDebouncedCallback` (33) و4 اختبارات.
   - اختبارات: **28+** وحدة لـ`DocumentForm`، 3 لـhook `DocumentView`، 4 لمكوّنات الأقسام؛
-    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1913/1913** (على فرع `P6-02j`).
+    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1928/1928** (على فرع `P6-02j`).
     لا تغيير `API`/هجرة (`has-pending-model-changes` = «No changes»).
   - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **3** ملفات
     مجمّدة فوق 600 تنقص فقط) في وظيفة `guards` بـ`CI`.

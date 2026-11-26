@@ -5,7 +5,7 @@
 > 947→380، `ApplicantSideSections` 952→157، `ExecutedSideSections` 681→174،
 > `DocumentsList` 1060→474، `documentFormConstants` 618→431، `StatusChangeModal`
 > 605→320، `UsersManagement` 602→519، `InterventionModal` 650→333،
-> `EntityRegistryReviewManagement` 642→46، +57 اختبار وحدة/مكوّن وحارس حجم
+> `EntityRegistryReviewManagement` 642→46، +60 اختبار وحدة/مكوّن وحارس حجم
 > `module-size-guard`؛ و`P6-04` — Playwright E2E + `axe` + فحص 375px في `CI`).
 
 ## 1. ابدأ من هنا
