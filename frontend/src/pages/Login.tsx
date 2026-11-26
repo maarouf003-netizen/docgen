@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../auth/useAuth';
 import { getHomeForRole } from '../auth/roleHome';
 import type { LoginBranchSelectionResponse, LoginResponse } from '../types';
+import { normalizeUsernameInput } from '../utils/usernameInput';
 import nationalEmblem from '../assets/national.png';
 import programLogo from '../assets/program-logo.png';
 import syrianFlag from '../assets/flag.jpg';
@@ -43,7 +44,7 @@ export default function Login() {
     setBusy(true);
     try {
       const result = await login(
-        username,
+        normalizeUsernameInput(username),
         password,
         pendingBranches ? Number(selectedBranch) : undefined,
       );

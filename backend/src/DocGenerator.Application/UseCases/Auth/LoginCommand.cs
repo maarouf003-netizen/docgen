@@ -47,7 +47,7 @@ internal sealed class LoginCommandHandler : CommandHandlerBase<LoginCommand, Log
     protected override async Task<LoginResult> HandleCoreAsync(LoginCommand command, CancellationToken ct)
     {
         var request = command.Request;
-        var username = request.Username.Trim();
+        var username = UsernameInput.Normalize(request.Username);
         var now = DateTime.UtcNow;
         var matches = await _users.FindByUsernameAllAsync(username, ct);
         var candidates = matches.Where(m => m.IsActive).ToList();
