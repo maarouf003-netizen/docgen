@@ -15,6 +15,7 @@
 | تدوير الأسرار | [`secret-rotation.md`](secret-rotation.md) |
 | اختبار الحمل وSLO قبل الإصدار | [`load-testing.md`](load-testing.md) |
 | الرصد و`SLO` والتنبيهات (`P5-02`) | [`observability.md`](observability.md) |
+| النسخ الاحتياطي والاستعادة و`DR` (`P5-06`) | [`backup-restore.md`](backup-restore.md) |
 | بعد حادثة (تحليل بلا لوم) | [`postmortem-template.md`](postmortem-template.md) |
 
 **فحوص سريعة موحّدة:**
