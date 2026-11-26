@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { FloatingFocusManager } from '@floating-ui/react';
-import { Link, useParams } from 'react-router-dom';
-import { api, getApiErrorMessage } from '../api/client';
+import { useParams } from 'react-router-dom';import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import {
@@ -21,101 +18,31 @@ import { availableDelegationAssets } from '../utils/delegationAssets';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
-import { useFloatingMenu } from '../hooks/useFloatingMenu';
-import ExecutionActionsModal from '../components/ExecutionActionsModal';
-import ExecutedStatusModal from '../components/ExecutedStatusModal';
-import StatusChangeModal from '../components/StatusChangeModal';
-import TransferDocumentModal from '../components/TransferDocumentModal';
-import FileAlertModal from '../components/FileAlertModal';
-import BaseNumbersModal from '../components/BaseNumbersModal';
-import DelegationFormModal from '../components/delegation/DelegationFormModal';
-import RegisterDelegationModal from '../components/delegation/RegisterDelegationModal';
-import CompleteDelegationModal from '../components/delegation/CompleteDelegationModal';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
 import { DelegationStatusCard } from '../components/delegation/DelegationStatusCard';
 import DocumentReviewLettersCard from '../components/review/DocumentReviewLettersCard';
-import AppealFormModal from '../components/appeal/AppealFormModal';
-import AppealInfoModal from '../components/appeal/AppealInfoModal';
-import type { AppealDirection, AppealDto, DelegationDto, DocumentInterventionDto, DocumentResponse } from '../types';
-import DocumentGenerationModal from '../components/view/DocumentGenerationModal';
 import { ExecutoryDocumentCard } from '../components/view/ExecutoryDocumentCard';
 import { FileDataCard } from '../components/view/FileDataCard';
 import { OccurrencesCard } from '../components/view/OccurrencesCard';
-import { OccurrencesModal } from '../components/view/OccurrencesModal';
 import { PartiesCard } from '../components/view/PartiesCard';
-import { PartyDetailsModal } from '../components/view/PartyDetailsModal';
-import { InterventionDetailsModal } from '../components/view/InterventionDetailsModal';
 import { AssetsSection } from '../components/view/AssetsSection';
-import { TransferHistoryModal } from '../components/view/TransferHistoryModal';
-import DocumentChangesModal from '../components/view/DocumentChangesModal';
-import { executedTitle, fullName, identityFileNumber, identityFileParts } from '../components/view/viewFormat';
+import { fullName, identityFileParts } from '../components/view/viewFormat';
 import { StatusCard } from '../components/view/StatusCard';
-import type { PartyModal } from '../components/view/viewTypes';
+import { DocumentViewHeader } from './documentView/DocumentViewHeader';
+import { DocumentViewModals } from './documentView/DocumentViewModals';
+import { useDocumentViewModals } from './documentView/useDocumentViewModals';
+import type { AppealDto, DelegationDto, DocumentResponse } from '../types';
 
-/** حقل هوية أخضر مضغوط للجوال: القيمة وحدها مع تسمية مخفية لقارئ الشاشة. */
-function MobileIdentityField({
-  label,
-  value,
-  numeric = false,
-}: {
-  label: string;
-  value: string;
-  numeric?: boolean;
-}) {
-  return (
-    <div className="inline-flex min-w-0 items-baseline rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5">
-      <dt className="sr-only">{label}</dt>
-      <dd
-        dir={numeric ? 'ltr' : 'auto'}
-        className={`text-gray-800 font-semibold break-words ${numeric ? 'tabular-nums isolate' : ''}`}
-      >
-        {value || '—'}
-      </dd>
-    </div>
-  );
-}
-
+/**
+ * صفحة عرض المستند — قشرة تركيبية بعد `P6-02b`: جلب الملف/الإنابات/الاستئنافات،
+ * اشتقاق الصلاحيات، تركيب اللوحات (مكتبي/جوال)، والترويسة والنوافذ كوحدتين.
+ * السلوك منقول بلا تغيير.
+ */
 export default function DocumentView() {
   const { id } = useParams();
   const { user, hasFullAccess } = useAuth();
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [changesOpen, setChangesOpen] = useState(false);
-  const [occurrencesOpen, setOccurrencesOpen] = useState(false);
-  const [assignmentsOpen, setAssignmentsOpen] = useState(false);
-  const [generationOpen, setGenerationOpen] = useState(false);
-  const [partyModal, setPartyModal] = useState<PartyModal | null>(null);
-  const [interventionModal, setInterventionModal] = useState<DocumentInterventionDto | null>(null);
-  const [delegationFormOpen, setDelegationFormOpen] = useState(false);
-  const [editingDelegation, setEditingDelegation] = useState<DelegationDto | null>(null);
-  const [registerOpen, setRegisterOpen] = useState(false);
-  const [completeOpen, setCompleteOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<DelegationDto | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  // الاستئنافات: قائمة استئنافات الملف، وقائمة «استئناف» المنسدلة، ونموذج التسطير
-  // باتجاهه (مستأنِفين/مستأنف علينا)، ونافذة تفاصيل الاستئناف المفتوحة.
-  const appealMenu = useFloatingMenu();
-  const [appealFormVariant, setAppealFormVariant] = useState<AppealDirection | null>(null);
-  const [infoAppeal, setInfoAppeal] = useState<AppealDto | null>(null);
-  // قائمة «المزيد» للجوال: خطاف عائم مستقل + حالة اللوحة المتداخلة (استئناف)
-  // — مستقلة عن `appealMenu` الخاص بسطح المكتب عمدًا. ملاحة البنود بالأسهم
-  // مفعّلة (`listNavigation`) مع `FloatingFocusManager` حول اللوحة أدناه.
-  const moreMenu = useFloatingMenu({ listNavigation: true });
-  const [appealSubOpen, setAppealSubOpen] = useState(false);
-  // تصفير اللوحة المتداخلة عند إغلاق القائمة الأم بأي مسار (اختيار بند أو
-  // Escape أو نقر خارج) — حتى لا تُعاد الفتحة التالية موسّعة.
-  useEffect(() => {
-    if (!moreMenu.open) setAppealSubOpen(false);
-  }, [moreMenu.open]);
-  // إغلاق قائمة «المزيد» مع لوحتها المتداخلة دفعةً واحدة (عند اختيار بند).
-  const closeMoreMenu = () => {
-    moreMenu.setOpen(false);
-    setAppealSubOpen(false);
-  };
+  const modals = useDocumentViewModals(id);
   // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
@@ -166,19 +93,6 @@ export default function DocumentView() {
     if (id && doc) saveLastViewedDocumentId(Number(id), user?.id ?? null);
   }, [id, doc, user?.id]);
 
-  // الانتقال بين ملفين يعيد استخدام نفس الصفحة: تُغلق واجهات الاستئناف المعلّقة
-  // حتى لا تبقى مفتوحة على محتوى ملف سابق.
-  // setOpen ثابت المرجع (مولّد من useState) فلا يستوجب إدخاله في الاعتماديات.
-  useEffect(() => {
-    appealMenu.setOpen(false);
-    moreMenu.setOpen(false);
-    setAppealSubOpen(false);
-    setAppealFormVariant(null);
-    setInfoAppeal(null);
-    // oxlint: لا يعيد هذا التأثير تشغيله عند تغيّر قائمة الاستئناف، بل عند تبديل الملف فقط (id).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
   if (fetchError) return <div role="alert" className="text-red-600">{fetchError}</div>;
   if (!doc) return <div className="text-gray-500">جارِ التحميل...</div>;
 
@@ -221,17 +135,6 @@ export default function DocumentView() {
   const isOwner = doc.createdById != null && doc.createdById === user?.id;
   // تسطير استئناف: محامي الملف المالك على أي ملف مقيد (غير تحت الرفع) — حتى المنفذ/المشطوب.
   const canCreateAppeal = canEdit && isOwner && !doc.isDraft;
-  // مفاتيح بنود «المزيد» المرئية بترتيب ظهورها — فهارس مستقرة لتسجيل البنود
-  // في `moreMenu.listRef` (ملاحة الأسهم)؛ تُشتق من الشروط نفسها حرفيًا.
-  const moreItemKeys: string[] = [
-    ...(canEdit ? ['edit'] : []),
-    'correspondence',
-    ...(canCreateAppeal ? ['appeal'] : []),
-    ...(!isExecuted && !isDelegationExecuted ? ['generate'] : []),
-    ...(canDirectAlert ? ['alert'] : []),
-    ...(canTransfer ? ['transfer'] : []),
-  ];
-  const moreItemIndex = (key: string) => moreItemKeys.indexOf(key);
   const canCreateDelegation =
     canEdit &&
     isOwner &&
@@ -255,13 +158,13 @@ export default function DocumentView() {
     isCirculatingTarget(doc);
 
   const openCreateDelegation = () => {
-    setEditingDelegation(null);
-    setDelegationFormOpen(true);
+    modals.setEditingDelegation(null);
+    modals.setDelegationFormOpen(true);
   };
 
   const openEditDelegation = (d: DelegationDto) => {
-    setEditingDelegation(d);
-    setDelegationFormOpen(true);
+    modals.setEditingDelegation(d);
+    modals.setDelegationFormOpen(true);
   };
 
   // أموال نافذة التسطير: بلا «كفالة رواتب» أبدًا (لا إنابة عليها) وبلا المحجوب بإنابة سارية —
@@ -270,7 +173,7 @@ export default function DocumentView() {
   const formAvailableAssets = availableDelegationAssets(
     delegations,
     sourceAssets,
-    editingDelegation?.id ?? null,
+    modals.editingDelegation?.id ?? null,
   );
   const formNoAvailableAssets = sourceAssets.length > 0 && formAvailableAssets.length === 0;
 
@@ -278,16 +181,16 @@ export default function DocumentView() {
   // والثالث «الإنابات والوقوعات» — وتتحول على الجوال إلى تبويبات يختارها المستخدم.
   const infoPanel = (
     <>
-      <PartiesCard doc={doc} onOpen={setPartyModal} onOpenIntervention={setInterventionModal} />
+      <PartiesCard doc={doc} onOpen={modals.setPartyModal} onOpenIntervention={modals.setInterventionModal} />
       <FileDataCard
         doc={doc}
         isLawyer={isLawyer}
         showBranch={showBranch}
         showLawyer={showLawyer}
         canViewChanges={hasFullAccess || showLawyer || isOwner}
-        onOpenBaseNumbers={() => setHistoryOpen(true)}
-        onOpenAssignments={() => setAssignmentsOpen(true)}
-        onOpenChanges={() => setChangesOpen(true)}
+        onOpenBaseNumbers={() => modals.setHistoryOpen(true)}
+        onOpenAssignments={() => modals.setAssignmentsOpen(true)}
+        onOpenChanges={() => modals.setChangesOpen(true)}
       />
     </>
   );
@@ -317,7 +220,7 @@ export default function DocumentView() {
         <SourceFileInfoCard
           delegation={delegationOfThisFile}
           canRegister={canRegisterDelegation}
-          onRegister={() => setRegisterOpen(true)}
+          onRegister={() => modals.setRegisterOpen(true)}
         />
       ) : delegationsQuery.error ? (
         <div
@@ -341,7 +244,7 @@ export default function DocumentView() {
             currentUserId={user?.role === 'lawyer' ? user.id : undefined}
             onCreate={openCreateDelegation}
             onEdit={openEditDelegation}
-            onDelete={setDeleteTarget}
+            onDelete={modals.setDeleteTarget}
             sourceAssets={sourceAssets}
             delegationsLoading={delegationsLoading}
           />
@@ -350,9 +253,9 @@ export default function DocumentView() {
       <OccurrencesCard
         doc={doc}
         appeals={appeals}
-        onOpen={() => setOccurrencesOpen(true)}
-        onOpenAppeal={setInfoAppeal}
-        onOpenIntervention={setInterventionModal}
+        onOpen={() => modals.setOccurrencesOpen(true)}
+        onOpenAppeal={modals.setInfoAppeal}
+        onOpenIntervention={modals.setInterventionModal}
       />
     </>
   );
@@ -360,9 +263,9 @@ export default function DocumentView() {
     <StatusCard
       doc={doc}
       canChangeStatus={canEdit && !isDelegationExecuted}
-      onOpenStatus={() => setStatusOpen(true)}
+      onOpenStatus={() => modals.setStatusOpen(true)}
       canCompleteDelegation={canCompleteDelegation}
-      onCompleteDelegation={() => setCompleteOpen(true)}
+      onCompleteDelegation={() => modals.setCompleteOpen(true)}
       delegationSourceLabel={delegationOfThisFile?.sourceDocumentLabel ?? null}
     />
   );
@@ -375,359 +278,44 @@ export default function DocumentView() {
   ] as const;
 
   const confirmDeleteDelegation = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
+    if (!modals.deleteTarget) return;
+    modals.setDeleting(true);
     try {
-      await api.delete(`/delegations/${deleteTarget.id}`);
-      setDeleteTarget(null);
+      await api.delete(`/delegations/${modals.deleteTarget.id}`);
+      modals.setDeleteTarget(null);
       loadDelegations();
     } catch (err) {
-      setDeleteTarget(null);
+      modals.setDeleteTarget(null);
       window.alert(getApiErrorMessage(err));
     } finally {
-      setDeleting(false);
+      modals.setDeleting(false);
     }
   };
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 rounded-b-xl shadow-sm px-4 py-3 mb-5">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3 min-w-0">
-            <span className={`rounded-full px-3 py-1 text-sm ${statusBadge.cls}`}>
-              {statusBadge.text}
-            </span>
-            <span className="min-w-0 truncate">
-              {isExecuted ? executedTitle(doc) : debtorFullName || doc.documentType || `مستند #${doc.id}`}
-            </span>
-          </h2>
-          <div className="flex gap-2 flex-wrap">
-            {/* أزرار سطح المكتب: تُخفى على الجوال وتُجمَع في قائمة «المزيد» بدلها. */}
-            {canEdit && !isMobile && (
-              <Link to={`/documents/${id}/edit`} className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11">
-                تعديل
-              </Link>
-            )}
-            {/* زر «مراسلات»: انتقال لصفحة مراسلات الملف المستقلة (لا تمرير — البطاقة حُذفت). */}
-            {!isMobile && (
-              <Link
-                to={`/documents/${id}/correspondence`}
-                className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-700"
-              >
-                مراسلات
-              </Link>
-            )}
-            {/* زر «استئناف» بقائمة منسدلة (مستأنِفين / مستأنف علينا) — محامي الملف المالك (مكتبي فقط). */}
-            {canCreateAppeal && !isMobile && (
-              <>
-                <button
-                  ref={appealMenu.refs.setReference}
-                  type="button"
-                  {...appealMenu.getReferenceProps()}
-                  aria-haspopup="menu"
-                  aria-expanded={appealMenu.open}
-                  className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
-                >
-                  استئناف ▾
-                </button>
-                {appealMenu.open &&
-                  createPortal(
-                    <div
-                      ref={appealMenu.refs.setFloating}
-                      role="menu"
-                      aria-label="نوع الاستئناف"
-                      style={appealMenu.floatingStyles}
-                      {...appealMenu.getFloatingProps()}
-                      className="fixed z-50 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
-                    >
-                      <button
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          appealMenu.setOpen(false);
-                          setAppealFormVariant('appellants');
-                        }}
-                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
-                      >
-                        مستأنِفين
-                      </button>
-                      <button
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          appealMenu.setOpen(false);
-                          setAppealFormVariant('against-us');
-                        }}
-                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 border-t border-gray-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
-                      >
-                        مستأنف علينا
-                      </button>
-                    </div>,
-                    document.body,
-                  )}
-              </>
-            )}
-            {!isExecuted && !isDelegationExecuted && !isMobile && (
-              <button
-                onClick={() => setGenerationOpen(true)}
-                className="bg-gray-800 hover:bg-gray-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-              >
-                توليد مستندات
-              </button>
-            )}
-            <button
-              onClick={() => setActionsOpen(true)}
-              className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              الإجراءات والملاحظات
-            </button>
-            {canDirectAlert && !isMobile && (
-              <button
-                onClick={() => setAlertOpen(true)}
-                className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-              >
-                توجيه تنبيه
-              </button>
-            )}
-            {canTransfer && !isMobile && (
-              <button
-                onClick={() => setTransferOpen(true)}
-                className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-              >
-                نقل الملف
-              </button>
-            )}
-            {/* قائمة «المزيد» للجوال: تجمع إجراءات الترويسة، و«عودة» أيقونة بجانبها
-                في مجموعة واحدة كي لا تنفصل إلى سطر جديد. */}
-            {isMobile && (
-              <div className="flex items-center gap-2">
-                <button
-                  ref={moreMenu.refs.setReference}
-                  type="button"
-                  {...moreMenu.getReferenceProps()}
-                  className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                >
-                  المزيد
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                    className="w-4 h-4 shrink-0 text-gray-400"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </button>
-                <Link
-                  to="/documents"
-                  aria-label="عودة"
-                  title="عودة"
-                  className="border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 inline-flex items-center justify-center min-h-11 min-w-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                >
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </Link>
-                {moreMenu.open &&
-                  createPortal(
-                    // عقد `menu` متسق: الخطاف يحقن `aria-haspopup/controls/labelledby`
-                    // (لا خصائص يدوية مكررة)، وكل بنود المستوى الأول `menuitem`.
-                    <FloatingFocusManager context={moreMenu.context} modal={false} initialFocus={0}>
-                      <div
-                        ref={moreMenu.refs.setFloating}
-                        {...moreMenu.getFloatingProps()}
-                        role="menu"
-                        style={moreMenu.floatingStyles}
-                        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
-                      >
-                        {canEdit && (
-                          <Link
-                            to={`/documents/${id}/edit`}
-                            {...moreMenu.getItemProps()}
-                            ref={(node) => {
-                              moreMenu.listRef.current[moreItemIndex('edit')] = node;
-                            }}
-                            role="menuitem"
-                            onClick={closeMoreMenu}
-                            className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-emerald-800 hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-inset"
-                          >
-                            تعديل
-                          </Link>
-                        )}
-                        <Link
-                          to={`/documents/${id}/correspondence`}
-                          {...moreMenu.getItemProps()}
-                          ref={(node) => {
-                            moreMenu.listRef.current[moreItemIndex('correspondence')] = node;
-                          }}
-                          role="menuitem"
-                          onClick={closeMoreMenu}
-                          className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-sky-800 hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-inset"
-                        >
-                          مراسلات
-                        </Link>
-                        {canCreateAppeal && (
-                          <div role="group" aria-label="استئناف">
-                            <button
-                              {...moreMenu.getItemProps()}
-                              ref={(node) => {
-                                moreMenu.listRef.current[moreItemIndex('appeal')] = node;
-                              }}
-                              role="menuitem"
-                              aria-haspopup="menu"
-                              type="button"
-                              aria-expanded={appealSubOpen}
-                              aria-controls="appeal-submenu"
-                              onClick={() => setAppealSubOpen((v) => !v)}
-                              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-[#800000] hover:bg-[#9e0e0e] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-inset"
-                            >
-                              استئناف ▾
-                            </button>
-                            {appealSubOpen && (
-                              <div
-                                id="appeal-submenu"
-                                role="menu"
-                                aria-label="نوع الاستئناف"
-                                className="bg-white"
-                              >
-                                <button
-                                  role="menuitem"
-                                  type="button"
-                                  onClick={() => {
-                                    closeMoreMenu();
-                                    setAppealFormVariant('appellants');
-                                  }}
-                                  className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-                                >
-                                  مستأنِفين
-                                </button>
-                                <button
-                                  role="menuitem"
-                                  type="button"
-                                  onClick={() => {
-                                    closeMoreMenu();
-                                    setAppealFormVariant('against-us');
-                                  }}
-                                  className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-red-50 border-t border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-                                >
-                                  مستأنف علينا
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {!isExecuted && !isDelegationExecuted && (
-                          <button
-                            {...moreMenu.getItemProps()}
-                            ref={(node) => {
-                              moreMenu.listRef.current[moreItemIndex('generate')] = node;
-                            }}
-                            role="menuitem"
-                            type="button"
-                            onClick={() => {
-                              closeMoreMenu();
-                              setGenerationOpen(true);
-                            }}
-                            className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-inset"
-                          >
-                            توليد مستندات
-                          </button>
-                        )}
-                        {canDirectAlert && (
-                          <button
-                            {...moreMenu.getItemProps()}
-                            ref={(node) => {
-                              moreMenu.listRef.current[moreItemIndex('alert')] = node;
-                            }}
-                            role="menuitem"
-                            type="button"
-                            onClick={() => {
-                              closeMoreMenu();
-                              setAlertOpen(true);
-                            }}
-                            className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-red-600 hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-inset"
-                          >
-                            توجيه تنبيه
-                          </button>
-                        )}
-                        {canTransfer && (
-                          <button
-                            {...moreMenu.getItemProps()}
-                            ref={(node) => {
-                              moreMenu.listRef.current[moreItemIndex('transfer')] = node;
-                            }}
-                            role="menuitem"
-                            type="button"
-                            onClick={() => {
-                              closeMoreMenu();
-                              setTransferOpen(true);
-                            }}
-                            className="block w-full text-right px-4 py-2 min-h-11 text-sm text-white bg-sky-800 hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-inset"
-                          >
-                            نقل الملف
-                          </button>
-                        )}
-                      </div>
-                    </FloatingFocusManager>,
-                    document.body,
-                  )}
-              </div>
-            )}
-            {!isMobile && (
-              <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
-                عودة
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة مدمجان + نوع + دائرة/فرع) لقراءة فورية أثناء التمرير. */}
-        <dl className={`mt-3 flex flex-wrap text-sm ${isMobile ? 'gap-1' : 'gap-2'}`}>
-          {isMobile ? (
-            <>
-              <MobileIdentityField label="رقم الملف" value={fileIdentity.number} numeric />
-              <MobileIdentityField label="السنة" value={fileIdentity.year} numeric />
-              <MobileIdentityField label="نوع الملف" value={fileType} />
-              <MobileIdentityField label="دائرة التنفيذ" value={courtDisplay} />
-            </>
-          ) : (
-            <>
-              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-                <dt className="text-xs text-emerald-800 font-medium">رقم الملف والسنة</dt>
-                <dd dir="ltr" className="text-gray-800 font-semibold tabular-nums isolate">
-                  {identityFileNumber(doc)}
-                </dd>
-              </div>
-              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-                <dt className="text-xs text-gray-500 font-medium">نوع الملف</dt>
-                <dd className="text-gray-800 font-semibold">{fileType}</dd>
-              </div>
-              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-                <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>
-                <dd className="text-gray-800 font-semibold">{doc.court || '—'}</dd>
-              </div>
-            </>
-          )}
-          {showBranch && (
-            <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-              <dt className="text-xs text-gray-500 font-medium">الفرع</dt>
-              <dd className="text-gray-800 font-semibold">{doc.branchName || '—'}</dd>
-            </div>
-          )}
-        </dl>
-      </div>
+      <DocumentViewHeader
+        doc={doc}
+        id={id}
+        isMobile={isMobile}
+        isExecuted={isExecuted}
+        isDelegationExecuted={isDelegationExecuted}
+        debtorFullName={debtorFullName}
+        statusBadge={statusBadge}
+        fileIdentity={fileIdentity}
+        fileType={fileType}
+        courtDisplay={courtDisplay}
+        showBranch={showBranch}
+        canEdit={canEdit}
+        canCreateAppeal={canCreateAppeal}
+        canTransfer={canTransfer}
+        canDirectAlert={canDirectAlert}
+        onOpenActions={() => modals.setActionsOpen(true)}
+        onOpenGeneration={() => modals.setGenerationOpen(true)}
+        onOpenAlert={() => modals.setAlertOpen(true)}
+        onOpenTransfer={() => modals.setTransferOpen(true)}
+        onStartAppeal={modals.setAppealFormVariant}
+      />
 
       {isMobile ? (
         <div>
@@ -773,175 +361,20 @@ export default function DocumentView() {
 
       {!isMobile && <div className="mt-6">{statusPanel}</div>}
 
-      {actionsOpen && id !== undefined && (
-        <ExecutionActionsModal
-          documentId={Number(id)}
-          onClose={() => setActionsOpen(false)}
-          onChanged={load}
-        />
-      )}
-
-      {changesOpen && id !== undefined && (
-        <DocumentChangesModal
-          documentId={Number(id)}
-          onClose={() => setChangesOpen(false)}
-        />
-      )}
-
-      {generationOpen && id !== undefined && (
-        <DocumentGenerationModal doc={doc} id={id} onClose={() => setGenerationOpen(false)} />
-      )}
-
-      {statusOpen && (isExecuted ? (
-        <ExecutedStatusModal doc={doc} onClose={() => setStatusOpen(false)} onChanged={load} />
-      ) : (
-        <StatusChangeModal doc={doc} onClose={() => setStatusOpen(false)} onChanged={load} />
-      ))}
-
-      {transferOpen && id !== undefined && (
-        <TransferDocumentModal
-          documentId={Number(id)}
-          currentOwnerId={doc.createdById}
-          onClose={() => setTransferOpen(false)}
-          onTransferred={load}
-        />
-      )}
-
-      {alertOpen && id !== undefined && (
-        <FileAlertModal
-          documentId={Number(id)}
-          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
-          recipientName={doc.lawyer}
-          onClose={() => setAlertOpen(false)}
-        />
-      )}
-
-      {historyOpen && id !== undefined && (
-        <BaseNumbersModal
-          documentId={Number(id)}
-          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
-          fileType={doc.fileType}
-          onClose={() => setHistoryOpen(false)}
-        />
-      )}
-
-      {assignmentsOpen && (
-        <TransferHistoryModal
-          assignments={doc.assignments ?? []}
-          onClose={() => setAssignmentsOpen(false)}
-        />
-      )}
-
-      {occurrencesOpen && (
-        <OccurrencesModal
-          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
-          occurrences={doc.occurrences ?? []}
-          interventions={doc.interventions ?? []}
-          onOpenIntervention={(intervention) => {
-            setOccurrencesOpen(false);
-            setInterventionModal(intervention);
-          }}
-          onClose={() => setOccurrencesOpen(false)}
-        />
-      )}
-
-      {partyModal && <PartyDetailsModal modal={partyModal} onClose={() => setPartyModal(null)} />}
-
-      {interventionModal && (
-        <InterventionDetailsModal
-          intervention={interventionModal}
-          onClose={() => setInterventionModal(null)}
-        />
-      )}
-
-      {appealFormVariant && doc && (
-        <AppealFormModal
-          doc={doc}
-          variant={appealFormVariant}
-          onClose={() => setAppealFormVariant(null)}
-          onSaved={() => {
-            setAppealFormVariant(null);
-            loadAppeals();
-          }}
-        />
-      )}
-
-      <AppealInfoModal appeal={infoAppeal} onClose={() => setInfoAppeal(null)} />
-
-      {delegationFormOpen && id !== undefined && (
-        <DelegationFormModal
-          documentId={Number(id)}
-          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
-          assets={formAvailableAssets}
-          noAvailableAssets={formNoAvailableAssets}
-          initial={editingDelegation}
-          onClose={() => {
-            setDelegationFormOpen(false);
-            setEditingDelegation(null);
-          }}
-          onSaved={() => {
-            setDelegationFormOpen(false);
-            setEditingDelegation(null);
-            loadDelegations();
-          }}
-        />
-      )}
-
-      {registerOpen && delegationOfThisFile && (
-        <RegisterDelegationModal
-          delegation={delegationOfThisFile}
-          onClose={() => setRegisterOpen(false)}
-          onRegistered={() => {
-            setRegisterOpen(false);
-            loadDelegations();
-            load();
-          }}
-        />
-      )}
-
-      {completeOpen && delegationOfThisFile && (
-        <CompleteDelegationModal
-          delegation={delegationOfThisFile}
-          onClose={() => setCompleteOpen(false)}
-          onCompleted={() => {
-            setCompleteOpen(false);
-            loadDelegations();
-            load();
-          }}
-        />
-      )}
-
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          dir="rtl"
-          role="dialog"
-          aria-modal="true"
-          aria-label="تأكيد حذف الإنابة"
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">حذف الإنابة</h3>
-            <p className="text-sm text-red-700 mb-4">
-              هل أنت متأكد من حذف الإنابة إلى دائرة {deleteTarget.delegatedCourt || 'غير محددة'}؟
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 min-h-11"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={confirmDeleteDelegation}
-                disabled={deleting}
-                className="bg-red-700 hover:bg-red-800 text-white rounded-lg px-4 py-2 text-sm min-h-11 disabled:opacity-50"
-              >
-                {deleting ? 'جارِ الحذف...' : 'تأكيد الحذف'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentViewModals
+        modals={modals}
+        doc={doc}
+        id={id}
+        isExecuted={isExecuted}
+        debtorFullName={debtorFullName}
+        load={load}
+        loadDelegations={loadDelegations}
+        loadAppeals={loadAppeals}
+        formAvailableAssets={formAvailableAssets}
+        formNoAvailableAssets={formNoAvailableAssets}
+        delegationOfThisFile={delegationOfThisFile}
+        onConfirmDelete={confirmDeleteDelegation}
+      />
     </div>
   );
 }
