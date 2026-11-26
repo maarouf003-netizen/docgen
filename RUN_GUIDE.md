@@ -394,8 +394,8 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - أثناء نافذة نشر خاضعة للتحكم (من مجلد `backend\`):
   1. نسخة احتياطية + استعادة مجرَّبة.
   2. `dotnet ef database update --context DocGeneratorPostgresDbContext`.
-  3. تحقق: `__EFMigrationsHistory` = **7 صفوف** (Baseline + ست هجرات لاحقة حتى `P3-02`)،
-     و51 جدولًا في `public`، والمشغّلات الأربعة موجودة.
+  3. تحقق: `__EFMigrationsHistory` = **8 صفوف** (Baseline + سبع هجرات لاحقة حتى
+     `P6-01b`)، و52 جدولًا في `public`، والمشغّلات الأربعة موجودة.
   4. **ثم** شغّل النسخة الجديدة (`Database:AutoMigrate=false` يرفض الإقلاع إن كان
      المخطط ناقصًا).
 - **تحقق آلي من تاريخ الهجرات (`P7-02b`):** بعد تطبيق الهجرات على القاعدة المستهدفة، شغّل:
@@ -607,6 +607,12 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
   تتوفر `pg_trgm` على الخادم (متوفرة في صورة `postgres:16` الرسمية و`PostgreSQL` الكامل).
   التطبيق: `dotnet ef database update --context DocGeneratorPostgresDbContext`. المرجع:
   `docs/audit/82-p3-02-portal-search-20261121.md`.
+- [ ] **2026-11-26 — `AddDataProtectionKeys` (`P6-01b`)** — جدول `DataProtectionKeys`
+  (`Id` identity، `FriendlyName`، `Xml`) لحفظ حلقة مفاتيح `Data Protection` في القاعدة
+  بدل حاوية عابرة، فتبقى الجلسات صالحة بعد النشر/إعادة التشغيل. **إضافي وآمن** (لا يمسّ
+  البيانات القائمة). إلزامي قبل نشر نسخة تُشغّل `DataProtection:PersistToDatabase=true`
+  (الإنتاج): `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+  المرجع: `docs/audit/276-data-protection-keys-20261126.md`.
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 
