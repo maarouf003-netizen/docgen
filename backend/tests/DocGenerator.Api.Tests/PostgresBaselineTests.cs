@@ -36,7 +36,7 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(7, migrations.Count);
+            Assert.Equal(8, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
@@ -44,6 +44,14 @@ public sealed class PostgresBaselineTests
             Assert.Contains(migrations, m => m.Contains("P0_07b_AmountConstraints", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndexes", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndex", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("AddDataProtectionKeys", StringComparison.Ordinal));
+
+            // P6-01b: جدول مفاتيح Data Protection موجود بعد الهجرة.
+            var dataProtectionTables = await db.Database
+                .SqlQueryRaw<long>(
+                    """SELECT COUNT(*)::bigint AS "Value" FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'DataProtectionKeys'""")
+                .SingleAsync();
+            Assert.Equal(1, dataProtectionTables);
 
             // P3-02: الإضافة والفهرس موجودان بعد الهجرة (وإلا فشل البحث الانتقائي صامتًا).
             var trigramExtension = await db.Database

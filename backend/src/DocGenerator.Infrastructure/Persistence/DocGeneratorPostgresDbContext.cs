@@ -1,4 +1,5 @@
 using DocGenerator.Domain.Entities;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Infrastructure.Persistence;
@@ -8,8 +9,14 @@ namespace DocGenerator.Infrastructure.Persistence;
 /// التسجيل عبر AddDbContext&lt;DocGeneratorDbContext, DocGeneratorPostgresDbContext&gt;
 /// يجعل كل التبعيات القائمة تتعامل معه.
 /// </summary>
-public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
+public class DocGeneratorPostgresDbContext : DocGeneratorDbContext, IDataProtectionKeyContext
 {
+    /// <summary>
+    /// حلقة مفاتيح `Data Protection` (P6-01b): تُخزَّن في القاعدة بدل حاوية
+    /// عابرة، فتبقى الجلسات/الكوكيز صالحة بعد النشر أو إعادة التشغيل.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     public DocGeneratorPostgresDbContext(DbContextOptions<DocGeneratorPostgresDbContext> options)
         : base((DbContextOptions)options)
     {
@@ -163,5 +170,11 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<ForumMessageRead>()
             .Property(r => r.ReadAtUtc)
             .HasColumnType("timestamp with time zone");
+        // P6-01b: حلقة مفاتيح Data Protection — جدول مستقل في public.
+        modelBuilder.Entity<DataProtectionKey>(entity =>
+        {
+            entity.ToTable("DataProtectionKeys");
+            entity.HasKey(k => k.Id);
+        });
     }
 }

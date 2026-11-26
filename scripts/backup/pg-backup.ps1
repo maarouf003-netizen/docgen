@@ -234,6 +234,9 @@ try {
   $tempMetadata = $metadata + '.tmp'
   Write-BackupLog ("Dumping database '{0}' to a temporary artifact..." -f $script:PgDatabase)
   $dumpArguments = @('--format=custom', "--compress=$CompressLevel", '--no-password', "--file=$tempPlain")
+  # P6-01b: لا تُنسخ بيانات مفاتيح Data Protection (تمنع تزوير الجلسات من نسخة مسروقة).
+  # الاسم مختلط الحالة ⇒ يجب تنصيصه وإلا طواه pg_dump إلى أحرف صغيرة ولم يطابق.
+  $dumpArguments += '--exclude-table-data=public."DataProtectionKeys"'
   if ($schema) {
     $dumpArguments += "--schema=$schema"
   }

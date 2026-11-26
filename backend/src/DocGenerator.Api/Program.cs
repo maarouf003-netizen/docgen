@@ -14,6 +14,8 @@ using DocGenerator.Infrastructure;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -195,6 +197,26 @@ try
             .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
             .AllowAnyHeader().AllowAnyMethod().AllowCredentials()))
         .AddControllers();
+
+    // P6-01b: حلقة مفاتيح `Data Protection` دائمة بدل حاوية عابرة.
+    // الافتراضي في الإنتاج: جدول `DataProtectionKeys` في PostgreSQL (appsettings.Production).
+    // بديل للخوادم بلا قاعدة مشتركة: DataProtection:KeyPath إلى قرص دائم.
+    var dataProtectionConfig = builder.Configuration.GetSection("DataProtection");
+    var dataProtection = builder.Services.AddDataProtection().SetApplicationName("DocGen");
+    if (dataProtectionConfig.GetValue<bool>("PersistToDatabase"))
+    {
+        dataProtection.PersistKeysToDbContext<DocGeneratorPostgresDbContext>();
+    }
+    else
+    {
+        var dataProtectionKeyPath = dataProtectionConfig["KeyPath"];
+        if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+        {
+            var resolvedKeyPath = Path.GetFullPath(dataProtectionKeyPath);
+            Directory.CreateDirectory(resolvedKeyPath);
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(resolvedKeyPath));
+        }
+    }
 
     // P4-03: كل 400 يخرج من MVC (فشل ربط النموذج/JSON غير صالح) يحمل العقد الموحّد
     // نفسه الذي تكتبه المتحكمات والوسائط — لا ValidationProblemDetails إطاري برسائل

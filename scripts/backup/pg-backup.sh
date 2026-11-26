@@ -309,6 +309,10 @@ trap cleanup EXIT
 
 log "Dumping database '$PG_DB' to a temporary artifact..."
 DUMP_ARGS=(--format=custom --compress="$COMPRESS_LEVEL" --no-password --file="$TMP_PLAIN")
+# P6-01b: لا تُنسخ بيانات مفاتيح Data Protection (تمنع تزوير الجلسات من نسخة مسروقة)؛
+# يبقى الجدول فارغًا بعد الاستعادة وتُنشأ مفاتيح جديدة عند أول استخدام.
+# الاسم مختلط الحالة ⇒ يجب تنصيصه وإلا طواه pg_dump إلى أحرف صغيرة ولم يطابق.
+DUMP_ARGS+=(--exclude-table-data='public."DataProtectionKeys"')
 if [ -n "$SCHEMA" ]; then
   DUMP_ARGS+=(--schema="$SCHEMA")
 fi

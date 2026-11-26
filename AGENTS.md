@@ -82,12 +82,13 @@
 
 **P0-02 (2026-11-14):** سُحقت الهجرات إلى Baseline واحد. القائمة التراكمية في `RUN_GUIDE.md` §9؛ كل هجرة جديدة تُضاف إليها فور إنشائها، وتُشطب فقط بعد `dotnet ef database update` ناجح في النشر.
 
-- **الحالة الحالية:** `20261114101737_InitialPostgresBaseline` مطبّق على القاعدة التجريبية — `__EFMigrationsHistory` = صف واحد، 51 جدولًا، 4 مشغّلات، وقيدا `CK_HeadAlerts_Kind_NotEmpty` و`CK_Documents_FileNumberRequiresCircuit`.
+- **الحالة الحالية:** `20261114101737_InitialPostgresBaseline` مطبّق على القاعدة التجريبية، ومعه الهجرات السبع حتى `20261126111327_AddDataProtectionKeys` — `__EFMigrationsHistory` = **8 صفوف**، **52** جدولًا، 4 مشغّلات، وقيدا `CK_HeadAlerts_Kind_NotEmpty` و`CK_Documents_FileNumberRequiresCircuit`.
 - **معلّقة (P0-04):** `20261114140029_AddIdempotencyResponseMetadata` — لم تُطبَّق على أي بيئة بعد؛ طبّقها قبل نشر نسخة `P0-04`.
 - **معلّقة (P0-06):** `20261114160957_P0_06_OptimisticConcurrency` — 12 عمود `Version` (`bigint NOT NULL DEFAULT 0`؛ إضافي غير كاسر)؛ لم تُطبَّق على أي بيئة بعد؛ طبّقها قبل نشر نسخة `P0-06`.
 - **معلّقة (P0-07):** `20261114175636_P0_07_SafeConstraints` — `CHECK ([Version] >= 0)` على 16 جدولًا + فهرس `(BranchId, SectionId)`؛ آمنة على البيانات القائمة؛ طبّقها قبل نشر نسخة `P0-07`.
 - **معلّقة (P0-07b):** `20261114211659_P0_07b_AmountConstraints` — `CHECK` لعدم سلبية 15 عمود مبالغ في `Documents`؛ **تعتمد على البيانات**: شغّل `scripts/p0-07b-preflight.sql` على مشروع الإنتاج الفعلي أولًا (أي قيمة سالبة تُفشل الهجرة)؛ طبّقها قبل نشر نسخة `P0-07b`.
 - **معلّقة (P3-02):** `20261121025258_P3_02_PortalSearchIndexes` (تفعيل `pg_trgm`) + `20261121034750_P3_02_PortalSearchIndex` (فهرس GIN ثلاثي على `Documents.SearchText`، `CREATE INDEX` داخل معاملة الهجرة)؛ تتطلب توفر `pg_trgm` على الخادم؛ طبّقهما قبل نشر نسخة `P3-02`.
+- **معلّقة (P6-01b):** `20261126111327_AddDataProtectionKeys` — جدول `DataProtectionKeys` (`Id` identity، `FriendlyName`، `Xml`) لتخزين مفاتيح `Data Protection` في القاعدة؛ إضافي وآمن؛ طبّقها قبل نشر نسخة تُفعّل `DataProtection:PersistToDatabase=true` (الإنتاج).
 - **قبل أي نشر:** افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
 - **عند إنشاء هجرة جديدة:** أضِف سطرها إلى القائمة **في نفس التغيير**.
 - **⚠️生产工艺:** `Database:AutoMigrate=false` في الإنتاج ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات غير مطبّقة. **طبّق قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
