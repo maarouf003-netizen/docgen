@@ -262,7 +262,7 @@ export default function Login() {
               </button>
             </div>
           </form>
-          <p className="mt-4 text-center text-xs leading-5 text-gray-500">
+          <p className="mt-4 text-center text-xs leading-5 text-gray-600">
             © 2026 إدارة قضايا الدولة — وزارة العدل • للاستخدام الرسمي الداخلي
           </p>
         </div>

@@ -311,3 +311,92 @@ jobs:
           path: backend/tests/**/TestResults/**/coverage.cobertura.xml
           if-no-files-found: warn
           retention-days: 7
+
+  # P6-04: بوابة E2E الإضافية — Playwright (تدفقات حرجة) + axe (إمكانية وصول)
+  # + فحص تجاوز 375px، على قاعدة PostgreSQL 16 مؤقتة تُنشأ لهذا التشغيل فقط.
+  # الحارس `frontend/scripts/e2e-safety-guard.mjs` يرفض أي هدف غير محلي/غير staging
+  # وأي قاعدة لا يحتوي اسمها على `e2e`، فلا يمكن توجيه البوابة إلى الإنتاج.
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      E2E_MANAGED_SERVERS: "1"
+      E2E_BASE_URL: "http://127.0.0.1:5173"
+      E2E_API_URL: "http://127.0.0.1:5080"
+      # CI يستخدم Chromium المثبَّت بالإصدار (لا Chrome المستضيف) — حتمية الرسم.
+      E2E_BROWSER_CHANNEL: "chromium"
+      # قاعدة مؤقتة مخصّصة (اسمها يحتوي e2e). كلمة المرور قيمة خدمة محلية غير سرّية.
+      E2E_DB_CONNECTION: "Host=localhost;Port=5432;Database=docgen_e2e;Username=postgres;Password=postgres"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install EF tool
+        run: dotnet tool install --global dotnet-ef --version 10.0.10
+      # نفس تحقق الأقفال في بقية الوظائف — لا بناء مختلفًا في بوابة E2E.
+      - name: Restore (locked)
+        run: dotnet restore backend/DocGenerator.sln --locked-mode
+      # `--no-build` في webServer يتطلب مخرجات بناء مسبقة.
+      - name: Build backend
+        run: dotnet build backend/DocGenerator.sln --no-restore --nologo -v q --warnaserror
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+      # قاعدة `docgen_e2e` تُنشأ تلقائيًا عند تطبيق الهجرات (EF) — لا EnsureCreated.
+      # مصنع زمن التصميم (`PostgresDbContextFactory`) يشترط POSTGRES_CONNECTION حتى مع
+      # `--connection`، فنُصدّره من سلسلة E2E نفسها قبل الأمر.
+      - name: Migrate the disposable E2E database
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          export POSTGRES_CONNECTION="$E2E_DB_CONNECTION"
+          dotnet ef database update --context DocGeneratorPostgresDbContext \
+            --project backend/src/DocGenerator.Infrastructure/DocGenerator.Infrastructure.csproj \
+            --startup-project backend/src/DocGenerator.Api/DocGenerator.Api.csproj \
+            --connection "$E2E_DB_CONNECTION" --no-build
+      # عميل psql غير مضمون في صورة الـrunner؛ تثبيته يجعل البذر حتميًا.
+      - name: Install psql client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Seed deterministic E2E data
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -p 5432 -U postgres -d docgen_e2e -v ON_ERROR_STOP=1 -f scripts/e2e/seed.sql
+      - name: Install Playwright (pinned Chromium)
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Lint E2E sources
+        working-directory: frontend
+        run: npx oxlint e2e playwright.config.ts scripts/e2e-safety-guard.mjs scripts/e2e-browser-smoke.mjs
+      # اختبار ذاتي لحارس السلامة قبل أي متصفح: إثبات أن قواعد «محلي/قاعدة e2e» تعمل.
+      - name: E2E safety guard self-test
+        working-directory: frontend
+        run: node scripts/e2e-safety-guard.mjs --self-test
+      - name: Run Playwright (E2E + axe + 375px)
+        working-directory: frontend
+        run: npx playwright test
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7

@@ -181,7 +181,7 @@ export default function PortalFiles() {
             الفراغ يختبئ عند أي خطأ (قائمة أو نطاق) — «لا توجد ملفات في نطاق
             جهتك» زعم غير صحيح بعد فشل الجلب أو فشل تحميل النطاق نفسه. */}
         {!loading && !error && !scopeQuery.error && entries.length === 0 && (
-          <div className="px-4 py-8 text-center text-gray-400">لا توجد ملفات مطابقة في نطاق جهتك</div>
+          <div className="px-4 py-8 text-center text-gray-600">لا توجد ملفات مطابقة في نطاق جهتك</div>
         )}
         <ul className="divide-y divide-gray-100">
           {entries.map((f) => (

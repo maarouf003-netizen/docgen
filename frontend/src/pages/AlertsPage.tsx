@@ -207,7 +207,9 @@ export default function AlertsPage() {
                 role="tab"
                 id={`alerts-tab-${value}`}
                 aria-selected={activeTab === value}
-                aria-controls={`alerts-panel-${value}`}
+                // اللوحة غير النشطة غير مُصيَّرة (لوحة واحدة فقط)، فربطها بـ`aria-controls`
+                // يشير إلى معرّف مفقود = مخالفة ARIA حقيقية (`aria-valid-attr-value`).
+                aria-controls={activeTab === value ? `alerts-panel-${value}` : undefined}
                 onClick={() => setTab(value)}
                 className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   activeTab === value
@@ -290,9 +292,11 @@ export default function AlertsPage() {
       </div>
 
       <div
-        role="tabpanel"
-        id={`alerts-panel-${activeTab}`}
-        aria-labelledby={`alerts-tab-${activeTab}`}
+        // بلا تبويبات (عرض المدير الإشرافي) لا معنى لدور tabpanel ولا لمراجع ARIA
+        // إلى عناصر غير مُصيَّرة (`aria-valid-attr-value`).
+        role={sentEnabled ? 'tabpanel' : undefined}
+        id={sentEnabled ? `alerts-panel-${activeTab}` : undefined}
+        aria-labelledby={sentEnabled ? `alerts-tab-${activeTab}` : undefined}
         className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
       >
         {listError || activeFeed.error ? (
