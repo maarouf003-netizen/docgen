@@ -1,6 +1,4 @@
 import type { Dispatch, SetStateAction } from 'react';
-import AutoResizeTextarea from '../AutoResizeTextarea';
-import MultiAmountEditor from '../MultiAmountEditor';
 import type {
   DocumentUpsertRequest,
   EntityNature,
@@ -10,32 +8,12 @@ import type {
   ExecutionApplicantDto,
   PartyNature,
 } from '../../types';
-import {
-  ADDRESS_TYPE_OPTIONS,
-  ENTITY_NATURE_OPTIONS,
-  EXECUTED_HEIR_ADDRESS_TYPE_OPTIONS,
-  PARTY_NATURE_OPTIONS,
-  REPRESENTATION_TYPES,
-  addressLabelOf,
-  hasRepresentative,
-  hasStoredRepresentative,
-  heirAddressLabelOf,
-  paidAmountKeys,
-  paidCurrencyKeys,
-  requiredAmountKeys,
-  requiredCurrencyKeys,
-} from './documentFormConstants';
-import {
-  EXECUTED_STATUS_EXECUTED,
-  EXEC_STATUS_STRUCK_OFF,
-  STATE_CIRCULATING,
-  targetsOf,
-} from '../../utils/documentStatus';
-import { ExecutedHeirsEditor } from './HeirsEditors';
-import { RepresentativeEditor } from './RepresentativeEditor';
-import { FormSectionTitle } from './FormSectionTitle';
-import { RenewalFields } from './RenewalFields';
 import { makeFieldHelpers, type FormSet } from './formFields';
+import { ExecutedContractSection } from './executedSide/ExecutedContractSection';
+import { ExecutedApplicantSection } from './executedSide/ExecutedApplicantSection';
+import { ExecutedEntitySection } from './executedSide/ExecutedEntitySection';
+import { ExecutedNaturalPersonSection } from './executedSide/ExecutedNaturalPersonSection';
+import { ExecutedStatusSection } from './executedSide/ExecutedStatusSection';
 
 export interface ExecutedSideSectionsProps {
   /** صفة الملف: executed = «الجهة العامة منفذ عليها»، deposit = «عرض وايداع». */
@@ -87,7 +65,10 @@ export interface ExecutedSideSectionsProps {
   currentExecutedStatus?: string;
 }
 
-/** أقسام عائلة وضع «منفذ عليه» في نموذج الملف (الجهة العامة منفذ عليها / عرض وايداع). */
+/**
+ * أقسام عائلة وضع «منفذ عليه» في نموذج الملف (الجهة العامة منفذ عليها / عرض وايداع) —
+ * قشرة تركيبية بعد `P6-02d`: السند، الطالب، المنفذ عليهم، الأشخاص الطبيعيون، والحالة.
+ */
 export function ExecutedSideSections({
   side,
   form,
@@ -129,553 +110,65 @@ export function ExecutedSideSections({
 }: ExecutedSideSectionsProps) {
   const { field } = makeFieldHelpers(form, set, isMirror);
   const isDeposit = side === 'deposit';
-  const applicantLabel = isDeposit ? 'طالب العرض' : 'طالب التنفيذ';
-  const applicantButtonLabel = isDeposit ? 'طالب عرض' : 'طالب التنفيذ';
-
-  // خيارات «الحالة» في نموذج التعديل تُرشَّح بمنطق نافذة تغيير الحالة (§4.6): الحالة الحالية
-  // تبقى قابلة للإبقاء عليها، ولا تُعرض الحالات المحظورة. الإرجاع المباشر من «منفذ» في
-  // «عرض وايداع» يبقى خاصًا بالنافذة (كتاب السير بالملف) فيُستثنى خيار «متداول» من النموذج.
-  const statusCurrent = currentExecutedStatus || STATE_CIRCULATING;
-  const statusTargets = targetsOf(statusCurrent, isDeposit).filter(
-    (t) => !(statusCurrent === EXECUTED_STATUS_EXECUTED && isDeposit && t === STATE_CIRCULATING),
-  );
-  const statusOptions = [statusCurrent, ...statusTargets];
 
   return (
     <>
-      <FormSectionTitle title="📄 بيانات السند التنفيذي" />
-      <div className="grid md:grid-cols-3 gap-4 items-end">
-        {field('المحكمة مصدرة القرار', 'contractType')}
-        {field('رقم القرار', 'contractNumber')}
-        {field('تاريخ القرار', 'contractDate')}
-      </div>
-      <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
-        <div>
-          <label htmlFor="inclusionText" className="block text-xs font-bold text-gray-600 mb-1">
-            المتضمن
-          </label>
-          <AutoResizeTextarea
-            id="inclusionText"
-            value={form.inclusionText ?? ''}
-            onChange={(v) => set('inclusionText', v)}
-            placeholder="أدخل خلاصة القرار باختصار..."
-            minRows={1}
-            maxHeight={200}
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-        <div className="mt-3">
-          <label htmlFor="inclusionNotes" className="block text-xs font-bold text-gray-600 mb-1">
-            ملاحظات
-          </label>
-          <AutoResizeTextarea
-            id="inclusionNotes"
-            value={form.inclusionNotes ?? ''}
-            onChange={(v) => set('inclusionNotes', v)}
-            placeholder="اكتب القرارات الأخرى هنا..."
-            minRows={1}
-            maxHeight={200}
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-        <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4">
-          <button
-            type="button"
-            onClick={() => setShowRequiredAmount((v) => !v)}
-            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 shrink-0 min-h-11"
-          >
-            {showRequiredAmount ? '− إخفاء المبلغ' : '➕ إضافة مبلغ'}
-          </button>
-          {showRequiredAmount && (
-            <div className="mt-4">
-              <MultiAmountEditor
-                idPrefix="required"
-                amountKeys={requiredAmountKeys}
-                currencyKeys={requiredCurrencyKeys}
-                values={form}
-                onSet={(k, v) => set(k as keyof DocumentUpsertRequest, v)}
-                slots={requiredAmountSlots}
-                onSlotsChange={setRequiredAmountSlots}
-                firstLabel={isDeposit ? 'المبلغ المعروض' : 'المبلغ المطلوب دفعه من الجهة العامة'}
-                otherLabel={(i) => (isDeposit ? `المبلغ المعروض ${i + 1}` : `المبلغ المطلوب ${i + 1}`)}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      <FormSectionTitle title={`👤 ${applicantLabel}`} />
-      {executionApplicants.map((a, i) => {
-        const aHasRep = hasRepresentative(a);
-        // الحقول التي تُصفَّر في الحمولة (الوكيل القانوني) تتبع «المخزَّن» لا «المفعَّل»:
-        // صفة وحدها (بلا اسم) لا تُحفظ، فمسح/إخفاء قيمة لها فقدان صامت.
-        const aRepStored = hasStoredRepresentative(a);
-        const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
-        const aIsLegal = a.nature === 'legal';
-        return (
-          <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-medium text-gray-700 text-sm">{applicantLabel} {i + 1}</span>
-              {!isMirror && executionApplicants.length > 1 && (
-                <button type="button" onClick={() => onApplicantRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
-                  ✖ حذف
-                </button>
-              )}
-            </div>
-            <div className="grid md:grid-cols-3 gap-3 mb-3">
-              <select
-                aria-label="نوع الطرف"
-                disabled={isMirror}
-                value={a.nature ?? 'natural'}
-                onChange={(e) => onApplicantSet(i, 'nature', e.target.value)}
-                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-              >
-                {PARTY_NATURE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            {aIsLegal ? (
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">الشخص الاعتباري</label>
-                  <input
-                    aria-label="الشخص الاعتباري"
-                    value={a.name ?? ''}
-                    readOnly={isMirror}
-                    aria-readonly={isMirror || undefined}
-                    placeholder="اسم الشخص الاعتباري (شركة خاصة)…"
-                    onChange={(e) => onApplicantSet(i, 'name', e.target.value)}
-                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">رقم تسجيله</label>
-                  <input aria-label="رقم تسجيله" value={a.registrationNumber ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'registrationNumber', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">يمثلها</label>
-                  <input aria-label="يمثلها" value={a.representedBy ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'representedBy', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                  <select value={a.addressType ?? 'موطن مختار'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
-                    {ADDRESS_TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-gray-600 mb-1">{addressLabelOf(a.addressType)}</label>
-                  <input aria-label="العنوان" value={a.address ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'address', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid md:grid-cols-3 gap-3">
-                  {([['name', 'الاسم'], ['father', 'اسم الأب'], ['family', 'النسبة']] as const).map(([k, label]) => (
-                    <div key={k}>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                      <input value={a[k] ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                    </div>
-                  ))}
-                </div>
-                <div className="grid md:grid-cols-3 gap-3 mt-3">
-                  {!aRepStored && (
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-gray-600 mb-1">الوكيل القانوني</label>
-                      <input value={a.legalRepresentative ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'legalRepresentative', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                    </div>
-                  )}
-                  <div className={aRepStored ? 'md:col-span-3' : undefined}>
-                    <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
-                    <div className="flex items-center gap-2">
-                      <select value={a.representationType ?? 'أصالة'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
-                        {REPRESENTATION_TYPES.map((o) => (
-                          <option key={o}>{o}</option>
-                        ))}
-                      </select>
-                      {!aHasRep && (
-                        <button
-                          type="button"
-                          onClick={() => onApplicantRepActivate(i)}
-                          className="shrink-0 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-                        >
-                          ＋ إضافة ممثل شرعي
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {hasEstate && (
-                  <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4 grid md:grid-cols-3 gap-3">
-                    {([['deceasedName', 'اسم المورث المتوفى'], ['deceasedFather', 'اسم أب المورث'], ['deceasedFamily', 'نسبة المورث']] as const).map(([k, label]) => (
-                      <div key={k}>
-                        <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-<input value={a[k] ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                      </div>
-                    ))}
-                    <div className="md:col-span-3">
-                      <ExecutedHeirsEditor
-                        idPrefix={`applicant-${i}`}
-                        heirs={a.heirs ?? []}
-                        onSet={(hi, k, v) => onApplicantHeirSet(i, hi, k, v)}
-                        onAdd={() => onApplicantHeirAdd(i)}
-                        onRemove={(hi) => onApplicantHeirRemove(i, hi)}
-                        locked={isMirror}
-                      />
-                    </div>
-                  </div>
-                )}
-                {aHasRep && (
-                  <RepresentativeEditor
-                    idPrefix={`applicant-${i}`}
-                    mode="legalRep"
-                    representative={a}
-                    onSet={(key, value) => onApplicantSet(i, key as keyof ExecutionApplicantDto, value)}
-                    onRemove={() => onApplicantRepRemove(i)}
-                    locked={partyRepLocked(`applicant-${i}`)}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        );
-      })}
-      {!isMirror && (
-        <>
-          <div className="flex flex-wrap gap-3 items-center">
-            <button
-              type="button"
-              onClick={() => onApplicantAdd('natural')}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-            >
-              ＋ إضافة {applicantButtonLabel} (شخص طبيعي)
-            </button>
-            <button
-              type="button"
-              onClick={() => onApplicantAdd('legal')}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-            >
-              ＋ إضافة {applicantButtonLabel} (شخص اعتباري)
-            </button>
-          </div>
-        </>
-      )}
-
-      <FormSectionTitle title="🏛️ المنفذ عليه" />
-      {executedPublicEntities.map((e, i) => {
-        const eIsLegal = e.nature === 'legal';
-        return (
-          <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-medium text-gray-700 text-sm">
-                {eIsLegal ? 'شخص اعتباري' : 'جهة عامة'} {i + 1}
-              </span>
-              {!isMirror && executedPublicEntities.length > 1 && (
-                <button type="button" onClick={() => onEntityRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
-                  ✖ حذف
-                </button>
-              )}
-            </div>
-            <div className="grid md:grid-cols-3 gap-3 mb-3">
-              <select
-                aria-label="نوع الطرف"
-                disabled={isMirror || e.registryId != null}
-                value={e.nature ?? 'public'}
-                onChange={(ev) => onEntitySet(i, 'nature', ev.target.value)}
-                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-              >
-                {ENTITY_NATURE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            {eIsLegal ? (
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">الشخص الاعتباري</label>
-                  <input value={e.entityName ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'entityName', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">رقم تسجيله</label>
-                  <input value={e.registrationNumber ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'registrationNumber', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">يمثلها</label>
-                  <input value={e.representedBy ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'representedBy', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">المحافظة</label>
-                  <input value={e.governorate ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'governorate', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                  <select value={e.addressType ?? 'موطن مختار'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'addressType', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
-                    {ADDRESS_TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">{addressLabelOf(e.addressType)}</label>
-                  <input value={e.address ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(ev) => onEntitySet(i, 'address', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <label className="block text-xs font-bold text-gray-600">اسم الجهة العامة</label>
-                    {e.registryId != null && (
-                      <span className="rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
-                        مرتبطة بالسجل ✓
-                      </span>
-                    )}
-                  </div>
-                  <input value={e.entityName ?? ''} readOnly placeholder="اختر من السجل المرجعي…" className="w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed" />
-                  {(e.entityName ?? '').trim() && e.registryId == null && (
-                    <p className="text-xs text-red-600 mt-1">يجب اختيار هذه الجهة من السجل المرجعي</p>
-                  )}
-                  {!isMirror && onPickRegistry && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onPickRegistry(i)}
-                        className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                      >
-                        {e.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
-                      </button>
-                      {e.registryId != null && onEntityUnlink && (
-                        <button
-                          type="button"
-                          onClick={() => onEntityUnlink(i)}
-                          className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                        >
-                          فك الربط
-                        </button>
-                      )}
-                      {(e.entityName ?? '').trim() && e.registryId == null && onEntityUnlink && (
-                        <button
-                          type="button"
-                          onClick={() => onEntityUnlink(i)}
-                          className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                        >
-                          مسح
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">الفرع</label>
-                  <input value={e.entityBranch ?? ''} readOnly placeholder="الفرع" className="w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">المحافظة</label>
-                  <input value={e.governorate ?? ''} readOnly placeholder="المحافظة" className="w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed" />
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {!isMirror && (
-        <div className="flex flex-wrap gap-3 items-center">
-          <button
-            type="button"
-            onClick={() => onEntityAdd('public')}
-            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-          >
-            ＋ إضافة جهة عامة
-          </button>
-          <button
-            type="button"
-            onClick={() => onEntityAdd('legal')}
-            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-          >
-            ＋ إضافة شخص اعتباري
-          </button>
-          <button
-            type="button"
-            onClick={onPersonAdd}
-            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-          >
-            ＋ إضافة شخص طبيعي
-          </button>
-        </div>
-      )}
-
-      {executedNaturalPersons.map((p, i) => {
-        const pHasRep = hasRepresentative(p);
-        const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
-        return (
-          <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-medium text-gray-700 text-sm">شخص طبيعي {i + 1}</span>
-              {!isMirror && executedNaturalPersons.length > 1 && (
-                <button type="button" onClick={() => onPersonRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
-                  ✖ حذف
-                </button>
-              )}
-            </div>
-            <div className="grid md:grid-cols-3 gap-3">
-              {([['name', 'الاسم'], ['father', 'اسم الأب'], ['family', 'النسبة']] as const).map(([k, label]) => (
-                <div key={k}>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                  <input value={p[k] ?? ''} onChange={(e) => onPersonSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-              ))}
-            </div>
-            <div className="grid md:grid-cols-3 gap-3 mt-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                <select value={p.addressType ?? 'عنوان'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onPersonSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
-                  {EXECUTED_HEIR_ADDRESS_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-xs font-bold text-gray-600 mb-1">
-                  {heirAddressLabelOf(p.addressType)}
-                </label>
-                <input value={p.addressOrRepresentative ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onPersonSet(i, 'addressOrRepresentative', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
-                <div className="flex items-center gap-2">
-                  <select value={p.representationType ?? 'أصالة'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onPersonSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
-                    {REPRESENTATION_TYPES.map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                  </select>
-                  {!pHasRep && (
-                    <button
-                      type="button"
-                      onClick={() => onPersonRepActivate(i)}
-                      className="shrink-0 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-                    >
-                      ＋ إضافة ممثل شرعي
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-            {hasEstate && (
-              <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4 grid md:grid-cols-3 gap-3">
-                {([['deceasedName', 'اسم المورث المتوفى'], ['deceasedFather', 'اسم أب المورث'], ['deceasedFamily', 'نسبة المورث']] as const).map(([k, label]) => (
-                  <div key={k}>
-                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-<input value={p[k] ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onPersonSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
-                ))}
-                <div className="md:col-span-3">
-                  <ExecutedHeirsEditor
-                    idPrefix={`executed-person-${i}`}
-                    heirs={p.heirs ?? []}
-                    onSet={(hi, k, v) => onPersonHeirSet(i, hi, k, v)}
-                    onAdd={() => onPersonHeirAdd(i)}
-                    onRemove={(hi) => onPersonHeirRemove(i, hi)}
-                    locked={isMirror}
-                  />
-                </div>
-              </div>
-            )}
-            {pHasRep && (
-              <RepresentativeEditor
-                idPrefix={`executed-person-${i}`}
-                mode="address"
-                representative={p}
-                onSet={(key, value) => onPersonSet(i, key as keyof ExecutedNaturalPersonDto, value)}
-                onRemove={() => onPersonRepRemove(i)}
-                locked={partyRepLocked(`person-${i}`)}
-              />
-            )}
-          </div>
-        );
-      })}
-
-      <FormSectionTitle title="📋 حالة الملف" />
-      <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
-        <div className="grid md:grid-cols-3 gap-4 items-end">
-          <div>
-            <label htmlFor="executedStatus" className="block text-xs font-bold text-gray-600 mb-1">
-              الحالة
-            </label>
-            <select
-              id="executedStatus"
-              value={form.executedStatus ?? ''}
-              onChange={(e) => set('executedStatus', e.target.value)}
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              {statusOptions.map((s) => (
-                <option key={s} value={s === STATE_CIRCULATING ? '' : s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {form.executedStatus === EXECUTED_STATUS_EXECUTED && (
-          <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4">
-            {isDeposit ? (
-              <div className="grid gap-4">
-                <MultiAmountEditor
-                  idPrefix="paid-deposit"
-                  amountKeys={paidAmountKeys}
-                  currencyKeys={paidCurrencyKeys}
-                  values={form}
-                  onSet={(k, v) => set(k as keyof DocumentUpsertRequest, v)}
-                  slots={paidAmountSlots}
-                  onSlotsChange={setPaidAmountSlots}
-                  firstLabel="المبلغ المودع"
-                  otherLabel={(i) => `المبلغ المودع ${i + 1}`}
-                />
-                {field('تاريخ ايداعه حساب الجهة العامة', 'executedDepositDate', 'مثال: 1/8/2026')}
-              </div>
-            ) : (
-              <>
-                <label htmlFor="executedDescription" className="block text-xs font-bold text-gray-600 mb-1">
-                  كيفية تنفيذ الملف
-                </label>
-                <AutoResizeTextarea
-                  id="executedDescription"
-                  value={form.executedDescription ?? ''}
-                  onChange={(v) => set('executedDescription', v)}
-                  placeholder="كيف تم تنفيذ الملف..."
-                  minRows={2}
-                  maxHeight={200}
-                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <div className="mt-4">
-                  <MultiAmountEditor
-                    idPrefix="paid-executed"
-                    amountKeys={paidAmountKeys}
-                    currencyKeys={paidCurrencyKeys}
-                    values={form}
-                    onSet={(k, v) => set(k as keyof DocumentUpsertRequest, v)}
-                    slots={paidAmountSlots}
-                    onSlotsChange={setPaidAmountSlots}
-                    firstLabel="المبلغ الذي دفعته الجهة العامة"
-                    otherLabel={(i) => `المبلغ الذي دفعته الجهة العامة ${i + 1}`}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        {form.executedStatus === EXEC_STATUS_STRUCK_OFF && (
-          <div className="mt-4 grid md:grid-cols-3 gap-4 items-end">
-            {field('تاريخ الشطب', 'struckOffDate', 'مثال: 1/8/2026')}
-          </div>
-        )}
-        {wasOriginallyStruckOff && !(form.executedStatus ?? '') && (
-          <div className="mt-4">
-            <RenewalFields value={form} onSet={(key, value) => set(key, value)} hideYear />
-          </div>
-        )}
-      </div>
+      <ExecutedContractSection
+        form={form}
+        set={set}
+        isDeposit={isDeposit}
+        field={field}
+        showRequiredAmount={showRequiredAmount}
+        setShowRequiredAmount={setShowRequiredAmount}
+        requiredAmountSlots={requiredAmountSlots}
+        setRequiredAmountSlots={setRequiredAmountSlots}
+      />
+      <ExecutedApplicantSection
+        isDeposit={isDeposit}
+        isMirror={isMirror}
+        partyRepLocked={partyRepLocked}
+        executionApplicants={executionApplicants}
+        onApplicantSet={onApplicantSet}
+        onApplicantAdd={onApplicantAdd}
+        onApplicantRemove={onApplicantRemove}
+        onApplicantHeirSet={onApplicantHeirSet}
+        onApplicantHeirAdd={onApplicantHeirAdd}
+        onApplicantHeirRemove={onApplicantHeirRemove}
+        onApplicantRepActivate={onApplicantRepActivate}
+        onApplicantRepRemove={onApplicantRepRemove}
+      />
+      <ExecutedEntitySection
+        isMirror={isMirror}
+        executedPublicEntities={executedPublicEntities}
+        onEntitySet={onEntitySet}
+        onEntityAdd={onEntityAdd}
+        onEntityRemove={onEntityRemove}
+        onPickRegistry={onPickRegistry}
+        onEntityUnlink={onEntityUnlink}
+        onPersonAdd={onPersonAdd}
+      />
+      <ExecutedNaturalPersonSection
+        isMirror={isMirror}
+        partyRepLocked={partyRepLocked}
+        executedNaturalPersons={executedNaturalPersons}
+        onPersonSet={onPersonSet}
+        onPersonRemove={onPersonRemove}
+        onPersonHeirSet={onPersonHeirSet}
+        onPersonHeirAdd={onPersonHeirAdd}
+        onPersonHeirRemove={onPersonHeirRemove}
+        onPersonRepActivate={onPersonRepActivate}
+        onPersonRepRemove={onPersonRepRemove}
+      />
+      <ExecutedStatusSection
+        form={form}
+        set={set}
+        isDeposit={isDeposit}
+        field={field}
+        paidAmountSlots={paidAmountSlots}
+        setPaidAmountSlots={setPaidAmountSlots}
+        wasOriginallyStruckOff={wasOriginallyStruckOff}
+        currentExecutedStatus={currentExecutedStatus}
+      />
     </>
   );
 }
