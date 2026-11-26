@@ -23,7 +23,6 @@ public sealed class CreateExecutionCircuitCommandHandler
     private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IRepository<Branch> _branches;
     private readonly IRepository<Section> _sections;
-    private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
     private readonly IAuditLogger _audit;
@@ -34,7 +33,6 @@ public sealed class CreateExecutionCircuitCommandHandler
         IRepository<ExecutionCircuit> circuits,
         IRepository<Branch> branches,
         IRepository<Section> sections,
-        IDocumentRepository documents,
         IUserRepository users,
         IUnitOfWork uow,
         IAuditLogger audit,
@@ -46,7 +44,6 @@ public sealed class CreateExecutionCircuitCommandHandler
         _circuits = circuits;
         _branches = branches;
         _sections = sections;
-        _documents = documents;
         _users = users;
         _uow = uow;
         _audit = audit;

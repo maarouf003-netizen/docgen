@@ -29,7 +29,6 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private int _branchId;
     private int _lawyerId;
     private int _lawyer2Id;
     private int _headId;
@@ -128,7 +127,6 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         db.Documents.Add(document);
         await db.SaveChangesAsync();
 
-        _branchId = branch.Id;
         _lawyerId = lawyer.Id;
         _lawyer2Id = lawyer2.Id;
         _headId = head.Id;

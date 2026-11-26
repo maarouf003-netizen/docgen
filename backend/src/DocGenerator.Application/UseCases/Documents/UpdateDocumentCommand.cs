@@ -30,7 +30,6 @@ public sealed class UpdateDocumentCommandHandler
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
-    private readonly IAuditLogger _audit;
     private readonly IExecutionActionService _actionService;
     private readonly IDocumentDelegationService _delegationService;
     private readonly IDocumentStatusService _statusService;
@@ -44,7 +43,6 @@ public sealed class UpdateDocumentCommandHandler
         IRepository<DocumentRegistrationDate> registrationDates,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit,
         IExecutionActionService actionService,
         IDocumentDelegationService delegationService,
         IDocumentStatusService statusService,
@@ -59,7 +57,6 @@ public sealed class UpdateDocumentCommandHandler
         _registrationDates = registrationDates;
         _uow = uow;
         _tx = tx;
-        _audit = audit;
         _actionService = actionService;
         _delegationService = delegationService;
         _statusService = statusService;

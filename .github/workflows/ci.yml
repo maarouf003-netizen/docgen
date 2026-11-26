@@ -99,6 +99,10 @@ jobs:
       # ويُفشل خط الأساس القديم حتى يُقلَّص بعد الإصلاح.
       - name: Determinism guard
         run: node scripts/determinism-guard.mjs
+      # P4-post-batch (2026-11-26): يمنع بقاء حقل private معلّقًا بلا استخدام
+      # (اعتمادية DI ميتة بقيت بعد نقل use-case) في Application والاختبارات.
+      - name: Dead field guard
+        run: node scripts/dead-code-guard.mjs
       # P7-02a: كل هجرة في MigrationsPostgres يجب أن تكون مسجّلة في RUN_GUIDE.md §9
       # وAGENTS.md؛ النسيان يعني رفض إقلاع في الإنتاج (AutoMigrate=false).
       - name: Migration watchlist guard

@@ -48,7 +48,7 @@ public class UserManagementServiceTests : PostgresDbTest
                 _audit,
                 new DbExceptionClassifier(),
                 tx),
-            uow, _audit);
+            uow);
         _reads = UserReadHandlerFactory.Create(_db);
         _setLawyerActive = new SetLawyerActiveCommandHandler(
             users, uow, _audit,

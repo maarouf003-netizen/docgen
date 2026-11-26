@@ -229,7 +229,6 @@ public static class DocumentServiceFactory
             registrationDatesValue,
             uowValue,
             txValue,
-            audit,
             actionService,
             delegationService,
             statusService,

@@ -22,7 +22,6 @@ public class DocumentDelegationServiceTests : PostgresDbTest
     private readonly IDocumentDelegationService _service;
     private readonly IQueryHandler<GetDocumentDelegationsQuery, List<DelegationDto>> _documentDelegations;
     private readonly IQueryHandler<GetPendingDelegationsQuery, List<DelegationDto>> _pendingDelegations;
-    private readonly IQueryHandler<CountPendingDelegationsQuery, int> _pendingDelegationsCount;
     private readonly IQueryHandler<GetDocumentQuery, DocumentResponse?> _documentService;
     private readonly ICommandHandler<UpdateDocumentCommand, DocumentResponse?> _documentUpdate;
     private readonly ICommandHandler<DeleteDocumentCommand, bool> _documentDelete;
@@ -94,9 +93,6 @@ public class DocumentDelegationServiceTests : PostgresDbTest
         _pendingDelegations = new GetPendingDelegationsQueryHandler(
             new DelegationRepository(_db), TestClock.Provider, TestClock.TimeZone,
             Array.Empty<IPipelineBehavior<GetPendingDelegationsQuery, List<DelegationDto>>>());
-        _pendingDelegationsCount = new CountPendingDelegationsQueryHandler(
-            new DelegationRepository(_db),
-            Array.Empty<IPipelineBehavior<CountPendingDelegationsQuery, int>>());
         _delegationDelete = new DeleteDocumentDelegationCommandHandler(
             new DelegationRepository(_db), _headAlerts, uow, _tx, _audit,
             Array.Empty<IPipelineBehavior<DeleteDocumentDelegationCommand, bool>>());
