@@ -118,6 +118,7 @@ export default function PortalFiles() {
           <label htmlFor="portal-search" className="sr-only">بحث في الملفات التنفيذية</label>
           <input
             id="portal-search"
+            type="search"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             placeholder="بحث في الملفات…"

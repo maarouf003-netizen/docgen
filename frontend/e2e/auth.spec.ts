@@ -11,7 +11,8 @@ test.describe('authentication', () => {
 
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('navigation', { name: 'القائمة الرئيسية' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'تسجيل الخروج' })).toBeVisible();
+    // المدير يرى بطاقة الحساب (اسمه المرئي هو اسم الرابط) بدل زر خروج في التذييل.
+    await expect(page.getByRole('link', { name: /مدير اختبار E2E/ })).toBeVisible();
   });
 
   test('invalid login shows the Arabic credentials error', async ({ page }) => {
@@ -27,6 +28,9 @@ test.describe('authentication', () => {
   test('logout revokes the session and protects internal routes', async ({ page }) => {
     await uiLogin(page, E2E_USERS.manager);
 
+    // الخروج متاح في صفحة الحساب الشخصي (بطاقة التذييل للمدير رابط للحساب فقط).
+    await page.goto('/account');
+    await expect(page.getByRole('heading', { name: 'الحساب الشخصي' })).toBeVisible();
     await page.getByRole('button', { name: 'تسجيل الخروج' }).click();
     await expect(page).toHaveURL(/\/login(?:\?|$)/);
 

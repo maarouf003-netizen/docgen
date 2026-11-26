@@ -97,8 +97,9 @@ describe('Layout', () => {
     expect(screen.getByText('منصة إدارة الملفات التنفيذية المدعومة بمولد مستندات آلي')).toBeInTheDocument();
     expect(screen.queryByAltText('علم الجمهورية العربية السورية')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
-    // بطاقة التذييل المضغوطة تنقل إلى الحساب الشخصي بدل بندي الخروج وكلمة المرور.
-    expect(screen.getByRole('link', { name: /الحساب الشخصي/ })).toHaveAttribute('href', '/account');
+    // بطاقة التذييل المضغوطة تنقل إلى الحساب الشخصي بدل بندي الخروج وكلمة المرور
+    // (اسم الرابط من نصه المرئي — بلا aria-label يخالف WCAG 2.5.3).
+    expect(screen.getByRole('link', { name: /أحمد الخطيب/ })).toHaveAttribute('href', '/account');
     expect(screen.getByText('أحمد الخطيب')).toBeInTheDocument();
     expect(screen.getByText('محامي — دمشق')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تسجيل الخروج' })).not.toBeInTheDocument();
@@ -115,7 +116,7 @@ describe('Layout', () => {
       stubMatchMedia(false);
       const { unmount } = render(<Layout />);
 
-      expect(screen.getByRole('link', { name: /الحساب الشخصي/ })).toHaveAttribute('href', '/account');
+      expect(screen.getByRole('link', { name: /أحمد الخطيب/ })).toHaveAttribute('href', '/account');
       expect(screen.queryByRole('button', { name: 'تسجيل الخروج' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'تغيير كلمة المرور' })).not.toBeInTheDocument();
       unmount();
@@ -131,7 +132,7 @@ describe('Layout', () => {
     stubMatchMedia(false);
     render(<Layout />);
 
-    expect(screen.getByRole('link', { name: /الحساب الشخصي/ })).toHaveAttribute('href', '/account');
+    expect(screen.getByRole('link', { name: /أحمد الخطيب/ })).toHaveAttribute('href', '/account');
     expect(screen.getByText('رئيس قسم — دمشق')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تسجيل الخروج' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'تغيير كلمة المرور' })).not.toBeInTheDocument();

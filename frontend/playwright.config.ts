@@ -79,6 +79,10 @@ const webServers: PlaywrightTestConfig['webServer'] = managedServers
           // الهجرات مُطبَّقة صراحةً قبل التشغيل؛ البذر الحتمي أُدخل بـSQL فلا يبذر التطبيق.
           Database__AutoMigrate: 'false',
           Jwt__Secret: e2eJwtSecret,
+          // تقليل ضجيج EF/SQL في سجل webServer (قراءة فقط، لا أسرار) — يمنع سجلًا ضخمًا
+          // في CI ويُبقي تحذيرات التطبيق ظاهرة.
+          Logging__LogLevel__Default: 'Warning',
+          Logging__LogLevel__Microsoft__EntityFrameworkCore: 'Warning',
           // حد دخول مرتفع لهذا التشغيل فقط (سجلّات الدخول المتكررة بين الملفات).
           // حد المعدل نفسه مغطّى باختبارات الخلفية، وليس هدف E2E.
           RateLimiting__LoginIpPerMinute: '200',
