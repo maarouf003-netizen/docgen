@@ -135,6 +135,18 @@ beforeEach(() => {
 });
 
 describe('DocumentsList', () => {
+  it('يطلب عشرين نتيجة للصفحة الأولى (عقد الترقيم مع الخلفية)', async () => {
+    mockPage([]);
+    renderList();
+
+    await waitFor(() => {
+      const listCalls = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([url]) => String(url).startsWith('/documents/list'));
+      expect(listCalls.length).toBeGreaterThan(0);
+      expect(String(listCalls[0][0])).toContain('perPage=20');
+    });
+  });
+
   it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، فرع الجهة العامة، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات', async () => {
     const page: PagedResult<DocumentResponse> = {
       page: 1,

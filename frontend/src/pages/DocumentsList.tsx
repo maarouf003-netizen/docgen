@@ -1,665 +1,82 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Link, useSearchParams } from 'react-router-dom';
-import { isAxiosError } from 'axios';
-import { api, getApiErrorMessage, getDownloadErrorMessage } from '../api/client';
-import { useAuth } from '../auth/useAuth';
-import { isHeadOrSubHeadRole } from '../auth/roles';
-import SpinnerIcon from '../components/SpinnerIcon';
-import { useIsMobile } from '../hooks/useMediaQuery';
-import { useCancellableRequest } from '../hooks/useCancellableRequest';
-import { useFloatingMenu } from '../hooks/useFloatingMenu';
-import { downloadBlob } from '../utils/download';
-import { richToPlainText } from '../utils/richText';
-import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus, isStatusOption } from '../utils/documentStatus';
-import { applicantName, displayFileNumber, fullName, identityName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
-import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListPosition, saveLastViewedDocumentId } from '../utils/listSession';
+import { Link } from 'react-router-dom';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
-import type { DocumentListItemDto, DocumentResponse, PagedResult } from '../types';
+import { STATUS_OPTIONS } from '../utils/documentStatus';
+import {
+  applicantName,
+  displayFileNumber,
+  fullName,
+  publicEntityBranch as entityBranchDisplay,
+} from '../utils/documentDisplay';
+import {
+  ActionsCell,
+  AppealBadge,
+  ColumnFilter,
+  FileNumber,
+  FilterSelect,
+  MoreMenu,
+  StatusBadge,
+} from './documentsList/DocumentsListDisplay';
+import { useDocumentsList } from './documentsList/useDocumentsList';
 
-/** شارة «استئناف»: للملفات التي عليها استئناف منظور — تفتح تفاصيل الاستئناف. */
-export function AppealBadge({ d }: { d: DocumentListItemDto }) {
-  if (!d.hasAppeals || !d.matchedAppealId) return null;
-  return (
-    <Link
-      to={`/appeals/${d.matchedAppealId}`}
-      aria-label={`فتح تفاصيل استئناف الملف رقم ${displayFileNumber(d)}`}
-      className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium"
-    >
-      استئناف
-    </Link>
-  );
-}
+// توافق الوحدات القائمة: كانت `FileNumber`/`AppealBadge` تُصدَّر من هذه الصفحة.
+export { AppealBadge, FileNumber } from './documentsList/DocumentsListDisplay';
 
-export function FileNumber({ d, fallback }: { d: DocumentListItemDto; fallback?: string }) {
-  const text = displayFileNumber(d);
-  const hasAppealBadge = Boolean(d.hasAppeals && d.matchedAppealId);
-  // الفراغ الأصلي يُحفظ لملفات «تحت الرفع» بلا شارة؛ والبديل (؟) للبطاقات الجوالة فقط.
-  if (!text && !hasAppealBadge) {
-    return <span className="text-gray-800">{fallback ?? ''}</span>;
-  }
-  return (
-    <div className="flex flex-col items-start gap-1">
-      <span className={`tabular-nums ${d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>{text}</span>
-      {/* شارة «استئناف»: للملفات التي عليها استئناف منظور — المحسوم والمشطوب لا يُظهران الشارة. */}
-      <AppealBadge d={d} />
-    </div>
-  );
-}
-
-function StatusBadge({ d }: { d: DocumentListItemDto }) {
-  const { text, cls } = STATUS_BADGES[getDocumentStatus(d)];
-  return <span className={`text-xs px-2 py-1 rounded-full ${cls}`}>{text}</span>;
-}
-
-type FilterSelectProps = {
-  value: string;
-  onChange: (value: string) => void;
-  ariaLabel: string;
-  allLabel: string;
-  options: readonly string[];
-  className?: string;
-};
-
-function FilterSelect({ value, onChange, ariaLabel, allLabel, options, className }: FilterSelectProps) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      aria-label={ariaLabel}
-      className={`border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 min-h-11 ${className ?? ''}`}
-    >
-      <option value="">{allLabel}</option>
-      {options.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
-    </select>
-  );
-}
-
-type ColumnFilterProps = {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange: (value: string) => void;
-  allLabel: string;
-  options: readonly string[];
-};
-
-function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: ColumnFilterProps) {
-  const filterMenu = useFloatingMenu();
-  const [search, setSearch] = useState('');
-
-  const isActive = value !== '';
-  const filtered = options.filter((o) => (search ? o.includes(search) : true));
-
-  const select = (v: string) => {
-    onChange(v);
-    filterMenu.setOpen(false);
-    setSearch('');
-  };
-
-  return (
-    <>
-      <button
-        ref={filterMenu.refs.setReference}
-        type="button"
-        {...filterMenu.getReferenceProps()}
-        aria-expanded={filterMenu.open}
-        aria-haspopup="menu"
-        aria-label={ariaLabel}
-        className="inline-flex items-start whitespace-nowrap min-h-11 text-sm font-bold text-emerald-900 hover:text-emerald-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-lg"
-      >
-        <span className="inline-flex items-center gap-1">
-          <span>{label}</span>
-          <svg
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-            className={`w-4 h-4 shrink-0 ${isActive ? 'text-red-600' : 'text-gray-400'}`}
-          >
-            <path
-              fillRule="evenodd"
-              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </span>
-      </button>
-      {filterMenu.open &&
-        createPortal(
-          <div
-            ref={filterMenu.refs.setFloating}
-            role="menu"
-            aria-label={ariaLabel}
-            style={filterMenu.floatingStyles}
-            {...filterMenu.getFloatingProps()}
-            className="fixed z-50 w-64 max-h-96 overflow-hidden bg-white rounded-xl shadow-xl border border-gray-200"
-          >
-            <div className="p-2 border-b border-gray-100">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="بحث…"
-                aria-label={`بحث في ${label}`}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
-              />
-            </div>
-            <div className="max-h-72 overflow-y-auto py-1">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => select('')}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-              >
-                {allLabel}
-              </button>
-              {filtered.map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => select(o)}
-                  className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-                >
-                  {o}
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <div className="px-4 py-3 text-sm text-gray-600">لا توجد نتائج مطابقة</div>
-              )}
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
-/** قائمة «المزيد» المنسدلة: تجمع إجراءات الأرشيف والتدوير والتصدير في زر واحد. */
-function MoreMenu({
-  canViewDeleted,
-  canRotate,
-  exporting,
-  onExport,
-}: {
-  canViewDeleted: boolean;
-  canRotate: boolean;
-  exporting: boolean;
-  onExport: () => void;
-}) {
-  const moreMenu = useFloatingMenu();
-  const close = () => moreMenu.setOpen(false);
-
-  return (
-    <>
-      <button
-        ref={moreMenu.refs.setReference}
-        type="button"
-        {...moreMenu.getReferenceProps()}
-        aria-expanded={moreMenu.open}
-        aria-haspopup="menu"
-        className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-      >
-        المزيد
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-          className="w-4 h-4 shrink-0 text-gray-400"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </button>
-      {moreMenu.open &&
-        createPortal(
-          <div
-            ref={moreMenu.refs.setFloating}
-            role="menu"
-            aria-label="المزيد"
-            style={moreMenu.floatingStyles}
-            {...moreMenu.getFloatingProps()}
-            className="fixed z-50 w-64 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden py-1"
-          >
-            {canViewDeleted && (
-              <Link
-                to="/documents/deleted"
-                role="menuitem"
-                onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-              >
-                الملفات المحذوفة
-              </Link>
-            )}
-            {/* بند «الاستئنافات» — بخط أحمر مميز كما هو معتمد. */}
-            <Link
-              to="/appeals"
-              role="menuitem"
-              onClick={close}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-inset"
-            >
-              الاستئنافات
-            </Link>
-            {canViewDeleted && (
-              <Link
-                to="/documents/struck-off"
-                role="menuitem"
-                onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-              >
-                الملفات المشطوبة
-              </Link>
-            )}
-            <Link
-              to="/documents/executed"
-              role="menuitem"
-              onClick={close}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-            >
-              الملفات المنفذة
-            </Link>
-            <Link
-              to="/documents/referred-to-start"
-              role="menuitem"
-              onClick={close}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-            >
-              الملفات المحالة الى البداية
-            </Link>
-            {canRotate && (
-              <Link
-                to="/documents/rotate"
-                role="menuitem"
-                onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
-              >
-                تدوير أرقام الأساس
-              </Link>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                close();
-                onExport();
-              }}
-              disabled={exporting}
-              className="w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset inline-flex items-center gap-2"
-            >
-              {exporting ? (
-                <>
-                  <SpinnerIcon />
-                  جارِ التصدير…
-                </>
-              ) : (
-                'تصدير إكسل'
-              )}
-            </button>
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
-function ActionsCell({
-  d,
-  onClick,
-  compact = false,
-}: {
-  d: DocumentListItemDto;
-  onClick: () => void;
-  /** بطاقة الجوال: تصغير خط آخر إجراء/ملاحظة ليطابق «المحكمة الناظرة» في بطاقات الاستئناف. */
-  compact?: boolean;
-}) {
-  const latest = d.executionActions?.[0];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-right w-full min-h-11 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-      title="عرض الإجراءات والملاحظات"
-    >
-      {latest ? (
-        <>
-          <div className={`${compact ? 'text-xs' : ''} text-gray-800 truncate`}>
-            {richToPlainText(latest.text)}
-          </div>
-          <div className="text-emerald-700 text-xs mt-0.5">{latest.actionDate || '—'}</div>
-        </>
-      ) : (
-        <span className="text-gray-600">لا توجد إجراءات أو ملاحظات</span>
-      )}
-    </button>
-  );
-}
-
+/**
+ * قائمة الملفات التنفيذية — قشرة عرض بعد `P6-02e`: المنطق في `useDocumentsList`
+ * والخلايا/الفلاتر في `DocumentsListDisplay`، والسلوك منقول بلا تغيير.
+ */
 export default function DocumentsList() {
-  const { hasFullAccess, user } = useAuth();
-  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
-  const isMobile = useIsMobile();
-  // استعادة موضع القائمة (البحث/الفلاتر/الصفحة) وملف «آخر ما فُتح» من جلسة المتصفح عند العودة
-  // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.
-  const [saved] = useState(() => loadDocumentsListPosition());
-  const [searchParams] = useSearchParams();
-  const [query, setQuery] = useState(saved?.query ?? '');
-  // فلتر الحالة من الـ `URL` (روابط التعمّق من لوحة المحامي) يسبق موضع الجلسة المستعاد،
-  // والقيمة الغريبة تُهمل في الحالتين (تُعامل كأنها «لا فلتر»).
-  const [status, setStatus] = useState(() => {
-    const fromUrl = searchParams.get('status');
-    if (fromUrl && isStatusOption(fromUrl)) return fromUrl;
-    return saved?.status && isStatusOption(saved.status) ? saved.status : '';
-  });
-  // فلتر `URL` طبقة مؤقتة: لا يُحفَظ في الجلسة حتى يلمسه المستخدم يدويًا —
-  // وإلا علّق رابط التعمّق فلترًا دائمًا في الزيارات النظيفة اللاحقة.
-  const [statusTouched, setStatusTouched] = useState(false);
-  const persistedStatus = statusTouched ? status : (saved?.status && isStatusOption(saved.status) ? saved.status : '');
-
-  // مزامنة الـ `URL` مع الحالة عند تغيّره دون إعادة تركيب (رجوع/تقدم أو رابط تعمّق
-  // ثانٍ) — التعديل اليدوي لا يُمسّ، ورابط التعمّق الجديد يبدأ دومًا من الصفحة الأولى.
-  const urlStatusParam = searchParams.get('status');
-  const appliedUrlStatus = useRef<string | null>(null);
-  useEffect(() => {
-    const valid = urlStatusParam && isStatusOption(urlStatusParam) ? urlStatusParam : null;
-    if (valid !== appliedUrlStatus.current) {
-      appliedUrlStatus.current = valid;
-      if (valid) {
-        setStatus(valid);
-        setStatusTouched(false);
-        resetPaging();
-      }
-    }
-  }, [urlStatusParam]);
-  const [applicant, setApplicant] = useState(saved?.applicant ?? '');
-  const [court, setCourt] = useState(saved?.court ?? '');
-  const [lawyer, setLawyer] = useState(saved?.lawyer ?? '');
-  const [administrativeBranch, setAdministrativeBranch] = useState(saved?.administrativeBranch ?? '');
-  const [executedEntity, setExecutedEntity] = useState(saved?.executedEntity ?? '');
-  const [publicEntityBranch, setPublicEntityBranch] = useState(saved?.publicEntityBranch ?? '');
-  const [extraItems, setExtraItems] = useState<DocumentListItemDto[]>([]);
-  const [extraCursors, setExtraCursors] = useState<string[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState('');
-  const [restoreAttempted, setRestoreAttempted] = useState(false);
-
-  // إعادة ضبط الصفحات المضافة عند تغيير أي فلتر أو رابط تعمّق (P3-05b).
-  const resetPaging = () => {
-    setExtraItems([]);
-    setExtraCursors([]);
-    setNextCursor(null);
-    setLoadMoreError('');
-    setRestoreAttempted(false);
-  };
-  const [focusId, setFocusId] = useState<number | null>(null);
-  const [focusName, setFocusName] = useState<string | null>(null);
-  // «آخر ملف فُتح» يُقرأ بعد تحميل هوية المستخدم (AuthContext بلا هوية أصلًا ثم يملؤها من /auth/me)،
-  // فيظهر الشريط/التمييز للمالك الحالي فقط ولا يسرّب سجل مستخدم آخر. وحارس المحاولة يمنع إعادة
-  // جلب اسم الملف عند كل تغيّر بيانات القائمة بعد فشل غير 403/404 (انقطاع شبكة أو خطأ خادم).
-  const focusFetchAttempted = useRef(false);
-  useEffect(() => {
-    focusFetchAttempted.current = false;
-    setFocusId(loadLastViewedDocumentId(user?.id ?? null));
-  }, [user?.id]);
-  const [exporting, setExporting] = useState(false);
-  const [exportMsg, setExportMsg] = useState('');
-  const [actionsDocId, setActionsDocId] = useState<number | null>(null);
-  const [applicants, setApplicants] = useState<string[]>([]);
-  const [courts, setCourts] = useState<string[]>([]);
-  const [lawyers, setLawyers] = useState<string[]>([]);
-  const [administrativeBranches, setAdministrativeBranches] = useState<string[]>([]);
-  const [executedEntities, setExecutedEntities] = useState<string[]>([]);
-  const [publicEntityBranches, setPublicEntityBranches] = useState<string[]>([]);
-  // عدد المشاهدات أُزيل من النظام بالكامل (قرار المالك) — لا عمود ولا عدّاد في الواجهة.
-  const canSeeAdministrativeBranch = hasFullAccess;
-  const canSeeAssignedLawyer = hasFullAccess || isHeadOrSubHead;
-  const canSearchByLawyer = hasFullAccess || isHeadOrSubHead;
-  const canCreate = user?.role === 'lawyer';
-  // `BQ-001`: المدير يرى المحذوفات كالمشرف — ورئيس الشعبة كنطاق رئيس القسم (قرار §2.1).
-  const canViewDeleted = user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'subhead' || user?.role === 'admin' || user?.role === 'manager';
-  const canRotate = user?.role === 'lawyer';
-
-  // يُمنع تصدير كل الملفات: يتطلب التصدير تطبيق فلتر واحد على الأقل (بحث أو أي فلتر منسدل)،
-  // وإلا يُعطَّل الزر ويُعترض الطلب دفاعيًا قبل الإرسال.
-  const hasActiveFilter = Boolean(
-    query || status || applicant || court || lawyer || administrativeBranch || executedEntity || publicEntityBranch,
-  );
-
-  const buildListParams = useCallback((cursor?: string) => {
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (status) params.set('status', status);
-    if (applicant) params.set('applicant', applicant);
-    if (court) params.set('court', court);
-    if (lawyer) params.set('lawyer', lawyer);
-    if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
-    if (executedEntity) params.set('executedEntity', executedEntity);
-    if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
-    params.set('perPage', '20');
-    if (cursor) params.set('cursor', cursor);
-    else params.set('page', '1');
-    return params;
-  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
-
-  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
-    (signal) => api.get(`/documents/list?${buildListParams().toString()}`, { signal }).then((r) => r.data),
-    [buildListParams],
-  );
-
-  const data = listQuery.data;
-  const loading = listQuery.isLoading;
-  // الصفحة الأولى من الشبكة + الصفحات المضافة بمؤشر «تحميل المزيد» (P3-05b).
-  const items = data ? [...data.items, ...extraItems] : [];
-  const effectiveNextCursor = extraCursors.length === 0 ? (data?.nextCursor ?? null) : nextCursor;
-
-  // يُحفظ الموضع الحالي (والفلاتر وسلسلة المؤشرات) كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
-  // (الحالة القادمة من `URL` لا تُحفَظ حتى تُلمَس — انظر `persistedStatus`.)
-  useEffect(() => {
-    // لا تُكتب سلسلة فارغة فوق موضع محفوظ قبل اكتمال محاولة استعادته (P3-05b).
-    if (!restoreAttempted && saved?.cursors?.length)
-      return;
-    saveDocumentsListPosition({
-      query, status: persistedStatus, applicant, court, lawyer, administrativeBranch,
-      executedEntity, publicEntityBranch, page: 1,
-      ...(extraCursors.length > 0 ? { cursors: extraCursors } : {}),
-    });
-  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, extraCursors, restoreAttempted, saved]);
-
-  // استعادة الصفحات المضافة عند العودة: يُعاد تشغيل سلسلة المؤشرات المحفوظة (بحد أقصى
-  // طول السلسلة نفسها) ما دامت الفلاتر مطابقة؛ وأي فشل يُبقي الصفحة الأولى سليمة.
-  useEffect(() => {
-    if (restoreAttempted || !data || !saved?.cursors?.length || listQuery.isLoading)
-      return;
-
-    const savedStatus = saved.status && isStatusOption(saved.status) ? saved.status : '';
-    const matchesSavedFilters =
-      query === saved.query && persistedStatus === savedStatus && applicant === saved.applicant
-      && court === saved.court && lawyer === saved.lawyer
-      && administrativeBranch === saved.administrativeBranch && executedEntity === saved.executedEntity
-      && publicEntityBranch === saved.publicEntityBranch;
-
-    setRestoreAttempted(true);
-    if (!matchesSavedFilters)
-      return;
-
-    let cancelled = false;
-    const restore = async () => {
-      let cursor = data.nextCursor ?? null;
-      const restored: DocumentListItemDto[] = [];
-      const used: string[] = [];
-      for (const savedCursor of (saved.cursors ?? []).slice(0, 20)) {
-        if (cancelled || !cursor || cursor !== savedCursor)
-          break;
-        const response = await api.get<PagedResult<DocumentListItemDto>>(
-          `/documents/list?${buildListParams(savedCursor).toString()}`);
-        restored.push(...response.data.items);
-        used.push(savedCursor);
-        cursor = response.data.nextCursor ?? null;
-      }
-      if (!cancelled) {
-        setExtraItems(restored);
-        setExtraCursors(used);
-        setNextCursor(cursor);
-      }
-    };
-    void restore().catch(() => {
-      // فشل استعادة الموضع لا يمسّ الصفحة الأولى المعروضة.
-    });
-    return () => { cancelled = true; };
-  }, [data, restoreAttempted, saved, listQuery.isLoading, buildListParams,
-    query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
-
-  // «تحميل المزيد»: يجلب الصفحة التالية بالمؤشر ويُلحقها بلا إزاحة (P3-05b).
-  const loadMore = async () => {
-    const cursor = effectiveNextCursor;
-    if (!cursor || loadingMore)
-      return;
-    setLoadingMore(true);
-    setLoadMoreError('');
-    try {
-      const response = await api.get<PagedResult<DocumentListItemDto>>(
-        `/documents/list?${buildListParams(cursor).toString()}`);
-      setExtraItems((previous) => [...previous, ...response.data.items]);
-      setExtraCursors((previous) => [...previous, cursor]);
-      setNextCursor(response.data.nextCursor ?? null);
-    } catch (err) {
-      setLoadMoreError(getApiErrorMessage(err));
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
-  const openDocument = (id: number) => {
-    saveDocumentsListPosition({
-      query, status: persistedStatus, applicant, court, lawyer, administrativeBranch,
-      executedEntity, publicEntityBranch, page: 1,
-      ...(extraCursors.length > 0 ? { cursors: extraCursors } : {}),
-    });
-    saveLastViewedDocumentId(id, user?.id ?? null);
-  };
-
-  const focusVisible = focusId != null && items.some((x) => x.id === focusId);
-  const scrolledToFocus = useRef(false);
-  useEffect(() => {
-    // ينتظر اكتمال جلب القائمة: يُمرَّر إلى الملف إذا كان ظاهرًا، ولا يُجلب اسمه (للشريط الاحتياطي)
-    // إلا عند تأكد الغياب عن الصفحة المستعادة؛ فلا يُرسل طلب زائد في كل زيارة.
-    if (focusId == null || data == null) return;
-    if (focusVisible) {
-      if (!scrolledToFocus.current) {
-        scrolledToFocus.current = true;
-        document.getElementById(`doc-row-${focusId}`)?.scrollIntoView({ block: 'center' });
-      }
-    } else if (focusName == null && !focusFetchAttempted.current) {
-      // محاولة واحدة لكل focusId في هذا التركيب تُمنع إعادة الجلب عند تغيّر بيانات القائمة (data).
-      focusFetchAttempted.current = true;
-      api
-        .get<DocumentResponse>(`/documents/${focusId}`)
-        .then((r) => setFocusName(identityName(r.data) || displayFileNumber(r.data) || `مستند ${focusId}`))
-        .catch((err: unknown) => {
-          // رفض الصلاحية أو غياب الملف: الملف ليس مقروءًا للمستخدم الحالي — يُمسح التركيز
-          // ويُخفى الشريط (لا بديل مجهول برابط ميت). غيره (انقطاع شبكة/5xx) لا يمسح شيئًا.
-          if (isAxiosError(err) && (err.response?.status === 403 || err.response?.status === 404)) {
-            saveLastViewedDocumentId(null, user?.id ?? null);
-            setFocusId(null);
-          }
-        });
-    }
-    // user?.id في الاعتماديات: يعيد الفحص عند تبديل الهوية وتعطيل سجلات المستخدمين الآخرين.
-  }, [focusId, focusVisible, focusName, data, user?.id]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (applicant) params.set('applicant', applicant);
-    if (court) params.set('court', court);
-    if (lawyer) params.set('lawyer', lawyer);
-    if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
-    if (executedEntity) params.set('executedEntity', executedEntity);
-    if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
-    const qs = params.toString();
-    api
-      .get<{ applicants: string[]; courts: string[]; lawyers?: string[]; administrativeBranches: string[]; executedEntities: string[]; publicEntityBranches: string[] }>(
-        `/documents/filter-options${qs ? `?${qs}` : ''}`,
-      )
-      .then((r) => {
-        setApplicants(Array.isArray(r.data.applicants) ? r.data.applicants : []);
-        setLawyers(Array.isArray(r.data.lawyers) ? r.data.lawyers : []);
-        setAdministrativeBranches(Array.isArray(r.data.administrativeBranches) ? r.data.administrativeBranches : []);
-        setExecutedEntities(Array.isArray(r.data.executedEntities) ? r.data.executedEntities : []);
-        setPublicEntityBranches(Array.isArray(r.data.publicEntityBranches) ? r.data.publicEntityBranches : []);
-      })
-      .catch(() => {});
-    // مصدر خيارات «دائرة التنفيذ» من السجل (B24) — دوائر الفرع للمحامي/الرئيس،
-    // وكل الدوائر للمدير/المشرف (من الإحصاءات) — مع بقاء عقد الفلتر (court= نصًا)
-    // لأن Court يبقى مُزامَنًا. احتياطي القيم الحية عند فراغ السجل فقط.
-    (async () => {
-      try {
-        if (hasFullAccess) {
-          const r = await api.get<Array<{ circuitName: string }>>('/execution-circuits/stats');
-          const names = ((r?.data ?? []) as Array<{ circuitName: string }>)
-            .map((c) => c.circuitName)
-            .filter(Boolean);
-          if (names.length > 0) {
-            setCourts([...new Set(names)]);
-            return;
-          }
-        } else {
-          const r = await api.get<Array<{ id: number; name: string }>>('/execution-circuits/for-lawyer');
-          const names = ((r?.data ?? []) as Array<{ id: number; name: string }>).map((c) => c.name).filter(Boolean);
-          if (names.length > 0) {
-            setCourts(names);
-            return;
-          }
-        }
-      } catch {
-        // السجل الفارغ أو دور بلا نقطة: احتياطي القيم الحية أدناه.
-      }
-      try {
-        const fr = await api.get<{ courts: string[] }>(`/documents/filter-options${qs ? `?${qs}` : ''}`);
-        if (Array.isArray(fr?.data?.courts)) setCourts(fr.data.courts);
-      } catch {
-        // احتياطي صامت: تُبقى القائمة السابقة.
-      }
-    })();
-  }, [status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, hasFullAccess]);
-
-  useEffect(() => {
-    if (hasActiveFilter) setExportMsg('');
-  }, [hasActiveFilter]);
-
-  const exportExcel = () => {
-    if (!hasActiveFilter) {
-      setExportMsg('طبّق فلترًا واحدًا على الأقل قبل التصدير');
-      return;
-    }
-    setExportMsg('');
-    setExporting(true);
-    // عبر مثيل axios المشترك: يضيف الترويسة والوسم تلقائيًا، ويعيد توجيه 401،
-    // ولا يكرر قراءة مفتاح التوكن يدويًا.
-    api
-      .get('/documents/export', {
-        params: { q: query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch },
-        responseType: 'blob',
-      })
-      .then((res) => {
-        downloadBlob(res.data as Blob, `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`);
-      })
-      .catch(async (err: unknown) => {
-        // أخطاء التنزيل `Blob` فيُستخرج نصها (كـ429 الحارس) بدل رسالة عامة.
-        setExportMsg(await getDownloadErrorMessage(err));
-      })
-      .finally(() => setExporting(false));
-  };
-
-  const colSpan =
-    7 +
-    (canSeeAssignedLawyer ? 1 : 0) +
-    (canSeeAdministrativeBranch ? 1 : 0);
+  const {
+    isMobile,
+    query,
+    setQuery,
+    status,
+    setStatus,
+    setStatusTouched,
+    applicant,
+    setApplicant,
+    court,
+    setCourt,
+    lawyer,
+    setLawyer,
+    administrativeBranch,
+    setAdministrativeBranch,
+    executedEntity,
+    setExecutedEntity,
+    publicEntityBranch,
+    setPublicEntityBranch,
+    applicants,
+    courts,
+    lawyers,
+    administrativeBranches,
+    executedEntities,
+    publicEntityBranches,
+    canSeeAdministrativeBranch,
+    canSeeAssignedLawyer,
+    canSearchByLawyer,
+    canCreate,
+    canViewDeleted,
+    canRotate,
+    exporting,
+    exportMsg,
+    exportExcel,
+    resetPaging,
+    listQuery,
+    loading,
+    data,
+    items,
+    loadMore,
+    loadingMore,
+    loadMoreError,
+    effectiveNextCursor,
+    focusId,
+    focusName,
+    focusVisible,
+    actionsDocId,
+    setActionsDocId,
+    openDocument,
+    colSpan,
+  } = useDocumentsList();
 
   return (
     <div className="max-w-6xl mx-auto">
