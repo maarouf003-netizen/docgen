@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:ci": "vitest run --maxWorkers=4 --pool=forks",
     "generate:api": "openapi-typescript ../docs/openapi/docgen-v1.json -o src/api/generated.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium",
+    "e2e:browser": "node scripts/e2e-browser-smoke.mjs"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",
@@ -35,6 +38,8 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.1",
+    "@playwright/test": "1.65.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

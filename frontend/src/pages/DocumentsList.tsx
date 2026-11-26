@@ -166,7 +166,7 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
                 </button>
               ))}
               {filtered.length === 0 && (
-                <div className="px-4 py-3 text-sm text-gray-400">لا توجد نتائج مطابقة</div>
+                <div className="px-4 py-3 text-sm text-gray-600">لا توجد نتائج مطابقة</div>
               )}
             </div>
           </div>,
@@ -329,10 +329,10 @@ function ActionsCell({
           <div className={`${compact ? 'text-xs' : ''} text-gray-800 truncate`}>
             {richToPlainText(latest.text)}
           </div>
-          <div className="text-emerald-600 text-xs mt-0.5">{latest.actionDate || '—'}</div>
+          <div className="text-emerald-700 text-xs mt-0.5">{latest.actionDate || '—'}</div>
         </>
       ) : (
-        <span className="text-gray-400">لا توجد إجراءات أو ملاحظات</span>
+        <span className="text-gray-600">لا توجد إجراءات أو ملاحظات</span>
       )}
     </button>
   );
@@ -884,7 +884,7 @@ export default function DocumentsList() {
                 </article>
               ))}
               {items.length === 0 && (
-                <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
+                <div className="bg-white rounded-xl shadow p-8 text-center text-gray-600">
                   لا توجد نتائج
                 </div>
               )}
@@ -1015,7 +1015,7 @@ export default function DocumentsList() {
                   ))}
                   {items.length === 0 && (
                     <tr>
-                      <td colSpan={colSpan} className="px-4 py-8 text-center text-gray-400">
+                      <td colSpan={colSpan} className="px-4 py-8 text-center text-gray-600">
                         لا توجد نتائج
                       </td>
                     </tr>
@@ -1041,7 +1041,7 @@ export default function DocumentsList() {
                   {loadingMore ? 'جارِ التحميل…' : 'تحميل المزيد'}
                 </button>
               ) : (
-                <span className="text-gray-400">نهاية النتائج</span>
+                <span className="text-gray-600">نهاية النتائج</span>
               )}
             </div>
           </div>

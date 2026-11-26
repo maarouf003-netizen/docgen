@@ -298,6 +298,10 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     const panel = document.getElementById('alerts-panel-received');
     expect(panel).toHaveAttribute('role', 'tabpanel');
     expect(panel).toHaveAttribute('aria-labelledby', 'alerts-tab-received');
+
+    // التبويب غير النشط لا يشير إلى لوحة غير مُصيَّرة (معرّف مفقود = مخالفة ARIA).
+    const sentTab = screen.getByRole('tab', { name: /مرسلة/ });
+    expect(sentTab).not.toHaveAttribute('aria-controls');
   });
 });
 
@@ -333,6 +337,9 @@ describe('AlertsPage — المدير/المشرف (إشراف قرائي)', () 
     expect(await screen.findByText('تعميم عبر الفروع')).toBeInTheDocument();
 
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    // بلا تبويبات: لا tabpanel ولا مرجع ARIA إلى تبويب غير موجود.
+    expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
+    expect(document.querySelector('[aria-labelledby^="alerts-tab-"]')).toBeNull();
     expect(screen.queryByRole('button', { name: '+ إصدار تنبيه' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
 

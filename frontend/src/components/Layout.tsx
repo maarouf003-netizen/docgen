@@ -252,7 +252,6 @@ export default function Layout() {
             to="/account"
             onClick={onNavigate}
             className="flex items-center gap-2.5 rounded-xl p-2 -m-1 hover:bg-emerald-700/40 focus-visible:ring-2 focus-visible:ring-emerald-300 min-h-11"
-            aria-label={`الحساب الشخصي: ${user?.fullName ?? ''}`}
           >
             <span
               className="shrink-0 w-9 h-9 rounded-full bg-emerald-700 text-white inline-flex items-center justify-center font-bold"
@@ -261,7 +260,7 @@ export default function Layout() {
               {(user?.fullName ?? '').trim().slice(0, 2) || '؟'}
             </span>
             <span className="min-w-0">
-              <span className="block font-medium truncate">{user?.fullName}</span>
+              <span className="block font-medium truncate">{user?.fullName}</span>{' '}
               <span className="block text-emerald-300 text-xs truncate">
                 {formatRoleScope(user)}
               </span>

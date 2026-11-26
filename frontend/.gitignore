@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# P6-04: مخرجات Playwright (تقارير/فيديو/آثار) لا تُتبَّع.
+playwright-report
+test-results
+blob-report
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
