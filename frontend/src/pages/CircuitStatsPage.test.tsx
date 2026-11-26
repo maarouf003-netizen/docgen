@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import CircuitStatsPage from './CircuitStatsPage';
+import { renderWithQueryClient } from '../test/queryClient';
 
 const useAuthMock = vi.hoisted(() => vi.fn());
 
@@ -46,7 +48,7 @@ describe('CircuitStatsPage', () => {
 
   it('يُخفي منتقي الفرع عن رئيس القسم (اختياره مُتجاهَل خادميًا)', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'head' } });
-    render(<CircuitStatsPage />);
+    renderWithQueryClient(<CircuitStatsPage />);
 
     expect(await screen.findByText('دائرة أ')).toBeInTheDocument();
     expect(screen.queryByLabelText('الفرع')).not.toBeInTheDocument();
@@ -64,7 +66,7 @@ describe('CircuitStatsPage', () => {
       }
       return Promise.resolve({ data: [] });
     });
-    render(<CircuitStatsPage />);
+    renderWithQueryClient(<CircuitStatsPage />);
 
     expect(await screen.findByLabelText('الفرع')).toBeInTheDocument();
   });
@@ -81,11 +83,11 @@ describe('CircuitStatsPage', () => {
       }
       return Promise.resolve({ data: [] });
     });
-    render(<CircuitStatsPage />);
+    renderWithQueryClient(<CircuitStatsPage />);
 
     expect(await screen.findByText('إحصائيات دوائر شعبتك')).toBeInTheDocument();
     expect(screen.queryByLabelText('الفرع')).not.toBeInTheDocument();
-    expect(screen.getByText('مصياف')).toBeInTheDocument();
+    expect(await screen.findByText('مصياف')).toBeInTheDocument();
   });
 
   it('الصف الاصطناعي «بلا دائرة» يُوسم «كل الفروع» عند غياب اسم الفرع (مدير يرى الكل)', async () => {
@@ -103,7 +105,7 @@ describe('CircuitStatsPage', () => {
       }
       return Promise.resolve({ data: [] });
     });
-    render(<CircuitStatsPage />);
+    renderWithQueryClient(<CircuitStatsPage />);
 
     expect(await screen.findByText('بلا دائرة')).toBeInTheDocument();
     // «كل الفروع» تظهر أيضًا في خيار منتقي الفرع — النطاق على خلايا الجدول.
@@ -122,10 +124,52 @@ describe('CircuitStatsPage', () => {
       }
       return Promise.resolve({ data: [] });
     });
-    render(<CircuitStatsPage />);
+    renderWithQueryClient(<CircuitStatsPage />);
 
     expect(await screen.findByText('بلا دائرة')).toBeInTheDocument();
     expect(screen.getByText('دمشق')).toBeInTheDocument();
     expect(screen.queryByText('كل الفروع')).not.toBeInTheDocument();
+  });
+
+  it('يعيد استخدام مخزَّن الاستعلام عند العودة إلى الفرع نفسه (بلا طلب مكرر)', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'manager' } });
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string, config?: { params?: { branchId?: number } }) => {
+      if (url === '/branches') {
+        return Promise.resolve({ data: [{ id: 1, name: 'دمشق', code: 'DAM' }] });
+      }
+      if (url === '/execution-circuits/stats') {
+        const branchId = config?.params?.branchId;
+        return Promise.resolve({
+          data: branchId
+            ? [{ circuitId: 1, circuitName: 'دائرة أ', branchId, branchName: 'دمشق', isActive: true, fileCount: 5, lawyerCount: 2, pendingCount: 1 }]
+            : [{ circuitId: 2, circuitName: 'دائرة الكل', branchId: 0, branchName: null, isActive: true, fileCount: 9, lawyerCount: 3, pendingCount: 0 }],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    const statsCalls = (branchId?: number) =>
+      get.mock.calls.filter(
+        ([url, config]) =>
+          url === '/execution-circuits/stats' &&
+          (config as { params?: { branchId?: number } } | undefined)?.params?.branchId === branchId,
+      ).length;
+
+    const user = userEvent.setup();
+    renderWithQueryClient(<CircuitStatsPage />);
+
+    expect(await screen.findByText('دائرة الكل')).toBeInTheDocument();
+    expect(statsCalls(undefined)).toBe(1);
+
+    await user.selectOptions(screen.getByLabelText('الفرع'), '1');
+    expect(await screen.findByText('دائرة أ')).toBeInTheDocument();
+    expect(statsCalls(1)).toBe(1);
+
+    // العودة إلى «كل الفروع»: النتيجة مخزَّنة (staleTime 30s) فلا طلب ثانٍ.
+    await user.selectOptions(screen.getByLabelText('الفرع'), '');
+    expect(await screen.findByText('دائرة الكل')).toBeInTheDocument();
+    await waitFor(() => expect(statsCalls(undefined)).toBe(1));
+    expect(statsCalls(1)).toBe(1);
   });
 });
