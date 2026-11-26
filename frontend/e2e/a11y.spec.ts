@@ -74,4 +74,40 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByText(/لا توجد تنبيهات/)).toBeVisible();
     await analyzeBlocking(page, '/alerts (oversight)');
   });
+
+  // P6-03b: توسيع التغطية إلى شاشات القوائم/الإدارة/التقويم عالية الحركة.
+  test('forum page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/forum');
+    await expect(page.getByRole('heading', { name: 'منتدى المحامين' })).toBeVisible();
+    await analyzeBlocking(page, '/forum');
+  });
+
+  test('statistics page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/stats');
+    await expect(page.getByRole('heading', { name: 'الإحصائيات' })).toBeVisible();
+    await analyzeBlocking(page, '/stats');
+  });
+
+  test('branches management has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/branches/manage');
+    await expect(page.getByRole('heading', { name: 'إدارة الفروع' })).toBeVisible();
+    await analyzeBlocking(page, '/branches/manage');
+  });
+
+  test('calendar page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/calendar');
+    await expect(page.getByRole('heading', { name: 'التقويم' })).toBeVisible();
+    await analyzeBlocking(page, '/calendar');
+  });
+
+  test('suggestions page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/suggestions');
+    await expect(page.getByRole('heading', { name: 'اقتراحات التطوير' })).toBeVisible();
+    await analyzeBlocking(page, '/suggestions');
+  });
 });

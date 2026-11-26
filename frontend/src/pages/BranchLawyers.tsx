@@ -169,7 +169,7 @@ export default function BranchLawyers() {
             id="branch-filter"
             value={branchId ?? ''}
             onChange={(e) => setBranchId(e.target.value ? Number(e.target.value) : null)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none flex-1 min-h-11"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 flex-1 min-h-11"
           >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>

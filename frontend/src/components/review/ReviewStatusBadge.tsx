@@ -7,7 +7,7 @@ export default function ReviewStatusBadge({ isAnswered }: { isAnswered: boolean 
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700 whitespace-nowrap">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500 motion-safe:animate-pulse" aria-hidden="true" />
       بانتظار رد
     </span>
   );

@@ -109,6 +109,13 @@ jobs:
         run: node frontend/scripts/module-size-guard.mjs --self-test
       - name: Frontend module size guard
         run: node frontend/scripts/module-size-guard.mjs
+      # P6-03b: حراس الحركة/البؤرة — يمنع `transition-all` والحركة بلا `motion-safe:`
+      # و`outline-none` بلا بديل تركيز و`type="date"` وتجاوزات viewport، ويلزم كتلة
+      # `prefers-reduced-motion` في `index.css`. الاختبار الذاتي يسبق الفحص الفعلي.
+      - name: Self-test frontend a11y motion/focus guard
+        run: node frontend/scripts/a11y-guard.mjs --self-test
+      - name: Frontend a11y motion/focus guard
+        run: node frontend/scripts/a11y-guard.mjs
       # P7-02a: كل هجرة في MigrationsPostgres يجب أن تكون مسجّلة في RUN_GUIDE.md §9
       # وAGENTS.md؛ النسيان يعني رفض إقلاع في الإنتاج (AutoMigrate=false).
       - name: Migration watchlist guard

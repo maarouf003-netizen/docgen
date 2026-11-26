@@ -248,7 +248,7 @@ export function ApplicantAssetsSection({
                   <select
                     value={(a.owners ?? [])[0] ?? ''}
                     onChange={(ev) => onSingleOwnerSet(i, ev.target.value)}
-                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
                     <option value="">— اختر —</option>
                     {options.map((o) => (
@@ -325,7 +325,7 @@ export function ApplicantAssetsSection({
                 <select
                   value={a.shareType ?? shareTypesFor(kind)[0]}
                   onChange={(ev) => onEstateSet(i, 'shareType', ev.target.value)}
-                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   {shareTypesFor(kind).map((o) => (
                     <option key={o}>{o}</option>

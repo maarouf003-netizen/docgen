@@ -140,8 +140,8 @@ npx vitest run scripts/e2e-safety-guard.test.mjs
 | `e2e/auth.spec.ts` | دخول مدير صحيح → اللوحة؛ خطأ عربي صريح؛ خروج يُبطل الجلسة (المسار المحمي يعيد التوجيه) |
 | `e2e/documents.spec.ts` | القائمة تُعرض؛ البحث يصل للـAPI بالاستعلام نفسه؛ نموذج الإنشاء يفتح ويرفض «منفذ عليها» بلا رقم/سنة **دون أي `POST`** |
 | `e2e/alerts-portal.spec.ts` | التنبيهات (مدير) وبوابة الملفات (مندوب) تُعرض بلا أخطاء `console` |
-| `e2e/mobile-overflow.spec.ts` | 375×812: لا تجاوز أفقي (`scrollWidth <= innerWidth + 1`) على الدخول/المستندات/التنبيهات/البوابة |
-| `e2e/a11y.spec.ts` | `axe` على الدخول/قائمة المستندات/التنبيهات؛ تفشل عند `critical`/`serious` |
+| `e2e/mobile-overflow.spec.ts` | 375×812: لا تجاوز أفقي (`scrollWidth <= innerWidth + 1`) على 9 شاشات: الدخول/المستندات/التنبيهات/البوابة/المنتدى/الإحصاءات/إدارة الفروع/التقويم/الاقتراحات |
+| `e2e/a11y.spec.ts` | `axe` على 9 شاشات (نفس القائمة + عرض التنبيهات للمدير)؛ تفشل عند `critical`/`serious` |
 
 ### قائمة تبييض `axe`
 
@@ -184,7 +184,7 @@ npx vitest run scripts/e2e-safety-guard.test.mjs
 3. تثبيت `postgresql-client` ثم `psql -f scripts/e2e/seed.sql`.
 4. `npx playwright install --with-deps chromium` (Chromium المثبَّت بالإصدار — لا Chrome المستضيف).
 5. `oxlint` على مصادر E2E + اختبار حارس السلامة الذاتي.
-6. `npx playwright test` (15 اختبارًا: 11 سطح مكتب + 4 جوال).
+6. `npx playwright test` (25 اختبارًا: 16 سطح مكتب + 9 جوال).
 7. رفع `playwright-report` و`test-results` عند الفشل فقط (7 أيام).
 
 ## 9. تشخيص الفشل
