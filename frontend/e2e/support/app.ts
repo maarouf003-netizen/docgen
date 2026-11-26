@@ -17,9 +17,9 @@ export const E2E_USERS = {
 } as const;
 
 /** دخول عبر الـAPI (كوكي الجلسة يُخزَّن في سياق المتصفح نفسه) — يختصر شاشة الدخول. */
-export async function apiLogin(page: Page, username: string, password = E2E_PASSWORD): Promise<void> {
+export async function apiLogin(page: Page, username: string, passphrase = E2E_PASSWORD): Promise<void> {
   const response = await page.request.post('/api/auth/login', {
-    data: { username, password },
+    data: { username, password: passphrase },
   });
   expect(response.status(), `API login for "${username}"`).toBe(200);
   const body = (await response.json()) as { user?: { username?: string } };
@@ -27,10 +27,10 @@ export async function apiLogin(page: Page, username: string, password = E2E_PASS
 }
 
 /** دخول عبر النموذج (للتحقق من تدفق الواجهة نفسه). */
-export async function uiLogin(page: Page, username: string, password = E2E_PASSWORD): Promise<void> {
+export async function uiLogin(page: Page, username: string, passphrase = E2E_PASSWORD): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('اسم المستخدم', { exact: true }).fill(username);
-  await page.getByLabel('كلمة المرور', { exact: true }).fill(password);
+  await page.getByLabel('كلمة المرور', { exact: true }).fill(passphrase);
   await page.getByRole('button', { name: 'دخول', exact: true }).click();
   await expect(page).not.toHaveURL(/\/login(?:[?#]|$)/);
 }
