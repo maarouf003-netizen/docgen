@@ -1,41 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
-import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
 import NumberReuseWarningModal from '../components/NumberReuseWarningModal';
-import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { useAuth } from '../auth/useAuth';
 import { useCurrentYear } from '../hooks/useCurrentYear';
 import { ApplicantSideSections } from '../components/form/ApplicantSideSections';
-import {
-  ASSET_KINDS,
-  emptyAsset,
-  fileYearsUpto,
-  FUTURE_FILE_YEAR_MESSAGE,
-  isFutureFileYear,
-  MAX_ASSETS_PER_KIND,
-  SHAREABLE_ASSET_KINDS,
-  bankingCurrencyKeys,
-  emptyExecutedNaturalPerson,
-  emptyExecutedPublicEntity,
-  emptyExecutedHeir,
-  emptyExecutionApplicant,
-  emptyApplicantPublicEntity,
-  emptyGuarantor,
-  emptyHeir,
-  hasHeirName,
-  hasStoredRepresentative,
-  guarantorAddState,
-  nextGuarantorNumber,
-  ordinaryCurrencyKeys,
-  representativeHeirConflictMessage,
-  requiredCurrencyKeys,
-  toExecutedHeirPayload,
-  toHeirPayload,
-  toUpsert,
-} from '../components/form/documentFormConstants';
 import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
-import { FieldInfoHint } from '../components/form/FieldInfoHint';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
 import { InterventionModal } from '../components/form/InterventionModal';
@@ -43,38 +13,23 @@ import { DocumentInterventionsList } from '../components/form/DocumentInterventi
 import FloatingFormAlert from '../components/FloatingFormAlert';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
 import CircuitPickerModal from '../components/circuit/CircuitPickerModal';
-import type { ExecutionCircuitDto } from '../types';
-import { slotDefaultCurrency } from '../utils/amountCurrencies';
+import type { ExecutionCircuitDto, PublicEntityEntryDto } from '../types';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
-import { blockedAssetIds } from '../utils/delegationAssets';
 import { tripleName, isExecutedLike } from '../utils/documentDisplay';
-import { idempotencyHeaders, newIdempotencyKey } from '../utils/idempotency';
-import { EXEC_STATUS_STRUCK_OFF } from '../utils/documentStatus';
 import { governorateFromBranch } from '../utils/governorate';
-import type {
-  AppealDto,
-  ApplicantPublicEntityDto,
-  AssetDto,
-  DelegationDto,
-  DocumentResponse,
-  DocumentUpsertRequest,
-  DocumentInterventionDto,
-  ExecutedHeirDto,
-  ExecutedNaturalPersonDto,
-  ExecutedPublicEntityDto,
-  ExecutionApplicantDto,
-  GeneralEntitySide,
-  GuarantorDto,
-  HeirDto,
-  PartyNature,
-  EntityNature,
-  PublicEntityEntryDto,
-} from '../types';
+import { DocumentBasicsSection } from './documentForm/DocumentBasicsSection';
+import { useDocumentParties } from './documentForm/useDocumentParties';
+import { useDocumentReferences } from './documentForm/useDocumentReferences';
+import { useDocumentFormState } from './documentForm/useDocumentFormState';
+import { useDocumentSubmit } from './documentForm/useDocumentSubmit';
 
-/** رسالة تلميح «رقم الملف»: الملف بلا رقم/سنة يبقى «تحت رفع» في وضع طالبة التنفيذ. */
-const FILE_NUMBER_HINT =
-  'يمكن إضافة رقم الملف ونوعه لاحقًا؛ سيُدخَل الملف كـ«تحت رفع» لحين تعديله وإدخال الرقم والنوع.';
-
+/**
+ * نموذج إدخال/تعديل المستند — قشرة تركيبية فقط بعد `P6-02a`:
+ * حالة الأطراف (`useDocumentParties`)، البيانات المرجعية والارتباطات
+ * (`useDocumentReferences`)، حالة النموذج والتحميل (`useDocumentFormState`)،
+ * الإرسال والتحقق (`useDocumentSubmit` + وحدات نقية)، والقسم الأساسي
+ * (`DocumentBasicsSection`). السلوك منقول بلا تغيير.
+ */
 export default function DocumentForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -85,941 +40,54 @@ export default function DocumentForm() {
   // «المحافظة» للجهات العامة تُملأ تلقائيًا من فرع المحامي (دمشق/حلب...) وقابلة للتعديل،
   // فقد تكون الجهة تابعة لمحافظة أخرى. تُحفظ كمرجع ثابت لاستخدامها في معالجات الأحداث.
   const defaultGovernorateRef = useRef(governorateFromBranch(user?.branchName));
-  const freshApplicantEntity = (): ApplicantPublicEntityDto => ({
-    ...emptyApplicantPublicEntity(),
-    governorate: defaultGovernorateRef.current,
-  });
-  const freshExecutedEntity = (nature: EntityNature = 'public'): ExecutedPublicEntityDto => ({
-    ...emptyExecutedPublicEntity(),
-    nature,
-    governorate: defaultGovernorateRef.current,
-  });
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
-  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نموذج إدخال — يُرسَل في `POST` الإنشاء
-  // فقط (التعديل `PUT` خارج النطاق)؛ والبصمة الخادمية تحمي تصحيح-ثم-إعادة-إرسال.
-  const [idempotencyKey] = useState(newIdempotencyKey);
-  // بوابة تحميل وضع التعديل: أثناء جلب ملف جديد لا يُعرض النموذج ولا يُتاح
-  // الحفظ، فلا يرى المستخدم مال الملف السابق ولا يكتبه في الجديد —
-  // يمنع التسرب العرضي والكتابي معًا عند تبديل الهوية (نفس المكوّن).
-  // تُهيَّأ مفعّلة في التعديل لئلا يومض نموذج فارغ قبل أول جلب.
-  const [loading, setLoading] = useState(isEdit);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
-  // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
-  const [registryPicker, setRegistryPicker] = useState<
-    { side: 'applicant' | 'executed'; index: number } | null
-  >(null);
-  // سجل دوائر التنفيذ (BQ-004): الحقل زر مقفل بداخله «اختيار» — القائمة من
-  // دوائر الفرع حصرًا، والإلزامية تمنع الحفظ مع تركيز أول خطأ.
-  // انتقالي: فرع بلا سجل (قائمة فارغة/فشل تحميل) يُقبل النص الحر حتى يُعبَّأ السجل.
-  const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
-  const [branchCircuits, setBranchCircuits] = useState<ExecutionCircuitDto[] | null>(null);
-  const circuitPickerButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await api.get<ExecutionCircuitDto[]>('/execution-circuits/for-lawyer');
-        if (!cancelled) setBranchCircuits(r?.data ?? []);
-      } catch {
-        if (!cancelled) setBranchCircuits(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
-  const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
-  const [assets, setAssets] = useState<AssetDto[]>([]);
-  const [executionApplicants, setExecutionApplicants] = useState<ExecutionApplicantDto[]>([emptyExecutionApplicant()]);
-  const [executedPublicEntities, setExecutedPublicEntities] = useState<ExecutedPublicEntityDto[]>([freshExecutedEntity()]);
-  const [applicantPublicEntities, setApplicantPublicEntities] = useState<ApplicantPublicEntityDto[]>([freshApplicantEntity()]);
-  const [executedNaturalPersons, setExecutedNaturalPersons] = useState<ExecutedNaturalPersonDto[]>([]);
-  // المتدخلون: تُحمَّل مع الملف وتُدار عبر مسارات فرعية مستقلة (لا تدخل حمولة PUT)،
-  // فلا يفقد حفظ المتدخل تعديلات النموذج غير المحفوظة والعكس.
-  const [interventions, setInterventions] = useState<DocumentInterventionDto[]>([]);
-  const [interventionModalOpen, setInterventionModalOpen] = useState(false);
-  const [editingIntervention, setEditingIntervention] = useState<DocumentInterventionDto | null>(null);
-  const [showInclusionAmount, setShowInclusionAmount] = useState(false);
-  const [paidAmountSlots, setPaidAmountSlots] = useState(1);
-  const [showRequiredAmount, setShowRequiredAmount] = useState(false);
-  const [requiredAmountSlots, setRequiredAmountSlots] = useState(1);
-  const [wasOriginallyStruckOff, setWasOriginallyStruckOff] = useState(false);
-  const [originalExecutedStatus, setOriginalExecutedStatus] = useState('');
-  // الملف المناب (له إنابة مصدر SourceDelegationId): الحقول الجوهرية مقفلة ومُزامنة من
-  // المنيب، والهوية والورثة/الممثلون الجدد والملاحظات تبقى قابلة للتحرير (قرار 5/7).
-  const [isMirror, setIsMirror] = useState(false);
-  // مفاتيح الممثلين الذين فعّلهم محامي المناب الآن (إضافة محلية) — تبقى قابلة للتحرير
-  // رغم قفل الملف المناب؛ الممثل المخزَّن من المنيب يبقى مقفولًا (الحارس يرفض تعديله).
-  const [draftPartyReps, setDraftPartyReps] = useState<ReadonlySet<string>>(() => new Set());
-  const [bankingAmountSlots, setBankingAmountSlots] = useState(1);
-  const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
-  const [form, setForm] = useState<DocumentUpsertRequest>({
-    guarantors: [],
-    assets: [],
-    currency: 'ليرة سورية',
-    currency2: 'دولار أمريكي',
-    inclusionCurrency: 'ليرة سورية',
-    contractTypeSelector: 'مصرفي',
-    borrowerAddressType: 'موطن مختار',
-    borrowerNature: 'natural',
-    // سنة الملف الافتراضية للملف الجديد هي السنة الجارية (خادميًا عند توفرها) —
-    // الماضي متاح من القائمة والمستقبل مستحيل واجهةً ومرفوض خلفيةً.
-    fileYear: String(currentYear),
-    // «فرع الملف» قيمة نظامية مشتقة من فرع المحامي المنشئ — لا يُكتب يدويًا.
+  const parties = useDocumentParties(defaultGovernorateRef.current);
+  const references = useDocumentReferences({
+    id,
+    isEdit,
+    assets: parties.assets,
+    isMirror: parties.isMirror,
+  });
+  const state = useDocumentFormState({
+    id,
+    isEdit,
+    currentYear,
     branchName: user?.branchName ?? '',
-    generalEntitySide: 'applicant',
-    executedStatus: '',
-    executionApplicants: [],
-    executedPublicEntities: [],
-    executedNaturalPersons: [],
-    applicantPublicEntities: [],
-    borrowerHeirs: [],
-    annexes: [],
+    parties,
   });
-// تحميل كامل للمستند عند دخول وضع التعديل.
-  // تصفير كامل لحالة النموذج المشتقة من ملف: يُستدعى قبل كل جلب (فلا يبقى
-  // مال الملف السابق معروضًا ولا قابلًا للحفظ أثناء التحميل) ومن زر «مسح»
-  // اليدوي — سلوك واحد موحد يمنع أي تسرب بين ملفين.
-  const clearFormState = useCallback(() => {
-    setForm({
-      guarantors: [],
-      assets: [],
-      currency: 'ليرة سورية',
-      currency2: 'دولار أمريكي',
-      inclusionCurrency: 'ليرة سورية',
-      contractTypeSelector: 'مصرفي',
-      borrowerAddressType: 'موطن مختار',
-      borrowerNature: 'natural',
-      // إعادة الضبط تعيد الافتراضي (السنة الجارية) كالنموذج الجديد.
-      fileYear: String(currentYear),
-      // «فرع الملف» قيمة نظامية مشتقة من فرع المحامي المنشئ — لا يُكتب يدويًا.
-      branchName: user?.branchName ?? '',
-      generalEntitySide: 'applicant',
-      executedStatus: '',
-      executionApplicants: [],
-      executedPublicEntities: [],
-      executedNaturalPersons: [],
-      applicantPublicEntities: [],
-      borrowerHeirs: [],
-      annexes: [],
-    });
-    setGuarantors([emptyGuarantor()]);
-    setBorrowerHeirs([]);
-    setAssets([]);
-    setExecutionApplicants([emptyExecutionApplicant()]);
-    setExecutedPublicEntities([freshExecutedEntity()]);
-    setApplicantPublicEntities([freshApplicantEntity()]);
-    setExecutedNaturalPersons([]);
-    setInterventions([]);
-    setInterventionModalOpen(false);
-    setEditingIntervention(null);
-    setShowInclusionAmount(false);
-    setPaidAmountSlots(1);
-    setShowRequiredAmount(false);
-    setRequiredAmountSlots(1);
-    setBankingAmountSlots(1);
-    setOrdinaryAmountSlots(1);
-    setIsMirror(false);
-    setDraftPartyReps(new Set());
-    setWasOriginallyStruckOff(false);
-    setOriginalExecutedStatus('');
-  }, [user?.branchName, currentYear]);
+  const { submit } = useDocumentSubmit({
+    id,
+    isEdit,
+    currentYear,
+    navigate,
+    state,
+    parties,
+    references,
+  });
 
-  const loadDocument = useCallback(() => {
-    if (id === undefined) return undefined;
-    // قبل الجلب: تصفير الحالة وبوابة تحميل — فلا يُعرض مال السابق ولا يُحفظ به.
-    clearFormState();
-    setError('');
-    setLoading(true);
-    // حارس السباق: استجابة ملف سابق متأخرة تُتجاهل فلا تكتب ماله فوق الحالي.
-    let cancelled = false;
-    api
-      .get<DocumentResponse>(`/documents/${id}`)
-      .then((r) => {
-        if (cancelled) return;
-        const d = normalizeDocumentResponse(r.data);
-        setForm(toUpsert(d));
-        setIsMirror(d.sourceDelegationId != null);
-        setGuarantors(d.guarantors.length ? d.guarantors : [emptyGuarantor()]);
-        setBorrowerHeirs(d.borrowerHeirs);
-        // تصحيح أي بيانات قديمة متناقضة عند التحميل: تمام الأصل لا يكون إلا لمالك واحد،
-        // والأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة أصلًا.
-        setAssets(
-          d.assets.map((a) => ({
-            ...a,
-            shareType:
-              SHAREABLE_ASSET_KINDS.has(a.assetKind ?? '') && (a.owners ?? []).length > 1
-                ? 'حصة سهمية'
-                : a.shareType,
-          })),
-        );
-        setShowInclusionAmount(
-          Boolean(d.inclusionAmountNumeric || d.inclusionAmountWords),
-        );
-        // المبالغ المدفوعة (حتى ثلاثة) تظهر عند التعديل بحسب ما هو محفوظ منها.
-        setPaidAmountSlots(
-          Math.max(1, Number(Boolean(d.executedPaidAmount))
-            + Number(Boolean(d.executedPaidAmount2))
-            + Number(Boolean(d.executedPaidAmount3))),
-        );
-        // مبالغ «طالبة التنفيذ»: المصرفي (المطالب به) والعادي (المتضمن) حتى ثلاثة
-        // بحسب ما هو محفوظ منها عند التعديل.
-        setBankingAmountSlots(
-          Math.max(1, Number(Boolean(d.amountNumeric))
-            + Number(Boolean(d.amount2Numeric))
-            + Number(Boolean(d.amount3Numeric))),
-        );
-        setOrdinaryAmountSlots(
-          Math.max(1, Number(Boolean(d.inclusionAmountNumeric))
-            + Number(Boolean(d.inclusionAmount2Numeric))
-            + Number(Boolean(d.inclusionAmount3Numeric))),
-        );
-        // المبالغ المطلوب دفعها (حتى ثلاثة) تظهر عند التعديل بحسب ما هو محفوظ منها.
-        setShowRequiredAmount(
-          Boolean(d.executedRequiredAmount || d.executedRequiredAmount2 || d.executedRequiredAmount3),
-        );
-        setRequiredAmountSlots(
-          Math.max(1, Number(Boolean(d.executedRequiredAmount))
-            + Number(Boolean(d.executedRequiredAmount2))
-            + Number(Boolean(d.executedRequiredAmount3))),
-        );
-        // طالب تنفيذ واحد وجهة عامة واحدة يظهران دائمًا (وإن لم يكن للملف أي منهما محفوظًا).
-        setExecutionApplicants(d.executionApplicants.length ? d.executionApplicants : [emptyExecutionApplicant()]);
-        setExecutedPublicEntities(d.executedPublicEntities.length ? d.executedPublicEntities : [{ ...emptyExecutedPublicEntity(), governorate: defaultGovernorateRef.current }]);
-        setApplicantPublicEntities(d.applicantPublicEntities.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
-        setExecutedNaturalPersons(d.executedNaturalPersons);
-        setInterventions(d.interventions ?? []);
-        setWasOriginallyStruckOff(d.executedStatus === EXEC_STATUS_STRUCK_OFF);
-        setOriginalExecutedStatus(d.executedStatus ?? '');
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(getApiErrorMessage(err));
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, clearFormState]);
+  const { form, set } = state;
 
-  useEffect(() => {
-    if (!isEdit) return;
-    return loadDocument();
-  }, [id, isEdit, loadDocument]);
-
-  // إنابات الملف في وضع التعديل — لقفل «الحجز بعد التسطير» أماميًا (مرآة مريحة فقط؛
-  // الخلفية هي الضامن). الفشل مفتوح: التحرير يستمر بلا قفل والرفض النهائي خلفيًا.
-  const [delegations, setDelegations] = useState<DelegationDto[]>([]);
-  const [delegationsKnown, setDelegationsKnown] = useState(false);
-  useEffect(() => {
-    if (!isEdit || id === undefined) {
-      setDelegations([]);
-      setDelegationsKnown(true);
-      return;
-    }
-    let cancelled = false;
-    setDelegationsKnown(false);
-    api
-      .get<DelegationDto[]>(`/documents/${id}/delegations`)
-      .then((r) => {
-        if (cancelled) return;
-        setDelegations(Array.isArray(r.data) ? r.data : []);
-        setDelegationsKnown(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDelegations([]);
-        setDelegationsKnown(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, isEdit]);
-
-  // الأصول المرجعية بإنابة سارية (مطابقة اللقطات نفسها المستعملة في العرض) — لا قفل
-  // قبل العلم بها (مفتوح عند الجهل/الفشل)، ولا قفل على صفوف بلا معرف (جديدة).
-  const referencedAssetIds = useMemo(
-    () => (delegationsKnown ? blockedAssetIds(delegations, assets) : new Set<number>()),
-    [delegations, assets, delegationsKnown],
-  );
-
-  // استئنافات الملف في وضع التعديل — لمنع الحذف استباقيًا عند العلم المؤكد بارتباط
-  // (إنابة بأي حالة عبر قائمة الإنابات أعلاه، أو ملف مناب، أو أي استئناف بأي حالة).
-  // مرآة مريحة فقط والخلفية هي الضامن: الفشل مفتوح (زر مفعّل والرفض النهائي خلفيًا).
-  const [appeals, setAppeals] = useState<AppealDto[]>([]);
-  useEffect(() => {
-    if (!isEdit || id === undefined) {
-      setAppeals([]);
-      return;
-    }
-    let cancelled = false;
-    api
-      .get<AppealDto[]>(`/documents/${id}/appeals`)
-      .then((r) => {
-        if (cancelled) return;
-        setAppeals(Array.isArray(r.data) ? r.data : []);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAppeals([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, isEdit]);
-
-  // ارتباط مؤكد يمنع الحذف: أي إنابة (القائمة تشمل إنابة المناب نفسه) أو ملف مناب
-  // أو أي استئناف — بلا اعتبار للحالة. المصفوفات الفارغة تعني «لا ارتباط معلوم»
-  // (جهل/فشل) فيبقى الزر مفعّلًا والخلفي يرفض — فشل مفتوح.
-  const hasLinkedMatter = delegations.length > 0 || isMirror || appeals.length > 0;
-
-  const set = (key: keyof DocumentUpsertRequest, value: unknown) =>
-    setForm((f) => ({ ...f, [key]: value }));
-
-  // صفة الملف تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل. عند اختيار «الجهة العامة منفذ عليها»
-  // أو «عرض وايداع» يُفرض نوع السند «عادي» فورًا (المصرفي محظور في هذا الوضع).
-  const setSide = (side: GeneralEntitySide) =>
-    setForm((f) => ({
-      ...f,
-      generalEntitySide: side,
-      contractTypeSelector: side === 'executed' || side === 'deposit' ? 'عادي' : f.contractTypeSelector ?? 'مصرفي',
-    }));
-
-  const setG = (i: number, key: keyof GuarantorDto, value: string) =>
-    setGuarantors((gs) => gs.map((g, idx) => (idx === i ? { ...g, [key]: value } : g)));
-
-  const setE = (i: number, key: keyof AssetDto, value: string) => {
-    // قفل أمامي مريح لقاعدة «التاريخ يُعدَّل ولا يُحذف على مالٍ عليه إنابة سارية»:
-    // محاولة التفريغ تُتجاهل وتُبقى القيمة السابقة — وأي تجاوز يرفضه الخلفي.
-    if (key === 'seizureDate' && delegationsKnown) {
-      const current = assets[i];
+  // قفل أمامي مريح لقاعدة «التاريخ يُعدَّل ولا يُحذف على مالٍ عليه إنابة سارية»:
+  // محاولة التفريغ تُتجاهل وتُبقى القيمة السابقة — وأي تجاوز يرفضه الخلفي.
+  const setEstate = (i: number, key: keyof (typeof parties.assets)[number], value: string) => {
+    if (key === 'seizureDate' && references.delegationsKnown) {
+      const current = parties.assets[i];
       if (
         current?.id != null &&
-        referencedAssetIds.has(current.id) &&
+        references.referencedAssetIds.has(current.id) &&
         !normalizeArabicDigits(value).trim()
       ) {
         return;
       }
     }
-    setAssets((as) => as.map((a, idx) => (idx === i ? { ...a, [key]: value } : a)));
-  };
-
-  const toggleOwner = (i: number, name: string) =>
-    setAssets((as) =>
-      as.map((a, idx) => {
-        if (idx !== i) return a;
-        const current = a.owners ?? [];
-        const owners = current.includes(name)
-          ? current.filter((o) => o !== name)
-          : [...current, name];
-        return {
-          ...a,
-          owners,
-          // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية تلقائيًا
-          // (للأنواع الحصصية فقط) حتى لو نسي المحامي اختيارها، مع عدم الرجوع عنها عند النقص.
-          shareType:
-            SHAREABLE_ASSET_KINDS.has(a.assetKind ?? '') && owners.length > 1
-              ? 'حصة سهمية'
-              : a.shareType,
-        };
-      }),
-    );
-
-  const setSingleOwner = (i: number, name: string) =>
-    setAssets((as) => as.map((a, idx) => (idx === i ? { ...a, owners: name ? [name] : [] } : a)));
-
-  const setBorrowerHeir = (i: number, key: keyof HeirDto, value: string) =>
-    setBorrowerHeirs((hs) => hs.map((h, idx) => (idx === i ? { ...h, [key]: value } : h)));
-
-  const addBorrowerHeir = () => setBorrowerHeirs((hs) => [...hs, emptyHeir()]);
-
-  const removeBorrowerHeir = (i: number) =>
-    setBorrowerHeirs((hs) => hs.filter((_, idx) => idx !== i));
-
-  const setApplicant = (i: number, key: keyof ExecutionApplicantDto, value: string) =>
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)),
-    );
-
-  const addApplicant = (nature: PartyNature = 'natural') =>
-    setExecutionApplicants((xs) => [...xs, { ...emptyExecutionApplicant(), nature }]);
-
-  const removeApplicant = (i: number) =>
-    setExecutionApplicants((xs) => xs.filter((_, idx) => idx !== i));
-
-  const setApplicantHeir = (i: number, hi: number, key: keyof ExecutedHeirDto, value: string) =>
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              heirs: (x.heirs ?? []).map((h, hIdx) =>
-                hIdx === hi ? { ...h, [key]: value } : h,
-              ),
-            }
-          : x,
-      ),
-    );
-
-  const addApplicantHeir = (i: number) =>
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, heirs: [...(x.heirs ?? []), emptyExecutedHeir()] } : x,
-      ),
-    );
-
-  const removeApplicantHeir = (i: number, hi: number) =>
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, heirs: (x.heirs ?? []).filter((_, hIdx) => hIdx !== hi) } : x,
-      ),
-    );
-
-  // حقول الهوية النصية للجهة العامة المنفذ عليها: أي تحرير يدوي يطالها يفكّ ربط السجل المرجعي
-  // تلقائيًا حتى لا يبقى الملف مربوطًا بقيد لم يعد يطابق نصَّه (حقول «الطالب» أصبحت مقفلة فلا تحتاج حارسًا).
-  const EXECUTED_IDENTITY_KEYS: ReadonlyArray<keyof ExecutedPublicEntityDto> = [
-    'entityName', 'entityBranch', 'governorate',
-  ];
-
-  const setExecutedEntity = (i: number, key: keyof ExecutedPublicEntityDto, value: string) =>
-    setExecutedPublicEntities((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              [key]: value,
-              ...(EXECUTED_IDENTITY_KEYS.includes(key) && x.registryId != null ? { registryId: null } : {}),
-            }
-          : x,
-      ),
-    );
-
-  const addExecutedEntity = (nature: EntityNature = 'public') =>
-    setExecutedPublicEntities((xs) => [...xs, freshExecutedEntity(nature)]);
-
-  const removeExecutedEntity = (i: number) =>
-    setExecutedPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
-
-  const addApplicantPublicEntity = () => setApplicantPublicEntities((xs) => [...xs, freshApplicantEntity()]);
-
-  const removeApplicantPublicEntity = (i: number) =>
-    setApplicantPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
-
-  // «فك الربط»: يُفرّغ صف الجهة بالكامل (هوية + رابط) لأن الحقول النصية مقفلة فلا يمكن
-  // ترك نص بلا رابط — الصف المفرَّغ يُتجاهل تلقائيًا عند البناء الذي يفلتر الأسماء الفارغة.
-  const unlinkApplicantPublicEntity = (i: number) =>
-    setApplicantPublicEntities((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, name: '', branch: '', governorate: defaultGovernorateRef.current, registryId: null } : x,
-      ),
-    );
-
-  const unlinkExecutedEntity = (i: number) =>
-    setExecutedPublicEntities((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? { ...x, entityName: '', entityBranch: '', governorate: defaultGovernorateRef.current, registryId: null }
-          : x,
-      ),
-    );
-
-  // ربط صف جهة بالقيد المختار من نافذة السجل: تُملأ حقول الهوية النصية من القيد
-  // المعتمد نفسه فتظل الأعمدة النصية متسقة مع السجل، ويُحفظ معرّف الربط.
-  const applyRegistryPick = (entry: PublicEntityEntryDto) => {
-    if (!registryPicker) return;
-    const { side, index } = registryPicker;
-    if (side === 'applicant') {
-      setApplicantPublicEntities((xs) =>
-        xs.map((x, idx) =>
-          idx === index
-            ? { ...x, name: entry.canonicalName, branch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
-            : x,
-        ),
-      );
-    } else if (side === 'executed') {
-      setExecutedPublicEntities((xs) =>
-        xs.map((x, idx) =>
-          idx === index
-            ? { ...x, entityName: entry.canonicalName, entityBranch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
-            : x,
-        ),
-      );
-    }
-    setRegistryPicker(null);
-  };
-
-  const setExecutedPerson = (i: number, key: keyof ExecutedNaturalPersonDto, value: string) =>
-    setExecutedNaturalPersons((xs) => xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)));
-
-  const addExecutedPerson = () => setExecutedNaturalPersons((xs) => [...xs, emptyExecutedNaturalPerson()]);
-
-  const removeExecutedPerson = (i: number) =>
-    setExecutedNaturalPersons((xs) => xs.filter((_, idx) => idx !== i));
-
-  const setExecutedPersonHeir = (i: number, hi: number, key: keyof ExecutedHeirDto, value: string) =>
-    setExecutedNaturalPersons((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              heirs: (x.heirs ?? []).map((h, hIdx) =>
-                hIdx === hi ? { ...h, [key]: value } : h,
-              ),
-            }
-          : x,
-      ),
-    );
-
-  const addExecutedPersonHeir = (i: number) =>
-    setExecutedNaturalPersons((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, heirs: [...(x.heirs ?? []), emptyExecutedHeir()] } : x,
-      ),
-    );
-
-  const removeExecutedPersonHeir = (i: number, hi: number) =>
-    setExecutedNaturalPersons((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, heirs: (x.heirs ?? []).filter((_, hIdx) => hIdx !== hi) } : x,
-      ),
-    );
-
-  const setGHeir = (gi: number, hi: number, key: keyof HeirDto, value: string) =>
-    setGuarantors((gs) =>
-      gs.map((g, idx) =>
-        idx === gi
-          ? {
-              ...g,
-              heirs: (g.heirs ?? []).map((h, hIdx) =>
-                hIdx === hi ? { ...h, [key]: value } : h,
-              ),
-            }
-          : g,
-      ),
-    );
-
-  const addGHeir = (gi: number) =>
-    setGuarantors((gs) =>
-      gs.map((g, idx) =>
-        idx === gi ? { ...g, heirs: [...(g.heirs ?? []), emptyHeir()] } : g,
-      ),
-    );
-
-  const removeGHeir = (gi: number, hi: number) =>
-    setGuarantors((gs) =>
-      gs.map((g, idx) =>
-        idx === gi ? { ...g, heirs: (g.heirs ?? []).filter((_, hIdx) => hIdx !== hi) } : g,
-      ),
-    );
-
-  const markPartyRepDraft = (key: string) =>
-    setDraftPartyReps((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-
-  const clearPartyRepDraft = (key: string) =>
-    setDraftPartyReps((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-
-  /** قفل ممثل الطرف على الملف المناب: المخزَّن فقط، لا الإضافة المحلية الجارية. */
-  const partyRepLocked = (key: string) => isMirror && !draftPartyReps.has(key);
-
-  const activateBorrowerRep = () => {
-    markPartyRepDraft('borrower');
-    setForm((f) => ({ ...f, borrowerRepresentativeCapacity: 'ولي', borrowerRepresentativeAddressType: 'عنوان' }));
-  };
-
-  const removeBorrowerRep = () => {
-    clearPartyRepDraft('borrower');
-    setForm((f) => ({
-      ...f,
-      borrowerRepresentativeName: '',
-      borrowerRepresentativeFather: '',
-      borrowerRepresentativeFamily: '',
-      borrowerRepresentativeCapacity: '',
-      borrowerRepresentativeAddressType: '',
-      borrowerRepresentativeAddress: '',
-    }));
-  };
-
-  const activateGuarantorRep = (i: number) => {
-    markPartyRepDraft(`guarantor-${i}`);
-    setGuarantors((gs) =>
-      gs.map((g, idx) =>
-        idx === i ? { ...g, representativeCapacity: 'ولي', representativeAddressType: 'عنوان' } : g,
-      ),
-    );
-  };
-
-  const removeGuarantorRep = (i: number) => {
-    clearPartyRepDraft(`guarantor-${i}`);
-    setGuarantors((gs) =>
-      gs.map((g, idx) =>
-        idx === i
-          ? {
-              ...g,
-              representativeName: '',
-              representativeFather: '',
-              representativeFamily: '',
-              representativeCapacity: '',
-              representativeAddressType: '',
-              representativeAddress: '',
-            }
-          : g,
-      ),
-    );
-  };
-
-  const activateApplicantRep = (i: number) => {
-    markPartyRepDraft(`applicant-${i}`);
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) => (idx === i ? { ...x, representativeCapacity: 'ولي' } : x)),
-    );
-  };
-
-  const removeApplicantRep = (i: number) => {
-    clearPartyRepDraft(`applicant-${i}`);
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              representativeName: '',
-              representativeFather: '',
-              representativeFamily: '',
-              representativeCapacity: '',
-              representativeLegalRepresentative: '',
-            }
-          : x,
-      ),
-    );
-  };
-
-  const activatePersonRep = (i: number) => {
-    markPartyRepDraft(`person-${i}`);
-    setExecutedNaturalPersons((xs) =>
-      xs.map((x, idx) =>
-        idx === i ? { ...x, representativeCapacity: 'ولي', representativeAddressType: 'عنوان' } : x,
-      ),
-    );
-  };
-
-  const removePersonRep = (i: number) => {
-    clearPartyRepDraft(`person-${i}`);
-    setExecutedNaturalPersons((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              representativeName: '',
-              representativeFather: '',
-              representativeFamily: '',
-              representativeCapacity: '',
-              representativeAddressType: '',
-              representativeAddress: '',
-            }
-          : x,
-      ),
-    );
-  };
-
-  const addGuarantor = (nature: PartyNature = 'natural') => {
-    // العدد والرقم معًا ضمن النطاق (العادي موضعي، والمصرفي قد تُستنفَد أرقامه
-    // بالحذف الأوسط قبل الصفوف — ورقم بلا خانة يرفضه الخلفي لاحقًا).
-    if (!guarantorAddState(guarantors, isOrdinary).canAdd) return;
-    // رقم الكفيل هوية مستقرة تُحفظ في الصف (قرار 10/F1): الجديد = max + 1، والحذف
-    // الأوسط يترك فجوة دون إزاحة — لا ترقيم موضعي عند الحفظ ولا إعادة أرقام.
-    const nextNumber = nextGuarantorNumber(guarantors);
-    setGuarantors((gs) => [...gs, { ...emptyGuarantor(), nature, guarantorNumber: nextNumber }]);
-  };
-
-  const removeGuarantor = (i: number) => {
-    if (guarantors.length <= 1) return;
-    setGuarantors((gs) => gs.filter((_, idx) => idx !== i));
-  };
-
-  const addEstate = (kind: string) => {
-    const count = assets.filter((a) => a.assetKind === kind).length;
-    if (count >= MAX_ASSETS_PER_KIND) return;
-    setAssets((as) => [...as, emptyAsset(kind)]);
-  };
-
-  const removeEstate = (i: number) => setAssets((as) => as.filter((_, idx) => idx !== i));
-
-  const resetForm = () => {
-    clearFormState();
-    setError('');
-  };
-
-  // الحذف متاح في وضع التعديل للمحامي فقط (نفس قيد صفحة العرض)، ويُعزل في نهاية الصفحة
-  // بعد «تغيير الحالة» كمنطقة خطر، مع تأكيد صريح ومنع الإرسال المزدوج.
-  const canDelete = isEdit && user?.role === 'lawyer';
-
-  const deleteDoc = async () => {
-    if (!isEdit || !id) return;
-    if (!window.confirm('هل أنت متأكد من حذف هذا المستند؟')) return;
-    setDeleteBusy(true);
-    setError('');
-    try {
-      await api.delete(`/documents/${id}`);
-      navigate('/documents');
-    } catch (err) {
-      // صدق الخطأ: تُعرض رسالة الخلفية (كمنع الحذف لوجود إنابة/استئناف) بدل إخفائها.
-      setError(getApiErrorMessage(err));
-      setDeleteBusy(false);
-    }
-  };
-
-  const submit = async (e?: FormEvent, warningToken?: string) => {
-    e?.preventDefault();
-    setError('');
-
-    const isExecutedSubmit = form.generalEntitySide === 'executed' || form.generalEntitySide === 'deposit';
-    const isDepositSubmit = form.generalEntitySide === 'deposit';
-    const sideLabel = isDepositSubmit ? 'عرض وايداع' : 'الجهة العامة منفذ عليها';
-
-    // سجل الدوائر: الدائرة إلزامية دائمًا وفي كل الأوضاع — تمنع الحفظ مع تركيز أول خطأ.
-    // انتقالي: فرع بلا سجل (قائمة فارغة أو تعذّر تحميلها كبيئة الاختبارات) يُقبل بلا دائرة.
-    const registryEnforced = (branchCircuits?.length ?? 0) > 0 || form.executionCircuitId != null;
-    if (form.executionCircuitId == null && !isMirror && registryEnforced) {
-      setError('دائرة التنفيذ مطلوبة — اختر من السجل');
-      circuitPickerButtonRef.current?.focus();
-      return;
-    }
-
-    if (
-      isExecutedSubmit &&
-      (!(form.fileNumber ?? '').trim() || !(form.fileYear ?? '').trim())
-    ) {
-      setError(`ملف «${sideLabel}» يجب أن يكون مقيدًا برقم وسنة الملف`);
-      return;
-    }
-
-    if (
-      !isExecutedSubmit &&
-      (form.fileNumber ?? '').trim() &&
-      (form.fileYear ?? '').trim() &&
-      !(form.fileRegistrationDate ?? '').trim()
-    ) {
-      setError('تاريخ قيد الملف مطلوب عند إدخال رقم الملف وسنة الملف');
-      return;
-    }
-
-    // سنة الملف لا تكون مستقبلية في أي وضع (القائمة تمنعها عادةً — وهذا حارس
-    // لقيمة قديمة مخزنة أو عبث؛ الخلفية ترفضها أيضًا برسالتها).
-    if (isFutureFileYear((form.fileYear ?? '').trim(), currentYear)) {
-      setError(FUTURE_FILE_YEAR_MESSAGE);
-      return;
-    }
-
-    // العودة من مشطوب إلى متداول تستلزم رقم الملف الجديد (تجديد) — يتحقق مسبقًا
-    // قبل إرسال النموذج ليطابق اشتراط الخلفية (رقم الملف الجديد إلزامي).
-    if (isEdit && wasOriginallyStruckOff && !(form.executedStatus ?? '') && !(form.renewalFileNumber ?? '').trim()) {
-      setError('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب إلى المتداول');
-      return;
-    }
-
-    // حقول الجهات العامة نصّية مقفلة تُملأ حصرًا من السجل المرجعي: أي صفٍ مُعبأ بلا
-    // رابطٍ للسجل يُمنع الحفظ (وهذا يغطي أيضًا المستندات القديمة غير المرتبطة فتتطلب
-    // إعادة الاختيار قبل الحفظ). التحرير اليدوي مستحيل بعد القفل، فلم يبقَ مسار آخر.
-    if (!isExecutedSubmit && applicantPublicEntities.some((a) => (a.name ?? '').trim() && a.registryId == null)) {
-      setError('يجب اختيار جميع الجهات العامة الطالبة للتنفيذ من السجل المرجعي قبل الحفظ');
-      return;
-    }
-    if (isExecutedSubmit && executedPublicEntities.some(
-      (e) => (e.nature ?? 'public') === 'public' && (e.entityName ?? '').trim() && e.registryId == null,
-    )) {
-      setError('يجب اختيار جميع الجهات العامة المنفذ عليها من السجل المرجعي قبل الحفظ');
-      return;
-    }
-    const repConflict = representativeHeirConflictMessage({
-      borrowerNature: form.borrowerNature,
-      // الفحص يطابق الحمولة المرسلة: أطراف الجهة الأخرى لا تُرسل ولا تُفحص.
-      borrowerHasHeirs: !isExecutedSubmit && borrowerHeirs.some(hasHeirName),
-      borrowerHasRep: !isExecutedSubmit && hasStoredRepresentative({
-        representativeName: form.borrowerRepresentativeName,
-        representativeFather: form.borrowerRepresentativeFather,
-        representativeFamily: form.borrowerRepresentativeFamily,
-      }),
-      guarantors: isExecutedSubmit ? [] : guarantors,
-    });
-    if (repConflict) {
-      setError(repConflict);
-      return;
-    }
-
-    setBusy(true);
-    try {
-      // «الإجراءات التي تمت بنتيجة التنفيذ الفوري» أُزيلت من النموذج مؤقتًا (ستُنقل إلى
-      // مسار التوليد لاحقًا)، فلا تُزرع كإجراء عند الحفظ. الملاحظات تُزرع عند الإنشاء فقط
-      // (لا في التعديل) فلا تتكرر في «الإجراءات والملاحظات» عند كل حفظ.
-      const initialActions = !isEdit && (form.notes ?? '').trim()
-        ? [{ type: 'note' as const, text: (form.notes ?? '').trim() }]
-        : [];
-      // قرار التصفير يتبع المخزَّن فعليًا فقط: صف وريث فارغ الاسم الثلاثي
-      // يُتجاهل في الحفظ (هنا وفي NormalizeHeirs خلفيًا) فلا يُصفَّر له العنوان.
-      const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
-      // قرار التصفير في الحمولة يتبع المخزَّن فعليًا (الاسم الثلاثي) لا الظاهر واجهةً:
-      // صفة بلا اسم (تفعيل الزر وحده) لا يحفظها الخلفي، فتصفير العنوان لها فقدان صامت.
-      const borrowerHasRep = hasStoredRepresentative({
-        representativeName: form.borrowerRepresentativeName,
-        representativeFather: form.borrowerRepresentativeFather,
-        representativeFamily: form.borrowerRepresentativeFamily,
-      });
-      const payload: DocumentUpsertRequest = {
-        ...form,
-        // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية فقط (حقلها مخفي):
-        // تُرسل سنة الخادم صراحةً بدل أي سنةٍ مخزنة مع المستند ليتسق مع رفض الخلفية الدفاعي.
-        ...(isExecutedSubmit ? { renewalYear: currentYear } : {}),
-        // تطبيع الأرقام العربية/الفارسية إلى ASCII في حقول التواريخ قبل الإرسال،
-        // ليتسق المخزَّن مع ما يُعرض ولتقبله الخلفية في تحليلها (تحافظ على الحقول الأخرى كما هي).
-        borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? '').trim(),
-        contractDate: normalizeArabicDigits(form.contractDate ?? '').trim(),
-        // الملاحق: الجدول الفرعي هو المصدر. الحقول المفردة القديمة تُرسل فارغة
-        // (قراءة فقط خادميًا) فلا تُكتب فوق القيم القديمة.
-        annexType: '',
-        annexNumber: '',
-        annexDate: '',
-        annexes: (form.annexes ?? []).map((a) => ({
-          sequence: a.sequence ?? 0,
-          annexType: (a.annexType ?? '').trim(),
-          annexNumber: (a.annexNumber ?? '').trim(),
-          annexDate: normalizeArabicDigits(a.annexDate ?? '').trim(),
-        })),
-        fileIncomingDate: normalizeArabicDigits(form.fileIncomingDate ?? '').trim(),
-        fileArrivalDate: normalizeArabicDigits(form.fileArrivalDate ?? '').trim(),
-        fileRegistrationDate: normalizeArabicDigits(form.fileRegistrationDate ?? '').trim(),
-        seizureDate: normalizeArabicDigits(form.seizureDate ?? '').trim(),
-        // تاريخان من نوع DateTime? في الخلفية: السلسلة الفارغة تُعطّل فك JSON،
-        // فلا تُرسل إلا القيمة غير الفارغة (وإلا يُحذف المفتاح فيؤول null على الخادم).
-        ...((form.fileReceiptDate ?? '').trim() ? { fileReceiptDate: normalizeArabicDigits(form.fileReceiptDate ?? '').trim() } : {}),
-        ...((form.struckOffDate ?? '').trim() ? { struckOffDate: normalizeArabicDigits(form.struckOffDate ?? '').trim() } : {}),
-        ...((form.executedDepositDate ?? '').trim() ? { executedDepositDate: normalizeArabicDigits(form.executedDepositDate ?? '').trim() } : {}),
-        ...((form.renewalFileReceiptDate ?? '').trim() ? { renewalFileReceiptDate: normalizeArabicDigits(form.renewalFileReceiptDate ?? '').trim() } : {}),
-        ...((form.renewalDate ?? '').trim() ? { renewalDate: normalizeArabicDigits(form.renewalDate ?? '').trim() } : {}),
-        // عملة المبالغ: «ليرة سورية» افتراضيًا للخانة الأولى، ولكل خانة لاحقة أول العملات
-        // غير المستعملة في الخانات السابقة (لا تكرار للعملة) — للمبالغ المطلوب دفعها في وضع
-        // «منفذ عليه» وللمصرفي/العادي في وضع «طالبة التنفيذ».
-        executedRequiredCurrency: slotDefaultCurrency(form, requiredCurrencyKeys, 0),
-        executedRequiredCurrency2: slotDefaultCurrency(form, requiredCurrencyKeys, 1),
-        executedRequiredCurrency3: slotDefaultCurrency(form, requiredCurrencyKeys, 2),
-        currency: slotDefaultCurrency(form, bankingCurrencyKeys, 0),
-        currency2: slotDefaultCurrency(form, bankingCurrencyKeys, 1),
-        currency3: slotDefaultCurrency(form, bankingCurrencyKeys, 2),
-        inclusionCurrency: slotDefaultCurrency(form, ordinaryCurrencyKeys, 0),
-        inclusionCurrency2: slotDefaultCurrency(form, ordinaryCurrencyKeys, 1),
-        inclusionCurrency3: slotDefaultCurrency(form, ordinaryCurrencyKeys, 2),
-        // وضع «منفذ عليه»: عادي فقط، بلا مقترض/كفلاء/أموال (مطابق لتحقق الخلفية).
-        contractTypeSelector: isExecutedSubmit ? 'عادي' : (form.contractTypeSelector ?? 'مصرفي'),
-        // عنوان المقترض يُصفَّر عند وجود وريث أو ممثل شرعي (الوريث/الممثل هو الحامل الفعلي للعنوان).
-        borrowerAddressType: isExecutedSubmit || borrowerHasHeirs || borrowerHasRep ? '' : form.borrowerAddressType,
-        borrowerAddress: isExecutedSubmit || borrowerHasHeirs || borrowerHasRep ? '' : form.borrowerAddress,
-        guarantors: isExecutedSubmit ? [] : guarantors
-          .filter((g) => g.name?.trim())
-          .map((g, i) => {
-            // كالسابق: المخزَّن فعليًا فقط يُصفّر العناوين (انظر borrowerHasRep أعلاه).
-            const gHasRep = hasStoredRepresentative(g);
-            // كالمعامل أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
-            const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
-            return {
-              ...g,
-              // رقم الكفيل من الصف نفسه (القيم المخزنة المستقرة — قرار 10) لا من الموضع؛
-              // الوضع العادي «المنفذ عليهم الآخرون» يواصل ترقيما متصلًا بعد المقترض كالسابق.
-              guarantorNumber: isOrdinary ? i + 1 : (g.guarantorNumber ?? i + 1),
-              addressType: (gHasHeirs || gHasRep) ? '' : g.addressType,
-              address: (gHasHeirs || gHasRep) ? '' : g.address,
-              heirs: (g.heirs ?? []).filter(hasHeirName).map(toHeirPayload),
-            };
-          }),
-        borrowerHeirs: isExecutedSubmit
-          ? []
-          : borrowerHeirs.filter(hasHeirName).map(toHeirPayload),
-        assets: isExecutedSubmit ? [] : assets
-          .filter((a) => {
-            const kind = a.assetKind;
-            if (kind === ASSET_KINDS.realEstate) return a.propertyNumber?.trim() || a.caseNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
-            if (kind === ASSET_KINDS.vehicle) return a.plateNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
-            if (kind === ASSET_KINDS.shop) return a.registerNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
-            if (kind === ASSET_KINDS.salaryGuarantee) return (a.owners ?? []).some((o) => (o ?? '').trim());
-            if (kind === ASSET_KINDS.unregisteredShop) return a.licenseNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
-            return (a.owners ?? []).some((o) => (o ?? '').trim());
-          })
-          .map((a) => {
-            return {
-              ...a,
-              property: `${a.propertyNumber ?? ''} ${a.propertyDistrict ?? ''}`.trim(),
-              // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
-              registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
-              licenseDate: normalizeArabicDigits(a.licenseDate ?? '').trim(),
-              seizureDate: normalizeArabicDigits(a.seizureDate ?? '').trim(),
-            };
-          }),
-        executionApplicants: isExecutedSubmit
-          ? executionApplicants
-              .filter((a) => (a.name ?? '').trim())
-              .map((a) => ({
-                ...a,
-                // الوكيل القانوني يُمسح فقط لممثل مخزَّن فعليًا (تعارضهما حصري) —
-                // صفة بلا اسم لا تُحفظ فمسح النص لها فقدان صامت.
-                legalRepresentative: hasStoredRepresentative(a) ? '' : a.legalRepresentative,
-                heirs: (a.heirs ?? [])
-                  .filter((h) => (h.heirName ?? '').trim())
-                  .map(toExecutedHeirPayload),
-              }))
-          : [],
-        executedPublicEntities: isExecutedSubmit
-          ? executedPublicEntities.filter((e) => (e.entityName ?? '').trim())
-          : [],
-        executedNaturalPersons: isExecutedSubmit
-          ? executedNaturalPersons
-              .filter((p) => (p.name ?? '').trim())
-              .map((p) => ({
-                ...p,
-                heirs: (p.heirs ?? [])
-                  .filter((h) => (h.heirName ?? '').trim())
-                  .map(toExecutedHeirPayload),
-              }))
-          : [],
-        applicantPublicEntities: isExecutedSubmit
-          ? []
-          : applicantPublicEntities.filter((a) => (a.name ?? '').trim()),
-        ...(initialActions.length > 0 ? { initialActions } : {}),
-      };
-      if (warningToken) payload.warningToken = warningToken;
-      if (isEdit) await api.put(`/documents/${id}`, payload);
-      else await api.post('/documents', payload, idempotencyHeaders(idempotencyKey));
-      navigate('/documents');
-    } catch (err: unknown) {
-      const reuse = getNumberReuseWarning(err);
-      if (reuse) {
-        setNumberWarning(reuse);
-        return;
-      }
-      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
-      setError(msg || 'حدث خطأ في حفظ المستند');
-    } finally {
-      setBusy(false);
-    }
+    parties.setAssetField(i, key, value);
   };
 
   const { field, selectField } = makeFieldHelpers(form, set);
   // حقول «المعلومات الأساسية» الذاتية (الدائرة + كُتب ورود الملف/كتاب الجهة/تحت رفع/الحجز)
   // مقفلة في الملف المناب حيث تجيء من المنيب (قرار 7/§5.7 — F3) عبر مساعدٍ للقراءة فقط؛
   // الهوية الثلاثية (رقم/سنة/نوع الملف وتاريخ قيده) تبقى قابلة للتحرير (قرار 5).
-  const { field: lockField } = makeFieldHelpers(form, set, isMirror);
+  const { field: lockField } = makeFieldHelpers(form, set, parties.isMirror);
 
   const isOrdinary = form.contractTypeSelector === 'عادي';
   const isExecuted = isExecutedLike(form.generalEntitySide);
@@ -1029,23 +97,6 @@ export default function DocumentForm() {
     isEdit
     && user?.role === 'lawyer'
     && (form.generalEntitySide === 'applicant' || form.generalEntitySide === 'executed');
-  const openAddIntervention = () => {
-    setEditingIntervention(null);
-    setInterventionModalOpen(true);
-  };
-  const openEditIntervention = (intervention: DocumentInterventionDto) => {
-    setEditingIntervention(intervention);
-    setInterventionModalOpen(true);
-  };
-  const applyInterventionSaved = (saved: DocumentInterventionDto) => {
-    setInterventions((prev) =>
-      prev.some((i) => i.id === saved.id)
-        ? prev.map((i) => (i.id === saved.id ? saved : i))
-        : [...prev, saved],
-    );
-    setInterventionModalOpen(false);
-    setEditingIntervention(null);
-  };
   const executedSide = form.generalEntitySide === 'deposit' ? 'deposit' : 'executed';
   const sideLabel = form.generalEntitySide === 'deposit'
     ? 'عرض وايداع'
@@ -1062,11 +113,11 @@ export default function DocumentForm() {
     // وبه تتطابق مطابقة الورثة (ورثة المتوفى) في توليد 005/006.
     const borrowerFull = tripleName(form.borrowerName, form.borrowerFather, form.borrowerFamily);
     if (borrowerFull) opts.push(borrowerFull);
-    borrowerHeirs.forEach((h) => {
+    parties.borrowerHeirs.forEach((h) => {
       const full = tripleName(h.name, h.father, h.family);
       if (full && !opts.includes(full)) opts.push(full);
     });
-    guarantors.forEach((g) => {
+    parties.guarantors.forEach((g) => {
       const full = tripleName(g.name, g.father, g.family);
       if (full && !opts.includes(full)) opts.push(full);
       (g.heirs ?? []).forEach((h) => {
@@ -1075,15 +126,42 @@ export default function DocumentForm() {
       });
     });
     return opts;
-  }, [form.borrowerName, form.borrowerFather, form.borrowerFamily, borrowerHeirs, guarantors]);
+  }, [form.borrowerName, form.borrowerFather, form.borrowerFamily, parties.borrowerHeirs, parties.guarantors]);
 
   const ownerOptions = useCallback(() => ownerOptionsList, [ownerOptionsList]);
 
   const debtorFullName = tripleName(form.borrowerName, form.borrowerFather, form.borrowerFamily);
 
+  const applyRegistryPick = (entry: PublicEntityEntryDto) => {
+    if (!references.registryPicker) return;
+    const { side, index } = references.registryPicker;
+    if (side === 'applicant') parties.linkApplicantEntity(index, entry);
+    else parties.linkExecutedEntity(index, entry);
+    references.setRegistryPicker(null);
+  };
+
+  // الحذف متاح في وضع التعديل للمحامي فقط (نفس قيد صفحة العرض)، ويُعزل في نهاية الصفحة
+  // بعد «تغيير الحالة» كمنطقة خطر، مع تأكيد صريح ومنع الإرسال المزدوج.
+  const canDelete = isEdit && user?.role === 'lawyer';
+
+  const deleteDoc = async () => {
+    if (!isEdit || !id) return;
+    if (!window.confirm('هل أنت متأكد من حذف هذا المستند؟')) return;
+    state.setDeleteBusy(true);
+    state.setError('');
+    try {
+      await api.delete(`/documents/${id}`);
+      navigate('/documents');
+    } catch (err) {
+      // صدق الخطأ: تُعرض رسالة الخلفية (كمنع الحذف لوجود إنابة/استئناف) بدل إخفائها.
+      state.setError(getApiErrorMessage(err));
+      state.setDeleteBusy(false);
+    }
+  };
+
   // بوابة تحميل وضع التعديل: لا يُعرض النموذج ولا يُتاح الحفظ قبل اكتمال
   // جلب الملف الحالي — فلا يرى المستخدم مال ملف سابق ولا يكتبه في الجديد.
-  if (isEdit && loading) {
+  if (isEdit && state.loading) {
     return (
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-center text-gray-500 py-16">جارِ تحميل بيانات الملف...</div>
@@ -1104,7 +182,7 @@ export default function DocumentForm() {
         </Link>
       </div>
 
-      {error && <FloatingFormAlert message={error} onDismiss={() => setError('')} />}
+      {state.error && <FloatingFormAlert message={state.error} onDismiss={() => state.setError('')} />}
 
       <form onSubmit={submit} noValidate className="bg-white rounded-xl shadow p-6">
         <FormSectionTitle title="⚖️ صفة الجهة العامة" />
@@ -1121,7 +199,7 @@ export default function DocumentForm() {
               {canManageInterventions && (
                 <button
                   type="button"
-                  onClick={openAddIntervention}
+                  onClick={state.openAddIntervention}
                   className="ms-auto shrink-0 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg px-4 py-2 min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   ＋ إضافة متدخل
@@ -1135,7 +213,7 @@ export default function DocumentForm() {
                   type="radio"
                   name="generalEntitySide"
                   checked={form.generalEntitySide === 'applicant'}
-                  onChange={() => setSide('applicant')}
+                  onChange={() => state.setSide('applicant')}
                   className="h-4 w-4 text-emerald-600"
                 />
                 الجهة العامة طالبة التنفيذ
@@ -1145,7 +223,7 @@ export default function DocumentForm() {
                   type="radio"
                   name="generalEntitySide"
                   checked={form.generalEntitySide === 'executed'}
-                  onChange={() => setSide('executed')}
+                  onChange={() => state.setSide('executed')}
                   className="h-4 w-4 text-emerald-600"
                 />
                 الجهة العامة منفذ عليها
@@ -1155,7 +233,7 @@ export default function DocumentForm() {
                   type="radio"
                   name="generalEntitySide"
                   checked={form.generalEntitySide === 'deposit'}
-                  onChange={() => setSide('deposit')}
+                  onChange={() => state.setSide('deposit')}
                   className="h-4 w-4 text-emerald-600"
                 />
                 عرض وايداع
@@ -1165,263 +243,108 @@ export default function DocumentForm() {
           {canManageInterventions && (
             <DocumentInterventionsList
               documentId={Number(id)}
-              interventions={interventions}
-              onChanged={setInterventions}
-              onEdit={openEditIntervention}
+              interventions={state.interventions}
+              onChanged={state.setInterventions}
+              onEdit={state.openEditIntervention}
             />
           )}
         </div>
 
-        <FormSectionTitle title="🏛️ المعلومات الأساسية" />
-        <div className="grid md:grid-cols-5 gap-4 items-end">
-          <div>
-            <label htmlFor="court-display" className="block text-xs font-bold text-gray-600 mb-1">
-              دائرة التنفيذ
-            </label>
-            <div className="relative">
-              <input
-                id="court-display"
-                value={form.court ?? ''}
-                readOnly
-                placeholder="اختر من السجل…"
-                aria-readonly="true"
-                className={`w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-not-allowed ${
-                  form.executionCircuitId != null ? 'pe-20' : 'pe-14'
-                }`}
-              />
-              <div className="absolute inset-y-0 end-1 flex items-center gap-1">
-                {form.executionCircuitId != null && (
-                  <span className="text-emerald-600 font-bold leading-none" title="مرتبطة بالسجل">
-                    <span aria-hidden="true">✓</span>
-                    <span className="sr-only">مرتبطة بالسجل</span>
-                  </span>
-                )}
-                <button
-                  ref={circuitPickerButtonRef}
-                  type="button"
-                  onClick={() => setCircuitPickerOpen(true)}
-                  aria-label={form.executionCircuitId != null ? 'تغيير الدائرة' : 'اختيار الدائرة'}
-                  title={form.executionCircuitId != null ? 'تغيير الدائرة' : 'اختيار الدائرة'}
-                  className="flex items-center justify-center min-h-11 min-w-11 rounded-lg border border-emerald-200 text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                >
-                  {form.executionCircuitId != null ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                      <circle cx="11" cy="11" r="7" />
-                      <path d="m21 21-4.3-4.3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="fileNumber" className="block text-xs font-bold text-gray-600 mb-1">
-              رقم الملف
-            </label>
-            <div className="relative">
-              <input
-                id="fileNumber"
-                name="fileNumber"
-                autoComplete="off"
-                value={form.fileNumber ?? ''}
-                onChange={(e) => set('fileNumber', e.target.value)}
-                placeholder="رقم الملف…"
-                className={`w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                  !isEdit && !isExecuted ? 'pe-14' : ''
-                }`}
-              />
-              {!isEdit && !isExecuted && (
-                <FieldInfoHint
-                  id="fileNumber"
-                  label="معلومات عن رقم الملف"
-                  message={FILE_NUMBER_HINT}
-                />
-              )}
-            </div>
-          </div>
-          {selectField('سنة الملف', 'fileYear', ['', ...fileYearsUpto(currentYear)], form.fileYear ?? '', (v) => set('fileYear', v))}
-          {field('نوع الملف', 'fileType', 'نوع الملف...')}
-          {isExecuted ? (
-            <>
-              {field('رقم ورود الإخطار التنفيذي', 'fileReceiptNumber', 'رقم ورود الإخطار التنفيذي...')}
-              {field('تاريخ ورود الاخطار', 'fileReceiptDate', 'مثال: 1/8/2026')}
-            </>
-          ) : (
-            <>
-              <div className="md:col-span-5">
-                <span className="block text-xs font-bold text-gray-600 mb-1">طالب التنفيذ (الجهات العامة)</span>
-                {applicantPublicEntities.map((a, i) => (
-                  <div key={i} className="flex flex-wrap gap-2 mb-2">
-                    <input
-                      aria-label={`اسم الجهة ${i + 1}`}
-                      value={a.name ?? ''}
-                      readOnly
-                      placeholder="اختر من السجل المرجعي…"
-                      className="w-full sm:w-64 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
-                    />
-                    <input
-                      aria-label={`فرع الجهة ${i + 1}`}
-                      value={a.branch ?? ''}
-                      readOnly
-                      placeholder="الفرع"
-                      className="w-full sm:w-40 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
-                    />
-                    <input
-                      aria-label={`المحافظة ${i + 1}`}
-                      value={a.governorate ?? ''}
-                      readOnly
-                      placeholder="المحافظة"
-                      className="w-full sm:w-40 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
-                    />
-                    {(a.name ?? '').trim() && a.registryId == null && (
-                      <p className="w-full text-xs text-red-600">يجب اختيار هذه الجهة من السجل المرجعي</p>
-                    )}
-                    {!isMirror && (
-                      <>
-                        {applicantPublicEntities.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeApplicantPublicEntity(i)}
-                            className="text-red-500 text-xs hover:underline min-h-11 px-2"
-                          >
-                            ✖ حذف
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setRegistryPicker({ side: 'applicant', index: i })}
-                          className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                        >
-                          {a.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
-                        </button>
-                        {(a.name ?? '').trim() && a.registryId == null && (
-                          <button
-                            type="button"
-                            onClick={() => unlinkApplicantPublicEntity(i)}
-                            className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                          >
-                            مسح
-                          </button>
-                        )}
-                        {a.registryId != null && (
-                          <>
-                            <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
-                              مرتبطة بالسجل ✓
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => unlinkApplicantPublicEntity(i)}
-                              className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                            >
-                              فك الربط
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
-                {!isMirror && (
-                  <button
-                    type="button"
-                    onClick={addApplicantPublicEntity}
-                    className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-                  >
-                    ➕ إضافة جهة
-                  </button>
-                )}
-              </div>
-              {lockField('رقم ورود الملف', 'fileArrivalNumber')}
-              {lockField('تاريخ ورود الملف', 'fileArrivalDate', 'مثال: 1/8/2026')}
-              {lockField('رقم كتاب الجهة العامة', 'fileIncoming')}
-              {lockField('تاريخ كتاب الجهة العامة', 'fileIncomingDate')}
-              {lockField('رقم تحت رفع', 'underFilingNumber')}
-              {field('تاريخ قيد الملف', 'fileRegistrationDate', 'مثال: 1/8/2026')}
-              {lockField('تاريخ إلقاء حجز المنظومة', 'seizureDate', 'مثال: 1/8/2026')}
-            </>
-          )}
-        </div>
+        <DocumentBasicsSection
+          form={form}
+          set={set}
+          isEdit={isEdit}
+          isExecuted={isExecuted}
+          isMirror={parties.isMirror}
+          currentYear={currentYear}
+          field={field}
+          lockField={lockField}
+          selectField={selectField}
+          applicantPublicEntities={parties.applicantPublicEntities}
+          onApplicantRemove={parties.removeApplicantPublicEntity}
+          onApplicantAdd={parties.addApplicantPublicEntity}
+          onApplicantPickRegistry={(i) => references.setRegistryPicker({ side: 'applicant', index: i })}
+          onApplicantUnlink={parties.unlinkApplicantPublicEntity}
+          circuitPickerButtonRef={references.circuitPickerButtonRef}
+          onOpenCircuitPicker={() => references.setCircuitPickerOpen(true)}
+        />
 
         {isExecuted ? (
           <ExecutedSideSections
             side={executedSide}
             form={form}
             set={set}
-            isMirror={isMirror}
-            partyRepLocked={partyRepLocked}
-            showRequiredAmount={showRequiredAmount}
-            setShowRequiredAmount={setShowRequiredAmount}
-            requiredAmountSlots={requiredAmountSlots}
-            setRequiredAmountSlots={setRequiredAmountSlots}
-            executionApplicants={executionApplicants}
-            onApplicantSet={setApplicant}
-            onApplicantAdd={addApplicant}
-            onApplicantRemove={removeApplicant}
-            onApplicantHeirSet={setApplicantHeir}
-            onApplicantHeirAdd={addApplicantHeir}
-            onApplicantHeirRemove={removeApplicantHeir}
-            onApplicantRepActivate={activateApplicantRep}
-            onApplicantRepRemove={removeApplicantRep}
-            executedPublicEntities={executedPublicEntities}
-            onEntitySet={setExecutedEntity}
-            onEntityAdd={addExecutedEntity}
-            onEntityRemove={removeExecutedEntity}
-            onPickRegistry={(i) => setRegistryPicker({ side: 'executed', index: i })}
-            onEntityUnlink={unlinkExecutedEntity}
-            executedNaturalPersons={executedNaturalPersons}
-            onPersonSet={setExecutedPerson}
-            onPersonAdd={addExecutedPerson}
-            onPersonRemove={removeExecutedPerson}
-            onPersonHeirSet={setExecutedPersonHeir}
-            onPersonHeirAdd={addExecutedPersonHeir}
-            onPersonHeirRemove={removeExecutedPersonHeir}
-            onPersonRepActivate={activatePersonRep}
-            onPersonRepRemove={removePersonRep}
-            paidAmountSlots={paidAmountSlots}
-            setPaidAmountSlots={setPaidAmountSlots}
-            wasOriginallyStruckOff={wasOriginallyStruckOff}
-            currentExecutedStatus={isEdit ? originalExecutedStatus : undefined}
+            isMirror={parties.isMirror}
+            partyRepLocked={parties.partyRepLocked}
+            showRequiredAmount={state.showRequiredAmount}
+            setShowRequiredAmount={state.setShowRequiredAmount}
+            requiredAmountSlots={state.requiredAmountSlots}
+            setRequiredAmountSlots={state.setRequiredAmountSlots}
+            executionApplicants={parties.executionApplicants}
+            onApplicantSet={parties.setApplicant}
+            onApplicantAdd={parties.addApplicant}
+            onApplicantRemove={parties.removeApplicant}
+            onApplicantHeirSet={parties.setApplicantHeir}
+            onApplicantHeirAdd={parties.addApplicantHeir}
+            onApplicantHeirRemove={parties.removeApplicantHeir}
+            onApplicantRepActivate={parties.activateApplicantRep}
+            onApplicantRepRemove={parties.removeApplicantRep}
+            executedPublicEntities={parties.executedPublicEntities}
+            onEntitySet={parties.setExecutedEntity}
+            onEntityAdd={parties.addExecutedEntity}
+            onEntityRemove={parties.removeExecutedEntity}
+            onPickRegistry={(i) => references.setRegistryPicker({ side: 'executed', index: i })}
+            onEntityUnlink={parties.unlinkExecutedEntity}
+            executedNaturalPersons={parties.executedNaturalPersons}
+            onPersonSet={parties.setExecutedPerson}
+            onPersonAdd={parties.addExecutedPerson}
+            onPersonRemove={parties.removeExecutedPerson}
+            onPersonHeirSet={parties.setExecutedPersonHeir}
+            onPersonHeirAdd={parties.addExecutedPersonHeir}
+            onPersonHeirRemove={parties.removeExecutedPersonHeir}
+            onPersonRepActivate={parties.activatePersonRep}
+            onPersonRepRemove={parties.removePersonRep}
+            paidAmountSlots={state.paidAmountSlots}
+            setPaidAmountSlots={state.setPaidAmountSlots}
+            wasOriginallyStruckOff={state.wasOriginallyStruckOff}
+            currentExecutedStatus={isEdit ? state.originalExecutedStatus : undefined}
           />
         ) : (
           <ApplicantSideSections
             form={form}
             set={set}
             isOrdinary={isOrdinary}
-            isMirror={isMirror}
-            partyRepLocked={partyRepLocked}
+            isMirror={parties.isMirror}
+            partyRepLocked={parties.partyRepLocked}
             guarantorLabel={guarantorLabel}
-            showInclusionAmount={showInclusionAmount}
-            setShowInclusionAmount={setShowInclusionAmount}
-            ordinaryAmountSlots={ordinaryAmountSlots}
-            setOrdinaryAmountSlots={setOrdinaryAmountSlots}
-            bankingAmountSlots={bankingAmountSlots}
-            setBankingAmountSlots={setBankingAmountSlots}
-            borrowerHeirs={borrowerHeirs}
-            onBorrowerHeirSet={setBorrowerHeir}
-            onBorrowerHeirAdd={addBorrowerHeir}
-            onBorrowerHeirRemove={removeBorrowerHeir}
-            guarantors={guarantors}
-            onGuarantorSet={setG}
-            onGuarantorHeirSet={setGHeir}
-            onGuarantorHeirAdd={addGHeir}
-            onGuarantorHeirRemove={removeGHeir}
-            onGuarantorAdd={addGuarantor}
-            onGuarantorRemove={removeGuarantor}
-            onBorrowerRepActivate={activateBorrowerRep}
-            onBorrowerRepRemove={removeBorrowerRep}
-            onGuarantorRepActivate={activateGuarantorRep}
-            onGuarantorRepRemove={removeGuarantorRep}
-            assets={assets}
-            onEstateSet={setE}
-            seizureLockedIds={referencedAssetIds}
-            onEstateRemove={removeEstate}
-            onOwnerToggle={toggleOwner}
-            onSingleOwnerSet={setSingleOwner}
-            onEstateAdd={addEstate}
+            showInclusionAmount={state.showInclusionAmount}
+            setShowInclusionAmount={state.setShowInclusionAmount}
+            ordinaryAmountSlots={state.ordinaryAmountSlots}
+            setOrdinaryAmountSlots={state.setOrdinaryAmountSlots}
+            bankingAmountSlots={state.bankingAmountSlots}
+            setBankingAmountSlots={state.setBankingAmountSlots}
+            borrowerHeirs={parties.borrowerHeirs}
+            onBorrowerHeirSet={parties.setBorrowerHeir}
+            onBorrowerHeirAdd={parties.addBorrowerHeir}
+            onBorrowerHeirRemove={parties.removeBorrowerHeir}
+            guarantors={parties.guarantors}
+            onGuarantorSet={parties.setGuarantor}
+            onGuarantorHeirSet={parties.setGHeir}
+            onGuarantorHeirAdd={parties.addGHeir}
+            onGuarantorHeirRemove={parties.removeGHeir}
+            onGuarantorAdd={(nature) => parties.addGuarantor(isOrdinary, nature)}
+            onGuarantorRemove={parties.removeGuarantor}
+            onBorrowerRepActivate={state.activateBorrowerRep}
+            onBorrowerRepRemove={state.removeBorrowerRep}
+            onGuarantorRepActivate={parties.activateGuarantorRep}
+            onGuarantorRepRemove={parties.removeGuarantorRep}
+            assets={parties.assets}
+            onEstateSet={setEstate}
+            seizureLockedIds={references.referencedAssetIds}
+            onEstateRemove={parties.removeEstate}
+            onOwnerToggle={parties.toggleOwner}
+            onSingleOwnerSet={parties.setSingleOwner}
+            onEstateAdd={parties.addEstate}
             ownerOptions={ownerOptions}
           />
         )}
@@ -1444,11 +367,11 @@ export default function DocumentForm() {
         )}
 
         <div className="mt-8 flex gap-3">
-          <button type="submit" disabled={busy || loading} className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
-            {busy ? 'جارِ الحفظ...' : isEdit ? 'حفظ التعديلات' : '💾 حفظ'}
+          <button type="submit" disabled={state.busy || state.loading} className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
+            {state.busy ? 'جارِ الحفظ...' : isEdit ? 'حفظ التعديلات' : '💾 حفظ'}
           </button>
           {!isEdit && (
-            <button type="button" onClick={resetForm} className="bg-red-700 hover:bg-red-600 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
+            <button type="button" onClick={state.resetForm} className="bg-red-700 hover:bg-red-600 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
               🗑️ إعادة تعيين
             </button>
           )}
@@ -1462,13 +385,13 @@ export default function DocumentForm() {
             <button
               type="button"
               onClick={deleteDoc}
-              disabled={deleteBusy || hasLinkedMatter}
-              aria-describedby={hasLinkedMatter ? 'delete-blocked-note' : undefined}
+              disabled={state.deleteBusy || references.hasLinkedMatter}
+              aria-describedby={references.hasLinkedMatter ? 'delete-blocked-note' : undefined}
               className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
             >
-              {deleteBusy ? 'جارِ الحذف...' : '🗑️ حذف الملف'}
+              {state.deleteBusy ? 'جارِ الحذف...' : '🗑️ حذف الملف'}
             </button>
-            {hasLinkedMatter && (
+            {references.hasLinkedMatter && (
               <p id="delete-blocked-note" role="note" className="mt-2 text-sm text-gray-600">
                 الملف مرتبط بإنابة/استئناف — الحذف ممنوع
               </p>
@@ -1477,46 +400,46 @@ export default function DocumentForm() {
         )}
       </form>
 
-      {registryPicker && (
+      {references.registryPicker && (
         <PublicEntityPickerModal
-          onClose={() => setRegistryPicker(null)}
+          onClose={() => references.setRegistryPicker(null)}
           onPick={applyRegistryPick}
         />
       )}
 
-      {circuitPickerOpen && (
+      {references.circuitPickerOpen && (
         <CircuitPickerModal
           fetchUrl="/execution-circuits/for-lawyer"
           initialSelectedId={form.executionCircuitId ?? null}
           onSelect={(c: ExecutionCircuitDto) => {
             set('executionCircuitId', c.id);
             set('court', c.name);
-            setCircuitPickerOpen(false);
+            references.setCircuitPickerOpen(false);
           }}
-          onClose={() => setCircuitPickerOpen(false)}
+          onClose={() => references.setCircuitPickerOpen(false)}
         />
       )}
 
-      {interventionModalOpen && id !== undefined && (
+      {state.interventionModalOpen && id !== undefined && (
         <InterventionModal
           documentId={Number(id)}
-          initial={editingIntervention}
-          onSaved={applyInterventionSaved}
+          initial={state.editingIntervention}
+          onSaved={state.applyInterventionSaved}
           onClose={() => {
-            setInterventionModalOpen(false);
-            setEditingIntervention(null);
+            state.setInterventionModalOpen(false);
+            state.setEditingIntervention(null);
           }}
         />
       )}
 
-      {numberWarning && (
+      {state.numberWarning && (
         <NumberReuseWarningModal
-          message={numberWarning.message}
-          busy={busy}
-          onCancel={() => setNumberWarning(null)}
+          message={state.numberWarning.message}
+          busy={state.busy}
+          onCancel={() => state.setNumberWarning(null)}
           onConfirm={() => {
-            const token = numberWarning.warningToken;
-            setNumberWarning(null);
+            const token = state.numberWarning?.warningToken;
+            state.setNumberWarning(null);
             void submit(undefined, token);
           }}
         />

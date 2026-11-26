@@ -1638,8 +1638,22 @@
 
 #### `P6-02` — تفكيك النماذج والعروض
 
+- **الحالة (2026-11-26):** **جزئيًا — تفكيك `DocumentForm` منجز (`P6-02a`)، وبقية العروض متبقية.**
+  - `DocumentForm.tsx`: **1526 → 449** سطرًا، مع سبع وحدات: `useDocumentParties` (491)،
+    `useDocumentFormState` (253)، `DocumentBasicsSection` (243)،
+    `documentFormPayload` (241)، `useDocumentReferences` (123)،
+    `documentFormValidation` (122)، `useDocumentSubmit` (101) — كلها <600.
+  - 28 اختبار وحدة جديدًا (11 حملة + 17 تحقق)، و142 اختبار صفحة قائمًا عبرت
+    **بلا تعديل**؛ الحزمة **1896/1896**. بلا تغيير `API`/هجرة
+    (`has-pending-model-changes` = «No changes»).
+  - حارس ratchet جديد `frontend/scripts/module-size-guard.mjs` (12/12 self-test،
+    و12 ملفًا مجمّدًا فوق 600 ينقص فقط) مضاف إلى وظيفة `guards` في `CI`.
+  - **متبقٍ:** `DocumentView.tsx` (947)، `ApplicantSideSections.tsx` (952)،
+    `ExecutedSideSections.tsx` (681) — وبقايا أكبر من 600 خارج التسمية الأصلية
+    مجمّدة بالحارس. التفاصيل: `docs/audit/279…281`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
-- **DoD:** لا ملف >600 سطر، واختبارات كل قسم.
+- **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **جزئي**: `DocumentForm` تحقق، والبقية
+  محروسة ضد الزيادة وليست مفككة بعد.
 
 #### `P6-03` — Design system وإمكانية الوصول
 
