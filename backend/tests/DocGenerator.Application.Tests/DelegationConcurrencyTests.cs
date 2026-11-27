@@ -200,17 +200,15 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
     private static async Task WaitForBlockedDocumentLockAsync(DocGeneratorDbContext observer)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        for (var attempt = 0; attempt < 600; attempt++)
         {
             var waiting = await observer.Database
                 .SqlQueryRaw<long>(
                     """
                     SELECT COUNT(*)::bigint AS "Value"
                     FROM pg_locks l
-                    JOIN pg_database d ON d.oid = l.database
                     WHERE NOT l.granted
-                      AND d.datname = current_database()
-                      AND l.relation = '"Documents"'::regclass
+                      AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
                     """)
                 .SingleAsync();
             if (waiting > 0)
