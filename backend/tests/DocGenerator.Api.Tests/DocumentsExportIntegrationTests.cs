@@ -267,8 +267,9 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         var rows = DataRows(await response.Content.ReadAsByteArrayAsync());
 
-        Assert.Contains(rows, row => row.Count > 4 && row[4] == "زبون المحامي الأول");
-        Assert.DoesNotContain(rows, row => row.Count > 4 && row[4] == "زبون المحامي الثاني");
+        // أعمدة الصف بعد العنوان: 0 الحالة، 1 المدعي، 2 الفرع، 3 المدعى عليه (المقترض)، 4 المحكمة.
+        Assert.Contains(rows, row => row.Count > 3 && row[3] == "زبون المحامي الأول");
+        Assert.DoesNotContain(rows, row => row.Count > 3 && row[3] == "زبون المحامي الثاني");
     }
 
     private static List<List<string>> DataRows(byte[] bytes)
