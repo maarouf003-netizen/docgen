@@ -65,10 +65,13 @@ public sealed class TransferAllDocumentsCommandHandler
         TransferAllDocumentsCommand command, CancellationToken ct)
     {
         // RF-011: حجز المفتاح أولًا (لا تحقق مسبق يستحق `400` هنا — التحققات داخل
-        // المعاملة عمدًا ضد `TOCTOU`) — النطاق محامي المصدر (النية = نقل ملفاته) —
-        // التكرار يُعيد العدد المخزن نفسه.
+        // المعاملة عمدًا ضد `TOCTOU`).
+        // W2/F11: نطاق المفتاح **الفاعل** لا محامي المصدر — وإلا تقاسم فاعلان مختلفان
+        // (رئيسان/مشرفان) مفتاحًا واحدًا على المصدر نفسه فأعاد الثاني نتيجة الأول
+        // المخزنة بدل تنفيذ نيته. الاستدعاءات القديمة بلا فاعل تبقى على نطاق المصدر.
+        var idempotencyScope = command.ActorUserId ?? command.SourceLawyerId;
         var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "documents.transfer-all",
-            command.SourceLawyerId, command.IdempotencyKey,
+            idempotencyScope, command.IdempotencyKey,
             IdempotencyGuard.Fingerprint(new
             {
                 sourceLawyerId = command.SourceLawyerId,

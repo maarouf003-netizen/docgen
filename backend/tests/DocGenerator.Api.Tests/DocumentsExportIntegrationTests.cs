@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using DocGenerator.Api.Security;
 using DocGenerator.Api.Tests.TestHelpers;
+using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -244,6 +245,30 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
 
         var retry = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
         Assert.True(retry.IsSuccessStatusCode);
+    }
+
+    [PostgresFact]
+    public async Task Export_LawyerScope_ExcludesOtherLawyersDocuments()
+    {
+        // W2/F17: عزل التصدير بمالك المستند. كان الاختبار السابق ينشئ مستند محامٍ واحد
+        // فقط، فحذف فلتر `VisibleUserId` لا يُفشل أي اختبار (طفرة ناجية).
+        var lawyer1Token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await _factory.CreateDocumentAsync(lawyer1Token, "زبون المحامي الأول", court: "محكمة");
+
+        var other = await _factory.CreateUserAsync(
+            $"exp_other_{Guid.NewGuid():N}"[..20],
+            UserRole.Lawyer,
+            await _factory.GetBranchIdAsync("DAM"));
+        var otherLogin = await _factory.LoginAsync(other.Username, "123456");
+        Assert.NotNull(otherLogin?.Token);
+        await _factory.CreateDocumentAsync(otherLogin!.Token!, "زبون المحامي الثاني", court: "محكمة");
+
+        var response = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
+        response.EnsureSuccessStatusCode();
+        var rows = DataRows(await response.Content.ReadAsByteArrayAsync());
+
+        Assert.Contains(rows, row => row.Count > 4 && row[4] == "زبون المحامي الأول");
+        Assert.DoesNotContain(rows, row => row.Count > 4 && row[4] == "زبون المحامي الثاني");
     }
 
     private static List<List<string>> DataRows(byte[] bytes)

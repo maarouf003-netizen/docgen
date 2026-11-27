@@ -134,6 +134,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<RemoveAppealAlertRecipientCommand, int>, RemoveAppealAlertRecipientCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<ChangePasswordCommand, bool>, ChangePasswordCommandHandler>();
+        services.AddScoped<ICommandHandler<LogoutCommand, bool>, LogoutCommandHandler>();
         services.AddScoped<IQueryHandler<GetUserQuery, UserDto?>, GetUserQueryHandler>();
         services.AddScoped<ICommandHandler<DeletePendingRegistrationAlertsCommand, bool>, DeletePendingRegistrationAlertsCommandHandler>();
         services.AddScoped<IQueryHandler<SearchReviewLettersQuery, PagedResult<ReviewLetterListItemDto>>, SearchReviewLettersQueryHandler>();

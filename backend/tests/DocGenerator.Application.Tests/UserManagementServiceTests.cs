@@ -40,6 +40,7 @@ public class UserManagementServiceTests : PostgresDbTest
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
+            new Repository<ExecutionCircuit>(_db),
             new DocumentRepository(_db),
             new HeadAlertSuccessionService(
                 new HeadAlertRepository(_db),
@@ -50,13 +51,13 @@ public class UserManagementServiceTests : PostgresDbTest
                 tx),
             uow);
         _reads = UserReadHandlerFactory.Create(_db);
+        var rules = (IUserManagementLawyerWriteRules)service;
         _setLawyerActive = new SetLawyerActiveCommandHandler(
-            users, uow, _audit,
+            rules, users, uow, _audit,
             new IPipelineBehavior<SetLawyerActiveCommand, bool>[]
             {
                 new TransactionBehavior<SetLawyerActiveCommand, bool>(tx),
             });
-        var rules = (IUserManagementLawyerWriteRules)service;
         _createLawyer = new CreateLawyerCommandHandler(
             rules, users, branches, uow, _hasher, tx, _audit,
             Array.Empty<IPipelineBehavior<CreateLawyerCommand, LawyerListItemDto>>());
@@ -1060,5 +1061,193 @@ public class UserManagementServiceTests : PostgresDbTest
         Assert.Equal(successor.Id, succeeded.UserId);
         Assert.Equal("شعبة مصياف", succeeded.SectionName);
         Assert.Equal("دمشق", succeeded.BranchName);
+    }
+
+    [PostgresFact]
+    public async Task ListUsers_ManagerExcludesAdminAccounts_AdminSeesAll()
+    {
+        // W2/F4: تعليق المتحكم يعد بحد `BQ-001د`، لكن القائمة كانت تعيد حسابات
+        // المشرف للمدير أيضًا (قراءة معرّفات كان يُمنع المساس بها كتابةً).
+        var admin = await AddUserAsync("admin_list_w2", "مشرف", UserRole.Admin, null);
+        var manager = await AddUserAsync("mgr_list_w2", "مدير", UserRole.Manager, null);
+        var lawyer = await AddUserAsync("law_list_w2", "محامي", UserRole.Lawyer, DamascusId);
+
+        var asManager = await _reads.Users.HandleAsync(new ListUsersQuery(UserRole.Manager));
+        var asAdmin = await _reads.Users.HandleAsync(new ListUsersQuery(UserRole.Admin));
+
+        Assert.DoesNotContain(asManager, u => u.Id == admin.Id);
+        Assert.Contains(asManager, u => u.Id == manager.Id);
+        Assert.Contains(asManager, u => u.Id == lawyer.Id);
+        Assert.Contains(asAdmin, u => u.Id == admin.Id);
+    }
+
+    [PostgresFact]
+    public async Task UpdateUser_ManagerCanRenameSelf_ButNotChangeOwnRole()
+    {
+        // W2/F5: الشرط القديم `role != Admin` منع المدير من أي تعديل ذاتي (حتى اسمه).
+        var manager = await AddUserAsync("mgr_self_w2", "مدير", UserRole.Manager, null);
+
+        var renamed = await _updateUser.UpdateUserAsync(
+            manager.Id,
+            new UpdateUserRequest("مدير مُعاد تسميته", "manager", null, true, null),
+            manager.Id,
+            manager.Username);
+
+        Assert.NotNull(renamed);
+        Assert.Equal("مدير مُعاد تسميته", renamed!.Username);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _updateUser.UpdateUserAsync(
+                manager.Id,
+                new UpdateUserRequest(null, "lawyer", DamascusId, true, null),
+                manager.Id,
+                manager.Username));
+    }
+
+    // ── W2/B3: نطاق رئيس الشعبة على حسابات المحامين ───────────────────────
+    private async Task<(User Head, User SubHead, int SectionA, int SectionB)> SeedTwoSectionsAsync()
+    {
+        var sectionA = await AddSectionAsync("شعبة أ", DamascusId);
+        var sectionB = await AddSectionAsync("شعبة ب", DamascusId);
+        var head = await AddUserAsync("head_b3", "رئيس القسم", UserRole.Head, DamascusId);
+        var subHead = await AddUserAsync("sub_b3", "رئيس الشعبة", UserRole.SubHead, DamascusId);
+        subHead.SectionId = sectionA;
+        subHead.CreatedById = head.Id;
+        await _db.SaveChangesAsync();
+        return (head, subHead, sectionA, sectionB);
+    }
+
+    private async Task<User> AddLawyerWithDocumentInCircuitAsync(
+        string username, string circuitName, int? sectionId, int createdById)
+    {
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = DamascusId,
+            SectionId = sectionId,
+            Name = circuitName,
+            NameNorm = circuitName,
+            CreatedById = createdById,
+        };
+        _db.ExecutionCircuits.Add(circuit);
+        var lawyer = await AddUserAsync(username, username, UserRole.Lawyer, DamascusId);
+        _db.Documents.Add(new Document
+        {
+            BranchId = DamascusId,
+            CreatedById = lawyer.Id,
+            ExecutionCircuitId = circuit.Id,
+        });
+        await _db.SaveChangesAsync();
+        return lawyer;
+    }
+
+    [PostgresFact]
+    public async Task UpdateLawyer_SubHeadOtherSection_ReturnsNullAndKeepsPassword()
+    {
+        var (head, subHead, sectionA, sectionB) = await SeedTwoSectionsAsync();
+        var otherSectionLawyer = await AddLawyerWithDocumentInCircuitAsync(
+            "law_other_b3", "دائرة ب", sectionB, head.Id);
+        var originalHash = otherSectionLawyer.PasswordHash;
+
+        var result = await _updateLawyer.HandleAsync(new UpdateLawyerCommand(
+            otherSectionLawyer.Id,
+            new UpdateLawyerRequest(null, "TestPass5678", otherSectionLawyer.Version),
+            DamascusId,
+            subHead.Username,
+            ScopeSectionId: sectionA,
+            ActorUserId: subHead.Id));
+
+        Assert.Null(result);
+        var reloaded = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == otherSectionLawyer.Id);
+        Assert.Equal(originalHash, reloaded.PasswordHash);
+        Assert.Equal(0, reloaded.TokenVersion);
+    }
+
+    [PostgresFact]
+    public async Task UpdateLawyer_SubHeadOwnSection_Allowed()
+    {
+        var (head, subHead, sectionA, sectionB) = await SeedTwoSectionsAsync();
+        _ = sectionB;
+        var ownSectionLawyer = await AddLawyerWithDocumentInCircuitAsync(
+            "law_own_b3", "دائرة أ", sectionA, head.Id);
+
+        var result = await _updateLawyer.HandleAsync(new UpdateLawyerCommand(
+            ownSectionLawyer.Id,
+            new UpdateLawyerRequest(null, "TestPass5678", ownSectionLawyer.Version),
+            DamascusId,
+            subHead.Username,
+            ScopeSectionId: sectionA,
+            ActorUserId: subHead.Id));
+
+        Assert.NotNull(result);
+        var reloaded = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == ownSectionLawyer.Id);
+        Assert.True(_hasher.Verify("TestPass5678", reloaded.PasswordHash));
+    }
+
+    [PostgresFact]
+    public async Task UpdateLawyer_SubHeadCreatedLawyerWithoutSectionCircuit_Allowed()
+    {
+        var (_, subHead, sectionA, _) = await SeedTwoSectionsAsync();
+        var created = await AddUserAsync("law_created_b3", "محامٍ أنشأه الرئيس", UserRole.Lawyer, DamascusId);
+        created.CreatedById = subHead.Id;
+        await _db.SaveChangesAsync();
+
+        var result = await _updateLawyer.HandleAsync(new UpdateLawyerCommand(
+            created.Id,
+            new UpdateLawyerRequest(null, "TestPass5678", created.Version),
+            DamascusId,
+            subHead.Username,
+            ScopeSectionId: sectionA,
+            ActorUserId: subHead.Id));
+
+        Assert.NotNull(result);
+    }
+
+    [PostgresFact]
+    public async Task UpdateLawyer_SectionScopeWithoutActor_FailsClosed()
+    {
+        var (head, _, sectionA, sectionB) = await SeedTwoSectionsAsync();
+        var lawyer = await AddLawyerWithDocumentInCircuitAsync("law_noactor", "دائرة أ", sectionA, head.Id);
+
+        var result = await _updateLawyer.HandleAsync(new UpdateLawyerCommand(
+            lawyer.Id,
+            new UpdateLawyerRequest(null, "TestPass5678", lawyer.Version),
+            DamascusId,
+            "sub",
+            ScopeSectionId: sectionA,
+            ActorUserId: null));
+
+        Assert.Null(result);
+        _ = sectionB;
+    }
+
+    [PostgresFact]
+    public async Task SetLawyerActive_SubHeadOtherSection_ReturnsFalse()
+    {
+        var (head, subHead, sectionA, sectionB) = await SeedTwoSectionsAsync();
+        var otherSectionLawyer = await AddLawyerWithDocumentInCircuitAsync(
+            "law_other_act", "دائرة ب", sectionB, head.Id);
+
+        var ok = await _setLawyerActive.HandleAsync(new SetLawyerActiveCommand(
+            otherSectionLawyer.Id, false, DamascusId, subHead.Username,
+            ScopeSectionId: sectionA, ActorUserId: subHead.Id));
+
+        Assert.False(ok);
+        var reloaded = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == otherSectionLawyer.Id);
+        Assert.True(reloaded.IsActive);
+    }
+
+    [PostgresFact]
+    public async Task SetLawyerActive_HeadKeepsBranchWideScope()
+    {
+        var (head, _, _, sectionB) = await SeedTwoSectionsAsync();
+        var otherSectionLawyer = await AddLawyerWithDocumentInCircuitAsync(
+            "law_head_b3", "دائرة ب", sectionB, head.Id);
+
+        // رئيس القسم يبقى على مستوى الفرع (قرار المنتج): لا ScopeSectionId.
+        var ok = await _setLawyerActive.HandleAsync(new SetLawyerActiveCommand(
+            otherSectionLawyer.Id, false, DamascusId, head.Username,
+            ScopeSectionId: null, ActorUserId: head.Id));
+
+        Assert.True(ok);
     }
 }

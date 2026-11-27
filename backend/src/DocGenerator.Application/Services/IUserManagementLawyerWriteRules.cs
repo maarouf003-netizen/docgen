@@ -14,4 +14,10 @@ internal interface IUserManagementLawyerWriteRules
     string NormalizePassword(string? password, string? username = null);
     string DuplicateUsernameMessage(int? branchId);
     LawyerListItemDto ToLawyerDto(User user);
+
+    /// <summary>
+    /// هل يقع حساب المحامي ضمن نطاق شعبة الفاعل؟ (رئيس الشعبة فقط — W2/B3).
+    /// </summary>
+    Task<bool> IsLawyerInSectionScopeAsync(
+        User lawyer, int actorUserId, int? actorBranchId, int? actorSectionId, CancellationToken ct);
 }

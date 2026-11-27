@@ -100,7 +100,12 @@ internal sealed class LoginCommandHandler : CommandHandlerBase<LoginCommand, Log
 
         if (user is null)
         {
-            await _audit.LogAsync(username, "login_failed", details: "محاولة دخول فاشلة", ct: ct);
+            // W2/F6: لا يُسجَّل إخفاق لاسم لا وجود له في القاعدة. اسم المستخدم نص يتحكم
+            // به المهاجم، وتسجيله لكل محاولة ينفخ `AuditLogs` (بلا سياسة احتفاظ بعد)
+            // ويسمح بحقن محتوى في السجل. الخنق لكل IP والمحاولات على الحسابات القائمة
+            // يبقيان مسجّلين أدناه وفي فرع كلمة المرور الخاطئة.
+            if (matches.Count > 0)
+                await _audit.LogAsync(username, "login_failed", details: "محاولة دخول فاشلة", ct: ct);
             return new LoginResult(LoginStatus.InvalidCredentials, null);
         }
 

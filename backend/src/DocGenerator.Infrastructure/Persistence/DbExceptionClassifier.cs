@@ -23,6 +23,17 @@ public class DbExceptionClassifier : IDbExceptionClassifier
         return false;
     }
 
+    /// <summary>اسم قيد التفرد المخالَف فقط — لا قيم الصفوف (W2/F8).</summary>
+    public string? GetUniqueViolationConstraint(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres && postgres.SqlState == "23505")
+                return postgres.ConstraintName;
+        }
+        return null;
+    }
+
     /// <summary>
     /// خرق مفتاح أجنبي (<c>23503</c>) — مرجع محذوف بين التسجيل والمعالجة.
     /// </summary>

@@ -195,4 +195,49 @@ public class StaleRoleRevocationTests
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
     }
+
+    /// <summary>
+    /// نقل رئيس الشعبة بين شعبين يُبطل توكن الشعبة القديم (W2/F17): الشعبة جزء من
+    /// هوية التوكن (`section_id`) كالفرع، فلا يعمل رئيس بنطاق شعبة سابقة بصمت.
+    /// </summary>
+    [PostgresFact]
+    public async Task SectionMove_InvalidatesPreviouslyIssuedTokens()
+    {
+        var first = await _factory.CreateSectionAsync($"شعبة أولى {Guid.NewGuid():N}"[..24]);
+        var second = await _factory.CreateSectionAsync($"شعبة ثانية {Guid.NewGuid():N}"[..24]);
+        var username = $"smove_{Guid.NewGuid():N}"[..16];
+        var admin = _factory.AuthorizedClient("admin");
+
+        var created = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            fullName = username,
+            role = "subhead",
+            branchId = (int?)BranchId("DAM"),
+            password = "123456",
+            sectionId = first,
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = (await created.Content.ReadFromJsonAsync<System.Text.Json.JsonDocument>())!
+            .RootElement.GetProperty("id").GetInt32();
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal((int)HttpStatusCode.OK, login!.StatusCode);
+        var staleClient = _factory.CreateClient();
+        staleClient.SetAuthCookie(login.Token!);
+        Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
+
+        var move = await admin.PutAsJsonAsync($"/api/users/{id}", new
+        {
+            fullName = (string?)null,
+            role = "subhead",
+            branchId = (int?)BranchId("DAM"),
+            isActive = true,
+            password = (string?)null,
+            sectionId = second,
+        });
+        Assert.Equal(HttpStatusCode.OK, move.StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
+    }
 }

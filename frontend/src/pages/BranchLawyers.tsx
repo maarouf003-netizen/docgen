@@ -11,6 +11,7 @@ export default function BranchLawyers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
+  const isSubHead = user?.role === 'subhead';
   const isMobile = useIsMobile();
 
   const [branches, setBranches] = useState<BranchDto[]>([]);
@@ -48,9 +49,11 @@ export default function BranchLawyers() {
   const load = (selectedBranchId: number | null) => {
     setLoading(true);
     setError('');
-    // صفحة الإدارة تعرض كل محامي النطاق (§5.4 `mode=branch`) — الوضع الافتراضي
-    // `mine` يستبعد الجدد بلا ملفات (قرار §2.9: يُرى بملف في دوائري أو من إنشائي).
-    const params: Record<string, unknown> = { mode: 'branch' };
+    // صفحة الإدارة تعرض كل محامي النطاق (§5.4 `mode=branch`) لرئيس القسم/المشرف،
+    // ورئيس الشعبة `mode=mine` لأن نطاق الكتابة أصبح شعبته فقط (W2/B3): عرض محامي
+    // شعبة أخرى بأزرار تعديل ترد 404 تجربة مكسورة. الوضع الافتراضي `mine` يستبعد
+    // الجدد بلا ملفات (قرار §2.9: يُرى بملف في دوائري أو من إنشائي).
+    const params: Record<string, unknown> = { mode: isSubHead ? 'mine' : 'branch' };
     if (isAdmin && selectedBranchId) params.branchId = selectedBranchId;
     api
       .get<LawyerListItem[]>('/users/lawyers', { params })
@@ -62,7 +65,7 @@ export default function BranchLawyers() {
   useEffect(() => {
     load(branchId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId, isAdmin]);
+  }, [branchId, isAdmin, isSubHead]);
 
   const resetForm = () => {
     setFullName('');

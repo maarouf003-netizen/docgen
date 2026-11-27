@@ -88,12 +88,14 @@ internal sealed class CreateLawyerCommandHandler
     }
 }
 
-/// <summary>تعديل حساب محامٍ (الاسم/كلمة المرور) — ضمن نطاق الفرع.</summary>
+/// <summary>تعديل حساب محامٍ (الاسم/كلمة المرور) — ضمن نطاق الفرع، ولرئيس الشعبة ضمن شعبته.</summary>
 public sealed record UpdateLawyerCommand(
     int UserId,
     UpdateLawyerRequest Request,
     int? ScopeBranchId,
-    string? ActorName) : ICommand<LawyerListItemDto?>;
+    string? ActorName,
+    int? ScopeSectionId = null,
+    int? ActorUserId = null) : ICommand<LawyerListItemDto?>;
 
 internal sealed class UpdateLawyerCommandHandler
     : CommandHandlerBase<UpdateLawyerCommand, LawyerListItemDto?>
@@ -134,6 +136,18 @@ internal sealed class UpdateLawyerCommandHandler
         // رئيس القسم يعدّل محامي فرعه فقط.
         if (command.ScopeBranchId.HasValue && user.BranchId != command.ScopeBranchId)
             return null;
+
+        // W2/B3: رئيس الشعبة يعدّل محامي شعبته فقط. غياب الفاعل مع نطاق شعبة يُرفض
+        // (فشل مغلق) لا يُتجاوز، حتى لا يعود النطاق اختياريًا بسهولة.
+        if (command.ScopeSectionId.HasValue)
+        {
+            if (command.ActorUserId is null)
+                return null;
+            var inSectionScope = await _rules.IsLawyerInSectionScopeAsync(
+                user, command.ActorUserId.Value, command.ScopeBranchId, command.ScopeSectionId, ct);
+            if (!inSectionScope)
+                return null;
+        }
 
         OptimisticConcurrencyGuard.EnsureCurrent(user, request.Version, "حساب المحامي");
 

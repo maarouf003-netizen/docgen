@@ -24,9 +24,9 @@ public class AuthController : ControllerBase
     private readonly RateLimitOptions _rateOptions;
     private readonly JwtOptions _jwt;
     private readonly IWebHostEnvironment _env;
-    private readonly IAuditLogger _audit;
     private readonly ICommandHandler<LoginCommand, LoginResult> _login;
     private readonly ICommandHandler<ChangePasswordCommand, bool> _changePassword;
+    private readonly ICommandHandler<LogoutCommand, bool> _logout;
 
     /// <summary>نفس عمر Cookie الجلسة بالضبط حتى يتزامن زوجا Cookie (المصادقة + CSRF) عند الطرح والانتهاء.</summary>
     private TimeSpan SessionMaxAge => TimeSpan.FromMinutes(Math.Max(1, _jwt.ExpiryMinutes));
@@ -45,18 +45,18 @@ public class AuthController : ControllerBase
         IOptions<RateLimitOptions> rateOptions,
         JwtOptions jwt,
         IWebHostEnvironment env,
-        IAuditLogger audit,
         ICommandHandler<LoginCommand, LoginResult> login,
-        ICommandHandler<ChangePasswordCommand, bool> changePassword)
+        ICommandHandler<ChangePasswordCommand, bool> changePassword,
+        ICommandHandler<LogoutCommand, bool> logout)
     {
         _getUser = getUser;
         _rateLimiter = rateLimiter;
         _rateOptions = rateOptions.Value;
         _jwt = jwt;
         _env = env;
-        _audit = audit;
         _login = login;
         _changePassword = changePassword;
+        _logout = logout;
     }
 
     [HttpPost("login")]
@@ -68,7 +68,10 @@ public class AuthController : ControllerBase
         // بعد UseForwardedHeaders الموثوق (KnownProxy فقط)، يعكس RemoteIpAddress عنوان
         // العميل الحقيقي من X-Forwarded-For الصادر عن البروكسي الموثوق — لا من أي عميل مباشر.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var rateKey = $"{ip}:{request.Username.Trim().ToLowerInvariant()}";
+        // مفتاح الحد يجب أن يطابق تطبيع البحث (`LoginCommand`): حذف محارف التنسيق/الاتجاه
+        // غير المرئية قبل التوحيد، وإلا أمكن تجاوز الخنق لكل مستخدم بإرسال الاسم نفسه
+        // بمحرف صفري ملتصق (W2/F1).
+        var rateKey = $"{ip}:{UsernameInput.Normalize(request.Username).ToLowerInvariant()}";
 
         if (!await _rateLimiter.IsAllowedAsync(rateKey, ct))
         {
@@ -143,10 +146,15 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         // [AllowAnonymous] حتى يُحذف الـ Cookie حتى لو انتهى التوكن أو أُبطلت صلاحيته.
-        // RF-017 (SEC-009): توثيق الخروج باسم الجلسة (المتخفي بلا هوية يُتجاهَل تدقيقه لا حذفه).
-        var userName = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null;
-        if (!string.IsNullOrWhiteSpace(userName))
-            await _audit.LogAsync(userName, "logout", details: "تسجيل خروج", ct: ct);
+        // RF-017 (SEC-009): يُوثَّق الخروج باسم صاحبه (كلمة المرور لا تُسجَّل قط).
+        var authenticated = User.Identity?.IsAuthenticated == true;
+        var userName = authenticated ? User.Identity!.Name : null;
+        if (authenticated)
+        {
+            // W2/F3: حذف الكوكي وحده لا يُبطل التوكن؛ الرمز المسروق يبقى صالحًا حتى انتهاء
+            // عمره. رفع نسخة التوكن خادميًا يُسقط كل الرموز الصادرة للحساب.
+            await _logout.HandleAsync(new LogoutCommand(User.GetUserId(), userName), ct);
+        }
         Response.Cookies.Delete(AuthCookie.Name, AuthCookie.DeleteOptions(_env));
         Response.Cookies.Delete(CsrfMiddleware.CookieName, CsrfMiddleware.CookieOptions(_env, SessionMaxAge));
         return Ok(new { message = "تم تسجيل الخروج" });
