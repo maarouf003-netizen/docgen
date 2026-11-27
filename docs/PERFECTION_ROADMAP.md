@@ -1664,17 +1664,18 @@
     `useDebouncedCallback` (33) و4 اختبارات.
   - `DayRemindersModal.tsx` (`P6-02k`): **725 → 296**، مع `DayReminderRow` (203)
     و`PersonalReminderForm` (199) و`dayRemindersModel` (62) و6 اختبارات.
+  - `BranchManagementModal.tsx` (`P6-02l`): **834 → 122**، مع `useBranchManagement` (389)
+    و`BranchManagementPanels` (316) و`ParentBranchCard` (140).
   - اختبارات: **28+** وحدة لـ`DocumentForm`، 3 لـhook `DocumentView`، 4 لمكوّنات الأقسام؛
-    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1934/1934** (على فرع `P6-02k`).
+    و142+81 اختبار صفحة قائم عبرت **بلا تعديل**؛ الحزمة **1934/1934** (على فرع `P6-02l`).
     لا تغيير `API`/هجرة (`has-pending-model-changes` = «No changes»).
-  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **2** ملفان
-    مجمّدان فوق 600 تنقص فقط) في وظيفة `guards` بـ`CI`.
-  - **دين معلن (خارج `P6-02`):** ملفان آخران >600 (`BranchesManagement` 870،
-    `BranchManagementModal` 834) —
-    مجمّدة بالحارس وتُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…311`.
+  - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **1** ملف
+    مجمّد فوق 600 ينقص فقط) في وظيفة `guards` بـ`CI`.
+  - **دين معلن (خارج `P6-02`):** ملف واحد >600 (`BranchesManagement` 870) —
+    مجمّد بالحارس ويُعالج في `P6-03`/صقل لاحق. التفاصيل: `docs/audit/279…314`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
 - **DoD:** لا ملف >600 سطر، واختبارات كل قسم — **متحقق لنطاق `P6-02`** (الخمسة
-  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (ملفان معلنان مجمّدان).
+  المسمّاة + أقسامها)، و**غير متحقق على كل الواجهة** (ملف واحد معلن مجمّد).
 
 #### `P6-03` — Design system وإمكانية الوصول
 
