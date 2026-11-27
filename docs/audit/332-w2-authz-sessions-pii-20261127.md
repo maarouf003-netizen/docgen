@@ -80,7 +80,7 @@
 ## 7. الحكم
 
 **`APPROVE WITH FOLLOW-UP`** بعد إغلاق `B2`/`B3` والبنود الأمنية `F1/F3/F4/F5/F6/F7/F8/F9/F11/F12/F13/F15/F16/F17`.
-(تنفيذ الإصلاحات على فرع `review/w2-authz-sessions-pii`.)
+(التنفيذ في PR [`#395`](https://github.com/maarouf003-netizen/docgen/pull/395).)
 
 **بنود متابعة موثّقة (لا وعود شفهية):**
 1. `F2` — refresh/MFA/سجل جلسات/تدوير المفتاح (قرار مالك).
