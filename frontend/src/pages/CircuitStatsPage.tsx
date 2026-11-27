@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api, getApiErrorMessage, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { isHeadOrSubHeadRole } from '../auth/roles';
@@ -10,62 +11,51 @@ import type { BranchDto, CircuitStatsDto } from '../types';
  * صفحة «إحصائيات الدوائر» للمدير/المشرف (منتقي فرع + جدول الدوائر)
  * ورئيس القسم/الشعبة (نطاقه فقط — بلا منتقي إذ يُتجاهل اختياره خادميًا).
  * لكل دائرة: ملفات × محامون نشطون × معلقات × الشعبة المالكة (§12).
+ *
+ * `P6-01b`: أول شريحة `TanStack Query` — القائمة والإحصاءات استعلامان مخزَّنان
+ * بمفتاحيهما (`branches`، و`circuit-stats` + الفرع) بدل `useEffect` يدوي، مع
+ * `placeholderData` لإبقاء الصفوف السابقة أثناء تبديل الفرع (سلوك الشاشة القائم).
  */
 export default function CircuitStatsPage() {
   const { user } = useAuth();
   const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isSubHead = user?.role === 'subhead';
-  const [branches, setBranches] = useState<BranchDto[]>([]);
   const [branchId, setBranchId] = useState<number | ''>('');
-  const [rows, setRows] = useState<CircuitStatsDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
-  useEffect(() => {
-    if (isHeadOrSubHead) {
-      setBranches([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await api.get<BranchDto[]>('/branches');
-        if (!cancelled) setBranches(Array.isArray(r?.data) ? r.data : []);
-      } catch {
-        if (!cancelled) setBranches([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isHeadOrSubHead]);
+  const branchesQuery = useQuery({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const r = await api.get<BranchDto[]>('/branches');
+      return Array.isArray(r?.data) ? r.data : [];
+    },
+    enabled: !isHeadOrSubHead,
+  });
+  // رئيس القسم/الشعبة لا يرى منتقي الفروع أصلًا (نطاقه خادمي)، فلا نعرض بياناته.
+  const branches = isHeadOrSubHead ? [] : (branchesQuery.data ?? []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
+  const statsQuery = useQuery({
+    queryKey: ['circuit-stats', branchId],
+    queryFn: async () => {
       const r = await api.get<CircuitStatsDto[]>('/execution-circuits/stats', {
         params: branchId === '' ? {} : { branchId },
       });
-      setRows(r.data ?? []);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      return r.data ?? [];
+    },
+    // إبقاء صفوف الفرع السابق أثناء جلب الجديد كما كان (`setLoading` يخفيها فقط).
+    placeholderData: (previous) => previous,
+  });
+  const rows = statsQuery.data ?? [];
+  const loading = statsQuery.isFetching;
+  const error = statsQuery.error ? getApiErrorMessage(statsQuery.error) : '';
 
   const fmt = (n: number) => new Intl.NumberFormat('ar-SY').format(n);
 
   const exportStats = async () => {
     if (exporting) return;
     setExporting(true);
-    setError('');
+    setExportError('');
     try {
       const r = await api.get('/execution-circuits/stats/export', {
         params: branchId === '' ? {} : { branchId },
@@ -75,7 +65,7 @@ export default function CircuitStatsPage() {
     } catch (err) {
       // أخطاء التنزيل تصل `Blob` (حتى JSON الخطأ) فيُستخرج نصها أولًا —
       // وإلا ضاعت رسالة الخادم الدقيقة (كـ429 «تصدير قيد التنفيذ»).
-      setError(await getDownloadErrorMessage(err));
+      setExportError(await getDownloadErrorMessage(err));
     } finally {
       setExporting(false);
     }
@@ -115,7 +105,10 @@ export default function CircuitStatsPage() {
           <select
             id="stats-branch"
             value={branchId}
-            onChange={(e) => setBranchId(e.target.value === '' ? '' : Number(e.target.value))}
+            onChange={(e) => {
+              setBranchId(e.target.value === '' ? '' : Number(e.target.value));
+              setExportError('');
+            }}
             className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             <option value="">كل الفروع</option>
@@ -133,9 +126,9 @@ export default function CircuitStatsPage() {
           {isSubHead ? 'إحصائيات دوائر شعبتك' : 'إحصائيات دوائر قسمك'}
         </p>
       )}
-      {error && (
+      {(error || exportError) && (
         <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4" role="alert">
-          {error}
+          {error || exportError}
         </div>
       )}
       {loading ? (

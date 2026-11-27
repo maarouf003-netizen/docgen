@@ -1,5 +1,6 @@
 import { Fragment, lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import { getHomeForRole } from './auth/roleHome';
@@ -7,6 +8,7 @@ import CurrentYearProvider from './components/CurrentYearProvider';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import LegacyRouteBanner from './components/LegacyRouteBanner';
+import { queryClient } from './queryClient';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -124,6 +126,7 @@ export default function App() {
   const location = useLocation();
   return (
     <ErrorBoundary variant="screen" resetKeys={[location.pathname, location.search]}>
+      <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <CurrentYearProvider>
         <Suspense fallback={<PageLoader />}>
@@ -494,6 +497,7 @@ export default function App() {
         </Suspense>
         </CurrentYearProvider>
       </AuthProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }
