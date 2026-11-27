@@ -170,53 +170,45 @@ public class DelegationConcurrencyTests : IAsyncLifetime
     [PostgresFact]
     public async Task CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected()
     {
-        // حتمي: نحجز قفل المصدر يدويًا، نبدأ الإنابة (تتجاوز الفحص الأولي ثم تنتظر القفل)،
-        // ثم نغيّر حالة المصدر إلى مشطوب ونحرر القفل — يجب أن ترفض الإنابة بعد القفل.
-        var (sourceId, assetIds, lawyerId) = await SeedAsync();
+        // حتمي بلا سباق حقيقي: نستخدم مستودعًا يغيّر حالة المصدر إلى «مشطوب» **لحظة**
+        // محاولة قفل الصف داخل المعاملة، ثم يقرأ الطازج بعد القفل — فيجب أن يرفض.
+        var (sourceId, assetIds, lawyerId) = await SeedAsync("lock");
 
-        await using var blocker = _pg.CreateContext();
-        var repository = new DocumentRepository(blocker);
-        await using var tx = await blocker.Database.BeginTransactionAsync();
-        await repository.GetByIdForUpdateAsync(sourceId);
+        await using var db = _pg.CreateContext();
+        var repository = new StrikeOnLockRepository(db, sourceId);
+        var create = DelegationWriteHandlerFactory.Create(db, documents: repository);
 
-        await using var createDb = _pg.CreateContext();
-        var create = DelegationWriteHandlerFactory.Create(createDb);
-        var createTask = Task.Run(() => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
-
-        // لا تأخير اعتباطي: ننتظر حتى يظهر قفل غير ممنوح (الإنابة وصلت إلى FOR UPDATE).
-        await WaitForBlockedDocumentLockAsync(blocker);
-
-        await blocker.Documents
-            .Where(d => d.Id == sourceId)
-            .ExecuteUpdateAsync(s => s.SetProperty(d => d.ExecStatus, ExecutionStatusCatalog.StateStruckOff));
-        await tx.CommitAsync();
-
-        var error = await Assert.ThrowsAnyAsync<Exception>(() => createTask);
+        var error = await Assert.ThrowsAnyAsync<Exception>(
+            () => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
         Assert.IsType<ArgumentException>(error);
 
         await using var check = _pg.CreateContext();
         Assert.False(await check.DocumentDelegations.AnyAsync(d => d.SourceDocumentId == sourceId));
     }
 
-    private static async Task WaitForBlockedDocumentLockAsync(DocGeneratorDbContext observer)
+    private sealed class StrikeOnLockRepository : DocumentRepository
     {
-        for (var attempt = 0; attempt < 600; attempt++)
+        private readonly DocGeneratorDbContext _db;
+        private readonly int _sourceId;
+
+        public StrikeOnLockRepository(DocGeneratorDbContext db, int sourceId) : base(db)
         {
-            var waiting = await observer.Database
-                .SqlQueryRaw<long>(
-                    """
-                    SELECT COUNT(*)::bigint AS "Value"
-                    FROM pg_locks l
-                    WHERE NOT l.granted
-                      AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
-                    """)
-                .SingleAsync();
-            if (waiting > 0)
-                return;
-            await Task.Delay(50);
+            _db = db;
+            _sourceId = sourceId;
         }
 
-        Assert.Fail("لم يصل طلب الإنابة إلى انتظار قفل الصف خلال المهلة");
+        public override async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
+        {
+            if (id == _sourceId)
+            {
+                await _db.Documents
+                    .Where(d => d.Id == _sourceId)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(d => d.ExecStatus, ExecutionStatusCatalog.StateStruckOff),
+                        ct);
+            }
+            return await base.GetByIdForUpdateAsync(id, ct);
+        }
     }
 
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);

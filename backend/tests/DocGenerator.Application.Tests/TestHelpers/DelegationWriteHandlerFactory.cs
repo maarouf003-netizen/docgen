@@ -14,9 +14,9 @@ namespace DocGenerator.Application.Tests.TestHelpers;
 public static class DelegationWriteHandlerFactory
 {
     public static CreateDocumentDelegationCommandHandler Create(
-        DocGeneratorDbContext db, FakeAuditLogger? audit = null)
+        DocGeneratorDbContext db, FakeAuditLogger? audit = null, DocumentRepository? documents = null)
     {
-        var documents = new DocumentRepository(db);
+        documents ??= new DocumentRepository(db);
         var users = new UserRepository(db);
         var uow = new UnitOfWork(db);
         var tx = new TransactionRunner(db);
