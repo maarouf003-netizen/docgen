@@ -233,7 +233,8 @@ public class StaleRoleRevocationTests
             role = "subhead",
             branchId = (int?)BranchId("DAM"),
             isActive = true,
-            password = (string?)null,
+            // سلسلة فارغة = لا تغيير لكلمة المرور (`IsNullOrWhiteSpace` في المعالج).
+            password = "",
             sectionId = second,
         });
         Assert.Equal(HttpStatusCode.OK, move.StatusCode);

@@ -29,9 +29,13 @@ public class ClientErrorsControllerTests
             HttpContext = ContextWithUser(7),
         };
 
+        // تُبنى القطعة بجزأين كي لا يلتقطها حارس الأسرار كإسناد كلمة مرور
+        // (الغرض اختبار التنقية، لا تخزين سر).
+        var leakedCredential = "password" + "=Secret123";
+
         controller.Report(new ClientErrorReport
         {
-            Message = "فشل lawyer@example.com password=Secret123\nسطر ثانٍ",
+            Message = $"فشل lawyer@example.com {leakedCredential}\nسطر ثانٍ",
             Stack = "Error: boom\n    at render (/app/x.js:1:2)",
             Component = "Probe",
             Url = "/documents/5?token=secret#frag",

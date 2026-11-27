@@ -1089,12 +1089,12 @@ public class UserManagementServiceTests : PostgresDbTest
 
         var renamed = await _updateUser.UpdateUserAsync(
             manager.Id,
-            new UpdateUserRequest("مدير مُعاد تسميته", "manager", null, true, null),
+            new UpdateUserRequest("مدير جديد", "manager", null, true, null),
             manager.Id,
             manager.Username);
 
         Assert.NotNull(renamed);
-        Assert.Equal("مدير مُعاد تسميته", renamed!.Username);
+        Assert.Equal("مدير جديد", renamed!.Username);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _updateUser.UpdateUserAsync(
