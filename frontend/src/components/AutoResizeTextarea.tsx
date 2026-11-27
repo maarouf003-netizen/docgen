@@ -13,8 +13,7 @@ interface AutoResizeTextareaProps {
   onKeyUp?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   onClick?: (e: MouseEvent<HTMLTextAreaElement>) => void;
   onBlur?: (e: FocusEvent<HTMLTextAreaElement>) => void;
-  /** خاصية `aria` للمنتقي (موسّع/المتحكم) — غائبة بلا منتقي. */
-  ariaExpanded?: boolean;
+  /** `aria-controls` لمنتقي الذِكر (متاح على `textbox`؛ `aria-expanded` ليس كذلك). */
   ariaControls?: string;
 }
 
@@ -30,7 +29,6 @@ export default function AutoResizeTextarea({
   onKeyUp,
   onClick,
   onBlur,
-  ariaExpanded,
   ariaControls,
 }: AutoResizeTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -55,7 +53,6 @@ export default function AutoResizeTextarea({
       onKeyUp={onKeyUp}
       onClick={onClick}
       onBlur={onBlur}
-      aria-expanded={ariaExpanded}
       aria-controls={ariaControls}
     />
   );

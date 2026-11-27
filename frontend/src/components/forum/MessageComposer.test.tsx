@@ -54,6 +54,10 @@ describe('MessageComposer mention picker', () => {
 
     await user.type(screen.getByLabelText(/نص الرسالة/), '@قا');
     expect(await screen.findByRole('listbox', { name: 'مرشحو الذِكر' })).toBeInTheDocument();
+    // P6-03b: `aria-expanded` غير مدعوم على `textbox`؛ نستخدم `aria-controls` وحده.
+    const composer = screen.getByLabelText(/نص الرسالة/);
+    expect(composer).toHaveAttribute('aria-controls', 'forum-mention-list');
+    expect(composer).not.toHaveAttribute('aria-expanded');
     const option = await screen.findByRole('option', { name: 'ذِكر القارئ الثاني' });
     expect(option).toBeInTheDocument();
 
