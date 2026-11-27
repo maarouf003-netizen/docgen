@@ -293,7 +293,7 @@ export default function UsersManagement() {
               id="user-role"
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none"
+              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {selectableRoles.map((r) => (
                 <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -307,7 +307,7 @@ export default function UsersManagement() {
               value={branchId ?? ''}
               onChange={(e) => setBranchId(e.target.value ? Number(e.target.value) : null)}
               disabled={!branchRequired(role)}
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-400"
             >
               <option value="">{branchRequired(role) ? 'اختر الفرع...' : 'غير مطلوب'}</option>
               {branches.map((b) => (
@@ -406,7 +406,7 @@ export default function UsersManagement() {
                   id="edit-role"
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as Role)}
-                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none"
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   {selectableRoles.map((r) => (
                     <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -420,7 +420,7 @@ export default function UsersManagement() {
                   value={editBranchId ?? ''}
                   onChange={(e) => setEditBranchId(e.target.value ? Number(e.target.value) : null)}
                   disabled={!branchRequired(editRole)}
-                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">{branchRequired(editRole) ? 'اختر الفرع...' : 'غير مطلوب'}</option>
                   {branches.map((b) => (

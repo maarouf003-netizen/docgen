@@ -214,7 +214,6 @@ export default function MessageComposer({
             }}
             onClick={refreshCaret}
             onBlur={closeOnBlur}
-            ariaExpanded={mentionActive}
             ariaControls={mentionActive ? 'forum-mention-list' : undefined}
             placeholder={editing ? 'عدّل رسالتك…' : 'اكتب رسالة… (@ للذِكر)'}
             minRows={1}
@@ -268,7 +267,7 @@ export default function MessageComposer({
       </div>
       <div
         aria-live="polite"
-        className={`mt-1 text-[11px] tabular-nums ${overLimit ? 'text-red-600 font-bold' : 'text-gray-400'}`}
+        className={`mt-1 text-[11px] tabular-nums ${overLimit ? 'text-red-600 font-bold' : 'text-gray-500'}`}
       >
         {draft.length} / {FORUM_BODY_MAX}
         {overLimit && ' — تجاوزت الحد الأقصى'}
