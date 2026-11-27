@@ -253,7 +253,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         // W2/F17: عزل التصدير بمالك المستند. كان الاختبار السابق ينشئ مستند محامٍ واحد
         // فقط، فحذف فلتر `VisibleUserId` لا يُفشل أي اختبار (طفرة ناجية).
         var lawyer1Token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        await _factory.CreateDocumentAsync(lawyer1Token, "زبون المحامي الأول", court: "محكمة");
+        await _factory.CreateDocumentAsync(lawyer1Token, "زبون المحامي الأول", court: "محكمة", registered: true);
 
         var other = await _factory.CreateUserAsync(
             $"exp_other_{Guid.NewGuid():N}"[..20],
@@ -261,7 +261,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
             await _factory.GetBranchIdAsync("DAM"));
         var otherLogin = await _factory.LoginAsync(other.Username, "123456");
         Assert.NotNull(otherLogin?.Token);
-        await _factory.CreateDocumentAsync(otherLogin!.Token!, "زبون المحامي الثاني", court: "محكمة");
+        await _factory.CreateDocumentAsync(otherLogin!.Token!, "زبون المحامي الثاني", court: "محكمة", registered: true);
 
         var response = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
         response.EnsureSuccessStatusCode();

@@ -214,14 +214,14 @@ public class StaleRoleRevocationTests
             fullName = username,
             role = "subhead",
             branchId = (int?)BranchId("DAM"),
-            password = "123456",
+            password = "TestPass1234",
             sectionId = first,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var id = (await created.Content.ReadFromJsonAsync<System.Text.Json.JsonDocument>())!
             .RootElement.GetProperty("id").GetInt32();
 
-        var login = await _factory.LoginAsync(username, "123456");
+        var login = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal((int)HttpStatusCode.OK, login!.StatusCode);
         var staleClient = _factory.CreateClient();
         staleClient.SetAuthCookie(login.Token!);
