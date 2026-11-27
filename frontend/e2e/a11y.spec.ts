@@ -127,4 +127,13 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByText(/إجمالي السجلات/)).toBeVisible();
     await analyzeBlocking(page, '/audit-logs');
   });
+
+  // P6-01b/3: شريحة طلبات الإنابة (استعلام + أفعال كتابة).
+  test('delegation requests page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.head);
+    await page.goto('/delegations/requests');
+    await expect(page.getByRole('heading', { name: 'طلبات الإنابة' })).toBeVisible();
+    await expect(page.getByText(/لا توجد طلبات إنابة معلّقة/)).toBeVisible();
+    await analyzeBlocking(page, '/delegations/requests');
+  });
 });

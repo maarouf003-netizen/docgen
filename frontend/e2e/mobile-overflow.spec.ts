@@ -98,4 +98,12 @@ test.describe('mobile 375px — no horizontal overflow', () => {
     await expect(page.getByText(/إجمالي السجلات/)).toBeVisible();
     await expectNoHorizontalOverflow(page, '/audit-logs');
   });
+
+  test('delegation requests page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.head);
+    await page.goto('/delegations/requests');
+
+    await expect(page.getByRole('heading', { name: 'طلبات الإنابة' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/delegations/requests');
+  });
 });

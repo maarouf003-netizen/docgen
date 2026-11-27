@@ -1640,6 +1640,11 @@
     `(page, userName, actionType)` و`keepPreviousData` و`signal` للإلغاء؛ الرجوع إلى
     صفحة مخزَّنة بلا طلب مكرر، مع 4 اختبارات و`/audit-logs` في `axe`/375px.
     التفاصيل: `docs/audit/324`–`326`.
+  - **`P6-01b/3` (2026-11-27):** الشريحة الثالثة `DelegationRequests`: `useQuery`
+    للطلبات (`rejectedOnly`) والشعب (`enabled` للرئيس فقط)، و`useMutation` للأفعال
+    مع `invalidateQueries` بدل `refetch`؛ 11 اختبارًا و`/delegations/requests` في
+    `axe`/375px. وبعد مراجعة مستقلة، أُصلح انحدار خطأ الصفحة في `AuditLogs` ووُثّق
+    في الملحق `327`. التفاصيل: `docs/audit/327`–`330`.
   - **متبقٍ:** ترحيل بقية `useEffect` اليدوي إلى `TanStack Query` (صفحة بشريحة كل
     تغيير)، وتوحيد حالات التحميل/الخطأ لكل صفحة، و`LCP/INP`.
   - التفاصيل: `docs/audit/264-p6-01a-error-boundaries-20261126.md` (والمراجعتان
