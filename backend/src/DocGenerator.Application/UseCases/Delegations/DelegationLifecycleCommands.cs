@@ -170,6 +170,8 @@ public sealed class RegisterDocumentDelegationCommandHandler
         {
             await _tx.RunAsync(async token =>
             {
+                // W1/B6: قفل صف الهدف — ترتيب قفل موحد مع الإنابة/الشطب.
+                await _documents.GetByIdForUpdateAsync(target.Id, token);
                 target.FileNumber = fileNumber;
                 target.FileYear = fileYear;
                 target.IsDraft = false;
@@ -342,6 +344,7 @@ public sealed class CompleteDocumentDelegationCommandHandler
                 throw new ArgumentException($"يجب إدخال بدل المبيع لكل أصل موضوع الإنابة ({asset.AssetLabel})");
             if (sale.SalePrice <= 0)
                 throw new ArgumentException($"بدل المبيع غير صالح للأصل ({asset.AssetLabel})");
+            DocumentAmountPolicy.EnsureValid(sale.SalePrice, $"بدل المبيع ({asset.AssetLabel})");
             asset.SalePrice = sale.SalePrice;
         }
 

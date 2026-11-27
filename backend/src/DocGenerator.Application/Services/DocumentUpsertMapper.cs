@@ -15,6 +15,19 @@ internal static class DocumentUpsertMapper
 {
     internal static void ApplyRequest(Document doc, DocumentUpsertRequest r)
     {
+        // W1/B3: تحقق مالي مركزي قبل أي إسناد — لا سالب/تجاوز/كسور أكثر من منزلتين.
+        DocumentAmountPolicy.EnsureValid(r.AmountNumeric, "المبلغ");
+        DocumentAmountPolicy.EnsureValid(r.Amount2Numeric, "المبلغ الثاني");
+        DocumentAmountPolicy.EnsureValid(r.Amount3Numeric, "المبلغ الثالث");
+        DocumentAmountPolicy.EnsureValid(r.InclusionAmountNumeric, "مبلغ الضم");
+        DocumentAmountPolicy.EnsureValid(r.InclusionAmount2Numeric, "مبلغ الضم الثاني");
+        DocumentAmountPolicy.EnsureValid(r.InclusionAmount3Numeric, "مبلغ الضم الثالث");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedRequiredAmount, "المبلغ المطلوب");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedRequiredAmount2, "المبلغ المطلوب الثاني");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedRequiredAmount3, "المبلغ المطلوب الثالث");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedPaidAmount, "المبلغ المدفوع");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedPaidAmount2, "المبلغ المدفوع الثاني");
+        DocumentAmountPolicy.EnsureValid(r.ExecutedPaidAmount3, "المبلغ المدفوع الثالث");
         // صفة الملف تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل (الموافقة المعتمدة):
         // على التعديل يبقى جانب الملف كما هو مهما أُرسل في الطلب.
         // (ValidateSide تطبَّعت القيمة مسبقًا إلى قيمة صالحة غير فارغة).
@@ -174,6 +187,14 @@ internal static class DocumentUpsertMapper
             doc.ExecutedExecutionDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 ? DocumentValidator.ParseDateTime(r.ExecutedExecutionDate, "تاريخ التنفيذ")
                 : null;
+            // W1/B1: «سبق تنفيذ الإيداع» كان يُضبط في مسار تغيير الحالة وحده، فملف أُنشئ/
+            // عُدّل بحالة «منفذ» من النموذج يبقى false؛ وإرجاعه لاحقًا يُسقط مبلغه من
+            // إحصاءات المدير. يُثبَّت هنا مركزيًا ولا يُعاد إلى false أبدًا (تاريخي).
+            if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                && doc.ExecutedStatus == ExecutedStatusCatalog.Executed)
+            {
+                doc.WasDepositExecuted = true;
+            }
         }
         else
         {

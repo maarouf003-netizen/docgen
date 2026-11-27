@@ -56,6 +56,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             && _dbErrors.IsUniqueViolation(dbFailure);
         var isMissingDocumentCircuit = exception is DbUpdateException circuitFailure
             && _dbErrors.IsMissingDocumentCircuitViolation(circuitFailure);
+        var isAmountViolation = exception is DbUpdateException amountFailure
+            && _dbErrors.IsAmountConstraintViolation(amountFailure);
 
         var statusCode = exception switch
         {
@@ -74,6 +76,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // قيد «رقم الملف يتطلب دائرة» حارس أخير في القاعدة: طلب غير صالح = 400،
             // لا 500 (يُكتشف من `23514` + اسم القيد على `PostgreSQL` المهاجَر).
             DbUpdateException when isMissingDocumentCircuit => StatusCodes.Status400BadRequest,
+            // قيد مبلغ/تجاوز دقة numeric = مدخل مالي غير صالح (400) لا عطل خادم (W1/B3).
+            DbUpdateException when isAmountViolation => StatusCodes.Status400BadRequest,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
             // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6 مكتمل:
             // `Portal`+`ReviewLetters`+`EntityRegistry`+`Forum`+`Correspondences`+
@@ -167,6 +171,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 "تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا",
             DbUpdateException when isMissingDocumentCircuit =>
                 "رقم الملف يتطلب دائرة تنفيذ — اختر دائرة أو أنشئها أولًا",
+            DbUpdateException when isAmountViolation =>
+                "قيمة مالية غير صالحة — لا تُقبل القيم السالبة ولا أكثر من منزلتين عشريتين",
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             // حتى رسالة التطوير لا تُعكس خامًا: التسطيح/التجريد/القصّ يمنعان تزوير

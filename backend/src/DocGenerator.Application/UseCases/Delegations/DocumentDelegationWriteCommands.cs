@@ -94,6 +94,8 @@ public sealed class CreateDocumentDelegationCommandHandler
         DocumentDelegation delegation = null!;
         await _tx.RunAsync(async token =>
         {
+            // W1/B6: قفل صف المصدر قبل فحص الأصول/الإدراج — يمنع سباق الشطب مع إنشاء الإنابة.
+            await _documents.GetByIdForUpdateAsync(source.Id, token);
             // B2: الفحص وبناء اللقطة والحفظ داخل المعاملة نفسها — لا فحص حجب خارجها.
             // إعادة قراءة طازجة بلا تتبع: قراءات السياق المتتبَّع تُرجع المثيلات نفسها
             // (identity resolution) ولا ترى ما التزمته معاملة منافسة بعد القراءة الأولى.

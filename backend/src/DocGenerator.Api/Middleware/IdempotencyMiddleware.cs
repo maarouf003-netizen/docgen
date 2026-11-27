@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using DocGenerator.Api.Filters;
 using DocGenerator.Application.Common;
@@ -169,23 +168,11 @@ public sealed class IdempotencyMiddleware
             ?? context.Request.Path.Value
             ?? string.Empty;
         key = normalized;
-        operation = BuildOperation(context.Request.Method, route);
+        operation = IdempotencyOperation.Build(
+            context.Request.Method,
+            context.Request.Path.Value ?? route);
         userId = context.User.GetUserId();
         return true;
-    }
-
-    /// <summary>
-    /// يبني نطاق المفتاح من الطريقة والقالب. القالب قد يتجاوز حد العمود (100)؛
-    /// عندها يُختصر ببصمة ثابتة بدل قصّ قابل للتصادم.
-    /// </summary>
-    private static string BuildOperation(string method, string route)
-    {
-        var operation = $"{method.ToUpperInvariant()} {route}";
-        if (operation.Length <= 100)
-            return operation;
-
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(operation)))[..16];
-        return $"{method.ToUpperInvariant()} {hash}";
     }
 
     private static async Task<string> FingerprintAsync(HttpRequest request)

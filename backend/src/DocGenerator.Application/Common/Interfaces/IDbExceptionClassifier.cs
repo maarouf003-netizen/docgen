@@ -26,4 +26,10 @@ public interface IDbExceptionClassifier
     /// يُترجم إلى <c>400</c> لا <c>500</c> (القيد حارس أخير، والخدمة لا تعرف المزوّد).
     /// </summary>
     bool IsMissingDocumentCircuitViolation(Exception ex);
+
+    /// <summary>
+    /// انتهاك قيد مبلغ (<c>23514</c> على قيد يحتوي <c>Amount</c>/<c>NonNegative</c>)
+    /// أو تجاوز دقة <c>numeric</c> (<c>22003</c>) — طلب مالي غير صالح = <c>400</c>، لا 500.
+    /// </summary>
+    bool IsAmountConstraintViolation(Exception ex);
 }

@@ -248,6 +248,21 @@ public sealed class UpdateDocumentStatusCommandHandler
 
         var statusUpdated = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
+            // W1/B6: قفل صف المصدر يمنع سباق «شطب/إحالة» مع إنشاء/تسجيل إنابة سارية.
+            // الفحص الخارجي يبقى للتشخيص السريع، وهذا الفحص هو الحاكم داخل القفل.
+            await _documents.GetByIdForUpdateAsync(doc.Id, token);
+            if (status is ExecutionStatusCatalog.StateStruckOff or ExecutionStatusCatalog.ReferredToStart)
+            {
+                var active = (await _delegations.ListBySourceAsync(doc.Id, token))
+                    .Any(DelegationActivityPolicy.IsLifecycleActive);
+                if (active)
+                {
+                    throw new ArgumentException(
+                        status == ExecutionStatusCatalog.StateStruckOff
+                            ? "لا يجوز شطب ملف فيه انابة سارية"
+                            : "لا يجوز إحالة ملف فيه إنابة سارية إلى البداية");
+                }
+            }
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);

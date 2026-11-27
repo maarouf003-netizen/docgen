@@ -105,6 +105,64 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         DepositBookDate: "2/8/2026",
         AssetIds: new List<int> { assetId });
 
+    [PostgresFact]
+    public async Task ConcurrentStrikeAndCreateDelegation_NeverLeaveStruckWithActiveDelegation()
+    {
+        // W1/B6: بدون قفل صف المصدر كان يمكن أن يُلتزم شطب T2 بين فحص T1 للإنابات
+        // وإدراج إنابته. القفل من الطرفين يجعل النتيجة: إنابة سارية أو شطب، لا الاثنان.
+        for (var round = 0; round < 3; round++)
+        {
+            var (sourceId, assetIds, lawyerId) = await SeedAsync();
+
+            await using var delegationDb = _pg.CreateContext();
+            await using var statusDb = _pg.CreateContext();
+            var create = DelegationWriteHandlerFactory.Create(delegationDb);
+            var status = DocumentServiceFactory.Create(statusDb, new FakeAuditLogger())
+                .StatusCommands.UpdateStatus;
+
+            var outcomes = await Task.WhenAll(
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race");
+                        return (Exception?)null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
+                }),
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await status.UpdateStatusAsync(
+                            sourceId,
+                            ExecutionStatusCatalog.StateStruckOff,
+                            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" },
+                            "race");
+                        return (Exception?)null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
+                }));
+
+            await using var check = _pg.CreateContext();
+            var doc = await check.Documents.AsNoTracking().SingleAsync(d => d.Id == sourceId);
+            var delegations = await check.DocumentDelegations.AsNoTracking()
+                .Where(d => d.SourceDocumentId == sourceId)
+                .ToListAsync();
+            var hasActive = delegations.Any(DelegationActivityPolicy.IsLifecycleActive);
+
+            Assert.False(
+                doc.ExecStatus == ExecutionStatusCatalog.StateStruckOff && hasActive,
+                $"round {round}: struck document kept an active delegation (outcomes: {outcomes[0]?.Message} | {outcomes[1]?.Message})");
+        }
+    }
+
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);
 
     [PostgresFact]

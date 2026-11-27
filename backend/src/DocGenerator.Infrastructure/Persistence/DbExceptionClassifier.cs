@@ -56,6 +56,28 @@ public class DbExceptionClassifier : IDbExceptionClassifier
     }
 
     /// <summary>
+    /// انتهاك قيد مبلغ (<c>23514</c> على قيد يحتوي <c>Amount</c>/<c>NonNegative</c>)
+    /// أو تجاوز دقة <c>numeric</c> (<c>22003</c>) — يُترجم 400 لا 500.
+    /// </summary>
+    public bool IsAmountConstraintViolation(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres)
+            {
+                if (postgres.SqlState == "22003")
+                    return true;
+                if (postgres.SqlState == "23514"
+                    && postgres.ConstraintName is { } name
+                    && (name.Contains("Amount", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("NonNegative", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
     /// تعارض التزامن المتفائل (RF-010): `EF` ترفع `DbUpdateConcurrencyException` عند
     /// فشل `WHERE` رمز التزامن (`Version`) — تُكتشَف عبر كامل السلسلة. وتشمل أيضًا
     /// انشغال/قفل التخزين المتزامن (`serialization_failure`/`deadlock_detected`

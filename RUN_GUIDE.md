@@ -394,8 +394,8 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
 - أثناء نافذة نشر خاضعة للتحكم (من مجلد `backend\`):
   1. نسخة احتياطية + استعادة مجرَّبة.
   2. `dotnet ef database update --context DocGeneratorPostgresDbContext`.
-  3. تحقق: `__EFMigrationsHistory` = **8 صفوف** (Baseline + سبع هجرات لاحقة حتى
-     `P6-01b`)، و52 جدولًا في `public`، والمشغّلات الأربعة موجودة.
+  3. تحقق: `__EFMigrationsHistory` = **9 صفوف** (Baseline + ثماني هجرات لاحقة حتى
+     `W1_DepositExecutedBackfill`)، و52 جدولًا في `public`، والمشغّلات الأربعة موجودة.
   4. **ثم** شغّل النسخة الجديدة (`Database:AutoMigrate=false` يرفض الإقلاع إن كان
      المخطط ناقصًا).
 - **تحقق آلي من تاريخ الهجرات (`P7-02b`):** بعد تطبيق الهجرات على القاعدة المستهدفة، شغّل:
@@ -614,6 +614,12 @@ dotnet run -c Release --project backend/tools/DocGenerator.Benchmarks -- --self-
   البيانات القائمة). إلزامي قبل نشر نسخة تُشغّل `DataProtection:PersistToDatabase=true`
   (الإنتاج): `dotnet ef database update --context DocGeneratorPostgresDbContext`.
   المرجع: `docs/audit/276-data-protection-keys-20261126.md`.
+- [ ] **2026-11-27 — `W1_DepositExecutedBackfill` (`W1/B1`)** — هجرة **بيانات فقط**:
+  تضبط `WasDepositExecuted = TRUE` لصفوف `deposit` بحالة `منفذ` (كانت العلامة تُضبط في
+  مسار تغيير الحالة وحده، فيسقط المبلغ من إحصاءات المدير بعد الإرجاع). آمنة/متكررة
+  (`WHERE ... = FALSE`)، ولا تُرجع الصفوف التي أُرجعت سابقًا (تحتاج سجل الوقوعات).
+  التطبيق: `dotnet ef database update --context DocGeneratorPostgresDbContext`.
+  المرجع: `docs/audit/331-w1-money-state-concurrency-20261127.md`.
 - [ ] **أي هجرة جديدة بعد Baseline** — تُضاف هنا فور إنشائها، وتُطبَّق قبل نشر النسخة،
   ثم تُشطب بعد `dotnet ef database update --context DocGeneratorPostgresDbContext`.
 

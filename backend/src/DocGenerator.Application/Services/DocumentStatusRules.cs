@@ -439,19 +439,22 @@ internal static class DocumentStatusRules
     {
         if (string.IsNullOrWhiteSpace(raw))
             return null;
-        // يوحّد الأرقام العربية/الفارسية ثم فواصل الأرقام العربية (فاصل عشري ٫ وألوف ٬)
-        // إلى ما يقبله التحليل؛ فلا يكسر ما يكتب بالأرقام ASCII (يمر كما هو).
+        // تطبيع الأرقام العربية/الفارسية، والفاصلة العشرية العربية إلى نقطة.
+        // W1/B3: الفاصلة العادية/فاصلة الآلاف تُرفض بدل تفسيرها آلافًا صامتًا
+        // (`"1,5"` كانت تُقرأ 15 لا 1.5)، والتحقق المالي مركزي (سالب/دقة/تجاوز).
         raw = ArabicDigitNormalizer.Normalize(raw)
-            .Replace('\u066B', '.')   // ٫ الفاصل العشري العربي
-            .Replace('\u066C', ',');  // ٬ فاصل الألوف العربي
-        if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
-            || decimal.TryParse(raw, NumberStyles.Number, CultureInfo.CurrentCulture, out parsed))
-        {
-            if (parsed < 0)
-                throw new ArgumentException("المبلغ المحصل لا يمكن أن يكون سالباً");
-            return parsed;
-        }
-        throw new ArgumentException("المبلغ المحصل غير صالح");
+            .Replace('\u066B', '.')
+            .Trim();
+
+        if (raw.Contains(',') || raw.Any(char.IsWhiteSpace))
+            throw new ArgumentException(
+                "المبلغ المحصل غير صالح — استخدم النقطة كفاصل عشري بلا فواصل آلاف (مثال: 1500.50)");
+
+        if (!decimal.TryParse(raw, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed))
+            throw new ArgumentException("المبلغ المحصل غير صالح");
+
+        DocumentAmountPolicy.EnsureValid(parsed, "المبلغ المحصل");
+        return parsed;
     }
 
     /// <summary>تطبيق المبالغ المحصلة (حتى ثلاثة بعملاتها) من حقول الطلب على المستند وسجل الوقعة.</summary>
