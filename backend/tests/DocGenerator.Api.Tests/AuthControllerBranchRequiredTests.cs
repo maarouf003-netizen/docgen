@@ -44,19 +44,6 @@ public sealed class AuthControllerBranchRequiredTests
         public Task ResetAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private sealed class NoopAuditLogger : IAuditLogger
-    {
-        public Task LogAsync(string? userName, string actionType, int? documentId = null,
-            string? documentType = null, string? details = null, CancellationToken ct = default)
-            => Task.CompletedTask;
-        public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
-            => Task.CompletedTask;
-        public Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
-            string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
-            CancellationToken ct = default)
-            => Task.CompletedTask;
-    }
-
     private sealed class TestEnvironment : IWebHostEnvironment
     {
         public string EnvironmentName { get; set; } = "Development";
@@ -76,8 +63,8 @@ public sealed class AuthControllerBranchRequiredTests
             Options.Create(new RateLimitOptions()),
             new JwtOptions(),
             new TestEnvironment(),
-            new NoopAuditLogger(),
             new BranchRequiredLoginHandler(),
+            null!,
             null!);
         var http = new DefaultHttpContext();
         http.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
@@ -90,5 +77,45 @@ public sealed class AuthControllerBranchRequiredTests
         // يُقرأ النص بعد فكّ التسلسل: المسرِّع الافتراضي يهرّب العربية (`\uXXXX`).
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(bad.Value));
         Assert.Contains("الحساب غير مرتبط بفرع", json.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Login_RateLimitKey_NormalizesInvisibleUsernameCharacters()
+    {
+        // W2/F1: مفتاح الخنق كان `Trim().ToLowerInvariant()` بينما البحث يطبّع محارف
+        // التنسيق (U+200B…) — فإرسال الاسم نفسه بمحرف صفري يتجاوز دلو المستخدم.
+        var limiter = new CapturingRateLimiter();
+        var controller = new AuthController(
+            new StubGetUserHandler(),
+            limiter,
+            Options.Create(new RateLimitOptions()),
+            new JwtOptions(),
+            new TestEnvironment(),
+            null!,
+            null!,
+            null!);
+        var http = new DefaultHttpContext();
+        http.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
+        controller.ControllerContext = new ControllerContext { HttpContext = http };
+
+        await controller.Login(new LoginRequest("admin\u200B\u200F ", "x"), CancellationToken.None);
+
+        Assert.Equal($"{System.Net.IPAddress.Loopback}:admin", limiter.LastKey);
+    }
+
+    private sealed class CapturingRateLimiter : ILoginRateLimiter
+    {
+        public string? LastKey { get; private set; }
+
+        public Task<bool> IsAllowedAsync(string key, CancellationToken ct = default)
+        {
+            LastKey = key;
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> TryRecordFailureAsync(string key, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        public Task ResetAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

@@ -46,6 +46,7 @@ public class UserManagementController : ControllerBase
     private string? ActorName => User.Identity?.Name;
 
     private bool IsHeadOrSubHead => _capabilities.Has(User, UserCapability.IsHeadOrSubHead);
+    private bool IsSubHead => _capabilities.Has(User, UserCapability.IsSubHead);
     private bool CanManageBranchLawyers =>
         _capabilities.Has(User, UserCapability.CanManageBranchLawyers);
     private bool CanManageUsers => _capabilities.Has(User, UserCapability.CanManageUsers);
@@ -56,7 +57,7 @@ public class UserManagementController : ControllerBase
         // إدارة المستخدمين — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`).
         if (!CanManageUsers)
             return Forbid();
-        return Ok(await _listUsers.HandleAsync(new ListUsersQuery(), ct));
+        return Ok(await _listUsers.HandleAsync(new ListUsersQuery(User.GetRoleEnum()), ct));
     }
 
     [HttpPost]
@@ -75,7 +76,7 @@ public class UserManagementController : ControllerBase
     {
         if (!CanManageUsers)
             return Forbid();
-        var user = (await _listUsers.HandleAsync(new ListUsersQuery(), ct)).FirstOrDefault(u => u.Id == id);
+        var user = (await _listUsers.HandleAsync(new ListUsersQuery(User.GetRoleEnum()), ct)).FirstOrDefault(u => u.Id == id);
         return user is null ? NotFound() : Ok(user);
     }
 
@@ -156,13 +157,20 @@ public class UserManagementController : ControllerBase
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        // نطاق رئيس القسم والشعبة محصور بمحامي فرعه؛ المشرف بلا نطاق.
+        // نطاق رئيس القسم محصور بمحامي فرعه، ورئيس الشعبة بمحامي شعبته (W2/B3)؛
+        // المشرف بلا نطاق.
         var scopeBranchId = IsHeadOrSubHead ? User.GetBranchId() : (int?)null;
         if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
+        var scopeSectionId = IsSubHead ? User.GetSectionId() : (int?)null;
+        if (IsSubHead && scopeSectionId is null)
+            return Forbid();
 
         var lawyer = await _updateLawyer.HandleAsync(
-            new UpdateLawyerCommand(id, request, scopeBranchId, ActorName), ct);
+            new UpdateLawyerCommand(
+                id, request, scopeBranchId, ActorName,
+                ScopeSectionId: scopeSectionId,
+                ActorUserId: User.GetUserId()), ct);
         return lawyer is null ? NotFound() : Ok(lawyer);
     }
 
@@ -172,13 +180,20 @@ public class UserManagementController : ControllerBase
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        // نطاق رئيس القسم والشعبة محصور بمحامي فرعه؛ المشرف بلا نطاق.
+        // نطاق رئيس القسم محصور بمحامي فرعه، ورئيس الشعبة بمحامي شعبته (W2/B3)؛
+        // المشرف بلا نطاق.
         var scopeBranchId = IsHeadOrSubHead ? User.GetBranchId() : (int?)null;
         if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
+        var scopeSectionId = IsSubHead ? User.GetSectionId() : (int?)null;
+        if (IsSubHead && scopeSectionId is null)
+            return Forbid();
 
         var ok = await _setLawyerActive.HandleAsync(
-            new SetLawyerActiveCommand(id, request.IsActive, scopeBranchId, ActorName), ct);
+            new SetLawyerActiveCommand(
+                id, request.IsActive, scopeBranchId, ActorName,
+                ScopeSectionId: scopeSectionId,
+                ActorUserId: User.GetUserId()), ct);
         if (!ok)
             return NotFound();
         return Ok(new { message = "تم تحديث حالة المحامي" });

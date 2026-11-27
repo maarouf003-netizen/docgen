@@ -67,12 +67,13 @@ internal sealed class ExportDocumentsQueryHandler
             row.DisplayFileNumber = latest?.BaseNumber ?? row.FileNumber;
             row.DisplayFileYear = latest?.Year.ToString(CultureInfo.InvariantCulture) ?? row.FileYear;
         }
-        // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة
-        // (بالفلاتر والعدد الفعلي؛ الفلاتر الفارغة تُحذَف من النص).
-        var filters = string.Join("،", new[] { query.Query, query.Status, query.Applicant, query.Court, query.Lawyer, query.Branch, query.AdministrativeBranch, query.ExecutedEntity, query.PublicEntityBranch }
-            .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
+        // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة.
+        // W2/F7: لا تُسجَّل **قيم** الفلاتر (نص البحث الحر قد يكون اسم شخص/رقمًا وطنيًا)،
+        // بل عددها فقط — التدقيق يثبت أن تصديرًا وقع وبأي حجم، لا محتوى ما بحث عنه.
+        var activeFilters = new[] { query.Query, query.Status, query.Applicant, query.Court, query.Lawyer, query.Branch, query.AdministrativeBranch, query.ExecutedEntity, query.PublicEntityBranch }
+            .Count(s => !string.IsNullOrWhiteSpace(s));
         await _audit.LogAsync(query.ActorName, "export_documents",
-            details: $"صدّر {rows.Count} صفًا" + (filters.Length == 0 ? " (بلا فلاتر)" : $" بفلاتر: {filters}"), ct: ct);
+            details: $"صدّر {rows.Count} صفًا" + (activeFilters == 0 ? " (بلا فلاتر)" : $" بفلاتر مفعّلة: {activeFilters}"), ct: ct);
         return rows;
     }
 }

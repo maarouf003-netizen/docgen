@@ -77,6 +77,19 @@ describe('BranchLawyers', () => {
     });
   });
 
+  it('يطلب وضع "mine" لرئيس الشعبة (نطاق الكتابة شعبته فقط — W2/B3)', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'subhead' } });
+    render(<BranchLawyers />);
+
+    await screen.findByText('محامي دمشق');
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        '/users/lawyers',
+        expect.objectContaining({ params: expect.objectContaining({ mode: 'mine' }) }),
+      );
+    });
+  });
+
   it('يعرض منتقي الفرع للمشرف ويطلب الفرع عند الإضافة', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'admin' } });
     (api.get as unknown as ReturnType<typeof vi.fn>)

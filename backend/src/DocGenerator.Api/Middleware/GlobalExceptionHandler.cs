@@ -118,15 +118,17 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 LogSanitizer.SanitizeForLog(exception.ToString(), ExceptionLogLimit));
         else if (isUniqueViolation)
             // سباق على قيد فريد متوقع تشغيليًا (المستخدم/الطلب الصحيح أعاد المحاولة) —
-            // Warning مع التفاصيل الكاملة في السجل، لا Error.
+            // Warning مع **اسم القيد فقط**. W2/F8: `exception.ToString()` يحمل
+            // `DETAIL: Key (Username, BranchId)=(الاسم الثلاثي, …)` — أي بيانات شخصية
+            // في السجل، و`docs/PII.md` كان يزعم خلاف ذلك.
             _logger.LogWarning(
-                "تعارض قيد فريد ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}] | {Exception}",
+                "تعارض قيد فريد ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}] | Constraint={Constraint}",
                 exception.GetType().Name,
                 httpContext.Request.Method,
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
                 userId,
-                LogSanitizer.SanitizeForLog(exception.ToString(), ExceptionLogLimit));
+                _dbErrors.GetUniqueViolationConstraint(exception) ?? "(unknown)");
         else if (statusCode is >= StatusCodes.Status400BadRequest and <= 499)
             // بقية الردود 4xx متوقعة (تحقّق مدخلات/غياب مرجع/تعارض عمل) لا أعطال خادم —
             // Information لا Error كي لا تلوّث لوحات المراقبة. 499 و403 وتعارض القيد

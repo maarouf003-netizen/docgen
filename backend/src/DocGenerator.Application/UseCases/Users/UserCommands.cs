@@ -194,8 +194,10 @@ internal sealed class UpdateUserCommandHandler
             user.PortalEntryId = null;
         }
 
-        // منع المشرف من قفل حسابه أو خفض دوره بنفسه (تفادي فقدان الوصول).
-        if (command.UserId == command.ActorUserId && (!request.IsActive || role != UserRole.Admin))
+        // منع المشرف من قفل حسابه أو خفض دوره بنفسه (تفادي فقدان الوصول). القيد على
+        // **تغيير الدور** لا على أي تعديل ذاتي: تعديل الاسم/كلمة المرور مسموح لكل دور
+        // (كان الشرط `role != Admin` يمنع المدير من تعديل اسمه أصلًا — W2/F5).
+        if (command.UserId == command.ActorUserId && (!request.IsActive || role != user.Role))
             throw new ArgumentException("لا يمكنك إيقاف حسابك أو تغيير دورك أنت بنفسك");
 
         var usernameChanged = false;

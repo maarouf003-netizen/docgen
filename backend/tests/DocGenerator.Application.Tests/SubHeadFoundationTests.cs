@@ -31,6 +31,7 @@ public class SubHeadFoundationTests : PostgresDbTest
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
+            new Repository<ExecutionCircuit>(_db),
             new DocumentRepository(_db),
             new HeadAlertSuccessionService(
                 new HeadAlertRepository(_db),

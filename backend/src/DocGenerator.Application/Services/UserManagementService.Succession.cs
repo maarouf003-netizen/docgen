@@ -175,17 +175,28 @@ public sealed partial class UserManagementService
 
     /// <summary>
     /// حد المشرف (`BQ-001د`): المدير يدير كل الأدوار عدا المشرف — إنشاء حساب
-    /// مشرف أو المساس بحساب مشرف (تعديل/إيقاف) مرفوض `403`. الفاعل الغائب
-    /// (مسارات قديمة/اختبارات بلا فاعل) يتجاوز الفحص مؤقتًا — كل نقاط الإنتاج
-    /// تمرر الفاعل.
+    /// مشرف أو المساس بحساب مشرف (تعديل/إيقاف) مرفوض `403`.
+    /// <para>
+    /// W2/F16 (فشل مغلق): العمليات التي **تخص حساب مشرف** (إنشاءً أو استهدافًا) لا
+    /// تُقبل بفاعل غائب أو غير موجود — كان `actorUserId is null` يتجاوز الفحص كليًا
+    /// (منحًا ضمنيًا). بقية العمليات (غير المشرف) لا تحتاج قراءة الفاعل أصلًا، فلا
+    /// استعلام إضافي لكل كتابة.
+    /// </para>
     /// </summary>
     private async Task GuardManagerAdminBoundaryAsync(
         int? actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct)
     {
-        if (actorUserId is null)
+        if (!requestedIsAdmin && !targetIsAdmin)
             return;
+
+        if (actorUserId is null)
+            throw new UnauthorizedAccessException("حسابات المشرف يديرها مشرف فقط");
+
         var actor = await _users.GetByIdAsync(actorUserId.Value, ct);
-        if (actor?.Role == UserRole.Manager && (requestedIsAdmin || targetIsAdmin))
+        if (actor is null)
+            throw new UnauthorizedAccessException("حسابات المشرف يديرها مشرف فقط");
+
+        if (actor.Role != UserRole.Admin)
             throw new UnauthorizedAccessException("حسابات المشرف يديرها مشرف فقط");
     }
 }

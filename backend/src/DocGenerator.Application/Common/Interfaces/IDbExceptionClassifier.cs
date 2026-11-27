@@ -10,6 +10,13 @@ public interface IDbExceptionClassifier
     /// <summary>هل هذا الاستثناء (أو سببه الداخلي) تعارض قيد فريد؟</summary>
     bool IsUniqueViolation(Exception ex);
 
+    /// <summary>
+    /// اسم قيد التفرد المخالَف إن توفّر (بلا أي قيم صفوف). يُستخدم للسجل بدل
+    /// <c>exception.ToString()</c> الذي يحمل <c>DETAIL: Key (Username, BranchId)=(...)</c>
+    /// أي بيانات شخصية (W2/F8).
+    /// </summary>
+    string? GetUniqueViolationConstraint(Exception ex);
+
     /// <summary>هل هذا الاستثناء (أو سببه الداخلي) تعارض تزامن متفائل؟</summary>
     bool IsConcurrencyViolation(Exception ex);
 

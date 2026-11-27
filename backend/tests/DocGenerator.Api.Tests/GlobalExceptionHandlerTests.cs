@@ -56,6 +56,7 @@ public sealed class GlobalExceptionHandlerTests
     private sealed class StubDbErrors(bool unique = false, bool missingCircuit = false, bool amount = false) : IDbExceptionClassifier
     {
         public bool IsUniqueViolation(Exception ex) => unique;
+        public string? GetUniqueViolationConstraint(Exception ex) => unique ? "IX_Test_Unique" : null;
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
         public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;
@@ -251,6 +252,48 @@ public sealed class GlobalExceptionHandlerTests
         Assert.Equal("تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا", message);
         Assert.DoesNotContain("unique constraint", message);
         Assert.DoesNotContain("IX_PublicEntities", message);
+    }
+
+    [Fact]
+    public async Task UniqueViolation_LogsConstraintNameOnly_NotRowValues()
+    {
+        // W2/F8: كان يُسجَّل `exception.ToString()` كاملًا، وفيه
+        // `DETAIL: Key (Username, BranchId)=(الاسم الثلاثي, 3)` — بيانات شخصية في السجل.
+        var logger = new CapturingLogger();
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new DbUpdateException(
+            "فشل حفظ التغييرات",
+            new InvalidOperationException(
+                "23505: duplicate key value violates unique constraint \"IX_Users_Username_BranchId\" "
+                + "DETAIL: Key (Username, BranchId)=(محمد أحمد علي, 3)"));
+
+        await Handler(new StubDbErrors(unique: true), logger).TryHandleAsync(
+            context, ex, CancellationToken.None);
+
+        var warning = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains("IX_Test_Unique", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("محمد أحمد علي", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("DETAIL", warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServerError_LogsSanitizedExceptionText()
+    {
+        // W2/F9: إزالة `LogSanitizer` من فرع `Error` كانت تمرّ بلا أي اختبار فاشل.
+        var logger = new CapturingLogger();
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler(logger: logger).TryHandleAsync(
+            context,
+            new InvalidOperationException("فشل اتصال user@example.com | Authorization: Bearer abc.def"),
+            CancellationToken.None);
+
+        var error = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.DoesNotContain("user@example.com", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("abc.def", error.Message, StringComparison.Ordinal);
+        Assert.Contains("[بريد محجوب]", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

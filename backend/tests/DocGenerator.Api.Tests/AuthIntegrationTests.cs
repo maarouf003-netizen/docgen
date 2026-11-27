@@ -125,6 +125,24 @@ public class AuthIntegrationTests : IClassFixture<PostgresApiFactory>, IAsyncLif
     }
 
     [PostgresFact]
+    public async Task Logout_RevokesIssuedToken_ServerSide()
+    {
+        // W2/F3: حذف الكوكي وحده كان يترك الرمز صالحًا حتى انتهاء عمره (4 ساعات).
+        var login = await _factory.LoginAsync("lawyer1", "123456");
+        var token = login!.Token!;
+
+        var before = await _factory.ClientWithToken(token).GetAsync("/api/auth/me");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+
+        var logout = await login.Client.PostAsync("/api/auth/logout", null);
+        Assert.Equal(HttpStatusCode.OK, logout.StatusCode);
+
+        // نفس الرمز (كأنه سُرق قبل الخروج) يجب أن يُرفض بعد رفع نسخة التوكن.
+        var stale = await _factory.ClientWithToken(token).GetAsync("/api/auth/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, stale.StatusCode);
+    }
+
+    [PostgresFact]
     public async Task MutatingRequest_WithoutCsrfHeader_ReturnsForbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

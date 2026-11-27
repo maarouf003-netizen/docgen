@@ -289,6 +289,8 @@ public class ExceptionHandlerIntegrationTests
     private sealed class FakeDbErrors(bool uniqueViolation = false, bool missingCircuit = false) : IDbExceptionClassifier
     {
         public bool IsUniqueViolation(Exception ex) => uniqueViolation;
+        public string? GetUniqueViolationConstraint(Exception ex) =>
+            uniqueViolation ? "IX_Test_Unique" : null;
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
         public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;

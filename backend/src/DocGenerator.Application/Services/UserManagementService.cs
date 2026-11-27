@@ -22,6 +22,7 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
     private readonly IRepository<HeadSuccession> _successions;
     private readonly IRepository<Correspondence> _correspondences;
     private readonly IRepository<CorrespondenceMessage> _messages;
+    private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IDocumentRepository _documents;
     private readonly IHeadAlertSuccessionService _alertSuccession;
     private readonly IUnitOfWork _uow;
@@ -33,6 +34,7 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
         IRepository<HeadSuccession> successions,
         IRepository<Correspondence> correspondences,
         IRepository<CorrespondenceMessage> messages,
+        IRepository<ExecutionCircuit> circuits,
         IDocumentRepository documents,
         IHeadAlertSuccessionService alertSuccession,
         IUnitOfWork uow)
@@ -43,6 +45,7 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
         _successions = successions;
         _correspondences = correspondences;
         _messages = messages;
+        _circuits = circuits;
         _documents = documents;
         _alertSuccession = alertSuccession;
         _uow = uow;
@@ -64,6 +67,10 @@ public sealed partial class UserManagementService : IUserManagementLawyerWriteRu
 
     LawyerListItemDto IUserManagementLawyerWriteRules.ToLawyerDto(User user)
         => UserProjection.ToLawyerDto(user);
+
+    Task<bool> IUserManagementLawyerWriteRules.IsLawyerInSectionScopeAsync(
+        User lawyer, int actorUserId, int? actorBranchId, int? actorSectionId, CancellationToken ct)
+        => IsLawyerInSectionScopeAsync(lawyer, actorUserId, actorBranchId, actorSectionId, ct);
 
     // ── تنفيذ عقد مساعدات كتابة المستخدمين المشتركة (P4-01bh) ─────────────
 
