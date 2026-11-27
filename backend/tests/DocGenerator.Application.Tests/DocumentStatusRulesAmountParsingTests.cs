@@ -14,6 +14,7 @@ public sealed class DocumentStatusRulesAmountParsingTests
     [InlineData("1500.50", 1500.50)]
     [InlineData("0", 0)]
     [InlineData("١٥٠٠٫٥", 1500.5)]
+    [InlineData("١٬٠٠٠", 1000)]
     public void ParseCollectedAmount_AcceptsDeterministicFormats(string raw, double expected)
     {
         var parsed = DocumentStatusRules.ParseCollectedAmount(raw);

@@ -33,14 +33,14 @@
 |---|---|
 | العيب | `PUT` بلا `generalEntitySide` كان يُطبَّع إلى `applicant`، فيتخطى تحقق «منفذ عليه» ويُطبّق حقولًا/يمسح مبالغ بصمت. |
 | الإصلاح | `UpdateDocumentCommand`: صفة صريحة مختلفة = `400`؛ غياب الصفة في ملف تنفيذي = `400`؛ ثم تُفرض الصفة المخزّنة قبل `ValidateExecutedRequest`. |
-| الاختبارات | `UpdateExecutedDocument_WithoutSide_RejectedAndAmountsPreserved` و`...WithDifferentSide_Rejected` (تكامل). |
+| الاختبارات | `UpdateExecutedDocument_WithoutSide_RejectedAndAmountsPreserved` و`...WithDifferentSide_Rejected` (تكامل). وحُدِّث الاختبار القديم `Update_ExecutedSide_DoesNotChangeStoredSide` إلى `..._WithDifferentSide_Rejected` لأن تجاهل الصفة صامتًا كان الخطر نفسه. |
 
 ### B3 — لا تحقق مالي مركزي (فُتح)
 
 | العنصر | التفصيل |
 |---|---|
 | العيوب | لا رفض لسالب/تجاوز/أكثر من منزلتين قبل القاعدة (فتُترجم `23514`/`22003` إلى 500)، و`"1,5"` تُقرأ **15**، وتقريب `1.999` يخالف التفقيط. |
-| الإصلاح | `DocumentAmountPolicy` (لا سالب، ≤ `numeric(20,2)`، منزلتان فقط) في 12 حقلًا بمسار الإنشاء/التعديل، وفي محلل المبلغ المحصل، وفي بدل بيع الإنابة، **وفي مسار `executed-status` للمبالغ المدفوعة**. `ParseCollectedAmount` يقبل النقطة فقط ويرفض الفاصلة/الفراغ. `IsAmountConstraintViolation` مضيَّق على قيود `CK_Documents_*Amount*` + `22003` → 400 (لا يلتقط `VersionNonNegative`). |
+| الإصلاح | `DocumentAmountPolicy` (لا سالب، ≤ `numeric(20,2)`، منزلتان فقط) في 12 حقلًا بمسار الإنشاء/التعديل، وفي محلل المبلغ المحصل، وفي بدل بيع الإنابة، **وفي مسار `executed-status` للمبالغ المدفوعة**. `ParseCollectedAmount` يقبل النقطة فقط (ويقبل فاصلة الآلاف **العربية** `٬` بحذفها) ويرفض الفاصلة ASCII/الفراغ. `IsAmountConstraintViolation` مضيَّق على قيود `CK_Documents_*Amount*` + `22003` → 400 (لا يلتقط `VersionNonNegative`). |
 | الاختبارات | `DocumentAmountAndDepositFlagsTests` + `DocumentStatusRulesAmountParsingTests` (18 حالة، طفرة المحلل تُفشلها). |
 
 ### B4 — إتمام/تحرير حجز idempotency برمز إلغاء الطلب (فُتح)
@@ -65,7 +65,7 @@
 |---|---|
 | العيب | فحص الإنابات في الشطب قبل المعاملة، وإنشاء/اعتماد/تسجيل الإنابة لا يقفل صف المصدر ⇒ يمكن الالتزام بشطب + إنابة سارية معًا. |
 | الإصلاح | قفل صف المصدر (`GetByIdForUpdateAsync`) داخل معاملة الشطب/الإحالة مع **إعادة فحص** الإنابات تحت القفل؛ وقفل صف المصدر في إنشاء/تعديل الإنابة واعتمادها وتسجيلها **ثم قراءة طازجة بلا تتبع وإعادة `ValidateSourceForDelegation`** (الكيان المتتبَّع قد يكون قديمًا)؛ وقفل المصدر والهدف بترتيب معرّف تصاعدي في إتمام الإنابة. |
-| الاختبارات | `ConcurrentStrikeAndCreateDelegation_NeverLeaveStruckWithActiveDelegation` (سباق `Postgres`، 3 جولات، يشترط نجاح عملية واحدة على الأقل وغياب struck+active؛ يعمل في `CI`). لا يوجد حاجز يفرض ترتيب الشطب أولًا — التحقق الحاسم إعادة الفحص بعد القفل بمراجعة الكود واختبار التكامل التسلسلي القائم. |
+| الاختبارات | `ConcurrentStrikeAndCreateDelegation...` (سباق `Postgres`، 3 جولات، نجاح عملية واحدة على الأقل) + `CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected` (**حتمي**: قفل يدوي، بدء الإنابة، تغيير الحالة، تحرير القفل ⇒ رفض) + فحص هدف مشطوب في `Register`. |
 
 ## 3. ما لم يُصلح (معلن ومصنّف، لا يُخفى)
 

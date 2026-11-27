@@ -177,6 +177,8 @@ public sealed class RegisterDocumentDelegationCommandHandler
                     delegation.SourceDocumentId, token)
                     ?? throw new ArgumentException("الملف المنيب غير موجود");
                 DocumentDelegationService.ValidateSourceForDelegation(freshSource);
+                if (DelegationActivityPolicy.IsTargetTerminal(target) || target.IsDeleted)
+                    throw new ArgumentException("لا يمكن تسجيل إنابة على ملف مشطوب أو منتهٍ");
                 target.FileNumber = fileNumber;
                 target.FileYear = fileYear;
                 target.IsDraft = false;

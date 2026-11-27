@@ -444,6 +444,7 @@ internal static class DocumentStatusRules
         // (`"1,5"` كانت تُقرأ 15 لا 1.5)، والتحقق المالي مركزي (سالب/دقة/تجاوز).
         raw = ArabicDigitNormalizer.Normalize(raw)
             .Replace('\u066B', '.')
+            .Replace("\u066C", string.Empty)
             .Trim();
 
         if (raw.Contains(',') || raw.Any(char.IsWhiteSpace))

@@ -101,6 +101,12 @@ public sealed class CreateDocumentDelegationCommandHandler
             // (identity resolution) ولا ترى ما التزمته معاملة منافسة بعد القراءة الأولى.
             var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
                 ?? throw new ArgumentException("الملف المنيب غير موجود");
+            // W1/B6: إعادة التحقق (الحالة + الملكية) بعد القفل — القراءة الأولى قد تكون قديمة.
+            DocumentDelegationService.ValidateSourceForDelegation(fresh);
+            if (fresh.CreatedById != command.UserId)
+                throw new UnauthorizedAccessException("لا يمكنك تسطير إنابة على ملف لا تملكه");
+            if (fresh.NeedsRegistration)
+                throw new ArgumentException("لا يمكن تسطير إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
             await DocumentDelegationRules.PruneStaleReservationsAsync(fresh, _reservations, token);
             await DocumentDelegationService.ValidateAssetsNotBlockedAsync(
                 fresh, request.AssetIds, excludeDelegationId: null, token);
@@ -268,6 +274,8 @@ public sealed class UpdateDocumentDelegationCommandHandler
             var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
                 ?? throw new ArgumentException("الملف المنيب غير موجود");
             DocumentDelegationService.ValidateSourceForDelegation(fresh);
+            if (fresh.CreatedById != command.UserId)
+                throw new UnauthorizedAccessException("لا يمكنك تعديل إنابة على ملف لا تملكه");
             if (fresh.NeedsRegistration)
                 throw new ArgumentException("لا يمكن تعديل إنابة على ملف بانتظار إعادة القيد");
             await DocumentDelegationRules.PruneStaleReservationsAsync(fresh, _reservations, token);

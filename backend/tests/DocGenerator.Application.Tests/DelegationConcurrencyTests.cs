@@ -167,6 +167,35 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         }
     }
 
+    [PostgresFact]
+    public async Task CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected()
+    {
+        // حتمي: نحجز قفل المصدر يدويًا، نبدأ الإنابة (تتجاوز الفحص الأولي ثم تنتظر القفل)،
+        // ثم نغيّر حالة المصدر إلى مشطوب ونحرر القفل — يجب أن ترفض الإنابة بعد القفل.
+        var (sourceId, assetIds, lawyerId) = await SeedAsync();
+
+        await using var blocker = _pg.CreateContext();
+        var repository = new DocumentRepository(blocker);
+        await using var tx = await blocker.Database.BeginTransactionAsync();
+        await repository.GetByIdForUpdateAsync(sourceId);
+
+        await using var createDb = _pg.CreateContext();
+        var create = DelegationWriteHandlerFactory.Create(createDb);
+        var createTask = Task.Run(() => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
+
+        await Task.Delay(300);
+        await blocker.Documents
+            .Where(d => d.Id == sourceId)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.ExecStatus, ExecutionStatusCatalog.StateStruckOff));
+        await tx.CommitAsync();
+
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => createTask);
+        Assert.IsType<ArgumentException>(error);
+
+        await using var check = _pg.CreateContext();
+        Assert.False(await check.DocumentDelegations.AnyAsync(d => d.SourceDocumentId == sourceId));
+    }
+
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);
 
     [PostgresFact]
