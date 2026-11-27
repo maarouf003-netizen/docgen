@@ -2260,6 +2260,29 @@ public class DocumentsIntegrationTests : IAsyncLifetime
         Assert.True(stats.RootElement.GetProperty("depositExecutedAmount").GetDecimal() >= 1250m);
     }
 
+    [PostgresFact]
+    public async Task ExecutedStatus_FractionalPaidAmount_RejectedNotRounded()
+    {
+        // W1/B3: أكثر من منزلتين عشريتين في مسار الحالة يُرفض (كان يُقرَّب صامتًا).
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateDepositDocumentAsync(token);
+
+        var fractional = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedPaidAmount = 10.555m,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, fractional.StatusCode);
+
+        var valid = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedPaidAmount = 10.55m,
+        });
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+    }
+
     private async Task<int> FirstEstateIdAsync(string token, int documentId)
     {
         var client = _factory.ClientWithToken(token);

@@ -32,7 +32,7 @@
 | العنصر | التفصيل |
 |---|---|
 | العيب | `PUT` بلا `generalEntitySide` كان يُطبَّع إلى `applicant`، فيتخطى تحقق «منفذ عليه» ويُطبّق حقولًا/يمسح مبالغ بصمت. |
-| الإصلاح | `UpdateDocumentCommand`: صفة صريحة مختلفة = `400`؛ غياب الصفة في ملف تنفيذي = `400`؛ ثم تُفرض الصفة المخزّنة قبل `ValidateExecutedRequest`. |
+| الإصلاح | `GeneralEntitySide` في `DocumentUpsertRequest` صار افتراضيًا `null` (كان `applicant` فيُخفي الغياب)، فيُكشف الحقل الغائب فعليًا؛ `UpdateDocumentCommand`: صفة صريحة مختلفة = `400`، وغياب الصفة في ملف تنفيذي = `400`، ثم تُفرض الصفة المخزّنة قبل `ValidateExecutedRequest`. الإنشاء يطبّع `null` إلى `applicant` كما كان. |
 | الاختبارات | `UpdateExecutedDocument_WithoutSide_RejectedAndAmountsPreserved` و`...WithDifferentSide_Rejected` (تكامل). وحُدِّث الاختبار القديم `Update_ExecutedSide_DoesNotChangeStoredSide` إلى `..._WithDifferentSide_Rejected` لأن تجاهل الصفة صامتًا كان الخطر نفسه. |
 
 ### B3 — لا تحقق مالي مركزي (فُتح)
@@ -65,7 +65,7 @@
 |---|---|
 | العيب | فحص الإنابات في الشطب قبل المعاملة، وإنشاء/اعتماد/تسجيل الإنابة لا يقفل صف المصدر ⇒ يمكن الالتزام بشطب + إنابة سارية معًا. |
 | الإصلاح | قفل صف المصدر (`GetByIdForUpdateAsync`) داخل معاملة الشطب/الإحالة مع **إعادة فحص** الإنابات تحت القفل؛ وقفل صف المصدر في إنشاء/تعديل الإنابة واعتمادها وتسجيلها **ثم قراءة طازجة بلا تتبع وإعادة `ValidateSourceForDelegation`** (الكيان المتتبَّع قد يكون قديمًا)؛ وقفل المصدر والهدف بترتيب معرّف تصاعدي في إتمام الإنابة. |
-| الاختبارات | `ConcurrentStrikeAndCreateDelegation...` (سباق `Postgres`، 3 جولات، نجاح عملية واحدة على الأقل) + `CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected` (**حتمي**: قفل يدوي، بدء الإنابة، تغيير الحالة، تحرير القفل ⇒ رفض) + فحص هدف مشطوب في `Register`. |
+| الاختبارات | `ConcurrentStrikeAndCreateDelegation...` (سباق `Postgres`، 3 جولات، نجاح عملية واحدة على الأقل) + `CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected` (**حتمي**: قفل يدوي، بدء الإنابة، **انتظار ظهور قفل غير ممنوح في `pg_locks`** بدل تأخير زمني، تغيير الحالة، تحرير القفل ⇒ رفض) + فحص هدف مشطوب في `Register` + إعادة فحص الملكية في Create/Update. |
 
 ## 3. ما لم يُصلح (معلن ومصنّف، لا يُخفى)
 

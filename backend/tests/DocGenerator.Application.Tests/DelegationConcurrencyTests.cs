@@ -183,7 +183,9 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         var create = DelegationWriteHandlerFactory.Create(createDb);
         var createTask = Task.Run(() => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
 
-        await Task.Delay(300);
+        // لا تأخير اعتباطي: ننتظر حتى يظهر قفل غير ممنوح (الإنابة وصلت إلى FOR UPDATE).
+        await WaitForBlockedDocumentLockAsync();
+
         await blocker.Documents
             .Where(d => d.Id == sourceId)
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.ExecStatus, ExecutionStatusCatalog.StateStruckOff));
@@ -194,6 +196,22 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
         await using var check = _pg.CreateContext();
         Assert.False(await check.DocumentDelegations.AnyAsync(d => d.SourceDocumentId == sourceId));
+    }
+
+    private async Task WaitForBlockedDocumentLockAsync()
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            await using var db = _pg.CreateContext();
+            var waiting = await db.Database
+                .SqlQueryRaw<long>("""SELECT COUNT(*)::bigint AS "Value" FROM pg_locks WHERE NOT granted""")
+                .SingleAsync();
+            if (waiting > 0)
+                return;
+            await Task.Delay(50);
+        }
+
+        Assert.Fail("لم يصل طلب الإنابة إلى انتظار قفل الصف خلال المهلة");
     }
 
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);
