@@ -1,13 +1,14 @@
 # فهرس الوثائق
 
 > نقطة الدخول الوحيدة للوثائق. كل ما تحتاجه لتفهم المشروع أو تنشر أو تحقّق تجده من هنا.
-> آخر تحديث: 2026-11-27 (`P6-02a–l` — تفكيك `DocumentForm` 1526→449، `DocumentView`
+> آخر تحديث: 2026-11-27 (`P6-02a–m` — تفكيك `DocumentForm` 1526→449، `DocumentView`
 > 947→380، `ApplicantSideSections` 952→157، `ExecutedSideSections` 681→174،
 > `DocumentsList` 1060→474، `documentFormConstants` 618→431، `StatusChangeModal`
 > 605→320، `UsersManagement` 602→519، `InterventionModal` 650→333،
 > `EntityRegistryReviewManagement` 642→46، `DayRemindersModal` 725→296،
-> `BranchManagementModal` 834→122، +66 اختبار وحدة/مكوّن وحارس حجم
-> `module-size-guard`؛ و`P6-04` — Playwright E2E + `axe` + فحص 375px في `CI`).
+> `BranchManagementModal` 834→122، `BranchesManagement` 870→113، +66 اختبار
+> وحدة/مكوّن وحارس حجم `module-size-guard` بلا استثناءات؛ و`P6-04` — Playwright E2E +
+> `axe` + فحص 375px في `CI`).
 
 ## 1. ابدأ من هنا
 
@@ -75,6 +76,8 @@
   النموذج الشخصي/منطق التصفية + 6 اختبارات)، `310` (نقدية)، `311` (عدائية).
 - **`P6-02l` (2026-11-27):** `312` (تفكيك `BranchManagementModal` 834→122: خطّاف
   القيادة/لوحات الأفعال/بطاقة الأم)، `313` (نقدية)، `314` (عدائية).
+- **`P6-02m` (2026-11-27):** `315` (تفكيك `BranchesManagement` 870→113 وإغلاق `DoD`
+  حجم الوحدات)، `316` (نقدية)، `317` (عدائية).
 
 ## 4. الخطط
 
