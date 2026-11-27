@@ -67,8 +67,15 @@ beforeEach(() => {
 describe('EntityRegistryReviewManagement', () => {
   it('يعرض التبويبات الأربعة مع بدء التعديل افتراضيًا', async () => {
     renderPage();
-    expect(screen.getByRole('tab', { name: 'تعديل جهة عامة' })).toHaveAttribute('aria-selected', 'true');
+    const editTab = screen.getByRole('tab', { name: 'تعديل جهة عامة' });
+    expect(editTab).toHaveAttribute('aria-selected', 'true');
+    expect(editTab).toHaveAttribute('aria-controls', 'review-tabpanel-edit');
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveAttribute('id', 'review-tabpanel-edit');
+    expect(panel).toHaveAttribute('aria-labelledby', 'review-tab-edit');
     expect(screen.getByRole('tab', { name: 'إضافة جهة' })).toBeInTheDocument();
+    // التبويب غير النشط لا يشير إلى لوحة غير مركّبة (`aria-valid-attr-value`).
+    expect(screen.getByRole('tab', { name: 'إضافة جهة' })).not.toHaveAttribute('aria-controls');
     expect(screen.getByRole('tab', { name: 'توحيد تسميات' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'سجل تغييرات الجهة' })).toBeInTheDocument();
   });

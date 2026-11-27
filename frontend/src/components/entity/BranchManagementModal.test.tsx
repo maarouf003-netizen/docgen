@@ -61,7 +61,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** استجابة معاينة موحّدة ناجحة (بدون أخطاء) حسب نوع العملية. */function previewResponse(action: string, newBranchName?: string) {
+/** استجابة معاينة موحّدة ناجحة (بدون أخطاء) حسب نوع العملية. */
+function previewResponse(action: string, newBranchName?: string) {
   return {
     action,
     summary: 'ملخص المعاينة — ستُحدّث الملفات المرتبطة فورًا',
@@ -328,6 +329,8 @@ describe('BranchManagementModal', () => {
     renderModal();
 
     expect(await screen.findByText(/تعذّر تحميل اقتراح تعديل الجهة الأم/)).toBeInTheDocument();
+    // لا نعرف هل هناك اقتراح معلّق ⇒ يُعطَّل الزر لمنع اقتراح مكرر.
+    expect(screen.getByRole('button', { name: 'اقتراح تعديل الجهة الأم' })).toBeDisabled();
   });
 
   it('معاينة قديمة لا تؤهّل التنفيذ بعد تغيير المدخلات', async () => {

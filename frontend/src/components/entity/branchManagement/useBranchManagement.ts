@@ -139,7 +139,8 @@ export function useBranchManagement({
       );
       if (seq !== previewSeq.current) return;
       setPreview(res.data ?? null);
-      setPreviewFor(kind);    } catch (err) {
+      setPreviewFor(kind);
+    } catch (err) {
       if (seq !== previewSeq.current) return;
       setPreview(null);
       setPreviewFor(null);

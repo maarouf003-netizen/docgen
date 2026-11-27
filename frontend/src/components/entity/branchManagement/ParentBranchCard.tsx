@@ -53,7 +53,9 @@ export function ParentBranchCard({ m }: { m: BranchManagementModel }) {
           ) : (
             <button
               onClick={() => m.openPropose(parent)}
-              className="bg-violet-700 hover:bg-violet-600 text-white rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-violet-500"
+              disabled={!!m.suggestionError}
+              title={m.suggestionError ? 'تعذّر التحقق من الاقتراح المعلّق — أعد فتح النافذة' : undefined}
+              className="bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-violet-500"
             >
               اقتراح تعديل الجهة الأم
             </button>
