@@ -151,9 +151,12 @@ export default function DelegationRequests() {
       {loading ? (
         <p className="text-gray-500">جارِ التحميل...</p>
       ) : delegations.length === 0 ? (
-        <div className="bg-white rounded-xl shadow p-10 text-center">
-          <p className="text-gray-400">لا توجد طلبات إنابة معلّقة لفرعك</p>
-        </div>
+        // مسار الخطأ أولًا: فشل الجلب لا يُعلن «لا توجد طلبات» كاذبة (فخّ مواعيد قانونية).
+        loadError ? null : (
+          <div className="bg-white rounded-xl shadow p-10 text-center">
+            <p className="text-gray-400">لا توجد طلبات إنابة معلّقة لفرعك</p>
+          </div>
+        )
       ) : (
         <ul className="space-y-4">
           {delegations.map((d) => (

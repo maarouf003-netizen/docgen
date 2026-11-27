@@ -1694,6 +1694,12 @@
     لا تغيير `API`/هجرة (`has-pending-model-changes` = «No changes»).
   - حارس ratchet `frontend/scripts/module-size-guard.mjs` (12/12 self-test، **0** ملف
     مجمّد — `FROZEN_MAX_LINES` فارغة) في وظيفة `guards` بـ`CI`.
+  - **مراجعة `W4` المستقلة (2026-11-28):** أُعيد فحص `P6-02i`–`P6-02m` بمقارنة آلية
+    قديم↔جديد (مسارات/رسائل/تسميات/حمولات) = **صفر انحراف**، وصفر كود ميت من حقول
+    الخطافات. أُصلح `BLOCK` واحد (`DelegationRequests`: «لا توجد طلبات» مع خطأ الجلب)،
+    ومعيار «مسار الخطأ أولًا» في `BranchesTable`/`BranchSectionsPanel`/
+    `BranchManagementModal`/`EntityRegistryReview`، وأُضيف تسلسل طلبات لسباقات
+    تبديل الفرع/البحث/المعاينة. التفاصيل والطفرات: `docs/audit/333`.
   - **لا دين حجم متبقٍ:** كل ملفات `frontend/src` تحت 600، وأي ملف جديد فوقه يُفشل الحارس.
     التفاصيل: `docs/audit/279…317`.
 - **العمل:** `DocumentForm.tsx` 1521 → أقسام/hooks؛ `DocumentView.tsx` 947 → بطاقات؛ `ApplicantSideSections` 952؛ schema موحّد (react-hook-form + zod أو المكافئ).
@@ -1719,6 +1725,10 @@
     ذاتية، خطوتان في `guards` بـ`CI`)، وتوسيع `axe`/`375px` من 4 إلى **9** شاشات
     (منتدى/إحصاءات/إدارة فروع/تقويم/اقتراحات) — بلا حزم أو `API`.
     التفاصيل: `docs/audit/318`–`320`.
+  - **مراجعة `W4` المستقلة (2026-11-28):** وُسّع الحارس إلى **21** حالة ذاتية تلتقط
+    `animate-*` مع أي بادئة variants (`sm:`/`md:hover:`) وتستثني `motion-safe:` و
+    `animate-none` (كان يفحص البادئة حرفيًا فقط). `axe`/`375px` لم يُشغّلا محليًا في
+    المراجعة (بيئة) — تبقى وظيفة `e2e` الحاجبة. التفاصيل: `docs/audit/333`.
   - التفاصيل: `docs/audit/267-p6-03a-mobile-a11y-20261126.md` والمراجعتان `268`/`269`.
 - **العمل:** tokens، مكونات مشتركة، حالات focus، WCAG 2.2 AA، `aria-label`، `prefers-reduced-motion`، تباين، mobile-first (`sm:`/`md:`/`lg:`)، أهداف لمس 44px.
 - **`DoD`:** axe بلا أخطاء حرجة على الشاشات الرئيسية، وفحص 375px بلا تجاوز أفقي —

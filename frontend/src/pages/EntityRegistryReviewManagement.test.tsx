@@ -41,6 +41,15 @@ const groupsResponse = (items: PublicEntityGroupDto[]) => ({
   data: { items, page: 1, perPage: 50, totalCount: items.length, totalPages: 1 },
 });
 
+/** وعد مؤجَّل الحل لاختبار سباق البحث. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 function renderPage(initialEntry = '/entities/review-management') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -293,5 +302,35 @@ describe('EntityRegistryReviewManagement', () => {
   it('يفتح تبويب الإضافة عبر مسار ?tab=add', async () => {
     renderPage('/entities/review-management?tab=add');
     expect(await screen.findByLabelText('اسم الجهة المعتمد')).toBeInTheDocument();
+  });
+
+  it('نتيجة بحث قديمة لا تطمس نتيجة الاستعلام الأحدث', async () => {
+    const user = userEvent.setup();
+    const first = deferred<ReturnType<typeof groupsResponse>>();
+    const second = deferred<ReturnType<typeof groupsResponse>>();
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string, config?: { params?: { q?: string } }) => {
+      if (url === '/entity-registry/groups') {
+        return config?.params?.q === 'وزارة' ? first.promise : second.promise;
+      }
+      return Promise.resolve(groupsResponse([]));
+    });
+    renderPage();
+
+    const input = screen.getByLabelText('بحث باسم الجهة');
+    await user.type(input, 'وزارة');
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(1));
+
+    await user.type(input, ' الصحة');
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+
+    second.resolve(groupsResponse([group({ groupId: 2, canonicalName: 'وزارة الصحة' })]));
+    expect(await screen.findByRole('button', { name: /وزارة الصحة/ })).toBeInTheDocument();
+
+    first.resolve(groupsResponse([group({ groupId: 1, canonicalName: 'وزارة التعليم' })]));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /وزارة التعليم/ })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /وزارة الصحة/ })).toBeInTheDocument();
   });
 });

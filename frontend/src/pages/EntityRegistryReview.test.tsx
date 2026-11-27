@@ -97,4 +97,21 @@ describe('EntityRegistryReview — تنبيه الدقة لرئيس القسم',
       expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
     });
   });
+
+  it('فشل بحث إدارة الفروع يعرض الخطأ ولا يعلن «لا توجد جهات مطابقة»', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/entity-registry/groups') return Promise.reject(new Error('شبكة'));
+      if (url === '/entity-registry/pending-review') return Promise.resolve({ data: [entry()] });
+      return Promise.resolve({ data: { items: [] } });
+    });
+    renderPage();
+
+    await screen.findByText('وزارة النقل');
+    await user.click(screen.getByRole('button', { name: 'إدارة فروع جهة في محافظتي' }));
+    await user.type(screen.getByLabelText('بحث باسم الجهة'), 'نقل');
+
+    expect(await screen.findByText(/تعذّر البحث في سجل الجهات/)).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد جهات مطابقة')).not.toBeInTheDocument();
+  });
 });

@@ -7,11 +7,12 @@ import { DayReminderRow } from './dayReminders/DayReminderRow';
 import {
   deleteTargetKey,
   filterOccurrences,
+  personalDoneKey,
   type DeletingTarget,
 } from './dayReminders/dayRemindersModel';
 import { PersonalForm } from './dayReminders/PersonalReminderForm';
 
-// يُعاد تصديرهما لأن `CalendarPage` يستورد `PersonalForm` من هنا تاريخيًا.
+// يُعاد تصدير `PersonalForm` لأن `CalendarPage` يستوردها من هنا تاريخيًا.
 export { PersonalForm } from './dayReminders/PersonalReminderForm';
 
 /**
@@ -134,7 +135,7 @@ export function DayRemindersModal({
   };
 
   const togglePersonalDone = async (personal: PersonalReminderDto, done: boolean) => {
-    const key = `personal-done-${personal.id}`;
+    const key = personalDoneKey(personal.id);
     setActingKey(key);
     setActionError('');
     try {

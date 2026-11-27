@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BranchesManagement from './BranchesManagement';
-import type { BranchDto } from '../types';
+import type { BranchDto, SectionDto } from '../types';
 
 const useAuthMock = vi.hoisted(() => vi.fn());
 
@@ -40,6 +40,28 @@ function branchItem(overrides: Partial<BranchDto> = {}): BranchDto {
     userCount: 2,
     documentCount: 5,
     version: 4,
+    ...overrides,
+  };
+}
+
+/** وعد مؤجَّل الحل لاختبار سباق الاستجابات المتأخرة. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+function sectionItem(overrides: Partial<SectionDto> = {}): SectionDto {
+  return {
+    id: 11,
+    branchId: 1,
+    name: 'شعبة',
+    isActive: true,
+    circuitCount: 0,
+    headName: null,
+    version: 1,
     ...overrides,
   };
 }
@@ -295,5 +317,65 @@ describe('BranchesManagement', () => {
     await user.click(await screen.findByRole('tab', { name: 'سجل التعاقب' }));
     expect(await screen.findByText('خلف الرئيس')).toBeInTheDocument();
     expect(screen.getByText(/إحلال خلف/)).toBeInTheDocument();
+  });
+
+  it('فشل جلب الفروع يعرض الخطأ دون «لا توجد فروع» كاذبة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({ isAxiosError: true });
+    render(<BranchesManagement />);
+
+    expect(await screen.findByText(/تعذر الاتصال بالخادم/)).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد فروع')).not.toBeInTheDocument();
+  });
+
+  it('فشل جلب الشعب يعرض الخطأ دون «لا توجد شعب» كاذبة', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url.startsWith('/sections')) return Promise.reject({ isAxiosError: true });
+      if (url.startsWith('/execution-circuits/stats')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/head-succession')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [branchItem()] });
+    });
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.selectOptions(await screen.findByLabelText('الفرع الأب'), '1');
+    expect(await screen.findByText(/تعذر الاتصال بالخادم/)).toBeInTheDocument();
+    expect(screen.queryByText(/لا توجد شعب/)).not.toBeInTheDocument();
+  });
+
+  it('استجابة الفرع السابق المتأخرة لا تطمس شعب الفرع الأحدث', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    const sectionsBranch1 = deferred<{ data: SectionDto[] }>();
+    const sectionsBranch2 = deferred<{ data: SectionDto[] }>();
+    getMock.mockImplementation((url: string, config?: { params?: { branchId?: number } }) => {
+      if (url.startsWith('/sections')) {
+        return config?.params?.branchId === 1 ? sectionsBranch1.promise : sectionsBranch2.promise;
+      }
+      if (url.startsWith('/execution-circuits/stats')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/head-succession')) return Promise.resolve({ data: [] });
+      return Promise.resolve({
+        data: [branchItem(), branchItem({ id: 2, name: 'فرع حلب', code: 'ALP' })],
+      });
+    });
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    const picker = await screen.findByLabelText('الفرع الأب');
+    await user.selectOptions(picker, '1');
+    await user.selectOptions(picker, '2');
+
+    // الأحدث يصل أولًا، ثم تصل استجابة الفرع السابق متأخرة — يجب ألا تُطبَّق.
+    sectionsBranch2.resolve({
+      data: [sectionItem({ id: 22, branchId: 2, name: 'شعبة حلب' })],
+    });
+    expect(await screen.findByText('شعبة حلب')).toBeInTheDocument();
+
+    sectionsBranch1.resolve({
+      data: [sectionItem({ id: 11, branchId: 1, name: 'شعبة دمشق' })],
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('شعبة دمشق')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('شعبة حلب')).toBeInTheDocument();
   });
 });

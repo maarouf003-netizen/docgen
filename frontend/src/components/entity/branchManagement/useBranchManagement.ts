@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../../api/client';
 import { branchCountFormatter } from './branchManagementFormat';
 import type {
@@ -42,6 +42,7 @@ export function useBranchManagement({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [pendingSuggestion, setPendingSuggestion] = useState<ParentEditSuggestionDto | null>(null);
+  const [suggestionError, setSuggestionError] = useState('');
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editBranch, setEditBranch] = useState('');
@@ -69,10 +70,14 @@ export function useBranchManagement({
   const [previewFor, setPreviewFor] = useState<BranchActionKind | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // تسلسل المعاينات: تغيير المدخلات يُبطل المعاينة الجارية، فلا تصل استجابة قديمة
+  // وتؤهّل «تنفيذ» على معاملات لم تعد مطابقة لما يراه المستخدم.
+  const previewSeq = useRef(0);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError('');
+    setSuggestionError('');
     try {
       const entriesRes = await api.get<PublicEntityEntryDto[]>(`/entity-registry/groups/${groupId}/entries`);
       setEntries(entriesRes.data ?? []);
@@ -84,8 +89,10 @@ export function useBranchManagement({
         params: { groupId, status: 'pending', perPage: 10 },
       });
       setPendingSuggestion(suggRes.data?.items?.[0] ?? null);
-    } catch {
+    } catch (err) {
       setPendingSuggestion(null);
+      // لا نُعلن «لا اقتراح معلّق» عند فشل الجلب: الخطأ يُعرض صراحة في النافذة.
+      setSuggestionError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -99,6 +106,8 @@ export function useBranchManagement({
   const activeEntries = entries.filter((e) => !e.isParentEntity);
 
   const clearPreview = () => {
+    previewSeq.current += 1;
+    setPreviewing(false);
     setPreview(null);
     setPreviewFor(null);
   };
@@ -120,6 +129,7 @@ export function useBranchManagement({
   };
 
   const runPreview = async (kind: BranchActionKind, payload: PreviewBranchActionRequest) => {
+    const seq = ++previewSeq.current;
     setPreviewing(true);
     setError('');
     try {
@@ -127,13 +137,15 @@ export function useBranchManagement({
         `/entity-registry/groups/${groupId}/branches/preview`,
         payload,
       );
+      if (seq !== previewSeq.current) return;
       setPreview(res.data ?? null);
-      setPreviewFor(kind);
-    } catch (err) {
-      clearPreview();
+      setPreviewFor(kind);    } catch (err) {
+      if (seq !== previewSeq.current) return;
+      setPreview(null);
+      setPreviewFor(null);
       setError(getApiErrorMessage(err));
     } finally {
-      setPreviewing(false);
+      if (seq === previewSeq.current) setPreviewing(false);
     }
   };
 
@@ -326,6 +338,7 @@ export function useBranchManagement({
     error,
     success,
     pendingSuggestion,
+    suggestionError,
     editingId,
     editBranch,
     editCoverage,

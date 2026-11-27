@@ -52,8 +52,16 @@ function pendingSuggestion(overrides: Partial<ParentEditSuggestionDto> = {}): Pa
   };
 }
 
-/** استجابة معاينة موحّدة ناجحة (بدون أخطاء) حسب نوع العملية. */
-function previewResponse(action: string, newBranchName?: string) {
+/** وعد مؤجَّل الحل لاختبار سباق استجابات المعاينة. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/** استجابة معاينة موحّدة ناجحة (بدون أخطاء) حسب نوع العملية. */function previewResponse(action: string, newBranchName?: string) {
   return {
     action,
     summary: 'ملخص المعاينة — ستُحدّث الملفات المرتبطة فورًا',
@@ -289,5 +297,59 @@ describe('BranchManagementModal', () => {
     renderModal();
 
     expect(await screen.findByText(/لا توجد فروع نشطة/)).toBeInTheDocument();
+  });
+
+  it('فشل جلب القيود يعرض الخطأ دون «لا توجد فروع نشطة» كاذبة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/entity-registry/groups/10/entries')) {
+        return Promise.reject(new Error('شبكة'));
+      }
+      if (url.startsWith('/entity-registry/parent-edit-suggestions')) {
+        return Promise.resolve({ data: { items: [], total: 0 } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderModal();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('خطأ من الخادم');
+    expect(screen.queryByText(/لا توجد فروع نشطة/)).not.toBeInTheDocument();
+  });
+
+  it('فشل جلب اقتراح الجهة الأم يُعلن صراحة ولا يوهم بغيابه', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/entity-registry/groups/10/entries')) {
+        return Promise.resolve({ data: [entry({ isParentEntity: true }), entry({ id: 102, branchName: 'فرع المزة' })] });
+      }
+      if (url.startsWith('/entity-registry/parent-edit-suggestions')) {
+        return Promise.reject(new Error('شبكة'));
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderModal();
+
+    expect(await screen.findByText(/تعذّر تحميل اقتراح تعديل الجهة الأم/)).toBeInTheDocument();
+  });
+
+  it('معاينة قديمة لا تؤهّل التنفيذ بعد تغيير المدخلات', async () => {
+    const user = userEvent.setup();
+    const stale = deferred<{ data: unknown }>();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) =>
+      url.endsWith('/branches/preview') ? stale.promise : Promise.resolve({ data: {} }),
+    );
+    renderModal();
+
+    await screen.findByText('وزارة النقل');
+    await user.click(screen.getAllByRole('button', { name: 'تعديل التسمية' })[0]);
+    const input = screen.getByLabelText('اسم الفرع الجديد');
+    await user.clear(input);
+    await user.type(input, 'فرع أ');
+    await user.click(screen.getByRole('button', { name: 'معاينة' }));
+
+    // تغيير الاسم يُبطل المعاينة الجارية؛ وصولها متأخرة يجب ألا يؤهّل «تنفيذ».
+    await user.type(input, ' ب');
+    stale.resolve({ data: previewResponse('rename', 'فرع أ') });
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'حفظ التعديل وإقفال المراجعة' })).not.toBeInTheDocument();
   });
 });

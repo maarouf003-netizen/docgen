@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { useCancellableRequest } from '../../hooks/useCancellableRequest';
 import type { BranchDto, CircuitStatsDto, HeadSuccessionDto, SectionDto } from '../../types';
@@ -63,45 +63,61 @@ export function useBranchesManagement() {
   const [successionLoading, setSuccessionLoading] = useState(false);
   const [successionError, setSuccessionError] = useState('');
 
+  // تسلسل طلبات البيانات التابعة للفرع: تبديل «الفرع الأب» بسرعة قد يُرجع استجابة
+  // قديمة بعد الأحدث، فتطمس شعب/دوائر/تعاقب فرع آخر. كل تحميل يحمل رقمًا ولا يُطبَّق
+  // إلا إن بقي هو الأحدث (ويُبطل الترقيم عند إلغاء الاختيار).
+  const sectionsSeq = useRef(0);
+  const circuitsSeq = useRef(0);
+  const successionSeq = useRef(0);
+
   const loadSections = async (branchId: number) => {
+    const seq = ++sectionsSeq.current;
     setSectionsLoading(true);
     setSectionsError('');
     try {
       const r = await api.get<SectionDto[]>('/sections', { params: { branchId } });
+      if (seq !== sectionsSeq.current) return;
       setSections(r.data ?? []);
     } catch (err) {
+      if (seq !== sectionsSeq.current) return;
       setSectionsError(getApiErrorMessage(err));
       setSections([]);
     } finally {
-      setSectionsLoading(false);
+      if (seq === sectionsSeq.current) setSectionsLoading(false);
     }
   };
 
   const loadCircuits = async (branchId: number) => {
+    const seq = ++circuitsSeq.current;
     setCircuitsLoading(true);
     setCircuitsError('');
     try {
       const r = await api.get<CircuitStatsDto[]>('/execution-circuits/stats', { params: { branchId } });
+      if (seq !== circuitsSeq.current) return;
       setCircuits(r.data ?? []);
     } catch (err) {
+      if (seq !== circuitsSeq.current) return;
       setCircuitsError(getApiErrorMessage(err));
       setCircuits([]);
     } finally {
-      setCircuitsLoading(false);
+      if (seq === circuitsSeq.current) setCircuitsLoading(false);
     }
   };
 
   const loadSuccession = async (branchId: number) => {
+    const seq = ++successionSeq.current;
     setSuccessionLoading(true);
     setSuccessionError('');
     try {
       const r = await api.get<HeadSuccessionDto[]>('/head-succession', { params: { branchId } });
+      if (seq !== successionSeq.current) return;
       setSuccession(r.data ?? []);
     } catch (err) {
+      if (seq !== successionSeq.current) return;
       setSuccessionError(getApiErrorMessage(err));
       setSuccession([]);
     } finally {
-      setSuccessionLoading(false);
+      if (seq === successionSeq.current) setSuccessionLoading(false);
     }
   };
 
@@ -109,9 +125,16 @@ export function useBranchesManagement() {
     setSubBranchId(id);
     setTransferMsg('');
     if (id === '') {
+      // إلغاء الاختيار يُبطل أي طلب جارٍ كي لا يعيد تعبئة قوائم فرع سابق.
+      sectionsSeq.current += 1;
+      circuitsSeq.current += 1;
+      successionSeq.current += 1;
       setSections([]);
       setCircuits([]);
       setSuccession([]);
+      setSectionsLoading(false);
+      setCircuitsLoading(false);
+      setSuccessionLoading(false);
       return;
     }
     void loadSections(id);

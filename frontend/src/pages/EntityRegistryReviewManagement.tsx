@@ -36,11 +36,17 @@ export default function EntityRegistryReviewManagement() {
         <TabButton id="suggestions" label="اقتراحات الأم" active={tab === 'suggestions'} onSelect={setTab} />
       </div>
 
-      {tab === 'edit' && <EditEntityTab key="edit" />}
-      {tab === 'add' && <AddEntityTab />}
-      {tab === 'unify' && <UnifyNamesTab />}
-      {tab === 'log' && <EntityChangeLog />}
-      {tab === 'suggestions' && <ParentSuggestionsTab />}
+      <div
+        role="tabpanel"
+        id={`review-tabpanel-${tab}`}
+        aria-labelledby={`review-tab-${tab}`}
+      >
+        {tab === 'edit' && <EditEntityTab key="edit" />}
+        {tab === 'add' && <AddEntityTab />}
+        {tab === 'unify' && <UnifyNamesTab />}
+        {tab === 'log' && <EntityChangeLog />}
+        {tab === 'suggestions' && <ParentSuggestionsTab />}
+      </div>
     </div>
   );
 }

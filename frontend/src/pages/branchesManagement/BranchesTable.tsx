@@ -24,10 +24,13 @@ function usageLine(b: BranchDto) {
 export function BranchesTable({
   branches,
   loading,
+  loadFailed,
   onEdit,
 }: {
   branches: BranchDto[];
   loading: boolean;
+  /** فشل الجلب: لا تُعرض «لا توجد فروع» كاذبة (مسار الخطأ أولًا). */
+  loadFailed?: boolean;
   onEdit: (b: BranchDto) => void;
 }) {
   const isMobile = useIsMobile();
@@ -66,7 +69,7 @@ export function BranchesTable({
                 </td>
               </tr>
             ))}
-            {!loading && branches.length === 0 && (
+            {!loading && !loadFailed && branches.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد فروع</td>
               </tr>
@@ -77,7 +80,7 @@ export function BranchesTable({
 
       {isMobile && (
         <div className="divide-y divide-gray-100">
-          {!loading && branches.length === 0 && (
+          {!loading && !loadFailed && branches.length === 0 && (
             <div className="px-4 py-8 text-center text-gray-400">لا توجد فروع</div>
           )}
           {branches.map((b) => (
