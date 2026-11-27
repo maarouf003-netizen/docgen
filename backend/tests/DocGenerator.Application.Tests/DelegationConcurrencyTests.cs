@@ -204,7 +204,15 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         {
             await using var db = _pg.CreateContext();
             var waiting = await db.Database
-                .SqlQueryRaw<long>("""SELECT COUNT(*)::bigint AS "Value" FROM pg_locks WHERE NOT granted""")
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM pg_locks l
+                    JOIN pg_database d ON d.oid = l.database
+                    WHERE NOT l.granted
+                      AND d.datname = current_database()
+                      AND l.relation = 'Documents'::regclass
+                    """)
                 .SingleAsync();
             if (waiting > 0)
                 return;
