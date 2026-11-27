@@ -66,11 +66,11 @@ internal sealed class UnifyPublicEntityNamesCommandHandler
         }
         catch
         {
-            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket);
             throw;
         }
 
-        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct: ct);
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result));
         return result;
     }
 

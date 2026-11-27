@@ -106,7 +106,7 @@ public sealed class ReferCircuitFilesCommandHandler
         }
         catch
         {
-            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket);
             throw;
         }
 
@@ -118,7 +118,7 @@ public sealed class ReferCircuitFilesCommandHandler
                 result.SkippedCount,
                 result.RemainingCount,
                 reminder = ExecutionCircuitService.EmptyingReminderBanner,
-            }), ct: ct);
+            }));
         return result;
     }
 

@@ -248,6 +248,21 @@ public sealed class UpdateDocumentStatusCommandHandler
 
         var statusUpdated = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
+            // W1/B6: قفل صف المصدر يمنع سباق «شطب/إحالة» مع إنشاء/تسجيل إنابة سارية.
+            // الفحص الخارجي يبقى للتشخيص السريع، وهذا الفحص هو الحاكم داخل القفل.
+            await _documents.GetByIdForUpdateAsync(doc.Id, token);
+            if (status is ExecutionStatusCatalog.StateStruckOff or ExecutionStatusCatalog.ReferredToStart)
+            {
+                var active = (await _delegations.ListBySourceAsync(doc.Id, token))
+                    .Any(DelegationActivityPolicy.IsLifecycleActive);
+                if (active)
+                {
+                    throw new ArgumentException(
+                        status == ExecutionStatusCatalog.StateStruckOff
+                            ? "لا يجوز شطب ملف فيه انابة سارية"
+                            : "لا يجوز إحالة ملف فيه إنابة سارية إلى البداية");
+                }
+            }
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
@@ -866,16 +881,19 @@ public sealed class UpdateExecutedStatusCommandHandler
             // لمنهج «كل مبلغ له عملة»: المقدَّمة، وإلا المحفوظة سابقًا، وإلا الافتراضية.
             if (request?.ExecutedPaidAmount is { } paidAmount)
             {
+                DocumentAmountPolicy.EnsureValid(paidAmount, "المبلغ المدفوع");
                 doc.ExecutedPaidAmount = paidAmount;
                 doc.ExecutedPaidCurrency = request.ExecutedPaidCurrency ?? doc.ExecutedPaidCurrency ?? "ليرة سورية";
             }
             if (request?.ExecutedPaidAmount2 is { } paidAmount2)
             {
+                DocumentAmountPolicy.EnsureValid(paidAmount2, "المبلغ المدفوع الثاني");
                 doc.ExecutedPaidAmount2 = paidAmount2;
                 doc.ExecutedPaidCurrency2 = request.ExecutedPaidCurrency2 ?? doc.ExecutedPaidCurrency2 ?? "ليرة سورية";
             }
             if (request?.ExecutedPaidAmount3 is { } paidAmount3)
             {
+                DocumentAmountPolicy.EnsureValid(paidAmount3, "المبلغ المدفوع الثالث");
                 doc.ExecutedPaidAmount3 = paidAmount3;
                 doc.ExecutedPaidCurrency3 = request.ExecutedPaidCurrency3 ?? doc.ExecutedPaidCurrency3 ?? "ليرة سورية";
             }

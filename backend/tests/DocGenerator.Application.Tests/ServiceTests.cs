@@ -4447,16 +4447,20 @@ public class DocumentUseCaseTests : PostgresDbTest
     }
 
     [PostgresFact]
-    public async Task Update_ExecutedSide_DoesNotChangeStoredSide()
+    public async Task Update_ExecutedSide_WithDifferentSide_Rejected()
     {
         var doc = await _create.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
         var req = Sample();
         req.GeneralEntitySide = GeneralEntitySideCatalog.Applicant;
-        var updated = await _update.UpdateAsync(doc.Id, req, "lawyer1", 1);
 
-        // صفة الملف تُثبَّت عند الإنشاء ولا تتغير عند التعديل.
-        Assert.Equal(GeneralEntitySideCatalog.Executed, updated!.GeneralEntitySide);
+        // W1/B2 (تشديد مقصود): إرسال صفة مختلفة صراحةً = 400، بدل تجاهلها بصمت
+        // وتطبيق حمولة لا تخصّ الملف. الصفة المخزّنة تبقى كما هي.
+        var error = await Assert.ThrowsAsync<ArgumentException>(
+            () => _update.UpdateAsync(doc.Id, req, "lawyer1", 1));
+        Assert.Contains("صفة الملف", error.Message);
+        var stored = await _service.GetAsync(doc.Id);
+        Assert.Equal(GeneralEntitySideCatalog.Executed, stored!.GeneralEntitySide);
     }
 
     [PostgresFact]

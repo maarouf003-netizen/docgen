@@ -292,6 +292,7 @@ public class ExceptionHandlerIntegrationTests
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
         public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;
+        public bool IsAmountConstraintViolation(Exception ex) => false;
     }
 
     private sealed class StartedResponseFeature : IHttpResponseFeature

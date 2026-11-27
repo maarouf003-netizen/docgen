@@ -6,6 +6,7 @@ using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.Infrastructure.Persistence.MigrationsPostgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -2129,6 +2130,157 @@ public class DocumentsIntegrationTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         return body!.RootElement.GetProperty("id").GetInt32();
+    }
+
+    [PostgresFact]
+    public async Task UpdateExecutedDocument_WithoutSide_RejectedAndAmountsPreserved()
+    {
+        // W1/B2: PUT بلا generalEntitySide كان يُطبَّع إلى applicant فيتخطى تحقق
+        // «منفذ عليه» ثم يمسح المبالغ/التواريخ. الآن يُرفض قبل أي إسناد.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        using var before = await (await client.GetAsync($"/api/documents/{id}")).Content
+            .ReadFromJsonAsync<JsonDocument>();
+        var fileNumber = before!.RootElement.GetProperty("fileNumber").GetString();
+        var fileYear = before.RootElement.GetProperty("fileYear").GetString();
+
+        var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
+        {
+            documentType = "الجهة العامة منفذ عليها",
+            fileNumber,
+            fileYear,
+            contractTypeSelector = "عادي",
+            borrowerName = "حقن طرف لا يخص الصفة",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("generalEntitySide", await response.Content.ReadAsStringAsync());
+
+        using var after = await (await client.GetAsync($"/api/documents/{id}")).Content
+            .ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("executed", after!.RootElement.GetProperty("generalEntitySide").GetString());
+        Assert.Equal(1000m, after.RootElement.GetProperty("executedRequiredAmount").GetDecimal());
+        Assert.Equal(JsonValueKind.Null, after.RootElement.GetProperty("borrowerName").ValueKind);
+    }
+
+    [PostgresFact]
+    public async Task UpdateExecutedDocument_WithDifferentSide_Rejected()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
+        {
+            generalEntitySide = "applicant",
+            documentType = "الجهة العامة منفذ عليها",
+            borrowerName = "بدل صفة",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("لا يمكن تغيير صفة الملف", await response.Content.ReadAsStringAsync());
+    }
+
+    [PostgresFact]
+    public async Task Deposit_CreatedAsExecuted_SetsWasDepositExecutedFlag()
+    {
+        // W1/B1: الضبط من النموذج (لا من مسار تغيير الحالة) يجب أن يثبّت العلامة
+        // الدائمة كي لا يسقط المبلغ من إحصاءات المدير بعد الإرجاع إلى متداول.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var number = $"777{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
+
+        var created = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "deposit",
+            documentType = "عرض وايداع",
+            fileNumber = number,
+            fileYear = "2024",
+            fileRegistrationDate = (string?)null,
+            fileReceiptDate = "2024-01-05",
+            executedStatus = "منفذ",
+            executedPaidAmount = 1250,
+            contractTypeSelector = "عادي",
+            court = "دمشق",
+            applicant = "معروض",
+            executionApplicants = new[]
+            {
+                new { name = "هاني", father = "سامر", family = "النجار", representationType = "أصالة" },
+            },
+            executedPublicEntities = new[]
+            {
+                new { entityName = "المصرف التجاري", entityBranch = "فرع دمشق" },
+            },
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var body = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var id = body!.RootElement.GetProperty("id").GetInt32();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var doc = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id);
+            Assert.True(doc.WasDepositExecuted);
+
+            // أثر الهجرة (W1): صف منفذ بعلامة false يُصلَح، وإعادة التشغيل لا تغيّر شيئًا.
+            await db.Documents.Where(d => d.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.WasDepositExecuted, false));
+            await db.Database.ExecuteSqlRawAsync(W1_DepositExecutedBackfill.BackfillSql);
+            Assert.True((await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id)).WasDepositExecuted);
+            await db.Database.ExecuteSqlRawAsync(W1_DepositExecutedBackfill.BackfillSql);
+            Assert.True((await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id)).WasDepositExecuted);
+        }
+
+        var revert = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "",
+            sayerNumber = "90",
+            sayerDate = "1/8/2026",
+            sayerRegNumber = "91",
+            sayerRegDate = "2/8/2026",
+        });
+        Assert.Equal(HttpStatusCode.OK, revert.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var doc = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id);
+            Assert.Equal(ExecutedStatusCatalog.None, doc.ExecutedStatus);
+            // العلامة تبقى صحيحة بعد الإرجاع (مال الإيداع محسوب تاريخيًا).
+            Assert.True(doc.WasDepositExecuted);
+        }
+
+        // الإحصاء الفعلي (لا الراية وحدها): المبلغ يبقى في «منفذ» بعد الإرجاع.
+        var manager = _factory.AuthorizedClient("manager");
+        using var stats = await (await manager.GetAsync("/api/stats/manager?period=yearly&year=2024"))
+            .Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.True(stats!.RootElement.GetProperty("depositExecutedCount").GetInt32() >= 1);
+        Assert.True(stats.RootElement.GetProperty("depositExecutedAmount").GetDecimal() >= 1250m);
+    }
+
+    [PostgresFact]
+    public async Task ExecutedStatus_FractionalPaidAmount_RejectedNotRounded()
+    {
+        // W1/B3: أكثر من منزلتين عشريتين في مسار الحالة يُرفض (كان يُقرَّب صامتًا).
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateDepositDocumentAsync(token);
+
+        var fractional = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedPaidAmount = 10.555m,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, fractional.StatusCode);
+
+        var valid = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedPaidAmount = 10.55m,
+        });
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
     }
 
     private async Task<int> FirstEstateIdAsync(string token, int documentId)

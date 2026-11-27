@@ -41,7 +41,7 @@ public partial class DocumentRepository : Repository<Document>, IDocumentReposit
     /// بعد <c>P1-08</c> لا مزوّد غير <c>PostgreSQL</c>؛ أي مزوّد آخر يُرفض صراحةً بدل
     /// تنفيذ قراءة **بلا قفل** تُخفي السباق.
     /// </summary>
-    public async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
+    public virtual async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
     {
         if (Db.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) != true)
         {

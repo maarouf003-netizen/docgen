@@ -176,6 +176,14 @@ public sealed class AssignDocumentDelegationCommandHandler
         {
             await _tx.RunAsync(async token =>
             {
+                // W1/B6: قفل صف المصدر يمنع سباق الشطب/الإحالة مع الاعتماد.
+                await _documents.GetByIdForUpdateAsync(delegation.SourceDocumentId, token);
+                var freshSource = await _documents.GetByIdWithDelegationsNoTrackingAsync(
+                    delegation.SourceDocumentId, token)
+                    ?? throw new ArgumentException("الملف المنيب غير موجود");
+                DocumentDelegationService.ValidateSourceForDelegation(freshSource);
+                if (freshSource.NeedsRegistration)
+                    throw new ArgumentException("لا يمكن اعتماد إنابة على ملف بانتظار إعادة القيد");
                 // إنشاء الملف المناب تلقائيًا: نفس السند التنفيذي والأطراف، بنوع «انابة»،
                 // موكولاً للمحامي المختص في الفرع المناب، مرتبطًا بإنابته (SourceDelegationId).
                 // هوية المناب مستقلة: دائرته هي الدائرة المنابة المسجَّل فيها (موطن المال مكانيًا)،

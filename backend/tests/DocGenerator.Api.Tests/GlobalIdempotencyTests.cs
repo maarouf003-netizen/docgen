@@ -71,6 +71,48 @@ public sealed class GlobalIdempotencyTests
     }
 
     [PostgresFact]
+    public async Task SameKey_SameBody_TwoDifferentResources_ExecutesBoth()
+    {
+        // W1/B5: نطاق المفتاح كان قالب المسار فقط، فطلب حذف مورد ثانٍ بنفس المفتاح
+        // والجسم يعيد استجابة الأول بلا تنفيذ. الآن المسار الفعلي (بالمعرّف) في النطاق.
+        var client = _factory.AuthorizedClient("admin");
+        var key = Guid.NewGuid().ToString();
+
+        var createA = await PostJsonAsync(
+            client, "/api/branches",
+            BranchPayloadJson($"فرع أ {Guid.NewGuid():N}"[..24], $"IA_{Guid.NewGuid():N}"[..12].ToUpperInvariant()),
+            null);
+        var createB = await PostJsonAsync(
+            client, "/api/branches",
+            BranchPayloadJson($"فرع ب {Guid.NewGuid():N}"[..24], $"IB_{Guid.NewGuid():N}"[..12].ToUpperInvariant()),
+            null);
+        Assert.Equal(HttpStatusCode.Created, createA.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, createB.StatusCode);
+
+        var idA = int.Parse(createA.Headers.Location!.Segments.Last());
+        var idB = int.Parse(createB.Headers.Location!.Segments.Last());
+
+        using (var deleteA = new HttpRequestMessage(HttpMethod.Delete, $"/api/branches/{idA}"))
+        {
+            deleteA.Headers.Add("X-Idempotency-Key", key);
+            var responseA = await client.SendAsync(deleteA);
+            Assert.True(responseA.IsSuccessStatusCode);
+        }
+
+        using (var deleteB = new HttpRequestMessage(HttpMethod.Delete, $"/api/branches/{idB}"))
+        {
+            deleteB.Headers.Add("X-Idempotency-Key", key);
+            var responseB = await client.SendAsync(deleteB);
+            Assert.True(responseB.IsSuccessStatusCode);
+        }
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        Assert.False(await db.Branches.AnyAsync(b => b.Id == idA));
+        Assert.False(await db.Branches.AnyAsync(b => b.Id == idB));
+    }
+
+    [PostgresFact]
     public async Task SameKey_DifferentBody_ExecutesFresh_PreservingRf011Contract()
     {
         var client = _factory.AuthorizedClient("admin");

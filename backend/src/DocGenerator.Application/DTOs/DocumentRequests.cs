@@ -262,7 +262,7 @@ public class DocumentUpsertRequest : RenewalRequest
     /// صفة الملف (GeneralEntitySideCatalog): تُثبَّت عند الإنشاء ولا تُغيّر عند التعديل.
     /// في وضع «منفذ عليه» يُشترط عادي فقط (لا مصرفي) وتُلغى بيانات المقترض والكفلاء والأموال.
     /// </summary>
-    public string? GeneralEntitySide { get; set; } = GeneralEntitySideCatalog.Applicant;
+    public string? GeneralEntitySide { get; set; }
 
     /// <summary>حالة وضع «منفذ عليه» (ExecutedStatusCatalog): متداول/منفذ/مشطوب.</summary>
     public string? ExecutedStatus { get; set; } = string.Empty;

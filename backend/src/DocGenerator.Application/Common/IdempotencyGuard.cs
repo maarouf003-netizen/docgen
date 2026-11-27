@@ -114,22 +114,25 @@ public static class IdempotencyGuard
         return begin.Ticket;
     }
 
-    /// <summary>إتمام الحجز بلقطة الاستجابة — متسامح (لا يُفشل العملية الناجحة).</summary>
+    /// <summary>
+    /// إتمام الحجز بلقطة الاستجابة — متسامح (لا يُفشل العملية الناجحة).
+    /// **لا يستخدم رمز إلغاء الطلب:** العملية نُفِّذت والتزمت، وإلغاء اتصال العميل
+    /// بعد الالتزام لا يجوز أن يترك الحجز «قيد المعالجة» 72 ساعة (W1/B4).
+    /// </summary>
     public static async Task CompleteAsync(
         IIdempotencyStore? store,
         IdempotencyTicket? ticket,
         string responseBody,
         int statusCode = 200,
         string? contentType = null,
-        string? responseLocation = null,
-        CancellationToken ct = default)
+        string? responseLocation = null)
     {
         if (store is null || ticket is null)
             return;
         try
         {
             await store.CompleteAsync(
-                ticket, responseBody, statusCode, contentType, responseLocation, ct);
+                ticket, responseBody, statusCode, contentType, responseLocation, CancellationToken.None);
         }
         catch (Exception)
         {
@@ -137,14 +140,16 @@ public static class IdempotencyGuard
         }
     }
 
-    /// <summary>تحرير الحجز عند فشل العملية (لتُعاد المحاولة طازجة).</summary>
+    /// <summary>
+    /// تحرير الحجز عند فشل العملية (لتُعاد المحاولة طازجة). يستخدم
+    /// <see cref="CancellationToken.None"/> للسبب نفسه: لا نُعلّق مفتاحًا بسبب انقطاع العميل.
+    /// </summary>
     public static async Task ReleaseAsync(
         IIdempotencyStore? store,
-        IdempotencyTicket? ticket,
-        CancellationToken ct = default)
+        IdempotencyTicket? ticket)
     {
         if (store is null || ticket is null)
             return;
-        await store.ReleaseAsync(ticket, ct);
+        await store.ReleaseAsync(ticket, CancellationToken.None);
     }
 }

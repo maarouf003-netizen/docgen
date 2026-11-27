@@ -170,6 +170,15 @@ public sealed class RegisterDocumentDelegationCommandHandler
         {
             await _tx.RunAsync(async token =>
             {
+                // W1/B6: قفل صف **المصدر** (لا الهدف) — ترتيب قفل موحد مع الإنابة/الشطب،
+                // ثم قراءة طازجة بلا تتبع وإعادة التحقق (الكيان المتتبَّع قد يكون قديمًا).
+                await _documents.GetByIdForUpdateAsync(delegation.SourceDocumentId, token);
+                var freshSource = await _documents.GetByIdWithDelegationsNoTrackingAsync(
+                    delegation.SourceDocumentId, token)
+                    ?? throw new ArgumentException("الملف المنيب غير موجود");
+                DocumentDelegationService.ValidateSourceForDelegation(freshSource);
+                if (DelegationActivityPolicy.IsTargetTerminal(target) || target.IsDeleted)
+                    throw new ArgumentException("لا يمكن تسجيل إنابة على ملف مشطوب أو منتهٍ");
                 target.FileNumber = fileNumber;
                 target.FileYear = fileYear;
                 target.IsDraft = false;
@@ -342,6 +351,7 @@ public sealed class CompleteDocumentDelegationCommandHandler
                 throw new ArgumentException($"يجب إدخال بدل المبيع لكل أصل موضوع الإنابة ({asset.AssetLabel})");
             if (sale.SalePrice <= 0)
                 throw new ArgumentException($"بدل المبيع غير صالح للأصل ({asset.AssetLabel})");
+            DocumentAmountPolicy.EnsureValid(sale.SalePrice, $"بدل المبيع ({asset.AssetLabel})");
             asset.SalePrice = sale.SalePrice;
         }
 
@@ -352,6 +362,13 @@ public sealed class CompleteDocumentDelegationCommandHandler
 
         await _tx.RunAsync(async token =>
         {
+            // W1/B6: قفل المصدر والهدف بترتيب معرّف تصاعدي حتمي لمنع دورة قفل مع الشطب.
+            var lockIds = new[] { delegation.SourceDocumentId, delegation.TargetDocument?.Id ?? 0 }
+                .Where(id => id > 0)
+                .Distinct()
+                .OrderBy(id => id);
+            foreach (var lockId in lockIds)
+                await _documents.GetByIdForUpdateAsync(lockId, token);
             delegation.ReturnDate = returnDate;
             delegation.Status = DelegationStatusCatalog.Executed;
             delegation.SaleCoversFullDebt = request.SaleCoversFullDebt.Value;

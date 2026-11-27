@@ -75,6 +75,21 @@ public sealed class UpdateDocumentCommandHandler
 
         var request = command.Request;
         DocumentValidator.NormalizeCollections(request);
+        // W1/B2: الصفة المخزنة هي الحاكمة. الطلب الناقص كان يُطبَّع إلى `applicant`،
+        // فيتخطى تحقق «منفذ عليه/عرض وايداع» ثم تُمسح مبالغه/تواريخه أو تُحقن أطراف
+        // لا تخصّه. صفة مختلفة صريحة = 400، وغيابها في ملف تنفيذي = 400 أيضًا.
+        var sideProvided = !string.IsNullOrWhiteSpace(request.GeneralEntitySide);
+        if (sideProvided
+            && !string.Equals(request.GeneralEntitySide!.Trim(), doc.GeneralEntitySide, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("لا يمكن تغيير صفة الملف بعد إنشائه");
+        }
+        if (!sideProvided && GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        {
+            throw new ArgumentException(
+                "تعديل ملف «منفذ عليه/عرض وايداع» يتطلب إرسال صفة الملف صراحةً (generalEntitySide)");
+        }
+        request.GeneralEntitySide = doc.GeneralEntitySide;
         DocumentValidator.ValidateSide(request);
         DocumentValidator.ValidateExecutedRequest(request);
         DocumentValidator.ValidateGuarantorCount(request);

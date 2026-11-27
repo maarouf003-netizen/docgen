@@ -53,12 +53,28 @@ public sealed class GlobalExceptionHandlerTests
             Entries.Add((logLevel, formatter(state, exception)));
     }
 
-    private sealed class StubDbErrors(bool unique = false, bool missingCircuit = false) : IDbExceptionClassifier
+    private sealed class StubDbErrors(bool unique = false, bool missingCircuit = false, bool amount = false) : IDbExceptionClassifier
     {
         public bool IsUniqueViolation(Exception ex) => unique;
         public bool IsConcurrencyViolation(Exception ex) => false;
         public bool IsForeignKeyViolation(Exception ex) => false;
         public bool IsMissingDocumentCircuitViolation(Exception ex) => missingCircuit;
+        public bool IsAmountConstraintViolation(Exception ex) => amount;
+    }
+
+    [Fact]
+    public async Task AmountConstraintViolation_ReturnsBadRequest_WithMoneyMessage()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler(new StubDbErrors(amount: true)).TryHandleAsync(
+            context, new DbUpdateException("check constraint"), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("قيمة مالية غير صالحة", body);
     }
 
     [Fact]

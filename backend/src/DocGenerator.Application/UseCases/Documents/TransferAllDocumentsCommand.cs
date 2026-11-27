@@ -84,13 +84,13 @@ public sealed class TransferAllDocumentsCommandHandler
         }
         catch
         {
-            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket);
             throw;
         }
 
         // اللقطة بشكل الاستجابة نفسه (`{"transferredCount":N}`) ليُعاد حرفيًا عند التكرار.
         await IdempotencyGuard.CompleteAsync(_idempotency, ticket,
-            IdempotencyGuard.Snapshot(new { transferredCount = transferred }), ct: ct);
+            IdempotencyGuard.Snapshot(new { transferredCount = transferred }));
         return transferred;
     }
 

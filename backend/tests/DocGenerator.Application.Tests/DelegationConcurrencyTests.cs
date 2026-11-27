@@ -33,11 +33,11 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync()
+    private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync(string? suffix = null)
     {
         await using var db = _pg.CreateContext();
 
-        var branch = new Branch { Name = "دمشق", Code = "DAM" };
+        var branch = new Branch { Name = "دمشق", Code = $"DAM{suffix}" };
         db.Branches.Add(branch);
         await db.SaveChangesAsync();
 
@@ -104,6 +104,112 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         DepositBookNumber: "كتاب-1",
         DepositBookDate: "2/8/2026",
         AssetIds: new List<int> { assetId });
+
+    [PostgresFact]
+    public async Task ConcurrentStrikeAndCreateDelegation_NeverLeaveStruckWithActiveDelegation()
+    {
+        // W1/B6: بدون قفل صف المصدر كان يمكن أن يُلتزم شطب T2 بين فحص T1 للإنابات
+        // وإدراج إنابته. القفل من الطرفين يجعل النتيجة: إنابة سارية أو شطب، لا الاثنان.
+        for (var round = 0; round < 3; round++)
+        {
+            var (sourceId, assetIds, lawyerId) = await SeedAsync(round.ToString());
+
+            await using var delegationDb = _pg.CreateContext();
+            await using var statusDb = _pg.CreateContext();
+            var create = DelegationWriteHandlerFactory.Create(delegationDb);
+            var status = DocumentServiceFactory.Create(statusDb, new FakeAuditLogger())
+                .StatusCommands.UpdateStatus;
+
+            var outcomes = await Task.WhenAll(
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race");
+                        return (Exception?)null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
+                }),
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await status.UpdateStatusAsync(
+                            sourceId,
+                            ExecutionStatusCatalog.StateStruckOff,
+                            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" },
+                            "race");
+                        return (Exception?)null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
+                }));
+
+            await using var check = _pg.CreateContext();
+            var doc = await check.Documents.AsNoTracking().SingleAsync(d => d.Id == sourceId);
+            var delegations = await check.DocumentDelegations.AsNoTracking()
+                .Where(d => d.SourceDocumentId == sourceId)
+                .ToListAsync();
+            var hasActive = delegations.Any(DelegationActivityPolicy.IsLifecycleActive);
+            var succeeded = outcomes.Count(o => o is null);
+
+            Assert.True(
+                succeeded >= 1,
+                $"round {round}: both operations failed (create: {outcomes[0]?.Message} | status: {outcomes[1]?.Message})");
+            Assert.False(
+                doc.ExecStatus == ExecutionStatusCatalog.StateStruckOff && hasActive,
+                $"round {round}: struck document kept an active delegation (outcomes: {outcomes[0]?.Message} | {outcomes[1]?.Message})");
+        }
+    }
+
+    [PostgresFact]
+    public async Task CreateDelegation_AfterSourceStruckBetweenPrecheckAndLock_Rejected()
+    {
+        // حتمي بلا سباق حقيقي: نستخدم مستودعًا يغيّر حالة المصدر إلى «مشطوب» **لحظة**
+        // محاولة قفل الصف داخل المعاملة، ثم يقرأ الطازج بعد القفل — فيجب أن يرفض.
+        var (sourceId, assetIds, lawyerId) = await SeedAsync("lock");
+
+        await using var db = _pg.CreateContext();
+        var repository = new StrikeOnLockRepository(db, sourceId);
+        var create = DelegationWriteHandlerFactory.Create(db, documents: repository);
+
+        var error = await Assert.ThrowsAnyAsync<Exception>(
+            () => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
+        Assert.IsType<ArgumentException>(error);
+
+        await using var check = _pg.CreateContext();
+        Assert.False(await check.DocumentDelegations.AnyAsync(d => d.SourceDocumentId == sourceId));
+    }
+
+    private sealed class StrikeOnLockRepository : DocumentRepository
+    {
+        private readonly DocGeneratorDbContext _db;
+        private readonly int _sourceId;
+
+        public StrikeOnLockRepository(DocGeneratorDbContext db, int sourceId) : base(db)
+        {
+            _db = db;
+            _sourceId = sourceId;
+        }
+
+        public override async Task<Document?> GetByIdForUpdateAsync(int id, CancellationToken ct = default)
+        {
+            if (id == _sourceId)
+            {
+                await _db.Documents
+                    .Where(d => d.Id == _sourceId)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(d => d.ExecStatus, ExecutionStatusCatalog.StateStruckOff),
+                        ct);
+            }
+            return await base.GetByIdForUpdateAsync(id, ct);
+        }
+    }
 
     private sealed record RaceOutcome(DelegationDto? Dto, Exception? Error);
 
