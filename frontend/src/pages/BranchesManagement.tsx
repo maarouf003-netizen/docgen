@@ -103,7 +103,12 @@ export default function BranchesManagement() {
 
       {m.fetchError && <div className="text-red-600 mb-4">{m.fetchError}</div>}
 
-      <BranchesTable branches={m.branches} loading={m.loading} onEdit={m.openEdit} />
+      <BranchesTable
+        branches={m.branches}
+        loading={m.loading}
+        loadFailed={!!m.fetchError}
+        onEdit={m.openEdit}
+      />
 
       <BranchSectionsPanel m={m} />
 

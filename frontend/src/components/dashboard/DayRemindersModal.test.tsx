@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { DayRemindersModal } from './DayRemindersModal';
@@ -348,6 +348,22 @@ describe('DayRemindersModal', () => {
       expect.objectContaining({ occurrenceDate: DAY, done: false, version: 9 }),
     );
     expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('يعطّل زر «تم» أثناء الحفظ — مفتاح التعطيل من المصدر المشترك', async () => {
+    const user = userEvent.setup();
+    let release: (value: unknown) => void = () => {};
+    (api.patch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+    renderModal([personalOccurrence()]);
+
+    const doneButton = screen.getByRole('button', { name: 'تم' });
+    await user.click(doneButton);
+    expect(doneButton).toBeDisabled();
+
+    release({ data: {} });
+    await waitFor(() => expect(doneButton).not.toBeDisabled());
   });
 
   it('يمسح الملاحظة من التعديل بسلسلة فارغة', async () => {

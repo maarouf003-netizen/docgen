@@ -43,8 +43,13 @@ export function sourceViolations(text) {
   for (const literal of classLiterals(text)) {
     const tokens = literal.slice(1, -1).split(/\s+/).filter(Boolean);
     for (const token of tokens) {
-      if (/^animate-/.test(token)) {
-        violations.push(`حركة بلا motion-safe: (${token})`);
+      // يلتقط `animate-*` مع أي بادئة variants (`sm:`/`hover:`/`md:hover:`) لأن
+      // الحركة تبقى حركة، ويستثني `motion-safe:` (المسار الآمن) و`animate-none`.
+      if (!/(?:^|:)animate-/.test(token)) continue;
+      const motionClass = token.slice(token.lastIndexOf('animate-'));
+      if (motionClass === 'animate-none') continue;
+      if (!token.includes('motion-safe:')) {
+        violations.push(`حركة بلا motion-safe: (${motionClass})`);
       }
     }
     if (literal.includes('outline-none')) {
@@ -118,6 +123,26 @@ function selfTest() {
     {
       name: 'motion-safe animate مقبول',
       text: 'className="motion-safe:animate-pulse"',
+      expected: [],
+    },
+    {
+      name: 'animate-none مقبول',
+      text: 'className="animate-none"',
+      expected: [],
+    },
+    {
+      name: 'حركة ببادئة breakpoint مرفوضة',
+      text: 'className="sm:animate-pulse"',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: 'حركة مع hover مرفوضة',
+      text: 'className="md:hover:animate-spin"',
+      expected: ['حركة بلا motion-safe: (animate-spin)'],
+    },
+    {
+      name: 'motion-safe مع breakpoint مقبول',
+      text: 'className="sm:motion-safe:animate-pulse"',
       expected: [],
     },
     {

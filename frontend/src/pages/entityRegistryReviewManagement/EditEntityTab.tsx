@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, getApiErrorMessage } from '../../api/client';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
@@ -28,13 +28,18 @@ export function EditEntityTab() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const editMenu = useFloatingMenu();
+  // تسلسل البحث: استجابة قديمة لا تطمس نتائج استعلام أحدث.
+  const searchSeq = useRef(0);
 
   // حالة الأفعال
   const [modal, setModal] = useState<'rename' | 'merge' | 'abolish' | null>(null);
 
   const doSearch = async (q: string) => {
+    const seq = ++searchSeq.current;
     if (!q.trim()) {
       setSearchResults([]);
+      setSearching(false);
+      setError('');
       return;
     }
     setSearching(true);
@@ -47,11 +52,13 @@ export function EditEntityTab() {
           excludeIds: selected.map((s) => s.groupId).join(',') || undefined,
         },
       });
+      if (seq !== searchSeq.current) return;
       setSearchResults(res.data.items ?? []);
     } catch (err) {
+      if (seq !== searchSeq.current) return;
       setError(getApiErrorMessage(err));
     } finally {
-      setSearching(false);
+      if (seq === searchSeq.current) setSearching(false);
     }
   };
 

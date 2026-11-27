@@ -69,7 +69,9 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
               {m.sectionsLoading ? (
                 <p className="text-gray-500 py-4 text-center">جارِ تحميل الشعب...</p>
               ) : m.sections.length === 0 ? (
-                <p className="text-gray-500 py-4 text-center">لا توجد شعب — أضف أول شعبة لهذا الفرع</p>
+                m.sectionsError ? null : (
+                  <p className="text-gray-500 py-4 text-center">لا توجد شعب — أضف أول شعبة لهذا الفرع</p>
+                )
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {m.sections.map((s) => (
@@ -208,7 +210,9 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
               {m.successionLoading ? (
                 <p className="text-gray-500 py-4 text-center">جارِ تحميل السجل...</p>
               ) : m.succession.length === 0 ? (
-                <p className="text-gray-500 py-4 text-center">لا توجد أحداث تعاقب لهذا الفرع</p>
+                m.successionError ? null : (
+                  <p className="text-gray-500 py-4 text-center">لا توجد أحداث تعاقب لهذا الفرع</p>
+                )
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {m.succession.map((h) => (

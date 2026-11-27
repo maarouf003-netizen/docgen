@@ -55,8 +55,13 @@ export function BranchManagementModal({ groupId, groupName, onClose, onCommitted
           {m.loading && <p className="text-sm text-gray-500">جارِ تحميل الفروع…</p>}
           {m.error && <p role="alert" className="text-red-600 text-sm mb-3">{m.error}</p>}
           {m.success && <p role="status" className="text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2 text-sm mb-3">{m.success}</p>}
+          {!m.loading && m.suggestionError && (
+            <p role="alert" className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 text-sm mb-3">
+              تعذّر تحميل اقتراح تعديل الجهة الأم: {m.suggestionError}
+            </p>
+          )}
 
-          {!m.loading && m.entries.length === 0 && (
+          {!m.loading && !m.error && m.entries.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">لا توجد فروع نشطة في محافظتك لهذه الجهة</p>
           )}
 

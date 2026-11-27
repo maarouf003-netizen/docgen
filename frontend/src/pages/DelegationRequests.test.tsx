@@ -82,12 +82,14 @@ describe('DelegationRequests', () => {
     expect(await screen.findByText('لا توجد طلبات إنابة معلّقة لفرعك')).toBeInTheDocument();
   });
 
-  it('يعرض خطأ التحميل مع إعادة المحاولة', async () => {
+  it('يعرض خطأ التحميل مع إعادة المحاولة دون حالة «لا توجد طلبات» كاذبة', async () => {
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
     getMock.mockRejectedValueOnce({ response: { data: { message: 'تعذر التحميل' } } });
     renderWithQueryClient(<DelegationRequests />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('تعذر التحميل');
+    // مسار الخطأ أولًا: لا «لا توجد طلبات» مع خطأ الجلب (فخّ مواعيد قانونية).
+    expect(screen.queryByText('لا توجد طلبات إنابة معلّقة لفرعك')).not.toBeInTheDocument();
     getMock.mockResolvedValueOnce({ data: [pendingDelegation()] });
     await userEvent.setup().click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
     expect(await screen.findByText('أحمد خالد الخطيب')).toBeInTheDocument();

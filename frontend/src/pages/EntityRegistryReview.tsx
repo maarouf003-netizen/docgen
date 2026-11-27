@@ -58,6 +58,7 @@ export default function EntityRegistryReview() {
   const [groupQuery, setGroupQuery] = useState('');
   const [groupResults, setGroupResults] = useState<PublicEntityGroupDto[]>([]);
   const [groupSearching, setGroupSearching] = useState(false);
+  const [groupError, setGroupError] = useState('');
   const [branchGroup, setBranchGroup] = useState<PublicEntityGroupDto | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [manualSuccess, setManualSuccess] = useState('');
@@ -69,10 +70,12 @@ export default function EntityRegistryReview() {
     if (!debouncedGroupQuery) {
       setGroupResults([]);
       setGroupSearching(false);
+      setGroupError('');
       return;
     }
     let cancelled = false;
     setGroupSearching(true);
+    setGroupError('');
     api
       .get<PublicEntityGroupListResponse>('/entity-registry/groups', {
         params: { q: debouncedGroupQuery, perPage: 20 },
@@ -80,8 +83,11 @@ export default function EntityRegistryReview() {
       .then((res) => {
         if (!cancelled) setGroupResults(res.data?.items ?? []);
       })
-      .catch(() => {
-        if (!cancelled) setGroupResults([]);
+      .catch((err) => {
+        if (cancelled) return;
+        // لا نُعلن «لا توجد جهات مطابقة» عند فشل الشبكة — الخطأ يُعرض صراحة.
+        setGroupResults([]);
+        setGroupError(getApiErrorMessage(err));
       })
       .finally(() => {
         if (!cancelled) setGroupSearching(false);
@@ -249,7 +255,12 @@ export default function EntityRegistryReview() {
             className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
           {groupSearching && <p className="text-xs text-gray-500 mt-1">جارِ البحث…</p>}
-          {!groupSearching && debouncedGroupQuery && groupResults.length === 0 && (
+          {!groupSearching && groupError && (
+            <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2 mt-2">
+              تعذّر البحث في سجل الجهات: {groupError}
+            </p>
+          )}
+          {!groupSearching && !groupError && debouncedGroupQuery && groupResults.length === 0 && (
             <p className="text-xs text-gray-400 mt-2">لا توجد جهات مطابقة</p>
           )}
           {groupResults.length > 0 && (
