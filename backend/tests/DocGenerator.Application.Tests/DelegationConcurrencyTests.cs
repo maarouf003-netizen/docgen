@@ -184,7 +184,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         var createTask = Task.Run(() => create.CreateAsync(sourceId, Request(assetIds[0]), lawyerId, "race"));
 
         // لا تأخير اعتباطي: ننتظر حتى يظهر قفل غير ممنوح (الإنابة وصلت إلى FOR UPDATE).
-        await WaitForBlockedDocumentLockAsync();
+        await WaitForBlockedDocumentLockAsync(blocker);
 
         await blocker.Documents
             .Where(d => d.Id == sourceId)
@@ -198,12 +198,11 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         Assert.False(await check.DocumentDelegations.AnyAsync(d => d.SourceDocumentId == sourceId));
     }
 
-    private async Task WaitForBlockedDocumentLockAsync()
+    private static async Task WaitForBlockedDocumentLockAsync(DocGeneratorDbContext observer)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
-            await using var db = _pg.CreateContext();
-            var waiting = await db.Database
+            var waiting = await observer.Database
                 .SqlQueryRaw<long>(
                     """
                     SELECT COUNT(*)::bigint AS "Value"
