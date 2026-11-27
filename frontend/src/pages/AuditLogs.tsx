@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, getApiErrorMessage } from '../api/client';
 import { formatDateTime } from '../utils/dates';
@@ -75,8 +75,17 @@ export default function AuditLogs() {
     placeholderData: keepPreviousData,
   });
 
-  const rows = useMemo(() => logsQuery.data?.items ?? [], [logsQuery.data]);
-  const total = logsQuery.data?.totalCount ?? 0;
+  // `keepPreviousData` يبقي الصفوف أثناء الجلب فقط؛ وعند فشل الطلب تعيد TanStack
+  // `data` غير معرّفة. نحتفظ بآخر صفحة ناجحة محليًا كي لا نعلن «لا توجد سجلات»
+  // بسبب خطأ شبكة (سلوك `useCancellableRequest` السابق: كان يحتفظ بالبيانات).
+  const [lastPage, setLastPage] = useState<Paged<AuditLogDto> | null>(null);
+  useEffect(() => {
+    if (logsQuery.data) setLastPage(logsQuery.data);
+  }, [logsQuery.data]);
+
+  const pageData = logsQuery.data ?? lastPage;
+  const rows = useMemo(() => pageData?.items ?? [], [pageData]);
+  const total = pageData?.totalCount ?? 0;
   const error = logsQuery.error ? getApiErrorMessage(logsQuery.error) : '';
 
   const updateUserName = (value: string) => {
@@ -98,7 +107,19 @@ export default function AuditLogs() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">سجل التدقيق</h2>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">سجل التدقيق</h2>
+        <button
+          type="button"
+          onClick={() => {
+            void logsQuery.refetch();
+          }}
+          disabled={logsQuery.isFetching}
+          className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        >
+          {logsQuery.isFetching ? 'جارِ التحديث…' : 'تحديث'}
+        </button>
+      </div>
 
       <form onSubmit={submit} className="bg-white rounded-xl shadow p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div className="flex flex-col">
@@ -161,7 +182,9 @@ export default function AuditLogs() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">لا توجد سجلات</td>
+                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                  {logsQuery.isError && pageData == null ? 'تعذّر تحميل السجلات' : 'لا توجد سجلات'}
+                </td>
               </tr>
             )}
           </tbody>
@@ -169,7 +192,7 @@ export default function AuditLogs() {
       </div>
 
       <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-        <span>إجمالي السجلات: {total}</span>
+        <span>إجمالي السجلات: {pageData ? total : '—'}</span>
         <div className="flex gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}

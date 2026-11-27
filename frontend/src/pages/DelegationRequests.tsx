@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import type { DelegationDto, SectionDto } from '../types';
-import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { DelegationDetails } from '../components/delegation/DelegationDetails';
 import AssignDelegationModal from '../components/delegation/AssignDelegationModal';
 
@@ -20,53 +20,79 @@ export default function DelegationRequests() {
   const [successMessage, setSuccessMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [rejectedOnly, setRejectedOnly] = useState(false);
-  const [sections, setSections] = useState<SectionDto[]>([]);
   const [redirectTarget, setRedirectTarget] = useState<DelegationDto | null>(null);
   const [redirectSectionId, setRedirectSectionId] = useState<number | ''>('');
   const [rejectTarget, setRejectTarget] = useState<DelegationDto | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
 
-  const requestsQuery = useCancellableRequest<DelegationDto[]>(
-    (signal) =>
-      api
-        .get<DelegationDto[]>('/delegations/pending', { signal, params: rejectedOnly ? { rejectedOnly: true } : {} })
-        .then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [rejectedOnly],
-  );
+  /**
+   * `P6-01b/3`: استعلام الطلبات بمفتاح `(rejectedOnly)` بدل `useEffect` اليدوي،
+   * مع `keepPreviousData` لبقاء القائمة أثناء تبديل الفلتر (سلوك الخطّاف السابق).
+   */
+  const requestsQuery = useQuery({
+    queryKey: ['delegation-requests', rejectedOnly],
+    queryFn: async ({ signal }) => {
+      const response = await api.get<DelegationDto[]>('/delegations/pending', {
+        signal,
+        params: rejectedOnly ? { rejectedOnly: true } : {},
+      });
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    placeholderData: keepPreviousData,
+  });
 
-  useEffect(() => {
-    if (!isHead || user?.branchId == null) return;
-    api
-      .get<SectionDto[]>('/sections', { params: { branchId: user.branchId } })
-      .then((r) => setSections(r.data ?? []))
-      .catch(() => setSections([]));
-  }, [isHead, user?.branchId]);
+  // شعب الفرع لفعل التوجيه: لا تُطلب لغير رئيس القسم ولا بلا فرع.
+  const sectionsQuery = useQuery({
+    queryKey: ['sections', user?.branchId],
+    enabled: isHead && user?.branchId != null,
+    queryFn: async ({ signal }) => {
+      const response = await api.get<SectionDto[]>('/sections', {
+        signal,
+        params: { branchId: user?.branchId },
+      });
+      return response.data ?? [];
+    },
+  });
 
+  const sections = sectionsQuery.data ?? [];
   const delegations = requestsQuery.data ?? [];
-  const loading = requestsQuery.isLoading;
-  const loadError = requestsQuery.error;
+  const loading = requestsQuery.isFetching;
+  const loadError = requestsQuery.error ? getApiErrorMessage(requestsQuery.error) : '';
+
+  const invalidateRequests = () =>
+    queryClient.invalidateQueries({ queryKey: ['delegation-requests'] });
 
   const handleAssigned = (lawyerName: string) => {
     setAssignTarget(null);
     setSuccessMessage(`تم اعتماد الإنابة وتكليف المحامي ${lawyerName || 'المختص'}`);
-    requestsQuery.refetch();
+    void invalidateRequests();
   };
 
-  const runAction = async (d: DelegationDto, path: 'redirect' | 'recall-redirect' | 'reject', body: unknown) => {
-    setBusyId(d.id);
-    setActionError('');
-    try {
-      await api.post(`/delegations/${d.id}/${path}`, body ?? {});
+  /**
+   * فعل كتابة واحد (توجيه/تراجع/رفض) عبر `useMutation`: تعطيل الصف بمعرّفه،
+   * وإبطال مخزَّن الطلبات بعد النجاح (بدل `refetch` اليدوي)، وعرض خطأ الخادم.
+   */
+  const actionMutation = useMutation({
+    mutationFn: ({ d, path, body }: { d: DelegationDto; path: string; body: unknown }) =>
+      api.post(`/delegations/${d.id}/${path}`, body ?? {}),
+    onMutate: ({ d }) => {
+      setBusyId(d.id);
+      setActionError('');
+    },
+    onSuccess: async () => {
       setRedirectTarget(null);
       setRejectTarget(null);
       setRejectReason('');
-      requestsQuery.refetch();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err));
-    } finally {
-      setBusyId(null);
-    }
+      await invalidateRequests();
+    },
+    onError: (err) => setActionError(getApiErrorMessage(err)),
+    onSettled: () => setBusyId(null),
+  });
+
+  const runAction = (d: DelegationDto, path: 'redirect' | 'recall-redirect' | 'reject', body: unknown) => {
+    actionMutation.mutate({ d, path, body });
   };
 
   return (
@@ -112,7 +138,9 @@ export default function DelegationRequests() {
           <p>{loadError}</p>
           <button
             type="button"
-            onClick={requestsQuery.refetch}
+            onClick={() => {
+              void requestsQuery.refetch();
+            }}
             className="mt-2 text-red-800 underline underline-offset-2 min-h-11"
           >
             إعادة المحاولة
