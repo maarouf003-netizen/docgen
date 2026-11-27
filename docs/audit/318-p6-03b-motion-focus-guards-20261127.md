@@ -59,6 +59,14 @@
 `critical`/`serious` وقائمة التبييض الفارغة. صار مجموع E2E **25 اختبارًا**
 (16 سطح مكتب + 9 جوال).
 
+**أُصلح بفعل البوابة (لا بتبييض):**
+
+- `aria-expanded` كان موضوعًا على `<textarea>` (`#forum-composer`) وهو غير مدعوم على
+  دور `textbox` (`aria-allowed-attr` — `critical`). أُزيل من `AutoResizeTextarea`
+  وبقي `aria-controls` (مدعوم)، مع تأكيد في `MessageComposer.test`.
+- تباين عداد المحارف `text-gray-400` على الأبيض (`color-contrast` — `serious`)
+  رُفع إلى `text-gray-500`.
+
 ## 6. الاختبارات
 
 | المجموعة | النتيجة |
