@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AuditLogs from './AuditLogs';
+import { renderWithQueryClient } from '../test/queryClient';
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn() },
@@ -28,7 +29,7 @@ describe('AuditLogs', () => {
       { id: 2, timestamp: '2026-08-01', userName: 'admin', actionType: 'create_user', details: 'أنشأ محامياً', documentId: null, documentType: null },
       { id: 3, timestamp: '2026-08-01', userName: 'admin', actionType: 'update_user', details: 'عدّل المستخدم', documentId: null, documentType: null },
     ]);
-    render(<AuditLogs />);
+    renderWithQueryClient(<AuditLogs />);
 
     expect((await screen.findAllByText('نقل ملف')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('إنشاء مستخدم').length).toBeGreaterThan(0);
@@ -38,7 +39,7 @@ describe('AuditLogs', () => {
   it('يكتب عدة أحرف متتابعة فيطلق طلبًا واحدًا فقط بعد انتهاء التأجيل', async () => {
     const user = userEvent.setup();
     mockLogs([]);
-    render(<AuditLogs />);
+    renderWithQueryClient(<AuditLogs />);
 
     expect(api.get).toHaveBeenCalledTimes(1);
 
@@ -64,7 +65,7 @@ describe('AuditLogs', () => {
       documentId: null,
       documentType: null,
     })));
-    render(<AuditLogs />);
+    renderWithQueryClient(<AuditLogs />);
 
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
 
@@ -82,5 +83,37 @@ describe('AuditLogs', () => {
       expect(url).toContain('page=1');
       expect(url).toContain('actionType=create');
     });
+  });
+
+  it('لا يكرر طلب الصفحة نفسها عند الرجوع إليها ضمن مدة التخزين', async () => {
+    const user = userEvent.setup();
+    mockLogs(Array.from({ length: 45 }, (_, i) => ({
+      id: i + 1,
+      timestamp: '2026-08-01',
+      userName: 'head1',
+      actionType: 'login',
+      details: null,
+      documentId: null,
+      documentType: null,
+    })));
+    renderWithQueryClient(<AuditLogs />);
+
+    const pageOneCalls = () =>
+      (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) =>
+        String(url).includes('page=1'),
+      ).length;
+
+    await waitFor(() => expect(pageOneCalls()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'التالي' }));
+    await waitFor(() => {
+      const url = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string | undefined;
+      expect(url).toContain('page=2');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'السابق' }));
+    expect(await screen.findByText('صفحة 1 من 3')).toBeInTheDocument();
+    // المفتاح (page=1، بلا فلاتر) مخزَّن من التركيب: لا طلب ثانٍ.
+    await waitFor(() => expect(pageOneCalls()).toBe(1));
   });
 });

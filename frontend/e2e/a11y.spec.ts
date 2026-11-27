@@ -118,4 +118,13 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByRole('heading', { name: 'إحصائيات الدوائر' })).toBeVisible();
     await analyzeBlocking(page, '/circuit-stats');
   });
+
+  // P6-01b/2: الشريحة الثانية (سجل التدقيق) تُدقَّق كذلك.
+  test('audit logs page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.manager);
+    await page.goto('/audit-logs');
+    await expect(page.getByRole('heading', { name: 'سجل التدقيق' })).toBeVisible();
+    await expect(page.getByText(/إجمالي السجلات/)).toBeVisible();
+    await analyzeBlocking(page, '/audit-logs');
+  });
 });

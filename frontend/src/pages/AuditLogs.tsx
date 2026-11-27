@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api } from '../api/client';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { api, getApiErrorMessage } from '../api/client';
 import { formatDateTime } from '../utils/dates';
-import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 interface AuditLogDto {
@@ -57,16 +57,27 @@ export default function AuditLogs() {
 
   const debouncedUserName = useDebouncedValue(userName, 300);
 
-  const logsQuery = useCancellableRequest<Paged<AuditLogDto>>((signal) => {
-    const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
-    if (debouncedUserName) params.set('userName', debouncedUserName);
-    if (actionType) params.set('actionType', actionType);
-    return api.get(`/audit-logs?${params.toString()}`, { signal }).then((r) => r.data);
-  }, [page, debouncedUserName, actionType]);
+  /**
+   * `P6-01b` (الشريحة الثانية): استعلام مخزَّن بمفتاح `(page, userName, actionType)`.
+   * `keepPreviousData` يبقي صفحة/نتيجة سابقة أثناء الجلب (سلوك `useCancellableRequest`
+   * الافتراضي نفسه: لا وميض)، والرجوع إلى مفتاح مخزَّن خلال `staleTime` لا يُكرر الطلب.
+   * `signal` يُلغي الطلب المتقادم عند تبديل الصفحة/الفلتر بسرعة.
+   */
+  const logsQuery = useQuery({
+    queryKey: ['audit-logs', page, debouncedUserName, actionType],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+      if (debouncedUserName) params.set('userName', debouncedUserName);
+      if (actionType) params.set('actionType', actionType);
+      const response = await api.get<Paged<AuditLogDto>>(`/audit-logs?${params.toString()}`, { signal });
+      return response.data;
+    },
+    placeholderData: keepPreviousData,
+  });
 
   const rows = useMemo(() => logsQuery.data?.items ?? [], [logsQuery.data]);
   const total = logsQuery.data?.totalCount ?? 0;
-  const error = logsQuery.error ?? '';
+  const error = logsQuery.error ? getApiErrorMessage(logsQuery.error) : '';
 
   const updateUserName = (value: string) => {
     setUserName(value);
