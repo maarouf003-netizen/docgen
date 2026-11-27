@@ -6,6 +6,7 @@ using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.Infrastructure.Persistence.MigrationsPostgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -2222,6 +2223,14 @@ public class DocumentsIntegrationTests : IAsyncLifetime
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             var doc = await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id);
             Assert.True(doc.WasDepositExecuted);
+
+            // أثر الهجرة (W1): صف منفذ بعلامة false يُصلَح، وإعادة التشغيل لا تغيّر شيئًا.
+            await db.Documents.Where(d => d.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.WasDepositExecuted, false));
+            await db.Database.ExecuteSqlRawAsync(W1_DepositExecutedBackfill.BackfillSql);
+            Assert.True((await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id)).WasDepositExecuted);
+            await db.Database.ExecuteSqlRawAsync(W1_DepositExecutedBackfill.BackfillSql);
+            Assert.True((await db.Documents.AsNoTracking().SingleAsync(d => d.Id == id)).WasDepositExecuted);
         }
 
         var revert = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
@@ -2242,6 +2251,13 @@ public class DocumentsIntegrationTests : IAsyncLifetime
             // العلامة تبقى صحيحة بعد الإرجاع (مال الإيداع محسوب تاريخيًا).
             Assert.True(doc.WasDepositExecuted);
         }
+
+        // الإحصاء الفعلي (لا الراية وحدها): المبلغ يبقى في «منفذ» بعد الإرجاع.
+        var manager = _factory.AuthorizedClient("manager");
+        using var stats = await (await manager.GetAsync("/api/stats/manager?period=yearly&year=2024"))
+            .Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.True(stats!.RootElement.GetProperty("depositExecutedCount").GetInt32() >= 1);
+        Assert.True(stats.RootElement.GetProperty("depositExecutedAmount").GetDecimal() >= 1250m);
     }
 
     private async Task<int> FirstEstateIdAsync(string token, int documentId)

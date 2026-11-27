@@ -89,6 +89,25 @@ public class DbExceptionClassifierTests
     }
 
     [Fact]
+    public void IsAmountConstraintViolation_DocumentsAmountCheck_True()
+    {
+        Assert.True(_classifier.IsAmountConstraintViolation(
+            new DbUpdateException("فشل حفظ", Postgres("23514", "CK_Documents_AmountNumeric_NonNegative"))));
+        Assert.True(_classifier.IsAmountConstraintViolation(
+            new DbUpdateException("فشل حفظ", Postgres("22003"))));
+    }
+
+    [Fact]
+    public void IsAmountConstraintViolation_VersionOrOtherTable_False()
+    {
+        // تقييد التصنيف على قيود مبالغ Documents يمنع تحويل أخطاء الإصدار الداخلية إلى 400 مالي.
+        Assert.False(_classifier.IsAmountConstraintViolation(
+            new DbUpdateException("فشل حفظ", Postgres("23514", "CK_Documents_VersionNonNegative"))));
+        Assert.False(_classifier.IsAmountConstraintViolation(
+            new DbUpdateException("فشل حفظ", Postgres("23514", "CK_Delegations_Amount_NonNegative"))));
+    }
+
+    [Fact]
     public void IsConcurrencyViolation_PlainException_False()
     {
         Assert.False(_classifier.IsConcurrencyViolation(new InvalidOperationException("عطل عام")));

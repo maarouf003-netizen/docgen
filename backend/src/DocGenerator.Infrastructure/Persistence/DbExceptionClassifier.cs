@@ -69,8 +69,8 @@ public class DbExceptionClassifier : IDbExceptionClassifier
                     return true;
                 if (postgres.SqlState == "23514"
                     && postgres.ConstraintName is { } name
-                    && (name.Contains("Amount", StringComparison.OrdinalIgnoreCase)
-                        || name.Contains("NonNegative", StringComparison.OrdinalIgnoreCase)))
+                    && name.StartsWith("CK_Documents_", StringComparison.Ordinal)
+                    && name.Contains("Amount", StringComparison.OrdinalIgnoreCase))
                     return true;
             }
         }

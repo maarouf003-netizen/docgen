@@ -156,7 +156,11 @@ public class DelegationConcurrencyTests : IAsyncLifetime
                 .Where(d => d.SourceDocumentId == sourceId)
                 .ToListAsync();
             var hasActive = delegations.Any(DelegationActivityPolicy.IsLifecycleActive);
+            var succeeded = outcomes.Count(o => o is null);
 
+            Assert.True(
+                succeeded >= 1,
+                $"round {round}: both operations failed (create: {outcomes[0]?.Message} | status: {outcomes[1]?.Message})");
             Assert.False(
                 doc.ExecStatus == ExecutionStatusCatalog.StateStruckOff && hasActive,
                 $"round {round}: struck document kept an active delegation (outcomes: {outcomes[0]?.Message} | {outcomes[1]?.Message})");

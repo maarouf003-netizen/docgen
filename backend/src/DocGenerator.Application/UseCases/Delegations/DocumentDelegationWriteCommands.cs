@@ -261,10 +261,15 @@ public sealed class UpdateDocumentDelegationCommandHandler
 
         await _tx.RunAsync(async token =>
         {
+            // W1/B6: قفل المصدر وإعادة التحقق من صلاحيته بعد القفل (تعديل الإنابة).
+            await _documents.GetByIdForUpdateAsync(source.Id, token);
             // B2+D1: الفحص أولًا على قراءة طازجة بلا تتبع، ثم أي إسناد على الكيان —
             // داخل المعاملة نفسها. الرفض لا يترك حالة Modified عالقة.
             var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
                 ?? throw new ArgumentException("الملف المنيب غير موجود");
+            DocumentDelegationService.ValidateSourceForDelegation(fresh);
+            if (fresh.NeedsRegistration)
+                throw new ArgumentException("لا يمكن تعديل إنابة على ملف بانتظار إعادة القيد");
             await DocumentDelegationRules.PruneStaleReservationsAsync(fresh, _reservations, token);
             await DocumentDelegationService.ValidateAssetsNotBlockedAsync(
                 fresh, request.AssetIds, excludeDelegationId: delegation.Id, token);

@@ -7,6 +7,15 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
     /// <inheritdoc />
     public partial class W1_DepositExecutedBackfill : Migration
     {
+        /// <summary>بيان الإصلاح — يُعاد استخدامه في اختبار الأثر (لا نسخة ثانية).</summary>
+        public const string BackfillSql = """
+            UPDATE "Documents"
+            SET "WasDepositExecuted" = TRUE
+            WHERE "GeneralEntitySide" = 'deposit'
+              AND "ExecutedStatus" = 'منفذ'
+              AND "WasDepositExecuted" = FALSE;
+            """;
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -15,13 +24,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
             // إحصاءات المدير بعد الإرجاع إلى «متداول». نُثبّت العلامة للصفوف الحالية المنفذة.
             // الصفوف التي أُرجعت سابقًا لا يمكن استنتاجها من الحالة وحدها (تحتاج سجل الوقوعات)
             // — تبقى كما هي، وهذا مذكور في docs/audit/331.
-            migrationBuilder.Sql("""
-                UPDATE "Documents"
-                SET "WasDepositExecuted" = TRUE
-                WHERE "GeneralEntitySide" = 'deposit'
-                  AND "ExecutedStatus" = 'منفذ'
-                  AND "WasDepositExecuted" = FALSE;
-                """);
+            migrationBuilder.Sql(BackfillSql);
         }
 
         /// <inheritdoc />

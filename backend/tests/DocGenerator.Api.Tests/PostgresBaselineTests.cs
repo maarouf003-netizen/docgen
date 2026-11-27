@@ -36,7 +36,7 @@ public sealed class PostgresBaselineTests
             var migrations = await db.Database
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
-            Assert.Equal(8, migrations.Count);
+            Assert.Equal(9, migrations.Count);
             Assert.Contains(migrations, m => m.Contains("InitialPostgresBaseline", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddIdempotencyResponseMetadata", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P0_06_OptimisticConcurrency", StringComparison.Ordinal));
@@ -45,6 +45,7 @@ public sealed class PostgresBaselineTests
             Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndexes", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("P3_02_PortalSearchIndex", StringComparison.Ordinal));
             Assert.Contains(migrations, m => m.Contains("AddDataProtectionKeys", StringComparison.Ordinal));
+            Assert.Contains(migrations, m => m.Contains("W1_DepositExecutedBackfill", StringComparison.Ordinal));
 
             // P6-01b: جدول مفاتيح Data Protection موجود بعد الهجرة.
             var dataProtectionTables = await db.Database
