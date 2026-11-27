@@ -33,11 +33,11 @@ public class DelegationConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _pg.DisposeAsync();
 
-    private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync()
+    private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync(string? suffix = null)
     {
         await using var db = _pg.CreateContext();
 
-        var branch = new Branch { Name = "دمشق", Code = "DAM" };
+        var branch = new Branch { Name = "دمشق", Code = $"DAM{suffix}" };
         db.Branches.Add(branch);
         await db.SaveChangesAsync();
 
@@ -112,7 +112,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
         // وإدراج إنابته. القفل من الطرفين يجعل النتيجة: إنابة سارية أو شطب، لا الاثنان.
         for (var round = 0; round < 3; round++)
         {
-            var (sourceId, assetIds, lawyerId) = await SeedAsync();
+            var (sourceId, assetIds, lawyerId) = await SeedAsync(round.ToString());
 
             await using var delegationDb = _pg.CreateContext();
             await using var statusDb = _pg.CreateContext();
@@ -211,7 +211,7 @@ public class DelegationConcurrencyTests : IAsyncLifetime
                     JOIN pg_database d ON d.oid = l.database
                     WHERE NOT l.granted
                       AND d.datname = current_database()
-                      AND l.relation = 'Documents'::regclass
+                      AND l.relation = '"Documents"'::regclass
                     """)
                 .SingleAsync();
             if (waiting > 0)
