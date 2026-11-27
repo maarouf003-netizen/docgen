@@ -6,8 +6,10 @@ import { renderWithQueryClient } from '../test/queryClient';
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn() },
-  getApiErrorMessage: (error: unknown) =>
-    (error as { message?: string })?.message ?? 'حدث خطأ غير متوقع',
+  getApiErrorMessage: (error: unknown) => {
+    const e = error as { message?: string; response?: { data?: { message?: string } } };
+    return e?.response?.data?.message ?? e?.message ?? 'حدث خطأ غير متوقع';
+  },
 }));
 
 import { api } from '../api/client';
@@ -115,5 +117,98 @@ describe('AuditLogs', () => {
     expect(await screen.findByText('صفحة 1 من 3')).toBeInTheDocument();
     // المفتاح (page=1، بلا فلاتر) مخزَّن من التركيب: لا طلب ثانٍ.
     await waitFor(() => expect(pageOneCalls()).toBe(1));
+    expect(api.get).toHaveBeenCalledTimes(2);
+
+    // حدود الترقيم: الصفحة الأخيرة (3) تُعطّل «التالي».
+    await user.click(screen.getByRole('button', { name: 'التالي' }));
+    await waitFor(() => expect(screen.getByText('صفحة 2 من 3')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'التالي' }));
+    expect(await screen.findByText('صفحة 3 من 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'التالي' })).toBeDisabled();
+  });
+
+  it('فشل صفحة جديدة يُبقي صفوف الصفحة السابقة ولا يعلن «لا توجد سجلات»', async () => {
+    const user = userEvent.setup();
+    const row = (id: number, details: string) => ({
+      id,
+      timestamp: '2026-08-01',
+      userName: 'head1',
+      actionType: 'login',
+      details,
+      documentId: null,
+      documentType: null,
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (String(url).includes('page=2')) {
+        return Promise.reject({ response: { data: { message: 'تعذر تحميل الصفحة' } } });
+      }
+      return Promise.resolve({
+        data: { items: [row(1, 'سطر الصفحة الأولى')], page: 1, perPage: 20, totalCount: 45 },
+      });
+    });
+
+    renderWithQueryClient(<AuditLogs />);
+    expect(await screen.findByText('سطر الصفحة الأولى')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'التالي' }));
+
+    expect(await screen.findByText('تعذر تحميل الصفحة')).toBeInTheDocument();
+    expect(screen.getByText('سطر الصفحة الأولى')).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد سجلات')).not.toBeInTheDocument();
+    expect(screen.getByText(/إجمالي السجلات: 45/)).toBeInTheDocument();
+    expect(screen.getByText('صفحة 2 من 3')).toBeInTheDocument();
+  });
+
+  it('عند فشل أولي بلا بيانات سابقة يعرض «تعذّر تحميل السجلات» لا «لا توجد سجلات»', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
+      response: { data: { message: 'تعذر الاتصال' } },
+    });
+    renderWithQueryClient(<AuditLogs />);
+
+    expect(await screen.findByText('تعذر الاتصال')).toBeInTheDocument();
+    expect(await screen.findByText('تعذّر تحميل السجلات')).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد سجلات')).not.toBeInTheDocument();
+    expect(screen.getByText(/إجمالي السجلات: —/)).toBeInTheDocument();
+  });
+
+  it('يبقي صفوف الصفحة السابقة ظاهرة أثناء جلب التالية (بلا وميض فارغ)', async () => {
+    const user = userEvent.setup();
+    let resolvePageTwo: ((value: unknown) => void) | undefined;
+    const row = (id: number, details: string) => ({
+      id,
+      timestamp: '2026-08-01',
+      userName: 'head1',
+      actionType: 'login',
+      details,
+      documentId: null,
+      documentType: null,
+    });
+
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (String(url).includes('page=2')) {
+        return new Promise((resolve) => {
+          resolvePageTwo = resolve;
+        });
+      }
+      return Promise.resolve({
+        data: { items: [row(1, 'سطر الصفحة الأولى')], page: 1, perPage: 20, totalCount: 45 },
+      });
+    });
+
+    renderWithQueryClient(<AuditLogs />);
+    expect(await screen.findByText('سطر الصفحة الأولى')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'التالي' }));
+    // أثناء الطلب المعلّق: الصف السابق يبقى (placeholderData).
+    expect(screen.getByText('سطر الصفحة الأولى')).toBeInTheDocument();
+
+    await act(async () => {
+      resolvePageTwo?.({
+        data: { items: [row(2, 'سطر الصفحة الثانية')], page: 2, perPage: 20, totalCount: 45 },
+      });
+    });
+
+    expect(await screen.findByText('سطر الصفحة الثانية')).toBeInTheDocument();
+    expect(screen.queryByText('سطر الصفحة الأولى')).not.toBeInTheDocument();
   });
 });
