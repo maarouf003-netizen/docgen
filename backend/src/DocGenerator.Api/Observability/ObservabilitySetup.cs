@@ -1,5 +1,6 @@
 using System.Reflection;
 using DocGenerator.Application.Common.Observability;
+using DocGenerator.Infrastructure.Caching;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -22,7 +23,7 @@ public static class ObservabilitySetup
     /// </summary>
     public const string NpgsqlMetricMeter = "Npgsql";
 
-    private static readonly string[] MetricMeters = [NpgsqlMetricMeter];
+    private static readonly string[] MetricMeters = [NpgsqlMetricMeter, ReferenceDataDiagnostics.MeterName];
 
     /// <summary>متغيّر البيئة القياسي — يُقرأ كبديل عند غياب المفتاح أعلاه.</summary>
     public const string OtlpEndpointEnvironmentVariable = "OTEL_EXPORTER_OTLP_ENDPOINT";
