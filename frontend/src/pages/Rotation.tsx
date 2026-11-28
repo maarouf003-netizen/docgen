@@ -129,7 +129,7 @@ export default function Rotation() {
       {loading && <div className="text-gray-500">جارِ التحميل...</div>}
 
       {!loading && data && (data.totalCount ?? 0) === 0 && !error && !loadError && (
-        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
           لا توجد ملفات مؤهلة للتدوير
         </div>
       )}

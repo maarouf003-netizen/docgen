@@ -175,7 +175,7 @@ export default function AppealsList() {
   /** رقم الأساس التفاعلي: يفتح سجل الأرقام للمسند له، ويبقى نصًا لغيره. */
   function BaseNumberAction({ a, className = '' }: { a: AppealDto; className?: string }) {
     const number = appealBaseNumberOf(a);
-    if (!number) return <span className={`text-gray-400 ${className}`}>—</span>;
+    if (!number) return <span className={`text-gray-500 ${className}`}>—</span>;
 
     const tone = a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800';
     if (!canOpenBaseHistory(a)) {
@@ -314,7 +314,7 @@ export default function AppealsList() {
                       <span className={appealOutcomeCls(a.outcome)}>{appealOutcomeLabel(a.outcome)}</span>
                     </td>
                     {canSeeAssigned && (
-                      <td className="px-2 py-3 text-gray-800 max-w-[140px] break-words">{a.assignedLawyerName || <span className="text-gray-400">—</span>}</td>
+                      <td className="px-2 py-3 text-gray-800 max-w-[140px] break-words">{a.assignedLawyerName || <span className="text-gray-500">—</span>}</td>
                     )}
                   </tr>
                   {/* صف الإجراءات الأفقي: فاصل علوي خفيف وفاصل سفلي قوي يفصل الكتل (R2). */}
