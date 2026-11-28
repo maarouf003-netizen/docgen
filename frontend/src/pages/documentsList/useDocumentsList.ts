@@ -173,7 +173,10 @@ export function useDocumentsList() {
   useEffect(() => {
     if (restoreAttempted || !data || !saved?.cursors?.length || listQuery.isLoading)
       return;
-    // لا تستعيد سلسلة المؤشرات قبل استقرار البحث المؤجّل (وإلا استُعيدت بلا `q`).
+    // لا تستعيد سلسلة المؤشرات قبل استقرار البحث المؤجّل: المؤشر نفسه محفوظ مع فلتر
+    // قديم، و`buildListParams(savedCursor)` يقرأ `debouncedQuery`؛ فلو استُعيدت أثناء
+    // نافذة التأخير لأُرسل `cursor` بسلسلة `q` **مختلفة** فتُلحق صفوف فلتر آخر
+    // بالقائمة (أو يُحرق `restoreAttempted` فيُفقد الموضع).
     if (query !== debouncedQuery)
       return;
 
@@ -189,12 +192,14 @@ export function useDocumentsList() {
       return;
 
     let cancelled = false;
+    // جيل القائمة: تغيير أي فلتر أثناء الاستعادة يُبطل ما بُني لفلتر آخر (مثل `loadMore`).
+    const restoreGeneration = listGeneration.current;
     const restore = async () => {
       let cursor = data.nextCursor ?? null;
       const restored: DocumentListItemDto[] = [];
       const used: string[] = [];
       for (const savedCursor of (saved.cursors ?? []).slice(0, 20)) {
-        if (cancelled || !cursor || cursor !== savedCursor)
+        if (cancelled || listGeneration.current !== restoreGeneration || !cursor || cursor !== savedCursor)
           break;
         const response = await api.get<PagedResult<DocumentListItemDto>>(
           `/documents/list?${buildListParams(savedCursor).toString()}`);
@@ -203,7 +208,7 @@ export function useDocumentsList() {
         used.push(savedCursor);
         cursor = page.nextCursor ?? null;
       }
-      if (!cancelled) {
+      if (!cancelled && listGeneration.current === restoreGeneration) {
         setExtraItems(restored);
         setExtraCursors(used);
         setNextCursor(cursor);

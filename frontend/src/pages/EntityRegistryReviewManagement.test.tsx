@@ -311,19 +311,28 @@ describe('EntityRegistryReviewManagement', () => {
     expect(await screen.findByLabelText('اسم الجهة المعتمد')).toBeInTheDocument();
   });
 
-  it('تنقّل التبويبات بلوحة المفاتيح (RTL: يسار = التالي، Home/End)', async () => {
+  it('تنقّل التبويبات بلوحة المفاتيح (RTL: يسار = التالي، Home/End، تركيز وroving tabindex)', async () => {
     renderPage();
     const edit = screen.getByRole('tab', { name: 'تعديل جهة عامة' });
+    const add = screen.getByRole('tab', { name: 'إضافة جهة' });
+    const last = screen.getByRole('tab', { name: 'اقتراحات الأم' });
     edit.focus();
+    expect(edit).toHaveAttribute('tabindex', '0');
+    expect(add).toHaveAttribute('tabindex', '-1');
 
     fireEvent.keyDown(edit, { key: 'ArrowLeft' });
-    expect(screen.getByRole('tab', { name: 'إضافة جهة' })).toHaveAttribute('aria-selected', 'true');
+    expect(add).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(add);
+    expect(add).toHaveAttribute('tabindex', '0');
+    expect(edit).toHaveAttribute('tabindex', '-1');
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
-    expect(screen.getByRole('tab', { name: 'اقتراحات الأم' })).toHaveAttribute('aria-selected', 'true');
+    expect(last).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(last);
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
-    expect(screen.getByRole('tab', { name: 'تعديل جهة عامة' })).toHaveAttribute('aria-selected', 'true');
+    expect(edit).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(edit);
   });
 
   it('نتيجة بحث قديمة لا تطمس نتيجة الاستعلام الأحدث', async () => {

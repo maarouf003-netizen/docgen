@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import PortalFileDetail from './PortalFileDetail';
@@ -402,7 +402,8 @@ describe('PortalFileDetail المرآة القرائية', () => {
     expect(screen.getByRole('group', { name: 'قسم الإجراءات التنفيذية' })).toHaveFocus();
   });
 
-  it('على الجوال: يعرض التبويبات الأربعة وينقل بين الأقسام (فرع التبويبات)', async () => {    stubMobile(true);
+  it('على الجوال: يعرض التبويبات الأربعة وينقل بين الأقسام (فرع التبويبات)', async () => {
+    stubMobile(true);
     setEndpoints({ doc: portalDoc() });
     const user = userEvent.setup();
     renderPage();
@@ -424,6 +425,30 @@ describe('PortalFileDetail المرآة القرائية', () => {
     await user.click(screen.getByRole('tab', { name: 'الحالة' }));
     expect(await screen.findByText('الإجراءات التنفيذية')).toBeInTheDocument();
     expect(screen.getByText('لا توجد إجراءات تنفيذية')).toBeInTheDocument();
+  });
+
+  it('على الجوال: ينقّل تبويبات الملف بلوحة المفاتيح (RTL: يسار = التالي، Home/End)', async () => {
+    stubMobile(true);
+    setEndpoints({ doc: portalDoc() });
+    renderPage();
+
+    const info = await screen.findByRole('tab', { name: 'المعلومات' });
+    const security = screen.getByRole('tab', { name: 'السند والأموال' });
+    expect(info).toHaveAttribute('tabindex', '0');
+    expect(security).toHaveAttribute('tabindex', '-1');
+    expect(security).not.toHaveAttribute('aria-controls');
+
+    info.focus();
+    fireEvent.keyDown(info, { key: 'ArrowLeft' });
+    expect(security).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(security);
+    expect(security).toHaveAttribute('aria-controls', 'portal-document-panel-security');
+
+    fireEvent.keyDown(security, { key: 'End' });
+    const status = screen.getByRole('tab', { name: 'الحالة' });
+    expect(status).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(status, { key: 'Home' });
+    expect(info).toHaveAttribute('aria-selected', 'true');
   });
 
   it('على الجوال: يفتح نافذة الاستئناف من تبويب «الإنابات والوقوعات»', async () => {

@@ -15,12 +15,156 @@
  * كل قاعدة دالة نقية مُصدَّرة كي يثبتها `--self-test` قبل تشغيلها على المصدر.
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REDUCED_MOTION_MEDIA = '@media (prefers-reduced-motion: reduce)';
 
 const CLASS_LITERAL = /`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
+
+/** بادئات تعبير صالح لبدء regex — تُستخدم لتجنّب قراءة `/*` داخل regex كتعليق. */
+const REGEX_PREFIX_CHARS = '(,=:[!&|?{};+-*%<>~^';
+const REGEX_PREFIX_WORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'throw', 'case', 'do', 'else', 'yield', 'await',
+]);
+
+/** هل تكتمل قبل `//` بادئة رابط (`https:`…)؟ عندها `//` نصّ لا تعليق. */
+const URL_SCHEME_TAIL = /(?:^|[^A-Za-z0-9+.-])(?:https?|wss?|ftp|file|blob|data|tel|mailto):$/i;
+
+/** `animate-none` أو قيمته الاعتباطية `animate-[none…]` — ليست حركة. */
+function isMotionNone(motionClass) {
+  return motionClass === 'animate-none' || /^animate-\[none(?:[^\]]*)\]$/.test(motionClass);
+}
+
+/** هل البادئة تحمل variant `motion-safe:` حقيقيًا (بحدود `:` لا داخل `[…]`)؟ */
+function hasMotionSafeVariant(token) {
+  const prefix = token.slice(0, token.lastIndexOf('animate-'));
+  return /(?:^|:)motion-safe:/.test(prefix);
+}
+
+function regexCanStart(out) {
+  let index = out.length - 1;
+  while (index >= 0 && /\s/.test(out[index])) index -= 1;
+  if (index < 0) return true;
+  if (REGEX_PREFIX_CHARS.includes(out[index])) return true;
+  const word = /([A-Za-z_$][A-Za-z0-9_$]*)$/.exec(out.slice(0, index + 1));
+  return word !== null && REGEX_PREFIX_WORDS.has(word[1]);
+}
+
+/**
+ * يزيل تعليقات JS/TS/JSX (`//`، `/* *\/`، `{/* *\/}`) قبل المسح، فلا يُنشئ مثال
+ * مشروح في تعليق إيجابيةً كاذبة. ماسح خطّي يحترم: النصوص، القوالب المتداخلة
+ * (`${…}`)، الروابط (`https://`) في نص JSX، و`regex` (فلا تبتلع `/*` داخله بقية
+ * الملف). بلا أي regex بتكرار متداخل (CodeQL ReDoS).
+ */
+export function stripComments(text) {
+  let out = '';
+  let i = 0;
+  const stack = [{ kind: 'code', braces: 0 }];
+  while (i < text.length) {
+    const frame = stack[stack.length - 1];
+    const ch = text[i];
+    const next = text[i + 1];
+    if (frame.kind === 'template') {
+      if (ch === '\\') {
+        out += ch + (next ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === '`') {
+        out += ch;
+        i += 1;
+        stack.pop();
+        continue;
+      }
+      if (ch === '$' && next === '{') {
+        out += '${';
+        i += 2;
+        stack.push({ kind: 'code', braces: 0 });
+        continue;
+      }
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      if (URL_SCHEME_TAIL.test(out)) {
+        out += '//';
+        i += 2;
+        continue;
+      }
+      while (i < text.length && text[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
+      i += 2;
+      continue;
+    }
+    if (ch === '/' && regexCanStart(out)) {
+      out += ch;
+      i += 1;
+      let inClass = false;
+      while (i < text.length) {
+        const current = text[i];
+        out += current;
+        if (current === '\\') {
+          out += text[i + 1] ?? '';
+          i += 2;
+          continue;
+        }
+        i += 1;
+        if (current === '[') inClass = true;
+        else if (current === ']') inClass = false;
+        else if (current === '/' && !inClass) break;
+        else if (current === '\n') break;
+      }
+      while (i < text.length && /[a-z]/i.test(text[i])) {
+        out += text[i];
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      out += ch;
+      i += 1;
+      while (i < text.length) {
+        const current = text[i];
+        out += current;
+        if (current === '\\') {
+          out += text[i + 1] ?? '';
+          i += 2;
+          continue;
+        }
+        i += 1;
+        if (current === ch) break;
+      }
+      continue;
+    }
+    if (ch === '`') {
+      out += ch;
+      i += 1;
+      stack.push({ kind: 'template' });
+      continue;
+    }
+    if (ch === '{') {
+      frame.braces += 1;
+    } else if (ch === '}') {
+      // `}` يغلق تعبير `${…}` فقط عند عمق صفر داخل النص النمطي.
+      if (frame.braces === 0 && stack.length > 1) {
+        stack.pop();
+        i += 1;
+        continue;
+      }
+      frame.braces = Math.max(0, frame.braces - 1);
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
 
 /** يستخرج نصوص الأصناف المحتملة (بين علامات اقتباس) من ملف مصدر. */
 export function classLiterals(text) {
@@ -33,22 +177,25 @@ export function classLiterals(text) {
  */
 export function sourceViolations(text) {
   const violations = [];
-  if (/transition-all/.test(text) || /transition:\s*all/.test(text)) {
+  const code = stripComments(text);
+  if (/transition-all/.test(code) || /transition:\s*all/.test(code)) {
     violations.push('transition-all ممنوع — اذكر الخاصية صراحة');
   }
-  if (/\btype\s*=\s*["']date["']/.test(text)) {
+  if (/\btype\s*=\s*["']date["']/.test(code)) {
     violations.push('type="date" ممنوع — حقل التاريخ نص حر بصيغة 1/8/2026');
   }
 
-  for (const literal of classLiterals(text)) {
+  for (const literal of classLiterals(code)) {
     const tokens = literal.slice(1, -1).split(/\s+/).filter(Boolean);
     for (const token of tokens) {
+      // القوالب المتداخلة تُبقي علامات الاقتباس الداخلية ملتصقة بالكلمة — تُنزع قبل الفحص.
+      const cleaned = token.replace(/^['"]+|['"]+$/g, '');
       // يلتقط `animate-*` مع أي بادئة variants (`sm:`/`hover:`/`md:hover:`) لأن
       // الحركة تبقى حركة، ويستثني `motion-safe:` (المسار الآمن) و`animate-none`.
-      if (!/(?:^|:)animate-/.test(token)) continue;
-      const motionClass = token.slice(token.lastIndexOf('animate-'));
-      if (motionClass === 'animate-none') continue;
-      if (!token.includes('motion-safe:')) {
+      if (!/(?:^|:)animate-/.test(cleaned)) continue;
+      const motionClass = cleaned.slice(cleaned.lastIndexOf('animate-'));
+      if (isMotionNone(motionClass)) continue;
+      if (!hasMotionSafeVariant(cleaned)) {
         violations.push(`حركة بلا motion-safe: (${motionClass})`);
       }
     }
@@ -63,11 +210,11 @@ export function sourceViolations(text) {
   // مسح خام للقوالب المتداخلة التي لا يلتقطها استخراج النصوص المقتبسة
   // (مثل `` `a${x ? `sm:animate-pulse` : ''}` ``) — نفس القاعدة والاستثناءات.
   // تقسيم خطّي إلى «كلمات» بدل تعبير متداخل التكرار (تجنّب ReDoS).
-  const rawTokens = (text.match(/[A-Za-z0-9:_[\]-]+/g) ?? []).filter((token) => token.includes('animate-'));
+  const rawTokens = (code.match(/[A-Za-z0-9:_[\]-]+/g) ?? []).filter((token) => token.includes('animate-'));
   for (const token of rawTokens) {
     const motionClass = token.slice(token.lastIndexOf('animate-'));
-    if (motionClass === 'animate-none') continue;
-    if (!token.includes('motion-safe:')) {
+    if (isMotionNone(motionClass)) continue;
+    if (!hasMotionSafeVariant(token)) {
       violations.push(`حركة بلا motion-safe: (${motionClass})`);
     }
   }
@@ -183,6 +330,66 @@ function selfTest() {
       expected: ['type="date" ممنوع — حقل التاريخ نص حر بصيغة 1/8/2026'],
     },
     { name: 'type=text مقبول', text: '<input type="text" />', expected: [] },
+    {
+      name: 'تعليق سطري لا يُحتسب',
+      text: '// className="animate-pulse"',
+      expected: [],
+    },
+    {
+      name: 'تعليق كتلي لا يُحتسب (و`transition-all` فيه)',
+      text: '/* transition-all animate-spin */',
+      expected: [],
+    },
+    {
+      name: 'تعليق JSX لا يُحتسب',
+      text: 'const x = <div>{/* <span className="animate-ping" /> */}</div>',
+      expected: [],
+    },
+    {
+      name: '`//` داخل نص لا يقصّ ما بعده',
+      text: 'const u = "https://x.test"; const c = "animate-pulse";',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: '`//` داخل قالب لا يقصّ ما بعده، و`animate-[…]` ملتقط',
+      text: 'const u = `https://x.test`; const c = `animate-[pulse_2s_infinite]`;',
+      expected: ['حركة بلا motion-safe: (animate-[pulse_2s_infinite])'],
+    },
+    {
+      name: 'قيمة animate-[…] مع motion-safe مقبولة',
+      text: 'className="motion-safe:animate-[pulse_2s_infinite]"',
+      expected: [],
+    },
+    {
+      name: 'motion-safe داخل تعليق لا يعفي الحركة الحقيقية',
+      text: '// motion-safe:animate-pulse\nclassName="animate-pulse"',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: '`/*` داخل regex لا يبتلع بقية الملف',
+      text: 'const re = /a\\/*b/; const c = "animate-pulse";',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: '`//` في رابط نص JSX لا يبتلع بقية السطر',
+      text: 'const x = <p>https://y</p>; const c = "animate-pulse";',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: 'animate-[none] مقبول (ليست حركة)',
+      text: 'className="animate-[none]"',
+      expected: [],
+    },
+    {
+      name: 'motion-safe داخل variant اعتباطي لا يعفي الحركة',
+      text: 'className="data-[motion-safe:x]:animate-pulse"',
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: 'variant آمن داخل قالب مقتبس داخليًا مقبول',
+      text: "const c = `${x ? 'motion-safe:animate-pulse' : ''}`",
+      expected: [],
+    },
   ];
 
   let failures = 0;
@@ -276,4 +483,4 @@ function main() {
 }
 
 if (process.argv.includes('--self-test')) selfTest();
-else main();
+else if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

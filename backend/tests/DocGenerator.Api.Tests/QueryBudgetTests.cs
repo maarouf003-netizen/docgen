@@ -63,6 +63,31 @@ public class QueryBudgetTests
     /// <summary>سقف تصدير البوابة المُسقَط (15 صفًا) — P3-04d.</summary>
     private const int PortalExportBudgetForFifteenRows = 20;
 
+    // ── W5-F8: سقوف مسارات W5 (الإحصاءات/التنبيهات/خيارات الفلترة/تفاصيل البوابة/البحث) ──
+    // القياس المرجعي غير متاح محليًا (لا PostgreSQL)؛ السقوف = تقدير من مسار الاستعلام
+    // الثابت (تحليل ثابت) + هامش صغير، والتحقق الفعلي في بوابة `backend-postgres`.
+
+    /// <summary>إحصاءات المدير: استعلام تجميعي واحد على 15 ملفًا + هامش.</summary>
+    private const int ManagerStatsBudgetForFifteenDocuments = 14;
+
+    /// <summary>قائمة التنبيهات (15 صفًا): صفحة واحدة بلا استعلام لكل صف.</summary>
+    private const int AlertsListBudgetForFifteenRows = 14;
+
+    /// <summary>قائمة «مرسلة» للرئيس (15 صفًا).</summary>
+    private const int AlertsSentBudgetForFifteenRows = 14;
+
+    /// <summary>خيارات الفلترة: عدة استعلامات DISTINCT ثابتة (لا تنمو بعدد الصفوف).</summary>
+    private const int FilterOptionsBudget = 20;
+
+    /// <summary>تفاصيل ملف البوابة: شجرة قراءة واحدة + تحميلات دفعية.</summary>
+    private const int PortalFileDetailBudget = 26;
+
+    /// <summary>إحصاءات البوابة: استعلامات تجميعية ثابتة.</summary>
+    private const int PortalStatsBudget = 14;
+
+    /// <summary>قائمة البحث النصي (15 صفًا): مسار الإسقاط + مطابقة البحث.</summary>
+    private const int SearchListBudgetForFifteenRows = 26;
+
     [PostgresFact]
     public async Task DocumentsList_PageOfFifteen_StaysWithinQueryBudget()
     {
@@ -238,7 +263,7 @@ public class QueryBudgetTests
     {
         using var factory = new ApiFactory();
         var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var delegateUsername = await SeedPortalScopeAsync(factory, lawyerToken, 15);
+        var (delegateUsername, _) = await SeedPortalScopeAsync(factory, lawyerToken, 15);
 
         var counter = factory.Services.GetRequiredService<QueryCounter>();
         counter.Reset();
@@ -260,10 +285,11 @@ public class QueryBudgetTests
     }
 
     /// <summary>تهيئة نطاق مندوب (جهة نهائية + مستخدم مندوب + 15 ملفًا مرتبطًا) لاختبارات ميزانية البوابة.</summary>
-    private static async Task<string> SeedPortalScopeAsync(
+    private static async Task<(string DelegateUsername, List<int> DocumentIds)> SeedPortalScopeAsync(
         ApiFactory factory, string lawyerToken, int count)
     {
         string delegateUsername;
+        var documentIds = new List<int>(count);
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
@@ -295,6 +321,7 @@ public class QueryBudgetTests
             {
                 var documentId = await factory.CreateDocumentAsync(
                     lawyerToken, borrowerName: $"ملف بوابة {i}");
+                documentIds.Add(documentId);
                 db.ApplicantPublicEntities.Add(new ApplicantPublicEntity
                 {
                     DocumentId = documentId,
@@ -308,7 +335,7 @@ public class QueryBudgetTests
             await db.SaveChangesAsync();
         }
 
-        return delegateUsername;
+        return (delegateUsername, documentIds);
     }
 
     /// <summary>تصدير البوابة المُسقَط (P3-04d): 15 صفًا بنفس ميزانية القائمة بلا شجرة تحميل كاملة.</summary>
@@ -317,7 +344,7 @@ public class QueryBudgetTests
     {
         using var factory = new ApiFactory();
         var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var delegateUsername = await SeedPortalScopeAsync(factory, lawyerToken, 15);
+        var (delegateUsername, _) = await SeedPortalScopeAsync(factory, lawyerToken, 15);
 
         var counter = factory.Services.GetRequiredService<QueryCounter>();
         counter.Reset();
@@ -515,5 +542,216 @@ public class QueryBudgetTests
         Assert.True(
             counter.Count <= RemindersListBudgetForFifteenRows,
             $"تجاوزت تذكيرات الشطب ميزانية الاستعلامات: {counter.Count} > {RemindersListBudgetForFifteenRows}");
+    }
+
+    // ── W5-F8: سقوف مسارات W5 (المستخدم/المدير/البوابة) — تُتحقق فعليًا في backend-postgres ──
+
+    /// <summary>يبذر تنبيهات مباشرة لاستقبال محامٍ واحد (بلا خدمة الإحلال) لقياس القراءة.</summary>
+    private static async Task SeedAlertsForBudgetAsync(
+        ApiFactory factory, int branchId, int recipientUserId, int createdById, int count)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var anchor = new DateTime(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);
+
+        for (var i = 0; i < count; i++)
+        {
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branchId,
+                CreatedById = createdById,
+                TargetType = HeadAlertTargetType.Lawyer,
+                Kind = HeadAlertKindCatalog.ManualToLawyer,
+                TargetLawyerId = recipientUserId,
+                Message = $"تنبيه ميزانية {i}",
+                CreatedAt = anchor.AddMinutes(i),
+                LastContentChangedAt = anchor.AddMinutes(i),
+                Recipients = new List<HeadAlertRecipient> { new() { UserId = recipientUserId } },
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>إحصاءات المدير على 15 ملفًا: تجميع واحد لا استعلام لكل ملف (F6 يبقى مؤجلًا).</summary>
+    [PostgresFact]
+    public async Task ManagerStats_WithFifteenDocuments_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await CreateFifteenDocumentsAsync(factory, token, "إحصاء مدير", registered: true);
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.AuthorizedClient("manager").GetAsync("/api/stats/manager?period=yearly");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("totalFiles").GetInt32() >= 15,
+                "إحصاءات المدير لم تُحصِ الملفات الخمسة عشر — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= ManagerStatsBudgetForFifteenDocuments,
+            $"تجاوزت إحصاءات المدير ميزانية الاستعلامات: {counter.Count} > {ManagerStatsBudgetForFifteenDocuments}");
+    }
+
+    /// <summary>قائمة التنبيهات (15 صفًا): صفحة واحدة بلا استعلام لكل صف.</summary>
+    [PostgresFact]
+    public async Task AlertsList_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var branchId = await factory.GetBranchIdAsync("DAM");
+        var (lawyerId, client) = await factory.NewLawyerClientAsync(branchId);
+        var createdById = await factory.UserIdAsync("head1");
+        await SeedAlertsForBudgetAsync(factory, branchId, lawyerId, createdById, 15);
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await client.GetAsync("/api/alerts?pageSize=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("items").GetArrayLength() >= 15,
+                "قائمة التنبيهات أعادت أقل من 15 صفًا — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= AlertsListBudgetForFifteenRows,
+            $"تجاوزت قائمة التنبيهات ميزانية الاستعلامات: {counter.Count} > {AlertsListBudgetForFifteenRows}");
+    }
+
+    /// <summary>قائمة «مرسلة» للرئيس (15 صفًا).</summary>
+    [PostgresFact]
+    public async Task AlertsSent_PageOfFifteen_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var branchId = await factory.GetBranchIdAsync("DAM");
+        var (lawyerId, _) = await factory.NewLawyerClientAsync(branchId);
+        var createdById = await factory.UserIdAsync("head1");
+        await SeedAlertsForBudgetAsync(factory, branchId, lawyerId, createdById, 15);
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.AuthorizedClient("head1").GetAsync("/api/alerts/sent?pageSize=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("items").GetArrayLength() >= 15,
+                "قائمة «مرسلة» أعادت أقل من 15 صفًا — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= AlertsSentBudgetForFifteenRows,
+            $"تجاوزت قائمة «مرسلة» ميزانية الاستعلامات: {counter.Count} > {AlertsSentBudgetForFifteenRows}");
+    }
+
+    /// <summary>خيارات الفلترة: استعلامات DISTINCT ثابتة لا تنمو مع عدد الملفات.</summary>
+    [PostgresFact]
+    public async Task FilterOptions_WithFifteenDocuments_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await CreateFifteenDocumentsAsync(factory, token, "خيارات فلترة");
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.ClientWithToken(token).GetAsync("/api/documents/filter-options");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("applicants").GetArrayLength() > 0,
+                "خيارات الفلترة بلا قيم — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= FilterOptionsBudget,
+            $"تجاوزت خيارات الفلترة ميزانية الاستعلامات: {counter.Count} > {FilterOptionsBudget}");
+    }
+
+    /// <summary>تفاصيل ملف البوابة: شجرة قراءة واحدة وتحميلات دفعية (لا استعلام لكل علاقة).</summary>
+    [PostgresFact]
+    public async Task PortalFileDetail_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var (delegateUsername, documentIds) = await SeedPortalScopeAsync(factory, lawyerToken, 15);
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.AuthorizedClient(delegateUsername)
+            .GetAsync($"/api/portal/files/{documentIds[0]}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            counter.Count <= PortalFileDetailBudget,
+            $"تجاوز تفاصيل ملف البوابة ميزانية الاستعلامات: {counter.Count} > {PortalFileDetailBudget}");
+    }
+
+    /// <summary>إحصاءات البوابة: تجميعيات ثابتة على نطاق الجهة.</summary>
+    [PostgresFact]
+    public async Task PortalStats_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var lawyerToken = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var (delegateUsername, _) = await SeedPortalScopeAsync(factory, lawyerToken, 15);
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var response = await factory.AuthorizedClient(delegateUsername).GetAsync("/api/portal/stats");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("totalFiles").GetInt32() >= 15,
+                "إحصاءات البوابة لم تُحصِ الملفات الخمسة عشر — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= PortalStatsBudget,
+            $"تجاوزت إحصاءات البوابة ميزانية الاستعلامات: {counter.Count} > {PortalStatsBudget}");
+    }
+
+    /// <summary>مسار البحث النصي في `/documents/list`: لا استعلام لكل نتيجة.</summary>
+    [PostgresFact]
+    public async Task DocumentsProjectedList_Search_StaysWithinQueryBudget()
+    {
+        using var factory = new ApiFactory();
+        var token = (await factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await CreateFifteenDocumentsAsync(factory, token, "بحث ميزانية");
+
+        var counter = factory.Services.GetRequiredService<QueryCounter>();
+        counter.Reset();
+
+        var query = Uri.EscapeDataString("بحث ميزانية");
+        var response = await factory.ClientWithToken(token)
+            .GetAsync($"/api/documents/list?q={query}&perPage=15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            Assert.True(
+                json.RootElement.GetProperty("items").GetArrayLength() >= 15,
+                "بحث القائمة أعاد أقل من 15 صفًا — القياس بلا صفوف.");
+        }
+
+        Assert.True(
+            counter.Count <= SearchListBudgetForFifteenRows,
+            $"تجاوز البحث في القائمة ميزانية الاستعلامات: {counter.Count} > {SearchListBudgetForFifteenRows}");
     }
 }

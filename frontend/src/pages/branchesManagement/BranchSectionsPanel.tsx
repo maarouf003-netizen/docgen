@@ -1,10 +1,19 @@
 import { SUCCESSION_EVENT_LABELS } from './branchesManagementModel';
 import type { BranchesManagementModel, SubTab } from './useBranchesManagement';
+import { rovingTabIndex, useTabListKeyboard } from '../../hooks/useTabListKeyboard';
 
 const SUB_TABS: SubTab[] = ['sections', 'transfer', 'succession'];
 
 /** الشعب ونقل الدوائر وسجل التعاقب للفرع الأب المختار (§8 — مدير/مشرف). */
 export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
+  // تنقّل التبويبات بلوحة المفاتيح (WAI-ARIA، RTL: السهم الأيسر «التالي»).
+  const onTabKeyDown = useTabListKeyboard({
+    ids: SUB_TABS,
+    activeId: m.subTab,
+    onSelect: m.setSubTab,
+    tabId: (tab) => `branch-subtab-${tab}`,
+  });
+
   return (
     <section aria-label="الشعب ونقل الدوائر وسجل التعاقب" className="bg-white rounded-xl shadow p-4 mt-4">
       <h3 className="text-lg font-bold text-gray-800 mb-3">الشعب ونقل الدوائر وسجل التعاقب</h3>
@@ -25,13 +34,21 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
 
       {m.subBranchId !== '' && (
         <>
-          <div className="flex flex-wrap gap-2 mb-4" role="tablist" aria-label="أقسام إدارة الشعب">
+          <div
+            className="flex flex-wrap gap-2 mb-4"
+            role="tablist"
+            aria-label="أقسام إدارة الشعب"
+            onKeyDown={onTabKeyDown}
+          >
             {SUB_TABS.map((t) => (
               <button
                 key={t}
                 type="button"
                 role="tab"
+                id={`branch-subtab-${t}`}
                 aria-selected={m.subTab === t}
+                aria-controls={m.subTab === t ? `branch-subtabpanel-${t}` : undefined}
+                tabIndex={rovingTabIndex(m.subTab === t)}
                 onClick={() => m.setSubTab(t)}
                 className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   m.subTab === t ? 'bg-emerald-800 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -43,7 +60,11 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
           </div>
 
           {m.subTab === 'sections' && (
-            <div role="tabpanel">
+            <div
+              role="tabpanel"
+              id={`branch-subtabpanel-${m.subTab}`}
+              aria-labelledby={`branch-subtab-${m.subTab}`}
+            >
               <div className="flex flex-col sm:flex-row gap-2 sm:items-end mb-3">
                 <div className="flex-1">
                   <label htmlFor="new-section-name" className="block text-xs font-medium text-gray-600 mb-1">اسم الشعبة الجديدة</label>
@@ -154,7 +175,11 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
           )}
 
           {m.subTab === 'transfer' && (
-            <div role="tabpanel">
+            <div
+              role="tabpanel"
+              id={`branch-subtabpanel-${m.subTab}`}
+              aria-labelledby={`branch-subtab-${m.subTab}`}
+            >
               <p className="text-xs text-gray-500 mb-3">
                 النقل داخل الفرع نفسه — المفتوح ينتقل والمغلق تبقى رؤيته للمالك الجديد، والإحالات المفتوحة تُعاد توجيهها تلقائيًا.
               </p>
@@ -205,7 +230,11 @@ export function BranchSectionsPanel({ m }: { m: BranchesManagementModel }) {
           )}
 
           {m.subTab === 'succession' && (
-            <div role="tabpanel">
+            <div
+              role="tabpanel"
+              id={`branch-subtabpanel-${m.subTab}`}
+              aria-labelledby={`branch-subtab-${m.subTab}`}
+            >
               {m.successionError && <p role="alert" className="text-red-600 text-sm mb-3">{m.successionError}</p>}
               {m.successionLoading ? (
                 <p className="text-gray-500 py-4 text-center">جارِ تحميل السجل...</p>

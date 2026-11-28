@@ -28,6 +28,14 @@ public class RateLimitOptions
     /// </summary>
     public int StatsReadPerMinute { get; set; } = 120;
 
+    /// <summary>
+    /// قراءات دوائر التنفيذ (قوائم/نافذة إفراغ/إحصاءات) لكل مستخدم — سياسة مستقلة عن
+    /// «المكلفة» لأن شاشات القوائم تطلق أكثر من قراءة لكل تفاعل، والحد 10 كان يخنق
+    /// القراءة ويُسقط خيارات «دائرة التنفيذ» إلى الاحتياطي بصمت. الكتابة/التصدير يبقيان
+    /// على <c>ExpensivePerMinute</c>.
+    /// </summary>
+    public int CircuitsReadPerMinute { get; set; } = 60;
+
     /// <summary>تغيير كلمة المرور لكل مستخدم.</summary>
     public int PasswordPerMinute { get; set; } = 5;
 
@@ -50,6 +58,7 @@ public class RateLimitOptions
         RequireRange(GeneralAuthPerMinute, 1, 1_000_000, "RateLimiting:GeneralAuthPerMinute");
         RequireRange(ExpensivePerMinute, 1, 1_000_000, "RateLimiting:ExpensivePerMinute");
         RequireRange(StatsReadPerMinute, 1, 1_000_000, "RateLimiting:StatsReadPerMinute");
+        RequireRange(CircuitsReadPerMinute, 1, 1_000_000, "RateLimiting:CircuitsReadPerMinute");
         RequireRange(PasswordPerMinute, 1, 1_000_000, "RateLimiting:PasswordPerMinute");
         RequireRange(CspReportPerMinute, 1, 1_000_000, "RateLimiting:CspReportPerMinute");
     }

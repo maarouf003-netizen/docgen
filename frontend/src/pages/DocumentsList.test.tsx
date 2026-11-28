@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor, act } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentsList from './DocumentsList';
@@ -62,7 +62,13 @@ function mockPage(items: DocumentResponse[]) {
       });
     }
     return Promise.resolve({
-      data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: items.length,
+        totalPages: Math.ceil(items.length / 20),
+        items,
+      },
     });
   });
 }
@@ -86,7 +92,13 @@ function mockPageWithExport(items: DocumentResponse[]) {
       });
     }
     return Promise.resolve({
-      data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: items.length,
+        totalPages: Math.ceil(items.length / 20),
+        items,
+      },
     });
   });
 }
@@ -1320,6 +1332,91 @@ describe('DocumentsList', () => {
     expect(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' })).toHaveValue('محمود');
   });
 
+  it('لا يستعيد سلسلة المؤشرات قبل استقرار البحث المؤجّل بعد تغييره (q الصحيح فقط)', async () => {
+    vi.useFakeTimers();
+    try {
+      sessionStorage.setItem(
+        'documentsListPosition',
+        JSON.stringify({
+          query: 'محمود',
+          status: '',
+          applicant: '',
+          court: '',
+          lawyer: '',
+          administrativeBranch: '',
+          executedEntity: '',
+          publicEntityBranch: '',
+          page: 1,
+          cursors: ['cursor-p2'],
+        }),
+      );
+      const get = api.get as unknown as ReturnType<typeof vi.fn>;
+      const releaseOtherRef: { current: ((value: unknown) => void) | null } = { current: null };
+      const otherPending = new Promise((resolve) => { releaseOtherRef.current = resolve; });
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/documents/filter-options')) {
+          return Promise.resolve({
+            data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+          });
+        }
+        if (String(url).includes('cursor=cursor-p2')) {
+          return Promise.resolve({
+            data: {
+              page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: null,
+              items: [makeDocument({ id: 2 })],
+            },
+          });
+        }
+        if (String(url).includes(`q=${encodeURIComponent('سامر')}`)) return otherPending;
+        return Promise.resolve({
+          data: {
+            page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: 'cursor-p2',
+            items: [makeDocument({ id: 1 })],
+          },
+        });
+      });
+      const listCalls = () => get.mock.calls.map(([url]) => String(url));
+
+      renderList();
+      const search = screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' });
+      // البحث يتغيّر قبل أن تستقر صفحته: لا استعادة بمؤشر محفوظ تحت q جديد.
+      fireEvent.change(search, { target: { value: 'سامر' } });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(listCalls().filter((url) => url.includes(`q=${encodeURIComponent('سامر')}`))).toHaveLength(0);
+
+      // بعد التأخير يُطلق طلب البحث الجديد (يبقى معلّقًا) — دون أي استعادة مؤشرات.
+      await act(async () => { vi.advanceTimersByTime(300); });
+      expect(listCalls().filter((url) => url.includes(`q=${encodeURIComponent('سامر')}`))).toHaveLength(1);
+
+      // العودة إلى البحث المحفوظ قبل استقرار الجديد، ثم وصول صفحة البحث الوسيط
+      // (بمؤشر يساوي المحفوظ عمدًا): لا يجوز استعادة المؤشر تحت q=سامر.
+      fireEvent.change(search, { target: { value: 'محمود' } });
+      await act(async () => { await Promise.resolve(); });
+      releaseOtherRef.current?.({
+        data: {
+          page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: 'cursor-p2',
+          items: [makeDocument({ id: 3 })],
+        },
+      });
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+      expect(listCalls().some((url) => url.includes('cursor=cursor-p2'))).toBe(false);
+
+      // بعد استقرار البحث على القيمة المحفوظة تُستعاد المؤشرات ومعها q الصحيح.
+      await act(async () => { vi.advanceTimersByTime(300); });
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+
+      const cursorCalls = listCalls().filter((url) => url.includes('cursor=cursor-p2'));
+      expect(cursorCalls).toHaveLength(1);
+      expect(cursorCalls[0]).toContain(`q=${encodeURIComponent('محمود')}`);
+      expect(cursorCalls.some((url) => url.includes(encodeURIComponent('سامر')))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('يميّز الملف الذي كان مفتوحًا في الجدول بشارة وخلفية ويمرر إليه', async () => {
     saveLastViewedDocumentId(5, 1);
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
@@ -1721,7 +1818,8 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     expect(screen.getByText('نهاية النتائج')).toBeInTheDocument();
   });
 
-  it('استجابة «تحميل المزيد» القديمة لا تُلحق بقائمة فلتر جديد', async () => {    const user = userEvent.setup();
+  it('استجابة «تحميل المزيد» القديمة لا تُلحق بقائمة فلتر جديد', async () => {
+    const user = userEvent.setup();
     const get = api.get as unknown as ReturnType<typeof vi.fn>;
     let releaseStale: (value: unknown) => void = () => {};
     const stalePage = new Promise((resolve) => { releaseStale = resolve; });
@@ -1819,6 +1917,31 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     renderList();
     expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر قراءة قائمة الملفات');
     expect(screen.queryByText('لا توجد نتائج')).not.toBeInTheDocument();
+  });
+
+  it('يرفض totalPages المخالف لـ totalCount/perPage بدل إعادة حسابه صامتة', async () => {
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          items: [makeDocument({ id: 1 })],
+          page: 1,
+          perPage: 20,
+          totalCount: 45,
+          // الصحيح 3 (ceil(45/20)) — القيمة السلكية المخالفة تُرفض.
+          totalPages: 1,
+        },
+      });
+    });
+
+    renderList();
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر قراءة قائمة الملفات');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   describe('عقد إمكانية الوصول والجوال (`P6-03a`)', () => {

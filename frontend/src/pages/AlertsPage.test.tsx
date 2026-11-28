@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import AlertsPage from './AlertsPage';
@@ -190,6 +190,31 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
       '/alerts/sent?archived=active',
       expect.objectContaining({ params: { pageSize: 100 } }),
     );
+  });
+
+  it('ينقّل التبويبات بلوحة المفاتيح (RTL: يسار = التالي، Home/End، roving tabindex)', async () => {
+    mockApi();
+    render(<AlertsPage />);
+    const received = await screen.findByRole('tab', { name: /مستلمة/ });
+    const sent = screen.getByRole('tab', { name: /مرسلة/ });
+    expect(received).toHaveAttribute('tabindex', '0');
+    expect(sent).toHaveAttribute('tabindex', '-1');
+
+    received.focus();
+    fireEvent.keyDown(received, { key: 'ArrowLeft' });
+    expect(sent).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(sent);
+    expect(sent).toHaveAttribute('aria-controls', 'alerts-panel-sent');
+    expect(received).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(sent, { key: 'ArrowRight' });
+    expect(received).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(received);
+
+    fireEvent.keyDown(received, { key: 'End' });
+    expect(sent).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(sent, { key: 'Home' });
+    expect(received).toHaveAttribute('aria-selected', 'true');
   });
 
   it('المستلمون متاحون في «مرسلة» فقط وبالعقد القائم', async () => {

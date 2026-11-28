@@ -6,6 +6,7 @@ import { getDocumentBadge } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { rovingTabIndex, useTabListKeyboard } from '../hooks/useTabListKeyboard';
 import { executedTitle, fullName, identityFileNumber } from '../components/view/viewFormat';
 import { SectionCard } from '../components/view/SectionCard';
 import { PartiesCard } from '../components/view/PartiesCard';
@@ -61,10 +62,24 @@ function PortalRetryBar({ message, onRetry }: { message: string; onRetry: () => 
   );
 }
 
+type DocumentTabId = 'info' | 'security' | 'delegations' | 'status';
+
+/** ترتيب تبويبات الجوال — مصدر واحد للعرض والتنقّل (بادئة معرّف مستقلة عن صفحة الملف). */
+const DOCUMENT_TAB_IDS: readonly DocumentTabId[] = ['info', 'security', 'delegations', 'status'];
+
 export default function PortalFileDetail() {
   const { id } = useParams();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
+
+  // تنقّل التبويبات بلوحة المفاتيح (WAI-ARIA، RTL: السهم الأيسر «التالي») — قبل أي return
+  // مبكر ليبقى ترتيب الخطافات ثابتًا.
+  const onTabKeyDown = useTabListKeyboard({
+    ids: DOCUMENT_TAB_IDS,
+    activeId: activeTab,
+    onSelect: setActiveTab,
+    tabId: (tab) => `portal-document-tab-${tab}`,
+  });
   const [partyModal, setPartyModal] = useState<PartyModal | null>(null);
   const [interventionModal, setInterventionModal] = useState<DocumentInterventionDto | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -359,15 +374,18 @@ export default function PortalFileDetail() {
             role="tablist"
             aria-label="أقسام الملف"
             className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1"
+            onKeyDown={onTabKeyDown}
           >
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 role="tab"
-                id={`document-tab-${t.id}`}
+                id={`portal-document-tab-${t.id}`}
                 aria-selected={activeTab === t.id}
-                aria-controls={`document-panel-${t.id}`}
+                // اللوحة غير النشطة غير مُصيَّرة (لوحة واحدة فقط)، فلا `aria-controls` إلى معرّف غائب.
+                aria-controls={activeTab === t.id ? `portal-document-panel-${t.id}` : undefined}
+                tabIndex={rovingTabIndex(activeTab === t.id)}
                 onClick={() => setActiveTab(t.id)}
                 className={`shrink-0 min-h-11 px-4 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === t.id
@@ -381,8 +399,8 @@ export default function PortalFileDetail() {
           </div>
           <div
             role="tabpanel"
-            id={`document-panel-${activeTab}`}
-            aria-labelledby={`document-tab-${activeTab}`}
+            id={`portal-document-panel-${activeTab}`}
+            aria-labelledby={`portal-document-tab-${activeTab}`}
           >
             {tabs.find((t) => t.id === activeTab)?.panel}
           </div>

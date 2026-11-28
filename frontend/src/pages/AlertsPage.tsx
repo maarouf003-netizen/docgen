@@ -5,6 +5,7 @@ import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useAlertsFeed } from '../hooks/useAlertsFeed';
 import { useUnreadAlertCount } from '../hooks/useUnreadAlertCount';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { rovingTabIndex, useTabListKeyboard } from '../hooks/useTabListKeyboard';
 import type { HeadAlertSummaryDto, HeadAlertTargetType, LawyerListItem } from '../types';
 import { AlertList } from '../components/dashboard/AlertList';
 import { AlertDetailsSheet } from '../components/dashboard/AlertDetailsSheet';
@@ -16,6 +17,9 @@ import { RecipientsModal } from '../components/dashboard/RecipientsModal';
 type ArchiveFilter = 'active' | 'all' | 'only';
 
 type AlertsTab = 'received' | 'sent';
+
+/** ترتيب تبويبات التنبيهات — مصدر واحد للعرض والتنقّل بلوحة المفاتيح. */
+const ALERT_TAB_IDS: readonly AlertsTab[] = ['received', 'sent'];
 
 const ARCHIVE_OPTIONS: ReadonlyArray<{ value: ArchiveFilter; label: string }> = [
   { value: 'active', label: 'نشط' },
@@ -54,6 +58,14 @@ export default function AlertsPage() {
   const [tab, setTab] = useState<AlertsTab>('received');
   const [archive, setArchive] = useState<ArchiveFilter>('active');
   const activeTab: AlertsTab = tab === 'sent' && !sentEnabled ? 'received' : tab;
+
+  // تنقّل التبويبات بلوحة المفاتيح (WAI-ARIA، RTL: السهم الأيسر «التالي»).
+  const onTabKeyDown = useTabListKeyboard({
+    ids: ALERT_TAB_IDS,
+    activeId: activeTab,
+    onSelect: setTab,
+    tabId: (value) => `alerts-tab-${value}`,
+  });
 
   // المرشّح في الرابط نفسه: تغيّره يُطلق جلبًا جديدًا ويُعيد الترقيم إلى الأولى
   // (الحالة مفتاحية بالنطاق داخل `useAlertsFeed`).
@@ -200,8 +212,13 @@ export default function AlertsPage() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {sentEnabled ? (
-          <div className="flex gap-2" role="tablist" aria-label="تبويبات التنبيهات">
-            {(['received', 'sent'] as const).map((value) => (
+          <div
+            className="flex gap-2"
+            role="tablist"
+            aria-label="تبويبات التنبيهات"
+            onKeyDown={onTabKeyDown}
+          >
+            {ALERT_TAB_IDS.map((value) => (
               <button
                 key={value}
                 type="button"
@@ -211,6 +228,7 @@ export default function AlertsPage() {
                 // اللوحة غير النشطة غير مُصيَّرة (لوحة واحدة فقط)، فربطها بـ`aria-controls`
                 // يشير إلى معرّف مفقود = مخالفة ARIA حقيقية (`aria-valid-attr-value`).
                 aria-controls={activeTab === value ? `alerts-panel-${value}` : undefined}
+                tabIndex={rovingTabIndex(activeTab === value)}
                 onClick={() => setTab(value)}
                 className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   activeTab === value

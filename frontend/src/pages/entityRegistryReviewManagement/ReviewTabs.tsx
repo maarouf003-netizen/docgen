@@ -1,4 +1,5 @@
 import type { TabId } from './reviewTabsModel';
+import { rovingTabIndex } from '../../hooks/useTabListKeyboard';
 
 export function TabButton({
   id,
@@ -19,7 +20,7 @@ export function TabButton({
       role="tab"
       id={`review-tab-${id}`}
       aria-selected={active}
-      tabIndex={active ? 0 : -1}
+      tabIndex={rovingTabIndex(active)}
       // اللوحة تُركَّب للتبويب النشط فقط؛ ربط غير النشط بمعرّف غائب يُخالف `aria-valid-attr-value`.
       aria-controls={active ? `review-tabpanel-${id}` : undefined}
       onClick={() => onSelect(id)}
