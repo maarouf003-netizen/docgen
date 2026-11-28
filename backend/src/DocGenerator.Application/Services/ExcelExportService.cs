@@ -21,9 +21,12 @@ public interface IExcelExportService
 {
     /// <summary>
     /// كل المصنفات تُبنى بتوليد `SAX` (`OpenXmlWriter`) في دفق ذاكرة واحد
-    /// وتُعاد كـ`Stream` (موضعه البداية) — بلا شجرة `DOM` للخلايا وبلا نسخة
-    /// `ToArray` إضافية؛ الذاكرة العابرة ≈ حجم الملف فقط مهما بلغت الصفوف.
-    /// المتصل (`File(stream, ...)`) يتولى التصرّف بعد الإرسال.
+    /// وتُعاد كـ`Stream` (موضعه البداية) — بلا شجرة `DOM` للخلايا.
+    /// <para>
+    /// تنبيه دقة: صفوف القيم تُجمع (`ToList`) قبل الكتابة، والصفوف المصدر
+    /// تُحمَّل كاملة في الذاكرة؛ فالأثر <c>O(الصفوف)</c> لا <c>O(1)</c>، ويحرسه
+    /// سقف `ExportOptions.MaxRows` (لا ذاكرة غير محدودة).
+    /// </para>
     /// </summary>
     Stream BuildDocumentsWorkbook(
         IReadOnlyList<DocumentExportRow> documents,

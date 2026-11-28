@@ -60,6 +60,17 @@ export function sourceViolations(text) {
     }
   }
 
+  // مسح خام للقوالب المتداخلة التي لا يلتقطها استخراج النصوص المقتبسة
+  // (مثل `` `a${x ? `sm:animate-pulse` : ''}` ``) — نفس القاعدة والاستثناءات.
+  const rawTokens = text.match(/(?:[A-Za-z0-9:_-]*:)*animate-[A-Za-z0-9-]+/g) ?? [];
+  for (const token of rawTokens) {
+    const motionClass = token.slice(token.lastIndexOf('animate-'));
+    if (motionClass === 'animate-none') continue;
+    if (!token.includes('motion-safe:')) {
+      violations.push(`حركة بلا motion-safe: (${motionClass})`);
+    }
+  }
+
   return [...new Set(violations)];
 }
 
@@ -143,6 +154,16 @@ function selfTest() {
     {
       name: 'motion-safe مع breakpoint مقبول',
       text: 'className="sm:motion-safe:animate-pulse"',
+      expected: [],
+    },
+    {
+      name: 'قالب متداخل بلا motion-safe مرفوض',
+      text: "const x = `a${c ? `sm:animate-pulse` : ''}`",
+      expected: ['حركة بلا motion-safe: (animate-pulse)'],
+    },
+    {
+      name: 'قالب متداخل مع motion-safe مقبول',
+      text: "const x = `a${c ? `motion-safe:animate-pulse` : ''}`",
       expected: [],
     },
     {

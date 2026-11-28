@@ -106,6 +106,16 @@ export default function StatsPage() {
   return (
     <div className="max-w-7xl mx-auto">
       <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 text-balance">الإحصائيات</h2>
+      {availableQuery.error && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          تعذّر تحميل قائمة الفترات — تُعرض الفترة الافتراضية فقط.
+        </p>
+      )}
+      {isManager && branchesQuery.error && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          تعذّر تحميل قائمة الفروع — تُعرض الإحصاءات بلا مرشّح فرع.
+        </p>
+      )}
       {isManager ? (
         <ManagerStatsSection
           period={period}
@@ -120,7 +130,7 @@ export default function StatsPage() {
           prevStats={prevStatsQuery.data ?? null}
           lawyers={lawyers}
           lawyersError={lawyersQuery.error ?? ''}
-          error={statsQuery.error ?? branchesQuery.error ?? ''}
+          error={statsQuery.error ?? ''}
         />
       ) : (
         <>

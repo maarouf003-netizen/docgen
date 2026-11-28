@@ -184,6 +184,7 @@ export default function Dashboard() {
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
+  const unreadError = unreadQuery.error;
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const unseenCorrespondence = isLawyer ? Math.max(0, Number(unseenCorrespondenceQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
@@ -252,6 +253,11 @@ export default function Dashboard() {
       {isLawyer ? (
         <>
           <GreetingHeader fullName={user?.fullName} />
+          {unreadError && (
+            <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              تعذّر تحديث عدّاد التنبيهات — قد لا يكون الرقم محدّثًا.
+            </p>
+          )}
           <div className="mt-4">
             <LawyerIconRow
               counts={{ unseenReplies, unseenCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount, strikeOffReminders }}
@@ -294,6 +300,11 @@ export default function Dashboard() {
       ) : (
         <>
           <GreetingHeader fullName={user?.fullName} />
+          {unreadError && (
+            <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              تعذّر تحديث عدّاد التنبيهات — قد لا يكون الرقم محدّثًا.
+            </p>
+          )}
           <div className="mt-4">
             <HeadIconRow
               counts={{

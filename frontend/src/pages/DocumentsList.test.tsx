@@ -1718,8 +1718,7 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     expect(screen.getByText('نهاية النتائج')).toBeInTheDocument();
   });
 
-  it('استجابة «تحميل المزيد» القديمة لا تُلحق بقائمة فلتر جديد', async () => {
-    const user = userEvent.setup();
+  it('استجابة «تحميل المزيد» القديمة لا تُلحق بقائمة فلتر جديد', async () => {    const user = userEvent.setup();
     const get = api.get as unknown as ReturnType<typeof vi.fn>;
     let releaseStale: (value: unknown) => void = () => {};
     const stalePage = new Promise((resolve) => { releaseStale = resolve; });
@@ -1767,6 +1766,54 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
       expect(screen.queryByText('100 حقوق')).not.toBeInTheDocument();
     });
     expect(screen.getByText('200 حقوق')).toBeInTheDocument();
+  });
+
+  it('يؤجّل البحث النصي فلا يرسل طلب قائمة لكل حرف', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    let listCalls = 0;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      if (url.startsWith('/documents/list')) {
+        listCalls += 1;
+        return Promise.resolve({
+          data: {
+            page: 1, perPage: 20, totalCount: 1, totalPages: 1, nextCursor: null,
+            items: [makeDocument({ id: 1, fileNumber: '99' })],
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    renderList();
+    await screen.findByText('99 حقوق');
+    const before = listCalls;
+
+    await user.type(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' }), 'حق');
+    await waitFor(() => expect(listCalls).toBe(before + 1), { timeout: 2000 });
+    // حرفان خلال نافذة التأخير ⇒ طلب واحد بعد التوقف، لا طلبان.
+    expect(listCalls).toBe(before + 1);
+  });
+
+  it('استجابة قائمة مخالفة للعقد تُعلن خطأً ولا تعرض «لا توجد نتائج»', async () => {
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      return Promise.resolve({ data: { items: null } });
+    });
+
+    renderList();
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر قراءة قائمة الملفات');
+    expect(screen.queryByText('لا توجد نتائج')).not.toBeInTheDocument();
   });
 
   describe('عقد إمكانية الوصول والجوال (`P6-03a`)', () => {

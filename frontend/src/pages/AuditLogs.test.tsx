@@ -159,6 +159,36 @@ describe('AuditLogs', () => {
     expect(screen.getByText('صفحة 2 من 3')).toBeInTheDocument();
   });
 
+  it('فشل فلتر جديد لا يعرض صفوف فلتر سابق', async () => {
+    const user = userEvent.setup();
+    const row = (id: number, details: string) => ({
+      id,
+      timestamp: '2026-08-01',
+      userName: 'head1',
+      actionType: 'login',
+      details,
+      documentId: null,
+      documentType: null,
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (String(url).includes('actionType=create')) {
+        return Promise.reject({ response: { data: { message: 'تعذر فلتر الحدث' } } });
+      }
+      return Promise.resolve({
+        data: { items: [row(1, 'سطر فلتر الدخول')], page: 1, perPage: 20, totalCount: 45 },
+      });
+    });
+
+    renderWithQueryClient(<AuditLogs />);
+    expect(await screen.findByText('سطر فلتر الدخول')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('نوع الحدث'), 'create');
+
+    expect(await screen.findByText('تعذر فلتر الحدث')).toBeInTheDocument();
+    expect(screen.queryByText('سطر فلتر الدخول')).not.toBeInTheDocument();
+    expect(screen.getByText(/إجمالي السجلات: —/)).toBeInTheDocument();
+  });
+
   it('عند فشل أولي بلا بيانات سابقة يعرض «تعذّر تحميل السجلات» لا «لا توجد سجلات»', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
       response: { data: { message: 'تعذر الاتصال' } },

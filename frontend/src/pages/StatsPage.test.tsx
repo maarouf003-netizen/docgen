@@ -93,6 +93,37 @@ describe('StatsPage', () => {
     expect(years).toContain(2025);
   });
 
+  it('فشل قائمة الفروع لا يخفي الإحصاءات ويعرض تنبيهًا', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 9, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: 1 },
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/branches') return Promise.reject({ message: 'تعذّر الفروع' });
+      if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
+      if (url === '/stats/manager') return Promise.resolve({ data: STATS });
+      if (url === '/stats/manager/lawyers') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByText(/تعذّر تحميل قائمة الفروع/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
+  });
+
+  it('فشل الفترات لا يخفي الإحصاءات ويعرض تنبيهًا', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/periods') return Promise.reject({ message: 'تعذّر الفترات' });
+      if (url === '/stats/me') return Promise.resolve({ data: STATS });
+      return Promise.resolve({ data: [] });
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByText(/تعذّر تحميل قائمة الفترات/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
+  });
+
   it('تعرض لرئيس القسم إحصائيات فرعه بلا روابط تعمّق مع جدول المحامين', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },

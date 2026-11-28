@@ -102,6 +102,14 @@ export default function DelegationRequests() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
+            onClick={() => { void requestsQuery.refetch(); }}
+            disabled={requestsQuery.isFetching}
+            className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            {requestsQuery.isFetching ? 'جارِ التحديث…' : 'تحديث'}
+          </button>
+          <button
+            type="button"
             onClick={() => setRejectedOnly((v) => !v)}
             aria-pressed={rejectedOnly}
             className={`min-h-11 rounded-lg px-4 py-2 text-sm border focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
