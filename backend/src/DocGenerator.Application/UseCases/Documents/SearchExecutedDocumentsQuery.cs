@@ -36,8 +36,7 @@ internal sealed class SearchExecutedDocumentsQueryHandler
     protected override async Task<PagedResult<DocumentResponse>> HandleCoreAsync(
         SearchExecutedDocumentsQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var (total, items) = await _documents.SearchExecutedAsync(query.Query, query.VisibleBranchId, query.VisibleUserId, page, perPage, ct, query.OwnerSectionId);
 

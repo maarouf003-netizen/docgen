@@ -48,6 +48,16 @@ public class RateLimitCoverageTests
         Assert.Equal(RateLimitingSetup.ExpensivePolicy, PolicyOf(controller, method!));
     }
 
+    [Fact]
+    public void StatisticsReads_CarryTheStatsPolicy_NotTheExpensiveOne()
+    {
+        var policy = typeof(StatisticsController)
+            .GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName;
+
+        Assert.Equal(RateLimitingSetup.StatsReadPolicy, policy);
+        Assert.True(new DocGenerator.Application.Common.RateLimitOptions().StatsReadPerMinute >= 60);
+    }
+
     private static string? PolicyOf(Type controller, MethodInfo method)
         => method.GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName
            ?? controller.GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName;

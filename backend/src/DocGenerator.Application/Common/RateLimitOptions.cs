@@ -19,8 +19,14 @@ public class RateLimitOptions
     /// <summary>الحد العام لكل مستخدم مصادَق.</summary>
     public int GeneralAuthPerMinute { get; set; } = 300;
 
-    /// <summary>المسارات المكلفة (تصدير/إحصاءات/توليد) لكل مستخدم.</summary>
+    /// <summary>المسارات المكلفة (تصدير/توليد/استيراد جماعي) لكل مستخدم.</summary>
     public int ExpensivePerMinute { get; set; } = 10;
+
+    /// <summary>
+    /// قراءات شاشة الإحصاءات لكل مستخدم — أعلى من «المكلفة» عمدًا لأن الصفحة
+    /// تطلق عدة استعلامات لكل تفاعل (فترة/فرع/سابق)، والحد 10 كان يسبب 429.
+    /// </summary>
+    public int StatsReadPerMinute { get; set; } = 120;
 
     /// <summary>تغيير كلمة المرور لكل مستخدم.</summary>
     public int PasswordPerMinute { get; set; } = 5;
@@ -43,6 +49,7 @@ public class RateLimitOptions
         RequireRange(GeneralAnonPerMinute, 1, 1_000_000, "RateLimiting:GeneralAnonPerMinute");
         RequireRange(GeneralAuthPerMinute, 1, 1_000_000, "RateLimiting:GeneralAuthPerMinute");
         RequireRange(ExpensivePerMinute, 1, 1_000_000, "RateLimiting:ExpensivePerMinute");
+        RequireRange(StatsReadPerMinute, 1, 1_000_000, "RateLimiting:StatsReadPerMinute");
         RequireRange(PasswordPerMinute, 1, 1_000_000, "RateLimiting:PasswordPerMinute");
         RequireRange(CspReportPerMinute, 1, 1_000_000, "RateLimiting:CspReportPerMinute");
     }

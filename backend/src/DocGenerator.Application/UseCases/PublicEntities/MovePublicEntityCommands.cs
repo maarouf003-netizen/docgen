@@ -106,7 +106,8 @@ internal sealed class MovePublicEntityEntryCommandHandler
                 var entryDelegates = await _users.ListEntityManagersByEntryIdAsync(entryId, token);
                 foreach (var del in entryDelegates)
                 {
-                    del.PortalGroupId = targetEntry.GroupId;
+                    // نطاق واحد فقط (القيد الناجي) — لا توسيع إلى الهوية كاملة.
+                    del.PortalGroupId = null;
                     del.PortalEntryId = targetEntryId;
                 }
 

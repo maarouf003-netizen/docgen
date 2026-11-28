@@ -65,8 +65,8 @@ public class ExportProjectionTests : PostgresDbTest
         _db.ExecutionApplicants.Add(new ExecutionApplicant { DocumentId = created.Id, Name = "طالب", Father = "أب", Family = "عائلة" });
         _db.ExecutedPublicEntities.Add(new ExecutedPublicEntity { DocumentId = created.Id, EntityName = "الجهة المنفذ عليها" });
         _db.ExecutedNaturalPersons.Add(new ExecutedNaturalPerson { DocumentId = created.Id, Name = "طبيعي", Father = "أ", Family = "ع" });
-        _db.ExecutionActions.Add(new ExecutionAction { DocumentId = created.Id, Text = "إجراء أول", CreatedById = _userId });
-        _db.ExecutionActions.Add(new ExecutionAction { DocumentId = created.Id, Text = "إجراء ثانٍ", CreatedById = _userId });
+        _db.ExecutionActions.Add(new ExecutionAction { DocumentId = created.Id, Text = "إجراء أول", CreatedById = _userId, CreatedAt = new DateTime(2024, 5, 1, 8, 0, 0, DateTimeKind.Utc) });
+        _db.ExecutionActions.Add(new ExecutionAction { DocumentId = created.Id, Text = "إجراء ثانٍ", CreatedById = _userId, CreatedAt = new DateTime(2024, 5, 2, 8, 0, 0, DateTimeKind.Utc) });
         _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = created.Id, Year = 2024, BaseNumber = "777", CreatedById = _userId, CreatedAt = new DateTime(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc) });
         await _db.SaveChangesAsync();
 
@@ -81,8 +81,8 @@ public class ExportProjectionTests : PostgresDbTest
         Assert.Equal("عائلة", applicant.Family);
         Assert.Equal(new[] { "الجهة المنفذ عليها" }, row.ExecutedPublicEntities.Select(e => e.EntityName).ToList());
         Assert.Equal("طبيعي", Assert.Single(row.ExecutedNaturalPersons).Name);
-        // الأول حصريًا (Take(1)) — الثاني لا يُسقط.
-        Assert.Equal("إجراء أول", Assert.Single(row.ExecutionActions).Text);
+        // الأحدث حصريًا (Take(1)) — مطابق لعرض التفاصيل، لا الأقدم.
+        Assert.Equal("إجراء ثانٍ", Assert.Single(row.ExecutionActions).Text);
         // الرقم الفعّال من البذور (2024 ≤ السنة الحالية).
         Assert.Equal("777", row.DisplayFileNumber);
         Assert.Equal("2024", row.DisplayFileYear);

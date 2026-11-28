@@ -181,6 +181,21 @@ public class PortalRepository : IPortalRepository
         if (user is null || user.Role != UserRole.EntityManager)
             return null;
 
+        // أسبقية القيد على الهوية: أي مستخدم يحمل الحقلين (بيانات قديمة/ترحيل سابق)
+        // يُقيَّد بأضيق نطاق — لا يتوسّع إلى كل قيود الهوية. الكتابة الجديدة تمنع
+        // الجمع أصلًا (`EntityDelegateService`: نطاق واحد فقط).
+        if (user.PortalEntryId.HasValue && user.PortalEntry is not null)
+        {
+            var entry = user.PortalEntry;
+            var active = entry.Status == EntityStatusCatalog.Final
+                && !entry.NeedsReview && entry.IsActive;
+            return new PortalScopeResolution(
+                "entry", entry.GroupId, entry.Group.CanonicalName, entry.Group.EntityType,
+                active
+                    ? new List<(int, string, string, bool)> { (entry.Id, entry.Governorate, entry.BranchName, true) }
+                    : Array.Empty<(int, string, string, bool)>());
+        }
+
         if (user.PortalGroupId.HasValue && user.PortalGroup is not null)
         {
             var group = user.PortalGroup;
@@ -192,18 +207,6 @@ public class PortalRepository : IPortalRepository
                     .ThenBy(e => e.BranchName, PortalScopeOrdering.ArabicDisplay)
                     .Select(e => (e.Id, e.Governorate, e.BranchName, e.IsActive))
                     .ToList());
-        }
-
-        if (user.PortalEntryId.HasValue && user.PortalEntry is not null)
-        {
-            var entry = user.PortalEntry;
-            var active = entry.Status == EntityStatusCatalog.Final
-                && !entry.NeedsReview && entry.IsActive;
-            return new PortalScopeResolution(
-                "entry", entry.GroupId, entry.Group.CanonicalName, entry.Group.EntityType,
-                active
-                    ? new List<(int, string, string, bool)> { (entry.Id, entry.Governorate, entry.BranchName, true) }
-                    : Array.Empty<(int, string, string, bool)>());
         }
 
         // بلا نطاق مضبوط: نطاق فارغ صريح — لا يرى المندوب شيئًا.
@@ -258,30 +261,43 @@ public class PortalRepository : IPortalRepository
 
         if (status != null)
         {
+            // طرف «منفذ عليه/إيداع» تُشتق حالته من `ExecutedStatus` لا `ExecStatus`
+            // (نفس أسبقية `DocumentStatusResolver`) — وإلا ظهر شاره «منفذ» تحت «متداول».
             if (status == ExecutionStatusCatalog.ExecutedFilter)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                     || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
                     || d.ExecStatus == ExecutionStatusCatalog.Recovered
                     || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                         && (d.ExecSubStatus == null
-                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)));
+                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))
+                    || ((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                            || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                        && d.ExecutedStatus == ExecutedStatusCatalog.Executed));
             else if (status == ExecutionStatusCatalog.Deferred)
-                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit);
             else if (status == ExecutionStatusCatalog.ReferredToStart)
-                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit);
             else if (status == ExecutionStatusCatalog.DraftFilter)
                 q = q.Where(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus));
             else if (status == ExecutionStatusCatalog.StateCirculating)
-                q = q.Where(d => (!d.IsDraft && string.IsNullOrEmpty(d.ExecStatus))
-                    || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                        && d.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
-                    || (!string.IsNullOrEmpty(d.ExecStatus)
-                        && d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
-                        && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
-                        && d.ExecStatus != ExecutionStatusCatalog.Recovered
-                        && d.ExecStatus != ExecutionStatusCatalog.ExecutedForcibly
-                        && d.ExecStatus != ExecutionStatusCatalog.Deferred
-                        && d.ExecStatus != ExecutionStatusCatalog.ReferredToStart));
+                q = q.Where(d =>
+                    !((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                            || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                        && d.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                    && ((!d.IsDraft && string.IsNullOrEmpty(d.ExecStatus))
+                        || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                            && d.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
+                        || (!string.IsNullOrEmpty(d.ExecStatus)
+                            && d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
+                            && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
+                            && d.ExecStatus != ExecutionStatusCatalog.Recovered
+                            && d.ExecStatus != ExecutionStatusCatalog.ExecutedForcibly
+                            && d.ExecStatus != ExecutionStatusCatalog.Deferred
+                            && d.ExecStatus != ExecutionStatusCatalog.ReferredToStart)));
         }
 
         return q;
@@ -332,7 +348,9 @@ public class PortalRepository : IPortalRepository
                 d.InclusionCurrency2,
                 d.InclusionAmount2Numeric,
                 d.InclusionCurrency3,
-                d.InclusionAmount3Numeric))
+                d.InclusionAmount3Numeric,
+                d.GeneralEntitySide,
+                d.ExecutedStatus))
             .ToListAsync(ct);
     }
 

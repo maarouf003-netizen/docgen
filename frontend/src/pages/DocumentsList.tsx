@@ -452,7 +452,7 @@ export default function DocumentsList() {
                 <button
                   type="button"
                   onClick={() => void loadMore()}
-                  disabled={loadingMore}
+                  disabled={loadingMore || loading}
                   className="px-4 py-2 border border-emerald-700 text-emerald-800 rounded-lg hover:bg-emerald-50 disabled:opacity-40 min-h-11"
                 >
                   {loadingMore ? 'جارِ التحميل…' : 'تحميل المزيد'}

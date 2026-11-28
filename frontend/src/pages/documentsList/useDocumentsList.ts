@@ -9,6 +9,7 @@ import { useCancellableRequest } from '../../hooks/useCancellableRequest';
 import { downloadBlob } from '../../utils/download';
 import { isStatusOption } from '../../utils/documentStatus';
 import { displayFileNumber, identityName } from '../../utils/documentDisplay';
+import { todayLocalKey } from '../../utils/dates';
 import {
   loadDocumentsListPosition,
   loadLastViewedDocumentId,
@@ -44,7 +45,10 @@ export function useDocumentsList() {
   const persistedStatus = statusTouched ? status : (saved?.status && isStatusOption(saved.status) ? saved.status : '');
 
   // إعادة ضبط الصفحات المضافة عند تغيير أي فلتر أو رابط تعمّق (P3-05b).
+  const listGeneration = useRef(0);
   const resetPaging = () => {
+    // يُبطل أي «تحميل المزيد» جارٍ حتى لو لم يُبنَ المفتاح الجديد بعد (دفعة React واحدة).
+    listGeneration.current += 1;
     setExtraItems([]);
     setExtraCursors([]);
     setNextCursor(null);
@@ -135,6 +139,12 @@ export function useDocumentsList() {
     [buildListParams],
   );
 
+  // مفتاح الفلتر الحالي: أي «تحميل المزيد» يبدأ بسباق فلتر آخر يُسقط استجابته
+  // بدل إلحاق صفوف فلتر قديم بقائمة جديد (فجوة/تلوّث نتائج).
+  const listKey = buildListParams().toString();
+  const listKeyRef = useRef(listKey);
+  listKeyRef.current = listKey;
+
   const data = listQuery.data;
   const loading = listQuery.isLoading;
   // الصفحة الأولى من الشبكة + الصفحات المضافة بمؤشر «تحميل المزيد» (P3-05b).
@@ -201,17 +211,23 @@ export function useDocumentsList() {
   // «تحميل المزيد»: يجلب الصفحة التالية بالمؤشر ويُلحقها بلا إزاحة (P3-05b).
   const loadMore = async () => {
     const cursor = effectiveNextCursor;
-    if (!cursor || loadingMore)
+    // لا تحميل أثناء جلب فلتر جديد (المؤشر/الصفوف المعروضة من الفلتر السابق).
+    if (!cursor || loadingMore || loading)
       return;
+    const requestKey = listKeyRef.current;
+    const requestGeneration = listGeneration.current;
     setLoadingMore(true);
     setLoadMoreError('');
     try {
       const response = await api.get<PagedResult<DocumentListItemDto>>(
         `/documents/list?${buildListParams(cursor).toString()}`);
+      // الفلتر تغيّر أثناء الطلب: لا نلحق صفحة تنتمي لقائمة أخرى.
+      if (listKeyRef.current !== requestKey || listGeneration.current !== requestGeneration) return;
       setExtraItems((previous) => [...previous, ...response.data.items]);
       setExtraCursors((previous) => [...previous, cursor]);
       setNextCursor(response.data.nextCursor ?? null);
     } catch (err) {
+      if (listKeyRef.current !== requestKey || listGeneration.current !== requestGeneration) return;
       setLoadMoreError(getApiErrorMessage(err));
     } finally {
       setLoadingMore(false);
@@ -332,7 +348,7 @@ export function useDocumentsList() {
         responseType: 'blob',
       })
       .then((res) => {
-        downloadBlob(res.data as Blob, `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`);
+        downloadBlob(res.data as Blob, `الملفات التنفيذية ${todayLocalKey()}.xlsx`);
       })
       .catch(async (err: unknown) => {
         // أخطاء التنزيل `Blob` فيُستخرج نصها (كـ429 الحارس) بدل رسالة عامة.

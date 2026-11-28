@@ -1292,9 +1292,9 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         await _moveEntry.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
 
-        // مندوب القيد المطوي يرحل إلى (الهوية الهدف، القيد الهدف).
+        // مندوب القيد المطوي يرحل إلى القيد الهدف وحده (لا تتوسّع رؤيته إلى الهوية).
         var entryDel = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.entry");
-        Assert.Equal(g2, entryDel.PortalGroupId);
+        Assert.Null(entryDel.PortalGroupId);
         Assert.Equal(e2, entryDel.PortalEntryId);
 
         // مندوب مجموعة المصدر بلا مساس (لا يُطوى على قيد واحد).
@@ -1749,7 +1749,7 @@ public class PublicEntityServiceTests : PostgresDbTest
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
-        Assert.Equal(sg, updated.PortalGroupId);
+        Assert.Null(updated.PortalGroupId);
         Assert.NotNull(updated.PortalEntryId);
         Assert.Equal(
             await _db.PublicEntities.Where(e => e.GroupId == sg).Select(e => e.Id).FirstOrDefaultAsync(),
@@ -1803,9 +1803,10 @@ public class PublicEntityServiceTests : PostgresDbTest
 
         var d = await _db.Users.SingleAsync(u => u.Id == damascusDelegate.Id);
         var a = await _db.Users.SingleAsync(u => u.Id == aleppoDelegate.Id);
-        Assert.Equal(sg, d.PortalGroupId);
+        // مندوبا القيود يبقيان على قيد واحد (لا توسيع إلى الهوية).
+        Assert.Null(d.PortalGroupId);
         Assert.Equal(sD, d.PortalEntryId);
-        Assert.Equal(sg, a.PortalGroupId);
+        Assert.Null(a.PortalGroupId);
         Assert.Equal(sA, a.PortalEntryId);
     }
     [PostgresFact]
@@ -1834,7 +1835,7 @@ public class PublicEntityServiceTests : PostgresDbTest
                 DecreeKind: "قرار", DecreeNumber: "124", DecreeDate: "2/8/2026"), ManagerActor());
 
         var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
-        Assert.Equal(survivor.GroupId, updated.PortalGroupId);
+        Assert.Null(updated.PortalGroupId);
         Assert.Equal(survivorEntry.Id, updated.PortalEntryId);
     }
 
@@ -2533,9 +2534,9 @@ public class PublicEntityServiceTests : PostgresDbTest
         Assert.Contains("الجهه الموحده الهدف", after.SearchText);
         Assert.DoesNotContain("الجهه الممتصه", after.SearchText);
 
-        // مندوب المطوي يرحل لناجيه؛ مندوب المنقول يبقى على قيده (المنقول ما زال قيدًا صالحًا).
+        // مندوب المطوي يرحل لقيد ناجيه وحده؛ مندوب المنقول يبقى على قيده (المنقول ما زال قيدًا صالحًا).
         var foldedDelegate = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.folded");
-        Assert.Equal(target.GroupId, foldedDelegate.PortalGroupId);
+        Assert.Null(foldedDelegate.PortalGroupId);
         Assert.Equal(survivor.Id, foldedDelegate.PortalEntryId);
 
         var movedDelegate = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.moved");
