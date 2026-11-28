@@ -353,8 +353,8 @@ export default function DocumentView() {
                 onClick={() => setActiveTab(t.id)}
                 className={`shrink-0 min-h-11 px-4 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === t.id
-                    ? 'bg-emerald-800 text-white'
-                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-emerald-900 text-white'
+                    : 'bg-white border border-gray-300 text-gray-800 hover:bg-gray-50'
                 }`}
               >
                 {t.label}

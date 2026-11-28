@@ -44,7 +44,7 @@ function PartyRow({
         <span className="block font-medium text-gray-800 text-sm break-words">{name}</span>
         {subtitle ? <span className="block text-xs text-gray-500 mt-0.5 break-words">{subtitle}</span> : null}
       </span>
-      {onClick ? <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span> : null}
+      {onClick ? <span className="text-gray-500 text-sm shrink-0" aria-hidden="true">←</span> : null}
     </button>
   );
 }
@@ -94,7 +94,7 @@ function naturalRows(p: {
 function ApplicantEntities({ entities }: { entities: ApplicantPublicEntityDto[] }) {
   const visible = entities.filter((e) => (e.name ?? '').trim());
   if (visible.length === 0) {
-    return <p className="text-gray-400 text-sm py-2">لا يوجد طالب تنفيذ</p>;
+    return <p className="text-gray-500 text-sm py-2">لا يوجد طالب تنفيذ</p>;
   }
   return (
     <div>
@@ -108,7 +108,7 @@ function ApplicantEntities({ entities }: { entities: ApplicantPublicEntityDto[] 
 /** طالبو التنفيذ في وضع «منفذ عليه» (طبيعي/اعتباري) مع نافذة تفاصيل عند الضغط. */
 function ExecutedApplicants({ applicants, onOpen }: { applicants: ExecutionApplicantDto[]; onOpen: (m: PartyModal) => void }) {
   if (applicants.length === 0) {
-    return <p className="text-gray-400 text-sm py-2">لا يوجد طالب تنفيذ</p>;
+    return <p className="text-gray-500 text-sm py-2">لا يوجد طالب تنفيذ</p>;
   }
   return (
     <div>
@@ -205,7 +205,7 @@ function ExecutedDebtors({
   });
 
   if (entries.length === 0) {
-    return <p className="text-gray-400 text-sm py-2">لا يوجد منفذ عليه</p>;
+    return <p className="text-gray-500 text-sm py-2">لا يوجد منفذ عليه</p>;
   }
   return <div>{entries}</div>;
 }
@@ -327,7 +327,7 @@ function ApplicantSideDebtors({
   });
 
   if (rows.length === 0) {
-    return <p className="text-gray-400 text-sm py-2">لا يوجد منفذ عليه</p>;
+    return <p className="text-gray-500 text-sm py-2">لا يوجد منفذ عليه</p>;
   }
   return <div>{rows}</div>;
 }

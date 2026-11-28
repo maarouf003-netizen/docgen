@@ -1,44 +1,11 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { apiLogin, E2E_USERS } from './support/app.ts';
+import { analyzeBlocking } from './support/a11y.ts';
 
 /**
- * `P6-04` — تدقيق `axe` آلي على الشاشات الثلاث المطلوبة.
- *
- * العتبة: تفشل الاختبارات عند أي مخالفة `critical` أو `serious` فقط (المعيار
- * العملي لـ`DoD`)، وتُطبع بقية المخالفات (`moderate`/`minor`) في تقرير Playwright.
- *
- * قائمة التبييض عمدًا **فارغة**: أي مخالفة حرجة/خطيرة تفشل. أي إضافة مستقبلية
- * يجب أن تحمل سببًا مكتوبًا هنا وفي `docs/runbooks/e2e.md`، وتُزال عند الإصلاح.
+ * `P6-04` — تدقيق `axe` آلي على الشاشات الحرجة.
+ * العتبة/التبييض في `e2e/support/a11y.ts` (مشتركة مع تدقيق الجوال).
  */
-const A11Y_ALLOWLIST: ReadonlyArray<{ id: string; reason: string }> = [];
-
-async function analyzeBlocking(page: Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'])
-    .analyze();
-
-  const blocking = results.violations.filter(
-    (violation) => violation.impact === 'critical' || violation.impact === 'serious',
-  );
-  const unexpected = blocking.filter(
-    (violation) => !A11Y_ALLOWLIST.some((entry) => entry.id === violation.id),
-  );
-
-  const summary = unexpected.map((violation) => ({
-    id: violation.id,
-    impact: violation.impact,
-    help: violation.help,
-    nodes: violation.nodes.slice(0, 5).map((node) => node.target.join(' ')),
-  }));
-
-  expect(
-    summary,
-    `${label}: ${unexpected.length} blocking axe violation(s). ` +
-      'Fix them or document a temporary allowlist with a reason in e2e/a11y.spec.ts and docs/runbooks/e2e.md.',
-  ).toEqual([]);
-}
-
 test.describe('accessibility (axe)', () => {
   test('login page has no critical/serious violations', async ({ page }) => {
     await page.goto('/login');

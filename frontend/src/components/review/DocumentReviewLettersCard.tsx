@@ -80,7 +80,7 @@ export default function DocumentReviewLettersCard({
       {loading ? (
         <p className="text-gray-500 text-sm">جارِ التحميل…</p>
       ) : items.length === 0 ? (
-        <p className="text-gray-400 text-sm">
+        <p className="text-gray-500 text-sm">
           لا توجد كتب مطالعة على هذا الملف{canCreate ? ' — سطّر أول كتاب' : ''}.
         </p>
       ) : (

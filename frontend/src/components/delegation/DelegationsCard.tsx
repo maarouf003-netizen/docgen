@@ -85,9 +85,9 @@ export function DelegationsCard({
     >
 
       {delegationsLoading ? (
-        <p className="text-gray-400 text-sm motion-safe:animate-pulse">جارٍ تحميل الإنابات…</p>
+        <p className="text-gray-500 text-sm motion-safe:animate-pulse">جارٍ تحميل الإنابات…</p>
       ) : delegations.length === 0 ? (
-        <p className="text-gray-400 text-sm">لا توجد إنابات مسجلة لهذا الملف</p>
+        <p className="text-gray-500 text-sm">لا توجد إنابات مسجلة لهذا الملف</p>
       ) : (
         <ul className="divide-y divide-gray-100">
           {delegations.map((d) => {

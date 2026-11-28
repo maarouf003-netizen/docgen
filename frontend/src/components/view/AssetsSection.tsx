@@ -15,7 +15,7 @@ export function AssetsSection({ doc, delegations = [] }: { doc: DocumentResponse
   const blocked = blockedAssetIds(delegations, assets);
   return (
     <SectionCard title="الأموال المنقولة وغير المنقولة">
-      {assets.length === 0 && <p className="text-gray-400 text-sm">لا توجد أموال مرهونة</p>}
+      {assets.length === 0 && <p className="text-gray-500 text-sm">لا توجد أموال مرهونة</p>}
       {assets.map((r, i) => (
         <AssetRow key={r.id ?? i} asset={r} delegated={r.id != null && blocked.has(r.id)} />
       ))}

@@ -1771,6 +1771,10 @@
     `npx playwright install --with-deps chromium`، `oxlint` لمصادر E2E، اختبار الحارس
     الذاتي، ثم `npx playwright test` ورفع التقارير عند الفشل. بقيت وظائف `ci.yml` الست
     القائمة دون تغيير.
+  - **`P6-04a` (2026-11-28):** `e2e/a11y-mobile.spec.ts` — إنشاء ملف عبر الـAPI (CSRF) ثم
+    `axe` + فحص 375px على `/documents/:id` في مشروع `mobile` (أُضيف إلى `testMatch`،
+    واستُثني من `desktop`). يغلق متابعة `B4` لشاشة تفاصيل الملف؛ تفاصيل البوابة تحتاج
+    بذر نطاق مندوب (متابعة). التفاصيل: `docs/audit/342-p6-04a-mobile-detail-a11y-20261128.md`.
   - **ما نُفّذ محليًا فعلًا (2026-11-26):** `npx playwright install chromium` نجح،
     ودخان المتصفح نجح بقناتَي `chrome` (158) و`chromium` (159)، ثم شُغّلت **الحزمة
     الكاملة 15/15** على قاعدة PostgreSQL 16.16 مؤقتة حقيقية (منفذ 55432) مع API/Vite

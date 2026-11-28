@@ -71,7 +71,7 @@ export function OccurrencesCard({
           ) : legacyStruckOffDate ? (
             <FieldCell label="تاريخ الشطب" value={formatDate(legacyStruckOffDate)} showEmpty />
           ) : (
-            <p className="text-gray-400 text-sm">لا توجد شطوبات.</p>
+            <p className="text-gray-500 text-sm">لا توجد شطوبات.</p>
           )}
         </section>
 
@@ -153,7 +153,7 @@ export function OccurrencesCard({
               })}
             </ul>
           ) : (
-            <p className="text-gray-400 text-sm">لا توجد استئنافات.</p>
+            <p className="text-gray-500 text-sm">لا توجد استئنافات.</p>
           )}
         </section>
 
