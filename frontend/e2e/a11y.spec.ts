@@ -103,4 +103,22 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByText(/لا توجد طلبات إنابة معلّقة/)).toBeVisible();
     await analyzeBlocking(page, '/delegations/requests');
   });
+
+  // P6-03c: توسيع التغطية إلى الاستئنافات وتدوير أرقام الأساس.
+  test('appeals list has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/appeals');
+    await expect(page.getByRole('heading', { name: 'الاستئنافات' })).toBeVisible();
+    await expect(page.getByText(/لا توجد استئنافات مطابقة/)).toBeVisible();
+    await analyzeBlocking(page, '/appeals');
+  });
+
+  test('rotation page has no critical/serious violations', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/documents/rotate');
+    await expect(page.getByRole('heading', { name: 'تدوير أرقام الأساس' })).toBeVisible();
+    // الشارة تثبت الفرع المصرَّح به (لا حالة «لا تملك صلاحية»/تحميل).
+    await expect(page.getByText(/سنة التدوير:/)).toBeVisible();
+    await analyzeBlocking(page, '/documents/rotate');
+  });
 });

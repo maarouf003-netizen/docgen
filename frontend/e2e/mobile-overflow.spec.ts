@@ -106,4 +106,22 @@ test.describe('mobile 375px — no horizontal overflow', () => {
     await expect(page.getByRole('heading', { name: 'طلبات الإنابة' })).toBeVisible();
     await expectNoHorizontalOverflow(page, '/delegations/requests');
   });
+
+  test('appeals page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/appeals');
+
+    await expect(page.getByRole('heading', { name: 'الاستئنافات' })).toBeVisible();
+    await expect(page.getByText(/لا توجد استئنافات مطابقة/)).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/appeals');
+  });
+
+  test('rotation page fits 375px', async ({ page }) => {
+    await apiLogin(page, E2E_USERS.lawyer);
+    await page.goto('/documents/rotate');
+
+    await expect(page.getByRole('heading', { name: 'تدوير أرقام الأساس' })).toBeVisible();
+    await expect(page.getByText(/سنة التدوير:/)).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/documents/rotate');
+  });
 });
