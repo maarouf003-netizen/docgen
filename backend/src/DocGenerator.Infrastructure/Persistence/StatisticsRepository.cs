@@ -75,6 +75,29 @@ public partial class StatisticsRepository : IStatisticsRepository
     }
 
     /// <summary>
+    /// تاريخ محلي (بتوقيت النظام الزمني) من طابع UTC — لحدود الشهر/الفترة والتصنيف الشهري؛
+    /// العمود `CreatedAt` يُخزَّن UTC، وحدود الفترة تُحسب بتوقيت دمشق (قرار المالك).
+    /// </summary>
+    private DateTime LocalDateOf(DateTime utcDateTime)
+        => TimeZoneInfo.ConvertTimeFromUtc(AsUtc(utcDateTime), _timeZone).Date;
+
+    /// <summary>توحيد الطابع إلى UTC مع احترام `Kind` (كـ`UtcDateTimeConverter` عند القراءة).</summary>
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+    };
+
+    /// <summary>
+    /// حدود النافذة المحلية محوَّلة إلى UTC — لمقارنة الأعمدة الزمنية المخزَّنة UTC
+    /// (مثل `CreatedAt`) دون إزاحة يوم كامل قرب منتصف الليل.
+    /// </summary>
+    private (DateTime Start, DateTime End) ToUtcWindow((DateTime Start, DateTime End) window)
+        => (TimeZoneInfo.ConvertTimeToUtc(window.Start, _timeZone),
+            TimeZoneInfo.ConvertTimeToUtc(window.End, _timeZone));
+
+    /// <summary>
     /// نطاق الفترة: شهري = شهر محدد (افتراضيًا الحالي)، ربعي = ربع محدد (افتراضيًا الحالي)،
     /// عام = سنة محددة (افتراضيًا الحالية). النطاق نصف مفتوح [Start, End).
     /// year/month/quarter تُتحقق من صحتها في المتحكم قبل الوصول إلى هنا.

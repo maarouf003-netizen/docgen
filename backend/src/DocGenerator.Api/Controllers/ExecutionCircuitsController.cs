@@ -360,7 +360,7 @@ public class ExecutionCircuitsController : ControllerBase
 [ApiController]
 [Route("api/documents")]
 [Authorize]
-[EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+[EnableRateLimiting(RateLimitingSetup.ReadsPolicy)]
 public class PendingRegistrationsController : ControllerBase
 {
     private readonly IQueryHandler<ListMyPendingRegistrationsQuery, List<PendingRegistrationDto>> _pendingRegistrations;
@@ -386,6 +386,7 @@ public class PendingRegistrationsController : ControllerBase
 
     [HttpPost("complete-registrations")]
     [Authorize(Roles = "lawyer")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Complete([FromBody] CompleteRegistrationsRequest request, CancellationToken ct)
     {
         try

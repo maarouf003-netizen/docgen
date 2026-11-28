@@ -36,6 +36,12 @@ public class RateLimitOptions
     /// </summary>
     public int CircuitsReadPerMinute { get; set; } = 60;
 
+    /// <summary>
+    /// قراءات الشاشات العامة المكلفة نسبيًا (إحصاءات البوابة، الملفات بانتظار التسجيل) —
+    /// سياسة قراءة مستقلة حتى لا تُخنق شاشات القراءة بحد «المكلفة» (10/دقيقة).
+    /// </summary>
+    public int ReadsPerMinute { get; set; } = 120;
+
     /// <summary>تغيير كلمة المرور لكل مستخدم.</summary>
     public int PasswordPerMinute { get; set; } = 5;
 
@@ -59,6 +65,7 @@ public class RateLimitOptions
         RequireRange(ExpensivePerMinute, 1, 1_000_000, "RateLimiting:ExpensivePerMinute");
         RequireRange(StatsReadPerMinute, 1, 1_000_000, "RateLimiting:StatsReadPerMinute");
         RequireRange(CircuitsReadPerMinute, 1, 1_000_000, "RateLimiting:CircuitsReadPerMinute");
+        RequireRange(ReadsPerMinute, 1, 1_000_000, "RateLimiting:ReadsPerMinute");
         RequireRange(PasswordPerMinute, 1, 1_000_000, "RateLimiting:PasswordPerMinute");
         RequireRange(CspReportPerMinute, 1, 1_000_000, "RateLimiting:CspReportPerMinute");
     }

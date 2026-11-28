@@ -214,7 +214,7 @@ public sealed class StatsScopeTests : IAsyncLifetime
         await CreateFileAsync(lawyerToken, divisionCircuit);
 
         var lawyer = Factory.ClientWithToken(lawyerToken);
-        var export = await lawyer.GetAsync("/api/documents/export");
+        var export = await lawyer.GetAsync("/api/documents/export?status=" + Uri.EscapeDataString("تحت رفع"));
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         var bytes = await export.Content.ReadAsByteArrayAsync();
         var headers = XlsxHeaders(bytes);

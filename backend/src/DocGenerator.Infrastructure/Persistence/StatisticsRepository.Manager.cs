@@ -14,6 +14,7 @@ public partial class StatisticsRepository
         int? ownerSectionId = null, bool fullAccess = true)
     {
         var window = GetPeriodWindow(period, year, month, quarter);
+        var (utcStart, utcEnd) = ToUtcWindow(window);
         var rows = await InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
@@ -77,7 +78,9 @@ public partial class StatisticsRepository
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                     && d.FileReceiptDate == null,
             })
-            .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
+            .Where(r => r.PeriodDateFromCreatedAt
+                ? r.PeriodDate >= utcStart && r.PeriodDate < utcEnd
+                : r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
 
         return AggregateManagerStats(rows, period, window);
@@ -87,6 +90,7 @@ public partial class StatisticsRepository
         int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
     {
         var window = GetPeriodWindow(period, year, month, quarter);
+        var (utcStart, utcEnd) = ToUtcWindow(window);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.CreatedById == userId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
@@ -147,7 +151,9 @@ public partial class StatisticsRepository
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                     && d.FileReceiptDate == null,
             })
-            .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
+            .Where(r => r.PeriodDateFromCreatedAt
+                ? r.PeriodDate >= utcStart && r.PeriodDate < utcEnd
+                : r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
 
         return AggregateManagerStats(rows, period, window)
@@ -176,17 +182,31 @@ public partial class StatisticsRepository
         if (rows.Count == 0)
             return null;
 
+        var (utcStart, utcEnd) = ToUtcWindow((start, end));
         var pending = rows.Count(r =>
             r.Status == AppealStatusCatalog.Pending
-            && r.CreatedAt >= start && r.CreatedAt < end);
+            && r.CreatedAt >= utcStart && r.CreatedAt < utcEnd);
         var inFavor = rows.Count(r =>
             r.Status == AppealStatusCatalog.Decided && r.Outcome == AppealOutcomeCatalog.InFavor
-            && (r.DecisionDate ?? r.CreatedAt) >= start && (r.DecisionDate ?? r.CreatedAt) < end);
+            && InLocalPeriod(r.DecisionDate, r.CreatedAt, start, end));
         var against = rows.Count(r =>
             r.Status == AppealStatusCatalog.Decided && r.Outcome == AppealOutcomeCatalog.Against
-            && (r.DecisionDate ?? r.CreatedAt) >= start && (r.DecisionDate ?? r.CreatedAt) < end);
+            && InLocalPeriod(r.DecisionDate, r.CreatedAt, start, end));
 
         return new AppealsStatsDto(pending, inFavor, against);
+    }
+
+    /// <summary>
+    /// تقع اللحظة في الفترة المحلية؟ تاريخ القرار (يومي) يُقارن بالحدود المحلية،
+    /// ولحظة الإنشاء (UTC) تُحوَّل إلى توقيت دمشق قبل المقارنة.
+    /// </summary>
+    private bool InLocalPeriod(DateTime? decisionDate, DateTime createdAtUtc, DateTime start, DateTime end)
+    {
+        if (decisionDate is { } decided)
+            return decided.Date >= start && decided.Date < end;
+
+        var local = TimeZoneInfo.ConvertTimeFromUtc(AsUtc(createdAtUtc), _timeZone);
+        return local >= start && local < end;
     }
 
     public async Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
@@ -215,7 +235,7 @@ public partial class StatisticsRepository
         {
             // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله —
             // مع وسم المصدر لكل شهر (راجع `MonthlyStatDto`).
-            var periodDate = r.RegDateParsed ?? r.CreatedAt.Date;
+            var periodDate = r.RegDateParsed ?? LocalDateOf(r.CreatedAt);
             if (periodDate < window.Start || periodDate >= window.End)
                 continue;
 

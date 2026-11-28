@@ -162,7 +162,7 @@ public class PortalController : ControllerBase
 
     /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4) — إجمالي أو فرع مختار ضمن النطاق.</summary>
     [HttpGet("stats")]
-    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+    [EnableRateLimiting(RateLimitingSetup.ReadsPolicy)]
     public async Task<IActionResult> Stats([FromQuery] int? entryId = null, CancellationToken ct = default)
     {
         return Ok(await _portalStats.HandleAsync(new GetPortalStatsQuery(UserId, entryId), ct));

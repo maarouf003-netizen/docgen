@@ -522,11 +522,10 @@ public class DocumentsIntegrationTests : IAsyncLifetime
         using var circulatingBody = await circulatingList.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.DoesNotContain(id, circulatingBody!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
-        // فلتر «منفذ» لا يبتلع المحال حتى لو حمل جزئيته السابقة.
+        // فلتر «منفذ» غير مدعوم في القائمة العامة (لها صفحتها المستقلة) — لا يبتلع المحال
+        // ولا أي صف؛ الرفض صريح بدل نتيجة فارغة مضلِّلة.
         var executedList = await client.GetAsync("/api/documents?status=منفذ&perPage=50");
-        using var executedBody = await executedList.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.DoesNotContain(id, executedBody!.RootElement.GetProperty("items").EnumerateArray()
-            .Select(i => i.GetProperty("id").GetInt32()));
+        Assert.Equal(HttpStatusCode.BadRequest, executedList.StatusCode);
     }
 
     [PostgresFact]
@@ -847,13 +846,14 @@ public class DocumentsIntegrationTests : IAsyncLifetime
 
     [PostgresTheory]
     [InlineData("متداول")]
-    [InlineData("منفذ")]
     [InlineData("تريث")]
     [InlineData("تحت رفع")]
     [InlineData("")]
     public async Task Search_ValidStatuses_ReturnOk(string status)
     {
         // انحدار القيم الصالحة (والفارغة بلا فلتر): السلوك الحالي دون تغيير.
+        // «منفذ» ليس من قيم القائمة العامة (لها صفحتها المستقلة) — مغطّى في
+        // GeneralList_ExecutedStatusFilter_RejectedWithGuidance.
         var client = _factory.AuthorizedClient("lawyer1");
         var response = await client.GetAsync("/api/documents?status=" + Uri.EscapeDataString(status));
 
@@ -2745,6 +2745,26 @@ public class DocumentsIntegrationTests : IAsyncLifetime
 
         var delete = await client.DeleteAsync($"/api/documents/{id}/occurrences/1");
         Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task GeneralList_ExecutedStatusFilter_RejectedWithGuidance()
+    {
+        // W5-F2: «منفذ» ليس فلترًا في القائمة العامة (لها صفحتها المستقلة)؛ كان يرجع
+        // صفرًا مضلِّلًا. نرفضه برسالة توجّه للصفحة الصحيحة في المسارين.
+        var client = _factory.AuthorizedClient("lawyer1");
+        var executed = Uri.EscapeDataString("منفذ");
+        foreach (var path in new[]
+                 {
+                     $"/api/documents?status={executed}",
+                     $"/api/documents/list?status={executed}",
+                 })
+        {
+            var response = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Contains("الملفات المنفذة", body.RootElement.GetProperty("message").GetString());
+        }
     }
 
     private sealed class BaseNumberYearDto

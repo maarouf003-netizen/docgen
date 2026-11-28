@@ -91,7 +91,7 @@ public partial class StatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? LocalDateOf(x.CreatedAt)));
     }
 
     public async Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
