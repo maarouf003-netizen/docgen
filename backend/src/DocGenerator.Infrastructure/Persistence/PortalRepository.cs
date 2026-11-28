@@ -282,13 +282,18 @@ public class PortalRepository : IPortalRepository
                     && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
                     && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit);
             else if (status == ExecutionStatusCatalog.DraftFilter)
-                q = q.Where(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus));
+                q = q.Where(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus)
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit);
             else if (status == ExecutionStatusCatalog.StateCirculating)
                 q = q.Where(d =>
                     !((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                             || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                         && d.ExecutedStatus == ExecutedStatusCatalog.Executed)
-                    && ((!d.IsDraft && string.IsNullOrEmpty(d.ExecStatus))
+                    && (((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                            || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                        && string.IsNullOrWhiteSpace(d.ExecutedStatus))
+                        || (!d.IsDraft && string.IsNullOrEmpty(d.ExecStatus))
                         || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                             && d.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
                         || (!string.IsNullOrEmpty(d.ExecStatus)

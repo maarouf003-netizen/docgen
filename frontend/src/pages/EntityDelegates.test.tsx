@@ -115,6 +115,39 @@ describe('EntityDelegates', () => {
       }));
     });
   });
+
+  it('صف قديم بالهوية والقيد يبقى على القيد في العرض والتعديل (لا توسّع النطاق)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/entity-portal/delegates') {
+        return Promise.resolve({
+          data: [delegate({
+            portalGroupId: 5,
+            portalGroupName: 'وزارة التعليم',
+            portalEntryId: 77,
+            portalEntryLabel: 'فرع المزة',
+          })],
+        });
+      }
+      if (url === '/entity-registry/search') return Promise.resolve({ data: { items: [] } });
+      return Promise.resolve({ data: [] });
+    });
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<EntityDelegates />);
+
+    expect(await screen.findByText(/النطاق: فرع المزة/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تعديل' }));
+    expect(screen.getByRole('radio', { name: 'قيد بعينه' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/entity-portal/delegates/1', expect.objectContaining({
+        portalGroupId: null,
+        portalEntryId: 77,
+      }));
+    });
+  });
 });
 
 function withinDialog(el: HTMLElement) {

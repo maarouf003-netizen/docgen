@@ -3018,8 +3018,14 @@ public class PublicEntityServiceTests : PostgresDbTest
                 DecreeKind: "قرار", DecreeNumber: "9", DecreeDate: "3/4/2026"), ManagerActor());
 
         var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
-        Assert.Equal(result.NewGroupId, updated.PortalGroupId);
+        // مندوب القيد يبقى على قيد واحد داخل الهوية الجديدة (لا توسيع إلى كل قيودها).
+        Assert.Null(updated.PortalGroupId);
         Assert.NotNull(updated.PortalEntryId);
+        var entryGroupId = await _db.PublicEntities
+            .Where(e => e.Id == updated.PortalEntryId!.Value)
+            .Select(e => e.GroupId)
+            .SingleAsync();
+        Assert.Equal(result.NewGroupId, entryGroupId);
     }
 
     [PostgresFact]

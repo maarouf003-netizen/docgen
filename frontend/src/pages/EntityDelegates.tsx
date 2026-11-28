@@ -96,10 +96,12 @@ export default function EntityDelegates() {
     setEditName(d.fullName);
     setEditActive(d.isActive);
     setEditPassword('');
-    setEditScope(d.portalGroupId != null
-      ? { mode: 'group', groupId: String(d.portalGroupId), entryId: '' }
-      : d.portalEntryId != null
-        ? { mode: 'entry', groupId: '', entryId: String(d.portalEntryId) }
+    // أسبقية القيد على الهوية: صفوف قديمة قد تحمل الحقلين، والتوسّع إلى الهوية
+    // يخالف قاعدة «نطاق واحد»؛ نُبقي أضيق نطاق عند العرض والتعديل.
+    setEditScope(d.portalEntryId != null
+      ? { mode: 'entry', groupId: '', entryId: String(d.portalEntryId) }
+      : d.portalGroupId != null
+        ? { mode: 'group', groupId: String(d.portalGroupId), entryId: '' }
         : { ...emptyScope });
     setEditError('');
   };
@@ -130,7 +132,7 @@ export default function EntityDelegates() {
   };
 
   const scopeLabel = (d: DelegateDto) =>
-    d.portalGroupName ?? d.portalEntryLabel ?? '—';
+    d.portalEntryLabel ?? d.portalGroupName ?? '—';
 
   const renderScopePicker = (draft: ScopeDraft, setDraft: (s: ScopeDraft) => void, idPrefix: string, includeGroupOptions: boolean) => (
     <>
