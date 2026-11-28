@@ -62,7 +62,8 @@ export function sourceViolations(text) {
 
   // مسح خام للقوالب المتداخلة التي لا يلتقطها استخراج النصوص المقتبسة
   // (مثل `` `a${x ? `sm:animate-pulse` : ''}` ``) — نفس القاعدة والاستثناءات.
-  const rawTokens = text.match(/(?:[A-Za-z0-9:_-]*:)*animate-[A-Za-z0-9[\]_-]+/g) ?? [];
+  // تقسيم خطّي إلى «كلمات» بدل تعبير متداخل التكرار (تجنّب ReDoS).
+  const rawTokens = (text.match(/[A-Za-z0-9:_[\]-]+/g) ?? []).filter((token) => token.includes('animate-'));
   for (const token of rawTokens) {
     const motionClass = token.slice(token.lastIndexOf('animate-'));
     if (motionClass === 'animate-none') continue;
