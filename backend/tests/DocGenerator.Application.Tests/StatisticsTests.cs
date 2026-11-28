@@ -4,14 +4,13 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.TestSupport.Builders;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
 public class StatisticsRepositoryTests : PostgresDbTest
 {
-    /// <summary>تاريخ إدخال قديم ثابت للوثائق الأولية بلا تاريخ قيد، كي لا تلوّث نوافذ الفترات الحالية.</summary>
-    private static readonly DateTime LegacyDate = new(2020, 1, 15);
     private readonly IStatisticsRepository _stats;
 
     public StatisticsRepositoryTests()
@@ -22,10 +21,13 @@ public class StatisticsRepositoryTests : PostgresDbTest
         _db.Users.Add(new User { Username = "u1", FullName = "مستخدم 1", Role = UserRole.Lawyer, BranchId = branch.Id });
         _db.SaveChanges();
         _db.Documents.AddRange(
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = true, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 0, ExecStatus = string.Empty, CreatedAt = LegacyDate },
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 500, ExecStatus = "منفذ بالتسوية", CollectedAmount = 200, CreatedAt = LegacyDate },
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "سامر", BorrowerFamily = "حسن", AmountNumeric = 700, ExecStatus = "تريث", CreatedAt = LegacyDate },
-            new Document { BranchId = null, CreatedById = 1, IsDraft = false, BorrowerName = "بلا فرع", BorrowerFamily = "س", AmountNumeric = 100, ExecStatus = "منفذ جبريا", CollectedAmount = 100, CreatedAt = LegacyDate });
+            DocumentBuilder.Create().WithBranch(branch.Id).Draft().Borrower("أحمد", "العلي").Build(),
+            DocumentBuilder.Create().WithBranch(branch.Id).WithExecStatus("منفذ بالتسوية")
+                .Borrower("أحمد", "العلي").Amount(500).Collected(200).Build(),
+            DocumentBuilder.Create().WithBranch(branch.Id).WithExecStatus("تريث")
+                .Borrower("سامر", "حسن").Amount(700).Build(),
+            DocumentBuilder.Create().WithBranch(null).WithExecStatus("منفذ جبريا")
+                .Borrower("بلا فرع", "س").Amount(100).Collected(100).Build());
         _db.SaveChanges();
         _stats = new StatisticsRepository(_db, TestClock.Provider, TestClock.TimeZone);
     }
@@ -413,17 +415,12 @@ public class StatisticsRepositoryTests : PostgresDbTest
         // 2026-09-30 22:00 UTC = 2026-10-01 01:00 بتوقيت دمشق (UTC+3): الحدود المحلية
         // يجب أن تحسبه ضمن تشرين الأول، لا أيلول (W5-F4).
         var createdAt = new DateTime(2026, 9, 30, 22, 0, 0, DateTimeKind.Utc);
-        _db.Documents.Add(new Document
-        {
-            BranchId = 1,
-            CreatedById = 1,
-            IsDraft = true,
-            ExecStatus = string.Empty,
-            BorrowerName = "حدود",
-            BorrowerFamily = "التوقيت",
-            AmountNumeric = 0,
-            CreatedAt = createdAt,
-        });
+        _db.Documents.Add(DocumentBuilder.Create()
+            .WithBranch(1)
+            .Draft()
+            .Borrower("حدود", "التوقيت")
+            .CreatedAt(createdAt)
+            .Build());
         _db.SaveChanges();
 
         var october = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1, 2026, 10);
@@ -443,17 +440,11 @@ public class StatisticsRepositoryTests : PostgresDbTest
     public async Task PersonalStats_PendingAppealBoundary_UsesDamascusLocalDate()
     {
         // استئناف أُنشئ 2026-09-30 22:00 UTC = 01:00 ت1 بتوقيت دمشق.
-        var doc = new Document
-        {
-            BranchId = 1,
-            CreatedById = 1,
-            IsDraft = true,
-            ExecStatus = string.Empty,
-            BorrowerName = "استئناف",
-            BorrowerFamily = "التوقيت",
-            AmountNumeric = 0,
-            CreatedAt = LegacyDate,
-        };
+        var doc = DocumentBuilder.Create()
+            .WithBranch(1)
+            .Draft()
+            .Borrower("استئناف", "التوقيت")
+            .Build();
         _db.Documents.Add(doc);
         _db.SaveChanges();
         _db.DocumentAppeals.Add(new DocumentAppeal
