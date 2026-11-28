@@ -50,6 +50,15 @@ public sealed class DocumentAuthorizationTests
     }
 
     [Fact]
+    public void ResolveListScope_BranchlessHead_FailsClosed()
+    {
+        var user = UserCapabilitiesTests.Principal(UserRole.Head, branchId: null);
+        var authorization = CreateAuthorization(new StubReader(null), allow: true);
+
+        Assert.Null(authorization.ResolveListScope(user));
+    }
+
+    [Fact]
     public async Task MissingDocument_ReturnsNotFound_BeforeAnyAuthorizationCall()
     {
         var authorizationService = new StubAuthorizationService(allow: false);

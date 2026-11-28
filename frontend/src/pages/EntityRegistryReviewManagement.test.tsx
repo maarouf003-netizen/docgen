@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import EntityRegistryReviewManagement from './EntityRegistryReviewManagement';
@@ -309,6 +309,21 @@ describe('EntityRegistryReviewManagement', () => {
   it('يفتح تبويب الإضافة عبر مسار ?tab=add', async () => {
     renderPage('/entities/review-management?tab=add');
     expect(await screen.findByLabelText('اسم الجهة المعتمد')).toBeInTheDocument();
+  });
+
+  it('تنقّل التبويبات بلوحة المفاتيح (RTL: يسار = التالي، Home/End)', async () => {
+    renderPage();
+    const edit = screen.getByRole('tab', { name: 'تعديل جهة عامة' });
+    edit.focus();
+
+    fireEvent.keyDown(edit, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { name: 'إضافة جهة' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'اقتراحات الأم' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    expect(screen.getByRole('tab', { name: 'تعديل جهة عامة' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('نتيجة بحث قديمة لا تطمس نتيجة الاستعلام الأحدث', async () => {

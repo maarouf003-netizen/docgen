@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { api, getApiErrorMessage, getDownloadErrorMessage } from '../../api/client';
+import { readDocumentListPage } from '../../api/documents';
 import { useAuth } from '../../auth/useAuth';
 import { isHeadOrSubHeadRole } from '../../auth/roles';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useCancellableRequest } from '../../hooks/useCancellableRequest';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { downloadBlob } from '../../utils/download';
 import { isStatusOption } from '../../utils/documentStatus';
 import { displayFileNumber, identityName } from '../../utils/documentDisplay';
@@ -32,6 +34,8 @@ export function useDocumentsList() {
   const [saved] = useState(() => loadDocumentsListPosition());
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(saved?.query ?? '');
+  // تأخير البحث النصي 300ms (مثل البوابة/السجل): طلب واحد بعد توقف الكتابة لا لكل حرف.
+  const debouncedQuery = useDebouncedValue(query, 300);
   // فلتر الحالة من الـ `URL` (روابط التعمّق من لوحة المحامي) يسبق موضع الجلسة المستعاد،
   // والقيمة الغريبة تُهمل في الحالتين (تُعامل كأنها «لا فلتر»).
   const [status, setStatus] = useState(() => {
@@ -120,7 +124,7 @@ export function useDocumentsList() {
 
   const buildListParams = useCallback((cursor?: string) => {
     const params = new URLSearchParams();
-    if (query) params.set('q', query);
+    if (debouncedQuery) params.set('q', debouncedQuery);
     if (status) params.set('status', status);
     if (applicant) params.set('applicant', applicant);
     if (court) params.set('court', court);
@@ -132,10 +136,10 @@ export function useDocumentsList() {
     if (cursor) params.set('cursor', cursor);
     else params.set('page', '1');
     return params;
-  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
+  }, [debouncedQuery, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
 
   const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
-    (signal) => api.get(`/documents/list?${buildListParams().toString()}`, { signal }).then((r) => r.data),
+    (signal) => api.get(`/documents/list?${buildListParams().toString()}`, { signal }).then((r) => readDocumentListPage(r.data)),
     [buildListParams],
   );
 
@@ -169,6 +173,9 @@ export function useDocumentsList() {
   useEffect(() => {
     if (restoreAttempted || !data || !saved?.cursors?.length || listQuery.isLoading)
       return;
+    // لا تستعيد سلسلة المؤشرات قبل استقرار البحث المؤجّل (وإلا استُعيدت بلا `q`).
+    if (query !== debouncedQuery)
+      return;
 
     const savedStatus = saved.status && isStatusOption(saved.status) ? saved.status : '';
     const matchesSavedFilters =
@@ -191,9 +198,10 @@ export function useDocumentsList() {
           break;
         const response = await api.get<PagedResult<DocumentListItemDto>>(
           `/documents/list?${buildListParams(savedCursor).toString()}`);
-        restored.push(...response.data.items);
+        const page = readDocumentListPage(response.data);
+        restored.push(...page.items);
         used.push(savedCursor);
-        cursor = response.data.nextCursor ?? null;
+        cursor = page.nextCursor ?? null;
       }
       if (!cancelled) {
         setExtraItems(restored);
@@ -206,7 +214,7 @@ export function useDocumentsList() {
     });
     return () => { cancelled = true; };
   }, [data, restoreAttempted, saved, listQuery.isLoading, buildListParams,
-    query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
+    query, debouncedQuery, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
 
   // «تحميل المزيد»: يجلب الصفحة التالية بالمؤشر ويُلحقها بلا إزاحة (P3-05b).
   const loadMore = async () => {
@@ -223,9 +231,10 @@ export function useDocumentsList() {
         `/documents/list?${buildListParams(cursor).toString()}`);
       // الفلتر تغيّر أثناء الطلب: لا نلحق صفحة تنتمي لقائمة أخرى.
       if (listKeyRef.current !== requestKey || listGeneration.current !== requestGeneration) return;
-      setExtraItems((previous) => [...previous, ...response.data.items]);
+      const page = readDocumentListPage(response.data);
+      setExtraItems((previous) => [...previous, ...page.items]);
       setExtraCursors((previous) => [...previous, cursor]);
-      setNextCursor(response.data.nextCursor ?? null);
+      setNextCursor(page.nextCursor ?? null);
     } catch (err) {
       if (listKeyRef.current !== requestKey || listGeneration.current !== requestGeneration) return;
       setLoadMoreError(getApiErrorMessage(err));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { renderWithQueryClient } from '../test/queryClient';
 import userEvent from '@testing-library/user-event';
 import DelegationRequests from './DelegationRequests';
@@ -60,6 +60,26 @@ describe('DelegationRequests', () => {
       return Promise.resolve({ data: [] });
     });
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+  });
+
+  it('زر التحديث يعيد جلب الطلبات بلا انتظار انتهاء staleness', async () => {
+    const user = userEvent.setup();
+    let pendingCalls = 0;
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/sections') return Promise.resolve({ data: [] });
+      if (url === '/delegations/pending') {
+        pendingCalls += 1;
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderWithQueryClient(<DelegationRequests />);
+
+    await screen.findByText('لا توجد طلبات إنابة معلّقة لفرعك');
+    expect(pendingCalls).toBe(1);
+
+    await user.click(screen.getByRole('button', { name: 'تحديث' }));
+    await waitFor(() => expect(pendingCalls).toBe(2));
   });
 
   it('يعرض طلبات الإنابة المعلّقة مع زر الاعتماد', async () => {

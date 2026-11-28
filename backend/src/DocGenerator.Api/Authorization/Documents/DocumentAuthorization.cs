@@ -61,8 +61,17 @@ public sealed class DocumentAuthorization(
             }
         }
 
+        // فشل مغلق: أي دور غير كامل الوصول بلا فرع في الرمز لا يملك نطاق قائمة
+        // (وإلا صار `VisibleBranchId = null` ⇒ كل الفروع). القيد القاعدي يمنع
+        // الحالة، لكن الدفاع يبقى في طبقة التفويض.
+        var visibleBranchId = fullAccess ? null : user.GetBranchId();
+        if (!fullAccess && visibleBranchId is null)
+        {
+            return null;
+        }
+
         return new DocumentListScope(
-            VisibleBranchId: fullAccess ? null : user.GetBranchId(),
+            VisibleBranchId: visibleBranchId,
             VisibleUserId: fullAccess || headOrSubHead ? null : user.GetUserId(),
             OwnerSectionId: ownerSectionId);
     }

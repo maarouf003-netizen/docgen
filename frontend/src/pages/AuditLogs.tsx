@@ -70,20 +70,24 @@ export default function AuditLogs() {
       if (debouncedUserName) params.set('userName', debouncedUserName);
       if (actionType) params.set('actionType', actionType);
       const response = await api.get<Paged<AuditLogDto>>(`/audit-logs?${params.toString()}`, { signal });
-      return response.data;
+      // وسم الصف بالفلتر الذي أنتجه: `placeholderData` تعيد بيانات مفتاح سابق،
+      // فلا تُعرض صفوف فلتر آخر تحت الفلتر الجديد.
+      return { ...response.data, filterKey: `${debouncedUserName}|${actionType}` };
     },
     placeholderData: keepPreviousData,
   });
 
   // `keepPreviousData` يبقي الصفوف أثناء الجلب فقط؛ وعند فشل الطلب تعيد TanStack
-  // `data` غير معرّفة. نحتفظ بآخر صفحة ناجحة محليًا كي لا نعلن «لا توجد سجلات»
-  // بسبب خطأ شبكة (سلوك `useCancellableRequest` السابق: كان يحتفظ بالبيانات).
-  const [lastPage, setLastPage] = useState<Paged<AuditLogDto> | null>(null);
+  // `data` غير معرّفة. نحتفظ بآخر صفحة ناجحة **لنفس الفلتر** فقط كي لا نعلن
+  // «لا توجد سجلات» بسبب خطأ شبكة، ولا نعرض صفوف فلتر آخر مع إجماليه.
+  const filterKey = `${debouncedUserName}|${actionType}`;
+  const [lastPage, setLastPage] = useState<{ key: string; data: Paged<AuditLogDto> } | null>(null);
   useEffect(() => {
-    if (logsQuery.data) setLastPage(logsQuery.data);
+    if (logsQuery.data) setLastPage({ key: logsQuery.data.filterKey, data: logsQuery.data });
   }, [logsQuery.data]);
 
-  const pageData = logsQuery.data ?? lastPage;
+  const cachedPage = lastPage?.key === filterKey ? lastPage.data : null;
+  const pageData = logsQuery.data?.filterKey === filterKey ? logsQuery.data : cachedPage;
   const rows = useMemo(() => pageData?.items ?? [], [pageData]);
   const total = pageData?.totalCount ?? 0;
   const error = logsQuery.error ? getApiErrorMessage(logsQuery.error) : '';
@@ -104,6 +108,9 @@ export default function AuditLogs() {
   };
 
   const pages = Math.max(1, Math.ceil(total / perPage));
+  // تحميل بارد لفلتر جديد: لا صفوف سابقة لهذا الفلتر — لا نعلن «لا توجد سجلات»
+  // قبل وصول الاستجابة (خطأ/فراغ حقيقيان فقط بعد انتهاء الجلب).
+  const coldLoading = logsQuery.isFetching && pageData == null;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -183,7 +190,11 @@ export default function AuditLogs() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  {logsQuery.isError && pageData == null ? 'تعذّر تحميل السجلات' : 'لا توجد سجلات'}
+                  {coldLoading
+                    ? 'جارِ تحميل السجلات…'
+                    : logsQuery.isError && pageData == null
+                      ? 'تعذّر تحميل السجلات'
+                      : 'لا توجد سجلات'}
                 </td>
               </tr>
             )}

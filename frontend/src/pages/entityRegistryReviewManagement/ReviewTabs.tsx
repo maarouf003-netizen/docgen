@@ -19,6 +19,7 @@ export function TabButton({
       role="tab"
       id={`review-tab-${id}`}
       aria-selected={active}
+      tabIndex={active ? 0 : -1}
       // اللوحة تُركَّب للتبويب النشط فقط؛ ربط غير النشط بمعرّف غائب يُخالف `aria-valid-attr-value`.
       aria-controls={active ? `review-tabpanel-${id}` : undefined}
       onClick={() => onSelect(id)}

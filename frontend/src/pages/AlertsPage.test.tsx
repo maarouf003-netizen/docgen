@@ -97,6 +97,20 @@ beforeEach(() => {
 });
 
 describe('AlertsPage — المحامي', () => {
+  it('فشل عدّاد غير المقروء يظهر تنبيهًا لا صفرًا صامتًا', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/alerts/unread-count') return Promise.reject({ message: 'فشل العدّاد' });
+      if (url === '/alerts?archived=active') return Promise.resolve(pageBody([receivedAlert()]));
+      if (url.startsWith('/alerts/sent')) return Promise.resolve(pageBody([]));
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<AlertsPage />);
+
+    expect(await screen.findByText(/تعذّر تحديث عدّاد غير المقروء/)).toBeInTheDocument();
+    expect(await screen.findByText('تعميم للفرع بخصوص الدوام')).toBeInTheDocument();
+  });
+
   it('يعرض تنبيهاته المستلمة بطلب النطاق النشط دون تبويب «مرسلة»', async () => {
     mockApi();
     render(<AlertsPage />);

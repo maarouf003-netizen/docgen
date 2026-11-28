@@ -219,6 +219,23 @@ beforeEach(() => {
 });
 
 describe('Dashboard للمحامي', () => {
+  it('فشل عدّاد التنبيهات يعرض تنبيهًا لا صفرًا صامتًا', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/alerts/unread-count') return Promise.reject({ message: 'فشل العدّاد' });
+      if (['/reminders', '/appeals/reminders', '/personal-reminders', '/documents/my-pending-registrations', '/execution-circuits/mine', '/monthly-stats', '/stats/periods', '/branches'].includes(url)) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.endsWith('-count') || url.includes('unseen') || url.includes('pending-count')) {
+        return Promise.resolve({ data: { count: 0 } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText(/تعذّر تحديث عدّاد التنبيهات/)).toBeInTheDocument();
+  });
+
   it('يعرض الترحيب وصف الأيقونات دون إحصائيات (لها صفحة `/stats` مستقلة)', async () => {
     mockApi();
 
