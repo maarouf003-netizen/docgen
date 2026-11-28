@@ -127,7 +127,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testIgnore: /mobile-overflow\.spec\.ts/,
+      testIgnore: /(?:mobile-overflow|a11y-mobile)\.spec\.ts/,
       use: {
         browserName: 'chromium',
         viewport: { width: 1280, height: 800 },
@@ -136,7 +136,7 @@ export default defineConfig({
     },
     {
       name: 'mobile',
-      testMatch: /mobile-overflow\.spec\.ts/,
+      testMatch: /(?:mobile-overflow|a11y-mobile)\.spec\.ts/,
       use: {
         browserName: 'chromium',
         viewport: { width: 375, height: 812 },
