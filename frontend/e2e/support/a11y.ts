@@ -24,7 +24,11 @@ export async function analyzeBlocking(page: Page, label: string): Promise<void> 
     id: violation.id,
     impact: violation.impact,
     help: violation.help,
-    nodes: violation.nodes.slice(0, 5).map((node) => node.target.join(' ')),
+    nodes: violation.nodes.slice(0, 5).map((node) => ({
+      target: node.target.join(' '),
+      html: node.html,
+      failureSummary: node.failureSummary,
+    })),
   }));
 
   expect(
