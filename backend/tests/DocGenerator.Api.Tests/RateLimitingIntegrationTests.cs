@@ -102,6 +102,21 @@ public class RateLimitingIntegrationTests
         using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "2");
         var client = await AuthedClientAsync(factory, "admin", "123456");
 
+        // استيراد الجهات معاينة مكلفة (سياسة expensive) — لا تُستهلك من قراءات الإحصاءات.
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/entity-registry/import-preview", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/entity-registry/import-preview", null)).StatusCode);
+
+        var flooded = await client.PostAsync("/api/entity-registry/import-preview", null);
+        Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
+        AssertRetryAfter(flooded, "60");
+    }
+
+    [PostgresFact]
+    public async Task StatsReadPolicy_BlocksFloodWith429()
+    {
+        using var factory = IsolatedFactory("RateLimiting:StatsReadPerMinute", "2");
+        var client = await AuthedClientAsync(factory, "admin", "123456");
+
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard")).StatusCode);
 
@@ -136,9 +151,9 @@ public class RateLimitingIntegrationTests
     /// على نفس عنوان الخادم الاختباري — يفشل هذا الاختبار إن وُضع <c>UseRateLimiter</c> قبل المصادقة.
     /// </summary>
     [PostgresFact]
-    public async Task ExpensivePolicy_PartitionsPerUser()
+    public async Task StatsReadPolicy_PartitionsPerUser()
     {
-        using var factory = IsolatedFactory("RateLimiting:ExpensivePerMinute", "2");
+        using var factory = IsolatedFactory("RateLimiting:StatsReadPerMinute", "2");
         var admin = await AuthedClientAsync(factory, "admin", "123456");
         var manager = await AuthedClientAsync(factory, "manager", "123456");
 
