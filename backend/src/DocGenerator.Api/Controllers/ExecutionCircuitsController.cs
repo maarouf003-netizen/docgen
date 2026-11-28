@@ -17,7 +17,7 @@ namespace DocGenerator.Api.Controllers;
 [ApiController]
 [Route("api/execution-circuits")]
 [Authorize]
-[EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+[EnableRateLimiting(RateLimitingSetup.CircuitsReadPolicy)]
 public class ExecutionCircuitsController : ControllerBase
 {
     private readonly IQueryHandler<ListMineExecutionCircuitsQuery, List<ExecutionCircuitDto>> _listMine;
@@ -125,6 +125,7 @@ public class ExecutionCircuitsController : ControllerBase
 
     [HttpPost]
     [Authorize(Policy = "HeadOrSubHead")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Create([FromBody] UpsertExecutionCircuitRequest request, CancellationToken ct)
     {
         var error = RequireOwnerScope(out var branchId, out _);
@@ -148,6 +149,7 @@ public class ExecutionCircuitsController : ControllerBase
 
     [HttpPut("{id:int}/rename")]
     [Authorize(Policy = "HeadOrSubHead")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Rename(int id, [FromBody] UpsertExecutionCircuitRequest request, CancellationToken ct)
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
@@ -171,6 +173,7 @@ public class ExecutionCircuitsController : ControllerBase
 
     [HttpPut("{id:int}/active")]
     [Authorize(Policy = "HeadOrSubHead")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> SetActive(int id, [FromBody] SetCircuitActiveRequest request, CancellationToken ct)
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
@@ -193,6 +196,7 @@ public class ExecutionCircuitsController : ControllerBase
 
     [HttpDelete("{id:int}")]
     [Authorize(Policy = "HeadOrSubHead")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
@@ -247,6 +251,7 @@ public class ExecutionCircuitsController : ControllerBase
     [HttpPost("{id:int}/refer-files")]
     [SkipIdempotency]
     [Authorize(Policy = "HeadOrSubHead")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> ReferFiles(int id, [FromBody] ReferCircuitFilesRequest request, CancellationToken ct)
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
@@ -284,6 +289,7 @@ public class ExecutionCircuitsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/transfer")]
     [Authorize(Roles = "manager,admin")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Transfer(int id, [FromBody] TransferCircuitRequest request, CancellationToken ct)
     {
         try
@@ -331,6 +337,7 @@ public class ExecutionCircuitsController : ControllerBase
     [HttpGet("stats/export")]
     [Authorize(Roles = "manager,admin,head,subhead")]
     [SingleExportPerUser]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> ExportStats([FromQuery] int? branchId, CancellationToken ct)
     {
         List<CircuitStatsDto> rows;

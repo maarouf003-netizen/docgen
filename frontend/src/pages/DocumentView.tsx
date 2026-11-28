@@ -18,6 +18,7 @@ import { availableDelegationAssets } from '../utils/delegationAssets';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { rovingTabIndex, useTabListKeyboard } from '../hooks/useTabListKeyboard';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
 import { DelegationStatusCard } from '../components/delegation/DelegationStatusCard';
@@ -39,6 +40,11 @@ import type { AppealDto, DelegationDto, DocumentResponse } from '../types';
  * اشتقاق الصلاحيات، تركيب اللوحات (مكتبي/جوال)، والترويسة والنوافذ كوحدتين.
  * السلوك منقول بلا تغيير.
  */
+type DocumentTabId = 'info' | 'security' | 'delegations' | 'status';
+
+/** ترتيب تبويبات الجوال — مصدر واحد للعرض والتنقّل (لا ينحرف الترتيب). */
+const DOCUMENT_TAB_IDS: readonly DocumentTabId[] = ['info', 'security', 'delegations', 'status'];
+
 export default function DocumentView() {
   const { id } = useParams();
   const { user, hasFullAccess } = useAuth();
@@ -46,6 +52,15 @@ export default function DocumentView() {
   // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
+
+  // تنقّل التبويبات بلوحة المفاتيح (WAI-ARIA، RTL: السهم الأيسر «التالي») — قبل أي return
+  // مبكر ليبقى ترتيب الخطافات ثابتًا.
+  const onTabKeyDown = useTabListKeyboard({
+    ids: DOCUMENT_TAB_IDS,
+    activeId: activeTab,
+    onSelect: setActiveTab,
+    tabId: (tab) => `document-tab-${tab}`,
+  });
 
   // حد الثقة: تُطبَّع استجابة الملف قبل انتشارها للبطاقات.
   // resetOnDepsChange: استعلامات هوية الملف المفرد — تُصفَّر بيانات السابق
@@ -323,6 +338,7 @@ export default function DocumentView() {
             role="tablist"
             aria-label="أقسام الملف"
             className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1"
+            onKeyDown={onTabKeyDown}
           >
             {tabs.map((t) => (
               <button
@@ -331,7 +347,9 @@ export default function DocumentView() {
                 role="tab"
                 id={`document-tab-${t.id}`}
                 aria-selected={activeTab === t.id}
-                aria-controls={`document-panel-${t.id}`}
+                // اللوحة غير النشطة غير مُصيَّرة (لوحة واحدة فقط)، فلا `aria-controls` إلى معرّف غائب.
+                aria-controls={activeTab === t.id ? `document-panel-${t.id}` : undefined}
+                tabIndex={rovingTabIndex(activeTab === t.id)}
                 onClick={() => setActiveTab(t.id)}
                 className={`shrink-0 min-h-11 px-4 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === t.id

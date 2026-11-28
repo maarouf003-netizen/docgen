@@ -2491,6 +2491,35 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     expect(within(statusPanel).getByRole('heading', { name: 'الحالة' })).toBeInTheDocument();
   });
 
+  it('ينقّل تبويبات الجوال بلوحة المفاتيح (RTL: يسار = التالي، Home/End، roving tabindex)', async () => {
+    stubMobile(true);
+    renderView();
+
+    const info = await screen.findByRole('tab', { name: 'المعلومات' });
+    expect(info).toHaveAttribute('tabindex', '0');
+    expect(info).toHaveAttribute('aria-controls', 'document-panel-info');
+    // التبويبات غير النشطة خارج تسلسل Tab ولا تشير إلى لوحة غير مُصيَّرة.
+    const security = screen.getByRole('tab', { name: 'السند والأموال' });
+    expect(security).toHaveAttribute('tabindex', '-1');
+    expect(security).not.toHaveAttribute('aria-controls');
+
+    info.focus();
+    fireEvent.keyDown(info, { key: 'ArrowLeft' });
+    expect(security).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(security);
+    expect(security).toHaveAttribute('aria-controls', 'document-panel-security');
+    expect(info).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(security, { key: 'End' });
+    const status = screen.getByRole('tab', { name: 'الحالة' });
+    expect(status).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(status);
+
+    fireEvent.keyDown(status, { key: 'Home' });
+    expect(info).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(info);
+  });
+
   it('يعرض أعمدة الملف الثلاثة معًا على المكتبي بلا تبويبات', async () => {
     stubMobile(false);
     renderView();

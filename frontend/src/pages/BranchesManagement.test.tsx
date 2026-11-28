@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BranchesManagement from './BranchesManagement';
 import type { BranchDto, SectionDto } from '../types';
@@ -317,6 +317,44 @@ describe('BranchesManagement', () => {
     await user.click(await screen.findByRole('tab', { name: 'سجل التعاقب' }));
     expect(await screen.findByText('خلف الرئيس')).toBeInTheDocument();
     expect(screen.getByText(/إحلال خلف/)).toBeInTheDocument();
+  });
+
+  it('ينقّل تبويبات الشعب بلوحة المفاتيح (RTL: يسار = التالي، Home/End، aria-controls)', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url.startsWith('/sections'))
+        return Promise.resolve({
+          data: [{ id: 3, branchId: 1, name: 'مصياف', isActive: true, circuitCount: 0, headName: null, version: 2 }],
+        });
+      if (url.startsWith('/execution-circuits/stats')) return Promise.resolve({ data: [] });
+      if (url.startsWith('/head-succession')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [branchItem()] });
+    });
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.selectOptions(await screen.findByLabelText('الفرع الأب'), '1');
+    const sections = await screen.findByRole('tab', { name: 'الشعب' });
+    const transfer = screen.getByRole('tab', { name: 'نقل دائرة' });
+    const succession = screen.getByRole('tab', { name: 'سجل التعاقب' });
+    expect(sections).toHaveAttribute('tabindex', '0');
+    expect(sections).toHaveAttribute('aria-controls', 'branch-subtabpanel-sections');
+    // التبويبات غير النشطة خارج تسلسل Tab ولا تشير إلى لوحة غير مُصيَّرة.
+    expect(transfer).toHaveAttribute('tabindex', '-1');
+    expect(transfer).not.toHaveAttribute('aria-controls');
+
+    sections.focus();
+    fireEvent.keyDown(sections, { key: 'ArrowLeft' });
+    expect(transfer).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(transfer);
+    expect(transfer).toHaveAttribute('aria-controls', 'branch-subtabpanel-transfer');
+
+    fireEvent.keyDown(transfer, { key: 'End' });
+    expect(succession).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(succession, { key: 'ArrowRight' });
+    expect(transfer).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(transfer, { key: 'Home' });
+    expect(sections).toHaveAttribute('aria-selected', 'true');
   });
 
   it('فشل جلب الفروع يعرض الخطأ دون «لا توجد فروع» كاذبة', async () => {
