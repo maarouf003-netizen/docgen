@@ -50,7 +50,10 @@ public sealed record PortalAmountRow(
     string? InclusionCurrency2,
     decimal InclusionAmount2Numeric,
     string? InclusionCurrency3,
-    decimal InclusionAmount3Numeric);
+    decimal InclusionAmount3Numeric,
+    /// <summary>طرف الجهة العامة («منفذ عليه/إيداع») — تُصنَّف حالته من `ExecutedStatus` أولًا.</summary>
+    string? GeneralEntitySide = null,
+    string? ExecutedStatus = null);
 
 /// <summary>
 /// صف قائمة بوابة مُسقَط (بلا كيان <see cref="Document"/> كامل): الحقول التي تستهلكها

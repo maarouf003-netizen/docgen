@@ -44,8 +44,7 @@ internal sealed class SearchDocumentListQueryHandler
     protected override async Task<PagedResult<DocumentListItemDto>> HandleCoreAsync(
         SearchDocumentListQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var keyset = _cursorCodec.DecodeOptional(query.Cursor, DocumentListCursorKinds.CreatedAt);
         var (total, rows, hasMore) = await _documents.SearchListAsync(

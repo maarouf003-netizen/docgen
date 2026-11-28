@@ -36,8 +36,7 @@ internal sealed class SearchStruckOffDocumentListQueryHandler
     protected override async Task<PagedResult<DocumentListItemDto>> HandleCoreAsync(
         SearchStruckOffDocumentListQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var keyset = _cursorCodec.DecodeOptional(query.Cursor, DocumentListCursorKinds.StruckOffDate);
         var (total, rows, hasMore) = await _documents.SearchStruckOffListAsync(query.Query, null, null, null, null, null, query.VisibleBranchId, query.VisibleUserId, page, perPage, ct, query.OwnerSectionId, keyset);

@@ -44,8 +44,7 @@ internal sealed class SearchReviewLettersQueryHandler
     protected override async Task<PagedResult<ReviewLetterListItemDto>> HandleCoreAsync(
         SearchReviewLettersQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         // المدير/المشرف لا يرى أي كتاب قبل اختيار فرع الإدارة (حجب تام على مستوى الاستعلام).
         if (query.Role is UserRole.Manager or UserRole.Admin

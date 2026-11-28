@@ -33,8 +33,7 @@ internal sealed class SearchAppealsQueryHandler
     protected override Task<PagedResult<AppealDto>> HandleCoreAsync(
         SearchAppealsQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
         return SearchCoreAsync(
             query.Query, query.Status, query.VisibleBranchId, query.VisibleUserId,
             query.OwnerSectionId, page, perPage, ct);

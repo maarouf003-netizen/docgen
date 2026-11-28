@@ -36,8 +36,7 @@ internal sealed class SearchReferredToStartDocumentListQueryHandler
     protected override async Task<PagedResult<DocumentListItemDto>> HandleCoreAsync(
         SearchReferredToStartDocumentListQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var keyset = _cursorCodec.DecodeOptional(query.Cursor, DocumentListCursorKinds.StartReferralDate);
         var (total, rows, hasMore) = await _documents.SearchReferredToStartListAsync(query.Query, query.VisibleBranchId, query.VisibleUserId, page, perPage, ct, query.OwnerSectionId, keyset);

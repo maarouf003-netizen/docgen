@@ -44,8 +44,7 @@ internal sealed class ListParentEditSuggestionsQueryHandler
             // فاصل حتمي لحدود الصفحات الإزاحية عند تساوي زمن الإنشاء.
             .ThenByDescending(s => s.Id)
             .ToList();
-        var page = Math.Max(1, request.Page);
-        var perPage = Math.Clamp(request.PerPage <= 0 ? 20 : request.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(request.Page, request.PerPage);
         var total = ordered.Count;
         var items = ordered.Skip((page - 1) * perPage).Take(perPage).Select(PublicEntityService.ToParentEditSuggestionDto).ToList();
         return new PagedResult<ParentEditSuggestionDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };

@@ -32,6 +32,7 @@ public class RateLimitOptionsTests
         AssertRefused(new RateLimitOptions { GeneralAnonPerMinute = value }, "RateLimiting:GeneralAnonPerMinute");
         AssertRefused(new RateLimitOptions { GeneralAuthPerMinute = value }, "RateLimiting:GeneralAuthPerMinute");
         AssertRefused(new RateLimitOptions { ExpensivePerMinute = value }, "RateLimiting:ExpensivePerMinute");
+        AssertRefused(new RateLimitOptions { StatsReadPerMinute = value }, "RateLimiting:StatsReadPerMinute");
         AssertRefused(new RateLimitOptions { PasswordPerMinute = value }, "RateLimiting:PasswordPerMinute");
         AssertRefused(new RateLimitOptions { CspReportPerMinute = value }, "RateLimiting:CspReportPerMinute");
     }

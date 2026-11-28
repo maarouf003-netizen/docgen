@@ -32,8 +32,7 @@ internal sealed class ListPortalFilesQueryHandler
         ListPortalFilesQuery query, CancellationToken ct)
     {
         var scope = await _portal.ResolveForUserAsync(query.UserId, ct);
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var effectiveIds = PortalService.ResolveEffectiveIds(scope, query.EntryId);
         var (total, items) = await _portal.SearchScopedAsync(effectiveIds, query.Query, query.Status, page, perPage, ct);

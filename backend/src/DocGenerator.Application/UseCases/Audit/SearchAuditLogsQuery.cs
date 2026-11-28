@@ -37,8 +37,7 @@ internal sealed class SearchAuditLogsQueryHandler
         var scopeBranchId = request.ScopeBranchId;
         var scopeSectionId = request.ScopeSectionId;
 
-        page = Math.Max(1, page);
-        perPage = Math.Clamp(perPage, 1, 100);
+        (page, perPage) = PageRequest.Normalize(page, perPage);
 
         var (total, items) = await _logs.SearchAsync(userName, actionType, page, perPage, ct, scopeBranchId, scopeSectionId);
 

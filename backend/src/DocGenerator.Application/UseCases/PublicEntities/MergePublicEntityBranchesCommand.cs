@@ -75,7 +75,9 @@ internal sealed class MergePublicEntityBranchesCommandHandler
             var entryDelegates = await _users.ListEntityManagersByEntryIdAsync(source.Id, token);
             foreach (var del in entryDelegates)
             {
-                del.PortalGroupId = target.GroupId;
+                // نطاق واحد فقط: القيد الهدف حصرًا — لا نملأ `PortalGroupId` وإلا
+                // اتّسع نطاق المندوب إلى كل قيود الهوية عند الحل (`ResolveForUserAsync`).
+                del.PortalGroupId = null;
                 del.PortalEntryId = target.Id;
             }
 

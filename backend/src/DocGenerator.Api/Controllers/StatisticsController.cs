@@ -15,7 +15,7 @@ namespace DocGenerator.Api.Controllers;
 [ApiController]
 [Route("api")]
 [Authorize]
-[EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+[EnableRateLimiting(RateLimitingSetup.StatsReadPolicy)]
 public class StatisticsController : ControllerBase
 {
     private readonly IQueryHandler<GetDashboardStatsQuery, DashboardStatsDto> _dashboard;

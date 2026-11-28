@@ -92,7 +92,8 @@ internal sealed class AbolishPublicEntityBranchCommandHandler
                 var entryDelegates = await _users.ListEntityManagersByEntryIdAsync(entry.Id, token);
                 foreach (var del in entryDelegates)
                 {
-                    del.PortalGroupId = target.GroupId;
+                    // نطاق واحد فقط (القيد الهدف) — لا توسيع إلى الهوية كاملة.
+                    del.PortalGroupId = null;
                     del.PortalEntryId = target.Id;
                 }
 

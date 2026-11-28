@@ -184,7 +184,10 @@ public partial class DocumentRepository : Repository<Document>, IDocumentReposit
                     .Select(p => new ExportNaturalPerson { Name = p.Name, Father = p.Father, Family = p.Family })
                     .ToList(),
                 ExecutionActions = d.ExecutionActions
-                    .OrderBy(a => a.Id)
+                    // أحدث إجراء/ملاحظة — مطابق لعرض التفاصيل (`OrderByDescending(CreatedAt)`)
+                    // ولبوابة التصدير؛ `Id` فاصل حتمي عند تساوي الوقت.
+                    .OrderByDescending(a => a.CreatedAt)
+                    .ThenByDescending(a => a.Id)
                     .Take(1)
                     .Select(a => new ExportAction { Text = a.Text })
                     .ToList(),

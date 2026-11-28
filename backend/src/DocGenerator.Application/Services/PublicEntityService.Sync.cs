@@ -294,7 +294,8 @@ public sealed partial class PublicEntityService
                 && delegateUser.PortalEntry is not null
                 && absorbedIds.Contains(delegateUser.PortalEntry.GroupId))
             {
-                delegateUser.PortalGroupId = targetGroupId;
+                // مندوب قيد يبقى على قيد واحد: نُفرغ الهوية ولا نوسّع النطاق إلى كل فروعها.
+                delegateUser.PortalGroupId = null;
                 var branchTarget = entryTargetByAbsorbedEntry is not null
                     && entryTargetByAbsorbedEntry.TryGetValue(delegateUser.PortalEntryId.Value, out var matched)
                         ? matched

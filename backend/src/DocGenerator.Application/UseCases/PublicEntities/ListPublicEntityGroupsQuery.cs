@@ -33,8 +33,7 @@ internal sealed class ListPublicEntityGroupsQueryHandler
     {
         var request = query.Query;
         var actor = query.Actor;
-        var page = Math.Max(1, request.Page);
-        var perPage = Math.Clamp(request.PerPage <= 0 ? 20 : request.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(request.Page, request.PerPage);
         var qNorm = ArabicNameNormalizer.Normalize(request.Q);
         var governorate = PublicEntityService.NormalizeOptional(request.Governorate);
         var excludeIds = request.ExcludeIds is null

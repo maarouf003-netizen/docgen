@@ -32,8 +32,7 @@ internal sealed class GetDocumentChangesQueryHandler
         var page = request.Page;
         var perPage = request.PerPage;
 
-        page = Math.Max(1, page);
-        perPage = Math.Clamp(perPage, 1, 100);
+        (page, perPage) = PageRequest.Normalize(page, perPage);
 
         var (total, items) = await _logs.PageDocumentChangeGroupsAsync(documentId, page, perPage, ct);
 

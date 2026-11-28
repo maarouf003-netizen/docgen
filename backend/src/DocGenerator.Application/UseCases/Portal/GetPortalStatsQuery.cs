@@ -60,7 +60,8 @@ internal sealed class GetPortalStatsQueryHandler
         };
         foreach (var row in amountRows)
         {
-            var bucket = ClassifyPortalBucket(row.IsDraft, row.ExecStatus, row.ExecSubStatus);
+            var bucket = PortalBucketClassifier.Classify(
+                row.IsDraft, row.ExecStatus, row.ExecSubStatus, row.GeneralEntitySide, row.ExecutedStatus);
             bucketCounts[bucket]++;
             // ملف الإنابة يُحتسب عددًا دون مبالغ (قرار المالك): نسخه تحمل مبالغ
             // المنيب فلا تُجمع مرتين — القاعدة مطابقة ب6 في الاستثناء لا في المقياس
@@ -117,29 +118,6 @@ internal sealed class GetPortalStatsQueryHandler
             TopCurrencies: topCurrencies,
             AmountTotals: amountTotals,
             AmountByStatus: amountByStatus);
-    }
-
-    /// <summary>
-    /// المصنّف الوحيد لسلّات البوابة (عدّادات + مطابقة فلتر القائمة): الحالة أولًا
-    /// دائمًا، والمسودة مسودة بلا حالة فقط. فرع «منفذ» هو `IsExecuted` من الكتالوج
-    /// نفسه (تسوية/إنابة/مسترد/جبريا غير جزئي) — «منفذ جبريا + منفذ جزئيا» متداول
-    /// دائمًا بقرار المالك (كالمدير وآلة الحالات وقائمة المحامين بعد التوحيد).
-    /// «محال الى البداية» سلّة مستقلة. أي حالة غير مصنّفة (إرثية) تُعامل «متداولًا»
-    /// هنا وفي فلتر القائمة معًا (قرار المالك) — فلا عدّاد بلا فلتر مطابق.
-    /// </summary>
-    private static string ClassifyPortalBucket(bool isDraft, string? execStatus, string? execSubStatus)
-    {
-        if (!string.IsNullOrEmpty(execStatus))
-        {
-            if (ExecutionStatusCatalog.IsExecuted(execStatus, execSubStatus))
-                return ExecutionStatusCatalog.ExecutedFilter;
-            if (execStatus == ExecutionStatusCatalog.Deferred)
-                return ExecutionStatusCatalog.Deferred;
-            if (execStatus == ExecutionStatusCatalog.ReferredToStart)
-                return ExecutionStatusCatalog.ReferredToStart;
-            return ExecutionStatusCatalog.StateCirculating;
-        }
-        return isDraft ? ExecutionStatusCatalog.DraftFilter : ExecutionStatusCatalog.StateCirculating;
     }
 
     /// <summary>

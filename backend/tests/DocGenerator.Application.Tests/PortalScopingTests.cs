@@ -4,6 +4,7 @@ using DocGenerator.Application.Common.Pipeline;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Application.UseCases.PublicEntities;
+using DocGenerator.Application.UseCases.Portal;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -249,6 +250,30 @@ public class PortalScopingTests : PostgresDbTest
     }
 
     [PostgresFact]
+    public async Task LegacyDelegateWithGroupAndEntry_ResolvesToEntryOnly()
+    {
+        // بيانات قديمة جمعت الحقلين (ترحيل سابق): الأضيق يفوز — قيد واحد لا كل الهوية.
+        var legacy = new User
+        {
+            Username = "delegate_legacy",
+            FullName = "مندوب قديم",
+            Role = UserRole.EntityManager,
+            PasswordHash = "x",
+            PortalGroupId = _groupAId,
+            PortalEntryId = _entryAId,
+        };
+        _db.Users.Add(legacy);
+        await _db.SaveChangesAsync();
+
+        var scope = await _reads.Scope.HandleAsync(new GetPortalScopeQuery(legacy.Id), default);
+
+        Assert.NotNull(scope);
+        Assert.Equal("entry", scope!.ScopeType);
+        Assert.Single(scope.Entries);
+        Assert.Equal(_entryAId, scope.Entries[0].Id);
+    }
+
+    [PostgresFact]
     public async Task StatusFilter_Executed_NarrowsWithinScope()
     {
         var normalDoc = await SeedDocumentAsync("ملف طالب متداول", applicantRegistryId: _entryAId);
@@ -262,15 +287,36 @@ public class PortalScopingTests : PostgresDbTest
             GeneralEntitySide = "applicant",
         };
         executedDoc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
-        _db.Documents.Add(executedDoc);
+        // طرف «منفذ عليه» بحالة منفذ: حالته من `ExecutedStatus` لا `ExecStatus`.
+        var executedSideDoc = new Document
+        {
+            CreatedById = 1,
+            BorrowerName = "ملف جهة منفذ عليها",
+            AmountNumeric = 10,
+            IsDraft = false,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+            ExecutedStatus = ExecutedStatusCatalog.Executed,
+        };
+        executedSideDoc.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            EntityName = "وزارة التعليم",
+            EntityNature = PartyNatureCatalog.PublicEntity,
+            RegistryId = _entryAId,
+        });
+        _db.Documents.AddRange(executedDoc, executedSideDoc);
         await _db.SaveChangesAsync();
 
         var executed = await _reads.Files.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.ExecutedFilter, 1, 20);
+        var circulating = await _reads.Files.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.StateCirculating, 1, 20);
         var all = await _reads.Files.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
 
-        Assert.Equal(1, executed.TotalCount);
-        Assert.Equal(executedDoc.Id, executed.Items[0].Id);
-        Assert.Equal(2, all.TotalCount);
+        Assert.Equal(2, executed.TotalCount);
+        Assert.Contains(executedDoc.Id, executed.Items.Select(i => i.Id));
+        Assert.Contains(executedSideDoc.Id, executed.Items.Select(i => i.Id));
+        Assert.Equal(1, circulating.TotalCount);
+        Assert.Equal(normalDoc, circulating.Items[0].Id);
+        Assert.Equal(3, all.TotalCount);
         Assert.Contains(normalDoc, all.Items.Select(i => i.Id));
     }
 

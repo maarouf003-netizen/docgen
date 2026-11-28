@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentsList from './DocumentsList';
@@ -1716,6 +1716,57 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     expect(screen.getByText(/عرض 2 من 2 نتيجة/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
     expect(screen.getByText('نهاية النتائج')).toBeInTheDocument();
+  });
+
+  it('استجابة «تحميل المزيد» القديمة لا تُلحق بقائمة فلتر جديد', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    let releaseStale: (value: unknown) => void = () => {};
+    const stalePage = new Promise((resolve) => { releaseStale = resolve; });
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
+        });
+      }
+      if (url.includes('cursor=cursor-2')) return stalePage;
+      if (url.includes('q=')) {
+        return Promise.resolve({
+          data: {
+            page: 1, perPage: 20, totalCount: 1, totalPages: 1, nextCursor: null,
+            items: [makeDocument({ id: 3, fileNumber: '200' })],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: 'cursor-2',
+          items: [makeDocument({ id: 1, fileNumber: '99' })],
+        },
+      });
+    });
+
+    renderList();
+    expect(await screen.findByText('99 حقوق')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
+    // الطلب القديم بدأ فعلًا قبل تغيير الفلتر.
+    expect(get.mock.calls.some(([url]) => String(url).includes('cursor=cursor-2'))).toBe(true);
+
+    // تغيير الفلتر أثناء الطلب: القائمة الجديدة تحلّ محل القديمة.
+    await user.type(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' }), 'حقوق');
+    expect(await screen.findByText('200 حقوق')).toBeInTheDocument();
+
+    releaseStale({
+      data: {
+        page: 1, perPage: 20, totalCount: 2, totalPages: 1, nextCursor: null,
+        items: [makeDocument({ id: 2, fileNumber: '100' })],
+      },
+    });
+    await act(async () => {});
+    await waitFor(() => {
+      expect(screen.queryByText('100 حقوق')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('200 حقوق')).toBeInTheDocument();
   });
 
   describe('عقد إمكانية الوصول والجوال (`P6-03a`)', () => {

@@ -51,8 +51,7 @@ internal sealed class SearchCorrespondencesQueryHandler
         string? importance, int page, int perPage, CancellationToken ct,
         int? actorSectionId = null)
     {
-        page = Math.Max(1, page);
-        perPage = Math.Clamp(perPage, 1, 100);
+        (page, perPage) = PageRequest.Normalize(page, perPage);
         var importanceFilter = NormalizeImportanceFilter(importance);
 
         // المدير/المشرف لا يرى أي مراسلة قبل اختيار المحافظة (حجب تام على مستوى الخدمة).

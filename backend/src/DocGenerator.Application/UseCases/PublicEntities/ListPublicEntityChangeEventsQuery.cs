@@ -35,8 +35,7 @@ internal sealed class ListPublicEntityChangeEventsQueryHandler
         var request = query.Query;
         var actor = query.Actor;
         var filtered = await PublicEntityService.GetFilteredChangeEventsAsync(_entities, _branches, request, actor, ct);
-        var page = Math.Max(1, request.Page);
-        var perPage = Math.Clamp(request.PerPage <= 0 ? 20 : request.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(request.Page, request.PerPage);
         var total = filtered.Count;
         var items = filtered.Skip((page - 1) * perPage).Take(perPage).Select(PublicEntityService.ToChangeEventDto).ToList();
         return new PagedResult<EntityChangeEventDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };

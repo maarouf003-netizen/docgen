@@ -78,6 +78,27 @@ public class PortalStatsTests : PostgresDbTest
         await SeedApplicantDocAsync("منفذ ج", ExecutionStatusCatalog.ExecutedBySettlement, false, now);
         await SeedApplicantDocAsync("منفذ د", ExecutionStatusCatalog.DelegationExecuted, false, now);
         await SeedApplicantDocAsync("تريث هـ", ExecutionStatusCatalog.Deferred, false, now);
+        // طرف «منفذ عليه» بحالة منفذ: سلّته «منفذ» من `ExecutedStatus` لا «متداول».
+        var executedSide = new Document
+        {
+            CreatedById = 1,
+            BorrowerName = "جهة منفذ عليها",
+            IsDraft = false,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+            ExecutedStatus = ExecutedStatusCatalog.Executed,
+            AmountNumeric = 10,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        executedSide.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            EntityName = "وزارة التعليم",
+            EntityNature = PartyNatureCatalog.PublicEntity,
+            RegistryId = _entryAId,
+        });
+        executedSide.SearchText = DocumentSearchTextBuilder.Build(executedSide);
+        _db.Documents.Add(executedSide);
         // مشطوب لكنه مرتبط بقيد النطاق: يجب استبعاده كما تستبعدنه القائمة دائمًا.
         var struck = new Document { CreatedById = 1, BorrowerName = "مشطوب مرتبط", IsDraft = false, ExecStatus = ExecutionStatusCatalog.StateStruckOff, AmountNumeric = 10, GeneralEntitySide = "applicant" };
         struck.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
@@ -86,15 +107,15 @@ public class PortalStatsTests : PostgresDbTest
 
         var stats = await _stats.GetStatsAsync(_delegateGroupId);
 
-        Assert.Equal(5, stats.TotalFiles); // المشطوب المرتبط خارج الحساب
+        Assert.Equal(6, stats.TotalFiles); // المشطوب المرتبط خارج الحساب
         Assert.Equal(1, stats.DraftFiles);
         Assert.Equal(1, stats.CirculatingFiles);
-        Assert.Equal(2, stats.ExecutedFiles);
+        Assert.Equal(3, stats.ExecutedFiles);
         Assert.Equal(1, stats.DeferredFiles);
         // لا يُحتسب القيد المشطوب المرتبط في توزيع الارتباطات إطلاقًا:
-        // الخمسة كلها مرتبطة بقيد دمشق، والمشطوب السادس مستبعد قبل العدّ.
+        // الستة كلها مرتبطة بقيد دمشق، والمشطوب السابع مستبعد قبل العدّ.
         var damascus = stats.PerEntry.Single(e => e.EntryId == _entryAId);
-        Assert.Equal(5, damascus.Files);
+        Assert.Equal(6, damascus.Files);
         Assert.Equal(2, stats.PerEntry.Count);
     }
 

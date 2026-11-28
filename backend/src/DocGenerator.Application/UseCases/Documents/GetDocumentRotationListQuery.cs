@@ -40,8 +40,7 @@ internal sealed class GetDocumentRotationListQueryHandler
     protected override async Task<PagedResult<RotationDocumentDto>> HandleCoreAsync(
         GetDocumentRotationListQuery query, CancellationToken ct)
     {
-        var page = Math.Max(1, query.Page);
-        var perPage = Math.Clamp(query.PerPage, 1, 100);
+        var (page, perPage) = PageRequest.Normalize(query.Page, query.PerPage);
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
         var (total, docs) = await _documents.GetRotationCandidatesAsync(
