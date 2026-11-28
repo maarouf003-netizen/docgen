@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using DocGenerator.Api.Observability;
+using DocGenerator.Infrastructure.Caching;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -87,6 +88,10 @@ public class ObservabilitySetupTests
         using var meter = new Meter(ObservabilitySetup.NpgsqlMetricMeter);
         var connectionCount = meter.CreateUpDownCounter<long>("db.client.connection.count");
         Assert.True(connectionCount.Enabled);
+
+        // P3-06b: متر الكاش المرجعي مشترك أيضًا في نفس المزوّد.
+        using var referenceMeter = new Meter(ReferenceDataDiagnostics.MeterName);
+        Assert.True(referenceMeter.CreateCounter<long>("probe").Enabled);
     }
 
     [Fact]

@@ -741,7 +741,12 @@
   لأسماء/معرّفات الفروع والشعب والدوائر مع إبطال محلي بعد كل كتابة وTTL 3 دقائق؛
   **العدّادات الحيّة لا تُخزَّن**، و`ListNoTrackingAsync` يمنع تخزين كيانات متتبَّعة.
   **متبقٍ:** قياس hit-ratio في التشغيل، و(Single-flight/موزّع) عند تعدد النسخ.
-  التفاصيل: `docs/audit/110-p3-06a-reference-data-cache-20261122.md`.
+  **`P3-06b` (2026-11-28):** أُضيف `single-flight` لكل مفتاح (بوابة `SemaphoreSlim`
+  مع فحص مزدوج) وعدّادات `docgen.refdata.cache.hits/misses` على متر
+  `DocGenerator.ReferenceData` المسجَّل في `ObservabilitySetup`؛ اختبار تزامن 10
+  طلبات ينفّذ المصنع مرة واحدة، واختبار `MeterListener` يثبت العدّادين. يبقى عرض
+  النسبة في اللوحة بعد نشر المجمّع. التفاصيل: `docs/audit/340-p3-06b-cache-singleflight-20261128.md`.
+  التفاصيل السابقة: `docs/audit/110-p3-06a-reference-data-cache-20261122.md`.
 - **العمل:** `HybridCache` للبيانات المرجعية (الفروع/الشعب/الجهات)؛ invalidation عند الكتابة؛ لا caching لبيانات الصلاحيات بلا مفتاح.
 - **DoD:** hit ratio مرصود، ولا بيانات قديمة.
 
