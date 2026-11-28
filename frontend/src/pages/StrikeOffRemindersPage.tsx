@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getApiErrorMessage } from '../api/client';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
-import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { formatDate } from '../utils/dates';
 import { applicantName, fullName } from '../utils/documentDisplay';
@@ -24,45 +24,60 @@ export default function StrikeOffRemindersPage() {
   const isMobile = useIsMobile();
   const [page, setPage] = useState(1);
   const [confirmId, setConfirmId] = useState<number | null>(null);
-  const [dismissingId, setDismissingId] = useState<number | null>(null);
   const [actionsDocId, setActionsDocId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  const [actionError, setActionError] = useState('');
+  const queryClient = useQueryClient();
 
-  const listQuery = useCancellableRequest<PagedResult<DocumentListItemDto>>(
-    (signal) => {
+  const listQuery = useQuery({
+    queryKey: ['strike-off-reminders', page],
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ page: String(page), perPage: '20' });
-      return api.get(`/documents/strike-off-reminders/list?${params.toString()}`, { signal }).then((r) => r.data);
+      const response = await api.get<PagedResult<DocumentListItemDto>>(
+        `/documents/strike-off-reminders/list?${params.toString()}`,
+        { signal },
+      );
+      return response.data;
     },
-    [page],
-  );
+    placeholderData: keepPreviousData,
+  });
 
   const data = listQuery.data;
+  const listError = listQuery.error ? getApiErrorMessage(listQuery.error) : '';
 
-  const dismiss = async (d: DocumentListItemDto) => {
-    setDismissingId(d.id);
-    setActionError('');
-    setMessage('');
-    try {
-      await api.post(`/documents/${d.id}/strike-off-reminder/dismiss`);
-      setMessage(`أُلغي تذكير الشطب للملف «${fullName(d) || d.displayFileNumber || d.id}» — يعود عند تسجيل إجراء جديد.`);
+  /**
+   * إلغاء التذكير: عند اختفاء آخر عنصر في صفحة غير أولى نرجع صفحةً بدل عرض
+   * صفحة فارغة، وإلا نُبطل الاستعلام فيُعاد الجلب من المصدر نفسه.
+   */
+  const dismissMutation = useMutation({
+    mutationFn: async (doc: DocumentListItemDto) => {
+      await api.post(`/documents/${doc.id}/strike-off-reminder/dismiss`);
+      return doc;
+    },
+    onMutate: () => {
+      setMessage('');
+    },
+    onSuccess: async (doc) => {
+      setMessage(
+        `أُلغي تذكير الشطب للملف «${fullName(doc) || doc.displayFileNumber || doc.id}» — يعود عند تسجيل إجراء جديد.`,
+      );
       setConfirmId(null);
-      // آخر عنصر في صفحة غير أولى: الرجوع صفحةً بدل عرض صفحة فارغة بعد الاختفاء.
-      if (data?.items.length === 1 && page > 1) setPage(page - 1);
-      else listQuery.refetch();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err));
-    } finally {
-      setDismissingId(null);
-    }
-  };
+      if (data?.items.length === 1 && page > 1) {
+        setPage(page - 1);
+        // الصفحة السابقة قد تكون مخزَّنة (staleTime) وتحوي الصف الملغى — أَبطِلها.
+      }
+      await queryClient.invalidateQueries({ queryKey: ['strike-off-reminders'] });
+    },
+  });
+
+  const dismissingId = dismissMutation.isPending ? dismissMutation.variables?.id ?? null : null;
+  const actionError = dismissMutation.error ? getApiErrorMessage(dismissMutation.error) : '';
 
   const dismissButton = (d: DocumentListItemDto) =>
     confirmId === d.id ? (
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => dismiss(d)}
+          onClick={() => dismissMutation.mutate(d)}
           disabled={dismissingId === d.id}
           className="bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
         >
@@ -80,7 +95,7 @@ export default function StrikeOffRemindersPage() {
     ) : (
       <button
         type="button"
-        onClick={() => { setActionError(''); setConfirmId(d.id); }}
+        onClick={() => { dismissMutation.reset(); setConfirmId(d.id); }}
         className="border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
       >
         إلغاء التذكير
@@ -124,9 +139,9 @@ export default function StrikeOffRemindersPage() {
         </Link>
       </div>
 
-      {listQuery.error && (
+      {listError && (
         <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-          {listQuery.error}
+          {listError}
         </div>
       )}
       {actionError && (
@@ -141,6 +156,9 @@ export default function StrikeOffRemindersPage() {
       )}
 
       {listQuery.isLoading && <div className="text-gray-500">جارِ التحميل...</div>}
+      {listQuery.isFetching && !listQuery.isLoading && (
+        <div role="status" className="text-xs text-gray-500 mb-2">جارِ تحديث القائمة...</div>
+      )}
 
       {data && (
         <>
@@ -254,7 +272,7 @@ export default function StrikeOffRemindersPage() {
         <ExecutionActionsModal
           documentId={actionsDocId}
           onClose={() => setActionsDocId(null)}
-          onChanged={() => listQuery.refetch()}
+          onChanged={() => { void queryClient.invalidateQueries({ queryKey: ['strike-off-reminders'] }); }}
         />
       )}
     </div>

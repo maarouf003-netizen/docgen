@@ -1656,6 +1656,10 @@
     مع `invalidateQueries` بدل `refetch`؛ 11 اختبارًا و`/delegations/requests` في
     `axe`/375px. وبعد مراجعة مستقلة، أُصلح انحدار خطأ الصفحة في `AuditLogs` ووُثّق
     في الملحق `327`. التفاصيل: `docs/audit/327`–`330`.
+  - **`P6-01d` (2026-11-28):** `StrikeOffRemindersPage` انتقلت إلى `useQuery`
+    (`queryKey=['strike-off-reminders', page]`، `signal`، `placeholderData`) و`useMutation`
+    للإلغاء مع `invalidateQueries` بدل `refetch` اليدوي؛ الاختبارات السبعة خضراء عبر
+    `renderWithQueryClient`. التفاصيل: `docs/audit/341-p6-01d-strike-reminders-query-20261128.md`.
   - **متبقٍ:** ترحيل بقية `useEffect` اليدوي إلى `TanStack Query` (صفحة بشريحة كل
     تغيير)، وتوحيد حالات التحميل/الخطأ لكل صفحة، و`LCP/INP`.
   - التفاصيل: `docs/audit/264-p6-01a-error-boundaries-20261126.md` (والمراجعتان
