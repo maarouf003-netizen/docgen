@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using DocGenerator.Api.Observability;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,6 +67,26 @@ public class ObservabilitySetupTests
         var exporter = provider.GetRequiredService<IOptions<OtlpExporterOptions>>().Value;
         Assert.Equal(endpoint, exporter.Endpoint);
         Assert.Equal(OtlpExportProtocol.Grpc, exporter.Protocol);
+    }
+
+    [Fact]
+    public void Configured_SubscribesToNpgsqlMeter_ForPoolMetrics()
+    {
+        // P5-02b: يجب أن يشترك المزوّد فعليًا بالمتر — إزالة .AddMeter تُفشل هذا
+        // الاختبار (Instrument.Enabled=false) بدل فحص ثابت نصي جوف.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        ObservabilitySetup.AddDocGeneratorObservability(
+            services,
+            Configuration((ObservabilitySetup.EndpointConfigurationKey, "http://127.0.0.1:1")),
+            Environment());
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetService<MeterProvider>());
+
+        using var meter = new Meter(ObservabilitySetup.NpgsqlMetricMeter);
+        var connectionCount = meter.CreateUpDownCounter<long>("db.client.connection.count");
+        Assert.True(connectionCount.Enabled);
     }
 
     [Fact]

@@ -126,7 +126,7 @@
 
 | الفجوة | السبب | الأثر على `SLO` | المعالجة |
 |---|---|---|---|
-| `db.client.connection.count` / `db.client.connection.max` / `db.client.connection.npgsql.timeouts` | `Npgsql` يصدرها على متر `Npgsql`، لكن `P5-01` لا يسجّل هذا المتر (`.AddMeter("Npgsql")` غير موجود) | `SLO-5` (تشبّع المجمّع) **غير مقيس** حاليًا | تفعيل المتر في تغيير لاحق (`P5-02b`)؛ القواعد موجودة في `alerts.yaml` وتصبح فعّالة تلقائيًا عند ظهور المقياس |
+| `db.client.connection.count` / `db.client.connection.max` / `db.client.connection.npgsql.timeouts` | ✅ مُسجَّل الآن: `AddMeter("Npgsql")` (`P5-02b`) | `SLO-5` قابل للقياس | يبقى تفعيل لوحة/staging عند النشر |
 | تأخّر `Outbox` بالدقائق | `P5-03` يفحصه ويعيد **حالة صحية** فقط (`/healthz/outbox`)، لا عدّادًا عدديًا | يُقاس كـ**نسبة نجاح فحص** لا كدقائق | `SLO-4` يعرّف على `probe_success`؛ الدقائق العددية اختيارية عبر `postgres_exporter` |
 | عدد إعادات `Outbox` / الرسائل الفاشلة | لا عدّاد تطبيقي؛ الحالة تظهر في جسم `/healthz/outbox` فقط | لوحة «retries» اختيارية | استعلام `postgres_exporter` موثّق في الدليل؛ ليست جزءًا من `SLO` |
 | تتبّع من المتصفح | الواجهة لا تحمل `traceparent` بعد (`P5-01` §10) | لا يؤثر على `SLO` الخادم | `P6`/تغيير لاحق |
@@ -231,16 +231,19 @@ outbox_healthy_ratio = avg_over_time(probe_success{job="docgen-outbox-ready"}[30
 
 ```
 db_pool_used_ratio =
-  sum(db_client_connection_count{state="used"})
+  sum(db_client_connection_count{db_client_connection_state="used"})
   / clamp_min(sum(db_client_connection_max), 1)
 ```
 
 > `sum` يجمع كل المجمّعات (التطبيق يستخدم مجمّعًا واحدًا افتراضيًا) ويمنع عدم تطابق
-> وسوم مثل `state` بين `connection.count` و`connection.max`؛ لا حاجة إلى `ignoring`.
+> وسوم مثل `db_client_connection_state` بين `connection.count` و`connection.max`؛
+> لا حاجة إلى `ignoring`. (وسم Npgsql الأصلي `db.client.connection.state` يُطبَّع
+> في Prometheus إلى `db_client_connection_state`.)
 
 **الهدف:** `≤ 0.80` في `99%` من الدقائق شهريًا. **الميزانية:** `1%` من الدقائق.
-**الحالة الحالية:** **غير مقيس** — متر `Npgsql` غير مسجّل في `P5-01`؛ القواعد موجودة في
-`alerts.yaml` لكنها لا تُطلق حتى يظهر المقياس (لا `absent()` يفبرك تنبيهًا دائمًا).
+**الحالة الحالية:** المتر **مسجَّل** (`AddMeter("Npgsql")`، `P5-02b`)؛ يبقى ظهور
+`db_client_connection_*` في `Prometheus` بعد نشر المجمّع/`staging`. القواعد في
+`alerts.yaml` جاهزة.
 **الحدّ الآمن:** `20` هو `Database:Pool:MaxPoolSize` الافتراضي، لكن الاستعلام يستخدم
 `db_client_connection_max` الفعلي لا رقمًا مثبتًا.
 

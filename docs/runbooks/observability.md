@@ -270,9 +270,8 @@ jq empty ops/observability/dashboard.json
 
 ## 10. فجوات معروفة (لا تُخفى)
 
-1. **`Npgsql` meter غير مسجَّل:** `db.client.*` غير موجود؛ `SLO-5` غير مقيس. الحل المستقبلي
-   تغيير صغير في `ObservabilitySetup` بإضافة `.AddMeter("Npgsql")` (خارج نطاق `P5-02`،
-   لا يغيّر سلوك العمل).
+1. **`Npgsql` meter مسجَّل (P5-02b):** `db.client.*` يُصدَر الآن بعد `.AddMeter("Npgsql")`؛
+   تبقى خطوة النشر: ظهور `db_client_connection_*` في `Prometheus` وتغذية `SLO-5` واللوحة.
 2. **لا نشر حي:** `Prometheus`/`Grafana`/`Tempo`/`blackbox_exporter` خارج المستودع؛
    الملفات جاهزة لكن النشر مسؤولية المالك/البنية (`P5-04` مستقبلًا).
 3. **لا مصادقة `OTLP`:** الجامع يجب أن يبقى داخليًا (حدّ `P5-01` §10).

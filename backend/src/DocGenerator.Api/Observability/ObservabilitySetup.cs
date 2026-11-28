@@ -17,6 +17,13 @@ public static class ObservabilitySetup
     /// <summary>مفتاح الإعداد المفضّل لنقطة نهاية `OTLP`.</summary>
     public const string EndpointConfigurationKey = "Observability:OtlpEndpoint";
 
+    /// <summary>
+    /// عدّادات `Npgsql` (مجمّع الاتصالات/الأوامر) — يغذّي `SLO-5` ولوحة pool (P5-02b).
+    /// </summary>
+    public const string NpgsqlMetricMeter = "Npgsql";
+
+    private static readonly string[] MetricMeters = [NpgsqlMetricMeter];
+
     /// <summary>متغيّر البيئة القياسي — يُقرأ كبديل عند غياب المفتاح أعلاه.</summary>
     public const string OtlpEndpointEnvironmentVariable = "OTEL_EXPORTER_OTLP_ENDPOINT";
 
@@ -92,6 +99,7 @@ public static class ObservabilitySetup
                 .AddEntityFrameworkCoreInstrumentation()
                 .AddOtlpExporter())
             .WithMetrics(metrics => metrics
+                .AddMeter(MetricMeters)
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()

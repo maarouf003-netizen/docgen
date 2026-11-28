@@ -529,7 +529,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Npgsql used/max connections. Requires the Npgsql meter (not registered by P5-01); the panel is empty until P5-02b enables it. SLO-5 target: <= 80%.",
+      "description": "Npgsql used/max connections. Meter registered since P5-02b; the panel populates after the collector is deployed. SLO-5 target: <= 80%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -576,7 +576,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "editorMode": "code",
-          "expr": "sum(db_client_connection_count{state=\"used\"}) / clamp_min(sum(db_client_connection_max), 1)",
+          "expr": "sum(db_client_connection_count{db_client_connection_state=\"used\"}) / clamp_min(sum(db_client_connection_max), 1)",
           "legendFormat": "used / max",
           "range": true,
           "refId": "A"
