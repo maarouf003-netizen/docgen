@@ -307,6 +307,11 @@
 
 #### `P1-03` — Fixtures وBuilders
 
+- **الحالة (2026-11-28):** **`P1-03a` منفّذ** — `DocGenerator.TestSupport.Builders.DocumentBuilder`
+  بافتراضيات حتمية (تاريخ إدخال ثابت 2020-01-15 لا يلوّث فترات 2026) ودوال `With…` صريحة،
+  مع اختبارات وحدة، ومُرحَّل في بذور `StatisticsTests` (بما فيها اختبارات حدود توقيت دمشق).
+  **متبقٍ:** `UserBuilder`/`PublicEntityBuilder` وترحيل بقية الأصناف، وقياس زمن `Application`.
+  التفاصيل: `docs/audit/343-p1-03a-test-builders-20261128.md`.
 - **العمل:** `DocumentBuilder`، `UserBuilder`، `PublicEntityBuilder`؛ `IClassFixture`/`CollectionFixture`؛ إعادة استخدام قاعدة اختبار واحدة مع `Respawn` بدل `EnsureCreated` لكل اختبار.
 - **DoD:** زمن `Application` < 5 دقائق للوحدات، والاختبارات التكاملية منفصلة.
 
