@@ -650,7 +650,9 @@ public class PortalRestructureTests : PostgresDbTest
 
         var stats = await _reads.Stats.GetStatsAsync(_delegateGroupId);
         Assert.Equal(1, stats.TotalFiles);
-        Assert.Equal(1, stats.CirculatingFiles);
+        // الطرف المنفذ بحالة «منفذ» سلّته «منفذ» لا «متداول» (W5/B3).
+        Assert.Equal(0, stats.CirculatingFiles);
+        Assert.Equal(1, stats.ExecutedFiles);
     }
 
     /// <summary>
