@@ -696,6 +696,12 @@ public class QueryBudgetTests
             .GetAsync($"/api/portal/files/{documentIds[0]}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            // تأكيد الهوية: استجابة تفاصيل ملف آخر/فارغة تُفشل القياس لا تمرّ بسقف زائف.
+            Assert.Equal(documentIds[0], json.RootElement.GetProperty("id").GetInt32());
+        }
+
         Assert.True(
             counter.Count <= PortalFileDetailBudget,
             $"تجاوز تفاصيل ملف البوابة ميزانية الاستعلامات: {counter.Count} > {PortalFileDetailBudget}");

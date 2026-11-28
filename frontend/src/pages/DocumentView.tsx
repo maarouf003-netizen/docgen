@@ -45,7 +45,8 @@ type DocumentTabId = 'info' | 'security' | 'delegations' | 'status';
 /** ترتيب تبويبات الجوال — مصدر واحد للعرض والتنقّل (لا ينحرف الترتيب). */
 const DOCUMENT_TAB_IDS: readonly DocumentTabId[] = ['info', 'security', 'delegations', 'status'];
 
-export default function DocumentView() {  const { id } = useParams();
+export default function DocumentView() {
+  const { id } = useParams();
   const { user, hasFullAccess } = useAuth();
   const modals = useDocumentViewModals(id);
   // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
