@@ -1533,9 +1533,10 @@
     `SLO`/التنبيهات/الدليل) — بلا حزم جديدة.
 - **DoD:** لوحة واحدة + تنبيهات مفعّلة — **متحقق كرمز فقط**. **متبقٍ (بنية تحتية/مالك):**
   نشر `Prometheus`/`Grafana`/`Tempo`/`blackbox_exporter` واستيراد الملفات، وتفعيل
-  `Observability:OtlpEndpoint` في البيئة. **فجوة قياس معلنة:** `SLO-5` (مجمّع `Npgsql`)
-  يتطلب تسجيل متر `Npgsql` (`.AddMeter("Npgsql")`) في تغيير لاحق `P5-02b`؛ و`Outbox` بالدقائق
-  والإعادات اختياري عبر `postgres_exporter`. التفاصيل: `docs/audit/258`–`260`.
+  `Observability:OtlpEndpoint` في البيئة. **`P5-02b` منفّذ:** متر `Npgsql` مسجَّل
+  (`.AddMeter("Npgsql")`) وتسمية وسم `db_client_connection_state` مصححة؛ يبقى ظهور
+  المقاييس بعد النشر. و`Outbox` بالدقائق والإعادات اختياري عبر `postgres_exporter`.
+  التفاصيل: `docs/audit/258`–`260`.
 
 #### `P5-03` — Health checks
 

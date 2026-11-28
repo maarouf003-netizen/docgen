@@ -377,11 +377,12 @@ groups:
   - name: docgen-slo-db-pool
     interval: 30s
     rules:
-      # Optional until the Npgsql meter is registered (P5-02b). The rule is
-      # intentionally not wrapped in absent()/absent_over_time().
+      # The Npgsql meter is registered since P5-02b; the rule activates once
+      # db_client_connection_* metrics reach Prometheus (deployment/staging step).
+      # Intentionally not wrapped in absent()/absent_over_time().
       - alert: DocGenDbPoolSaturationWarning
         expr: |
-          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.8
+          (sum(db_client_connection_count{db_client_connection_state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -393,12 +394,12 @@ groups:
           summary: "Database pool is above 80% utilisation"
           description: >-
             Npgsql used/max connections > 80% for 10m. Check slow queries and
-            leaked DbContexts. Requires the Npgsql meter (not enabled by P5-01).
+            leaked DbContexts. Meter registered since P5-02b; panels populate after deployment.
           runbook_url: "https://github.com/maarouf003-netizen/docgen/blob/master/docs/runbooks/observability.md#slo-db-pool"
 
       - alert: DocGenDbPoolSaturationCritical
         expr: |
-          (sum(db_client_connection_count{state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.95
+          (sum(db_client_connection_count{db_client_connection_state="used"}) / clamp_min(sum(db_client_connection_max), 1)) > 0.95
         for: 5m
         labels:
           severity: critical
