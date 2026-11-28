@@ -1314,6 +1314,9 @@ describe('DocumentsList', () => {
     await waitFor(() => expect(
       get.mock.calls.some(([url]) => String(url).includes('cursor=cursor-p2')),
     ).toBe(true));
+    // الاستعادة تنتظر استقرار البحث المؤجّل: طلب المؤشر يحمل `q` المحفوظ.
+    const cursorCall = get.mock.calls.map(([url]) => String(url)).find((url) => url.includes('cursor=cursor-p2'));
+    expect(cursorCall).toContain('q=');
     expect(screen.getByRole('searchbox', { name: 'بحث في الملفات التنفيذية' })).toHaveValue('محمود');
   });
 
@@ -1798,6 +1801,8 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
     await waitFor(() => expect(listCalls).toBe(before + 1), { timeout: 2000 });
     // حرفان خلال نافذة التأخير ⇒ طلب واحد بعد التوقف، لا طلبان.
     expect(listCalls).toBe(before + 1);
+    const lastListCall = get.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/documents/list')).at(-1);
+    expect(lastListCall).toContain('q=');
   });
 
   it('استجابة قائمة مخالفة للعقد تُعلن خطأً ولا تعرض «لا توجد نتائج»', async () => {
@@ -1808,7 +1813,7 @@ describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق ا
           data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] },
         });
       }
-      return Promise.resolve({ data: { items: null } });
+      return Promise.resolve({ data: { items: null, page: 1, perPage: 20, totalCount: 0 } });
     });
 
     renderList();

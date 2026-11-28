@@ -159,6 +159,34 @@ describe('AuditLogs', () => {
     expect(screen.getByText('صفحة 2 من 3')).toBeInTheDocument();
   });
 
+  it('أثناء جلب فلتر جديد لا يعلن «لا توجد سجلات» قبل وصول الرد', async () => {
+    const user = userEvent.setup();
+    let releaseFilter: (value: unknown) => void = () => {};
+    const pendingFilter = new Promise((resolve) => { releaseFilter = resolve; });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (String(url).includes('actionType=create')) return pendingFilter;
+      return Promise.resolve({
+        data: {
+          items: [{
+            id: 1, timestamp: '2026-08-01', userName: 'head1', actionType: 'login',
+            details: 'سطر الدخول', documentId: null, documentType: null,
+          }],
+          page: 1, perPage: 20, totalCount: 1,
+        },
+      });
+    });
+
+    renderWithQueryClient(<AuditLogs />);
+    await screen.findByText('سطر الدخول');
+
+    await user.selectOptions(screen.getByLabelText('نوع الحدث'), 'create');
+    expect(screen.getByText('جارِ تحميل السجلات…')).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد سجلات')).not.toBeInTheDocument();
+
+    releaseFilter({ data: { items: [], page: 1, perPage: 20, totalCount: 0 } });
+    expect(await screen.findByText('لا توجد سجلات')).toBeInTheDocument();
+  });
+
   it('فشل فلتر جديد لا يعرض صفوف فلتر سابق', async () => {
     const user = userEvent.setup();
     const row = (id: number, details: string) => ({

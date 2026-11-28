@@ -108,6 +108,9 @@ export default function AuditLogs() {
   };
 
   const pages = Math.max(1, Math.ceil(total / perPage));
+  // تحميل بارد لفلتر جديد: لا صفوف سابقة لهذا الفلتر — لا نعلن «لا توجد سجلات»
+  // قبل وصول الاستجابة (خطأ/فراغ حقيقيان فقط بعد انتهاء الجلب).
+  const coldLoading = logsQuery.isFetching && pageData == null;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -187,7 +190,11 @@ export default function AuditLogs() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  {logsQuery.isError && pageData == null ? 'تعذّر تحميل السجلات' : 'لا توجد سجلات'}
+                  {coldLoading
+                    ? 'جارِ تحميل السجلات…'
+                    : logsQuery.isError && pageData == null
+                      ? 'تعذّر تحميل السجلات'
+                      : 'لا توجد سجلات'}
                 </td>
               </tr>
             )}

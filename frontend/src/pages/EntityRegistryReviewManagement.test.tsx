@@ -326,7 +326,8 @@ describe('EntityRegistryReviewManagement', () => {
     expect(screen.getByRole('tab', { name: 'تعديل جهة عامة' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('نتيجة بحث قديمة لا تطمس نتيجة الاستعلام الأحدث', async () => {    const user = userEvent.setup();
+  it('نتيجة بحث قديمة لا تطمس نتيجة الاستعلام الأحدث', async () => {
+    const user = userEvent.setup();
     const first = deferred<ReturnType<typeof groupsResponse>>();
     const second = deferred<ReturnType<typeof groupsResponse>>();
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;

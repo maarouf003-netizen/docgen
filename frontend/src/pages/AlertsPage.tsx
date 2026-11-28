@@ -301,12 +301,12 @@ export default function AlertsPage() {
         className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
       >
         {unreadError && (
-        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          تعذّر تحديث عدّاد غير المقروء — قد لا يكون الرقم محدّثًا.
-        </p>
-      )}
+          <p role="status" className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 sm:mx-5">
+            تعذّر تحديث عدّاد غير المقروء — قد لا يكون الرقم محدّثًا.
+          </p>
+        )}
 
-      {listError || activeFeed.error ? (
+        {listError || activeFeed.error ? (
           <div className="border-b border-red-100 bg-red-50 px-4 py-2.5 sm:px-5" role="alert">
             <p className="text-sm text-red-700">{listError || activeFeed.error}</p>
           </div>
