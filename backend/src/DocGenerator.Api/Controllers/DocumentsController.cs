@@ -210,6 +210,23 @@ public class DocumentsController : ControllerBase
     private string? ActorName => User.Identity?.Name;
 
     /// <summary>
+    /// قائمة الملفات العامة لا تعرض الملفات المنفذة (لها صفحتها المستقلة)؛ تمرير
+    /// `status=منفذ` كان يُرجع صفرًا مضلِّلًا. نرفضه صراحةً برسالة توجّه للصفحة الصحيحة،
+    /// مع إبقاء «منفذ عليه» تصنيفًا مستقلًا لا يُدمج معه.
+    /// </summary>
+    private ActionResult? RejectUnsupportedGeneralListStatus(string? status)
+    {
+        if (!string.Equals(status?.Trim(), ExecutionStatusCatalog.ExecutedFilter, StringComparison.Ordinal))
+            return null;
+
+        return ApiProblem.Result(
+            HttpContext,
+            StatusCodes.Status400BadRequest,
+            ApiErrorCodes.ValidationFailed,
+            "فلتر «منفذ» غير مدعوم في قائمة الملفات العامة — استخدم صفحة «الملفات المنفذة» (/documents/executed).");
+    }
+
+    /// <summary>
     /// تعقيم عدّاد الطباعة لغير المصرَّح لهم (`CanViewPrintCounter`) — قدرة دورّية غير
     /// موردية تُقرأ من الكتالوج عبر <see cref="IDocumentAuthorization"/>، لا قاعدة محلية.
     /// </summary>
@@ -265,6 +282,9 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? publicEntityBranch,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
+        if (RejectUnsupportedGeneralListStatus(status) is { } statusRejected)
+            return statusRejected;
+
         // البحث/الفلترة باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
         if (!string.IsNullOrWhiteSpace(lawyer)
             && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
@@ -294,6 +314,9 @@ public class DocumentsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         [FromQuery] string? cursor = null, CancellationToken ct = default)
     {
+        if (RejectUnsupportedGeneralListStatus(status) is { } statusRejected)
+            return statusRejected;
+
         if (!string.IsNullOrWhiteSpace(lawyer)
             && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
             return Forbid();
@@ -345,10 +368,31 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
         [FromQuery] string? publicEntityBranch, CancellationToken ct)
     {
+        if (RejectUnsupportedGeneralListStatus(status) is { } statusRejected)
+            return statusRejected;
+
         // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
         if (!string.IsNullOrWhiteSpace(lawyer)
             && !_authorization.Has(User, UserCapability.CanSearchByLawyer))
             return Forbid();
+
+        // W5-F11: لا تصدير شامل — يجب تطبيق فلتر واحد على الأقل (المنع خلفي، لا واجهي فقط).
+        if (string.IsNullOrWhiteSpace(q)
+            && string.IsNullOrWhiteSpace(status)
+            && string.IsNullOrWhiteSpace(applicant)
+            && string.IsNullOrWhiteSpace(court)
+            && string.IsNullOrWhiteSpace(lawyer)
+            && string.IsNullOrWhiteSpace(branch)
+            && string.IsNullOrWhiteSpace(administrativeBranch)
+            && string.IsNullOrWhiteSpace(executedEntity)
+            && string.IsNullOrWhiteSpace(publicEntityBranch))
+        {
+            return ApiProblem.Result(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                "التصدير يتطلب فلترًا واحدًا على الأقل (بحث أو أي فلتر) — لا يمكن تصدير كل الملفات.");
+        }
 
         var scope = _authorization.ResolveListScope(User);
         if (scope is null) return Forbid();

@@ -20,6 +20,7 @@ public static class RateLimitingSetup
     public const string ExpensivePolicy = "expensive";
     public const string StatsReadPolicy = "stats-read";
     public const string CircuitsReadPolicy = "circuits-read";
+    public const string ReadsPolicy = "reads";
     public const string PasswordPolicy = "password";
     public const string CspReportPolicy = "csp-report";
 
@@ -61,6 +62,9 @@ public static class RateLimitingSetup
 
         options.AddPolicy(CircuitsReadPolicy, context =>
             Partition($"circuits:{SubjectOf(context)}", LimitsOf(context).CircuitsReadPerMinute));
+
+        options.AddPolicy(ReadsPolicy, context =>
+            Partition($"reads:{SubjectOf(context)}", LimitsOf(context).ReadsPerMinute));
 
         options.AddPolicy(PasswordPolicy, context =>
             Partition($"pwd:{SubjectOf(context)}", LimitsOf(context).PasswordPerMinute));

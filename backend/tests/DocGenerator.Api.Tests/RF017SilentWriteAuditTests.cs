@@ -58,7 +58,7 @@ public class RF017SilentWriteAuditTests : IAsyncLifetime
         var admin = await _factory.CreateUserAsync(UniqueName("admin_exp"), UserRole.Admin);
         var client = _factory.AuthorizedClient(admin.Username);
 
-        var response = await client.GetAsync("/api/documents/export");
+        var response = await client.GetAsync("/api/documents/export?status=" + Uri.EscapeDataString("متداول"));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         Assert.True(await HasAuditRowAsync("export_documents", admin.Username));

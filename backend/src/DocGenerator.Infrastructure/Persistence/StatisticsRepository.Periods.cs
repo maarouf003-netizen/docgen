@@ -27,7 +27,7 @@ public partial class StatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? LocalDateOf(x.CreatedAt)));
     }
 
     private static List<MonthlyStatDto> GroupMonths(IEnumerable<DateTime> dates)

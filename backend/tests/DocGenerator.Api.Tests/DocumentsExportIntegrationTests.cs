@@ -31,6 +31,16 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
 
     private static int ExportNumberSeq;
 
+    /// <summary>
+    /// فلتر إلزامي لنجاح التصدير (`W5-F11`): «تحت رفع» يطابق المسودات التي ينشئها
+    /// `CreateDocumentAsync` بلا رقم قيد؛ «متداول» للملفات المسجّلة غير المسودة.
+    /// </summary>
+    private static readonly string DraftExport =
+        "/api/documents/export?status=" + Uri.EscapeDataString("تحت رفع");
+
+    private static readonly string CirculatingExport =
+        "/api/documents/export?status=" + Uri.EscapeDataString("متداول");
+
     [PostgresFact]
     public async Task Export_AsLawyer_ReturnsXlsxWithHeaders()
     {
@@ -38,7 +48,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         await _factory.CreateDocumentAsync(token, "مستند تصدير", applicant: "المدعي", court: "دمشق");
 
         var client = _factory.AuthorizedClient("lawyer1");
-        var response = await client.GetAsync("/api/documents/export");
+        var response = await client.GetAsync(DraftExport);
         response.EnsureSuccessStatusCode();
 
         Assert.Equal(
@@ -56,7 +66,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
     public async Task Export_ProducesOpenableWorkbookWithValidAutoFilterReference()
     {
         var client = _factory.AuthorizedClient("manager");
-        var response = await client.GetAsync("/api/documents/export");
+        var response = await client.GetAsync(DraftExport);
         response.EnsureSuccessStatusCode();
 
         var bytes = await response.Content.ReadAsByteArrayAsync();
@@ -97,12 +107,23 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
     public async Task Export_AsManager_OkAndForbiddenForAnonymous()
     {
         var client = _factory.AuthorizedClient("manager");
-        var response = await client.GetAsync("/api/documents/export");
+        var response = await client.GetAsync(DraftExport);
         response.EnsureSuccessStatusCode();
 
         var anonymous = _factory.CreateClient();
-        var forbidden = await anonymous.GetAsync("/api/documents/export");
+        var forbidden = await anonymous.GetAsync(DraftExport);
         Assert.Equal(HttpStatusCode.Unauthorized, forbidden.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task Export_WithoutAnyFilter_IsRejectedWithValidationMessage()
+    {
+        // W5-F11: المنع خلفي — حتى المدير لا يصدّر كل الملفات بلا فلتر.
+        var response = await _factory.AuthorizedClient("manager").GetAsync("/api/documents/export");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains("فلتر", body.RootElement.GetProperty("message").GetString());
     }
 
     [PostgresFact]
@@ -125,7 +146,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
 
         var manager = _factory.AuthorizedClient("manager");
-        var response = await manager.GetAsync("/api/documents/export");
+        var response = await manager.GetAsync(DraftExport);
         var bytes = await response.Content.ReadAsByteArrayAsync();
 
         using var stream = new MemoryStream(bytes);
@@ -174,7 +195,8 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
 
         var manager = _factory.AuthorizedClient("manager");
 
-        var plain = await manager.GetAsync("/api/documents/export");
+        var plain = await manager.GetAsync(
+            "/api/documents/export?court=" + Uri.EscapeDataString("دمشق"));
         Assert.True(plain.IsSuccessStatusCode);
         var plainRows = DataRows(await plain.Content.ReadAsByteArrayAsync());
         var plainStatuses = plainRows
@@ -201,7 +223,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, action.StatusCode);
 
         var manager = _factory.AuthorizedClient("manager");
-        var response = await manager.GetAsync("/api/documents/export");
+        var response = await manager.GetAsync(DraftExport);
         response.EnsureSuccessStatusCode();
 
         var rows = DataRows(await response.Content.ReadAsByteArrayAsync());
@@ -232,7 +254,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         try
         {
             var client = _factory.AuthorizedClient("lawyer1");
-            var busy = await client.GetAsync("/api/documents/export");
+            var busy = await client.GetAsync(DraftExport);
             Assert.Equal(HttpStatusCode.TooManyRequests, busy.StatusCode);
             // الجسم `JSON` بهروب `\uXXXX` (المسرِّع الافتراضي) فيُفكّ قبل المقارنة.
             using var body = JsonDocument.Parse(await busy.Content.ReadAsStringAsync());
@@ -243,7 +265,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
             guard.Exit(key);
         }
 
-        var retry = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
+        var retry = await _factory.AuthorizedClient("lawyer1").GetAsync(DraftExport);
         Assert.True(retry.IsSuccessStatusCode);
     }
 
@@ -263,7 +285,7 @@ public class DocumentsExportIntegrationTests : IAsyncLifetime
         Assert.NotNull(otherLogin?.Token);
         await _factory.CreateDocumentAsync(otherLogin!.Token!, "زبون المحامي الثاني", court: "محكمة", registered: true);
 
-        var response = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
+        var response = await _factory.AuthorizedClient("lawyer1").GetAsync(CirculatingExport);
         response.EnsureSuccessStatusCode();
         var rows = DataRows(await response.Content.ReadAsByteArrayAsync());
 

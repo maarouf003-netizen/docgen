@@ -145,7 +145,8 @@ public class QueryBudgetTests
         var counter = factory.Services.GetRequiredService<QueryCounter>();
         counter.Reset();
 
-        var response = await factory.ClientWithToken(token).GetAsync("/api/documents/export");
+        var response = await factory.ClientWithToken(token)
+            .GetAsync("/api/documents/export?status=" + Uri.EscapeDataString("تحت رفع"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(

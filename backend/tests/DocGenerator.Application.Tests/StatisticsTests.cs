@@ -408,6 +408,72 @@ public class StatisticsRepositoryTests : PostgresDbTest
     }
 
     [PostgresFact]
+    public async Task ManagerStats_Monthly_UsesDamascusLocalDateForCreatedAtFallback()
+    {
+        // 2026-09-30 22:00 UTC = 2026-10-01 01:00 بتوقيت دمشق (UTC+3): الحدود المحلية
+        // يجب أن تحسبه ضمن تشرين الأول، لا أيلول (W5-F4).
+        var createdAt = new DateTime(2026, 9, 30, 22, 0, 0, DateTimeKind.Utc);
+        _db.Documents.Add(new Document
+        {
+            BranchId = 1,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            BorrowerName = "حدود",
+            BorrowerFamily = "التوقيت",
+            AmountNumeric = 0,
+            CreatedAt = createdAt,
+        });
+        _db.SaveChanges();
+
+        var october = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1, 2026, 10);
+        var september = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1, 2026, 9);
+
+        Assert.Equal(1, october.Drafts);
+        Assert.Equal(0, september.Drafts);
+
+        // التصنيف الشهري (لوحة التحكم/منتقي الفترات) يستخدم اليوم المحلي نفسه.
+        var monthly = await _stats.GetMonthlyStatsAsync(1);
+        var octoberRow = Assert.Single(monthly, m => m.Year == 2026 && m.Month == 10);
+        Assert.Equal(1, octoberRow.Count);
+        Assert.DoesNotContain(monthly, m => m.Year == 2026 && m.Month == 9);
+    }
+
+    [PostgresFact]
+    public async Task PersonalStats_PendingAppealBoundary_UsesDamascusLocalDate()
+    {
+        // استئناف أُنشئ 2026-09-30 22:00 UTC = 01:00 ت1 بتوقيت دمشق.
+        var doc = new Document
+        {
+            BranchId = 1,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            BorrowerName = "استئناف",
+            BorrowerFamily = "التوقيت",
+            AmountNumeric = 0,
+            CreatedAt = LegacyDate,
+        };
+        _db.Documents.Add(doc);
+        _db.SaveChanges();
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            DocumentId = doc.Id,
+            Status = AppealStatusCatalog.Pending,
+            AssignedLawyerId = 1,
+            CreatedById = 1,
+            CreatedAt = new DateTime(2026, 9, 30, 22, 0, 0, DateTimeKind.Utc),
+        });
+        _db.SaveChanges();
+
+        var october = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, 2026, 10);
+        var september = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, 2026, 9);
+
+        Assert.Equal(1, october.Appeals?.PendingCount);
+        Assert.Equal(0, september.Appeals?.PendingCount ?? 0);
+    }
+
+    [PostgresFact]
     public async Task ManagerStats_ForcibleMineebIncludesExecutedDelegationSales()
     {
         // مجموع بدل المبيع لإنابات المنيب المنفذة («منفذ إنابة») يُضاف إلى سلة «منفذ جبريا»

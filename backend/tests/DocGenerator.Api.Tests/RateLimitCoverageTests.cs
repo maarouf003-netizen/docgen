@@ -100,6 +100,31 @@ public class RateLimitCoverageTests
     }
 
     /// <summary>
+    /// `W5-F-d` (توسعة): شاشات القراءة (إحصاءات البوابة، الملفات بانتظار التسجيل) على
+    /// سياسة قراءة مستقلة، وكتابة «إكمال التسجيل» تبقى على «المكلفة».
+    /// </summary>
+    [Fact]
+    public void PortalAndPendingReads_CarryReadsPolicy_AndPendingWriteStaysExpensive()
+    {
+        var portalStats = typeof(PortalController)
+            .GetMethod(nameof(PortalController.Stats))!
+            .GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName;
+        Assert.Equal(RateLimitingSetup.ReadsPolicy, portalStats);
+
+        var pendingRead = typeof(PendingRegistrationsController)
+            .GetMethod(nameof(PendingRegistrationsController.MyPending))!;
+        Assert.Equal(
+            RateLimitingSetup.ReadsPolicy,
+            PolicyOf(typeof(PendingRegistrationsController), pendingRead));
+
+        var pendingWrite = typeof(PendingRegistrationsController)
+            .GetMethod(nameof(PendingRegistrationsController.Complete))!;
+        Assert.Equal(
+            RateLimitingSetup.ExpensivePolicy,
+            PolicyOf(typeof(PendingRegistrationsController), pendingWrite));
+    }
+
+    /// <summary>
     /// `W5-F-e`: القيم الفعلية في `appsettings.json` (لا الافتراضية في الكلاس) — أعلى من
     /// «المكلفة» بحد أدنى معقول، وكل مفتاح في العقد موجود في الملف (لا افتراضي صامت).
     /// </summary>
@@ -114,11 +139,14 @@ public class RateLimitCoverageTests
         var expensive = ConfiguredValue(section, nameof(RateLimitOptions.ExpensivePerMinute));
         var stats = ConfiguredValue(section, nameof(RateLimitOptions.StatsReadPerMinute));
         var circuits = ConfiguredValue(section, nameof(RateLimitOptions.CircuitsReadPerMinute));
+        var reads = ConfiguredValue(section, nameof(RateLimitOptions.ReadsPerMinute));
 
         Assert.True(stats >= 60, $"RateLimiting:StatsReadPerMinute={stats} أقل من 60 في appsettings.");
         Assert.True(circuits >= 30, $"RateLimiting:CircuitsReadPerMinute={circuits} أقل من 30 في appsettings.");
+        Assert.True(reads >= 60, $"RateLimiting:ReadsPerMinute={reads} أقل من 60 في appsettings.");
         Assert.True(stats > expensive, "StatsReadPerMinute يجب أن يتجاوز ExpensivePerMinute.");
         Assert.True(circuits > expensive, "CircuitsReadPerMinute يجب أن يتجاوز ExpensivePerMinute.");
+        Assert.True(reads > expensive, "ReadsPerMinute يجب أن يتجاوز ExpensivePerMinute.");
 
         foreach (var property in typeof(RateLimitOptions).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
